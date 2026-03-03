@@ -451,6 +451,10 @@
           <span class="search-icon">🔍</span>
           <input type="text" id="stock-search" placeholder="Buscar producto..." oninput="renderStock()">
         </div>
+        <button class="btn btn-yellow" onclick="importarDesdeMELI()" id="btn-importar-meli">🟡 Importar desde MELI</button>
+        <button class="btn btn-ghost" onclick="descargarTemplateCSV()" title="Descargar plantilla CSV de ejemplo">📄 Plantilla CSV</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('csv-file-input').click()">⬆ Importar CSV</button>
+        <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(event)">
         <button class="btn btn-primary" onclick="openModal('modal-producto')">+ Nuevo producto</button>
       </div>
     </div>
@@ -1471,8 +1475,26 @@ function estadoVentaBadge(estado) {
 }
 
 // =====================
-// EXPORT / IMPORT (backup JSON)
+// IMPORTAR DESDE MELI
 // =====================
+async function importarDesdeMELI() {
+  const btn = document.getElementById('btn-importar-meli');
+  btn.disabled = true;
+  btn.textContent = '⏳ Importando...';
+  try {
+    const result = await api('POST', '/meli/importar');
+    await loadAll();
+    renderStock();
+    alert(`✅ ${result.mensaje}\n\nTotal publicaciones en MELI: ${result.total}\nImportados: ${result.importados}\nOmitidos (ya existían): ${result.omitidos}`);
+  } catch(e) {
+    alert('❌ Error importando desde MELI: ' + e.message + '\n\nAsegurate de tener MELI conectado.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🟡 Importar desde MELI';
+  }
+}
+
+
 function exportData() {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);

@@ -71,7 +71,9 @@ module.exports = async (req, res) => {
       // 5. Si es venta MELI y tiene meli_id → actualizar stock en MELI automáticamente
       if (v.canal === 'meli' && producto.meli_id) {
         try {
+          console.log(`🔄 Intentando actualizar stock MELI: ${producto.meli_id} → ${nuevoStockMeli}`);
           const token = await getMeliToken();
+          console.log(`🔑 Token obtenido OK`);
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
             method: 'PUT',
             headers: {
@@ -81,12 +83,14 @@ module.exports = async (req, res) => {
             body: JSON.stringify({ available_quantity: nuevoStockMeli }),
           });
           const meliData = await meliRes.json();
-          if (meliData.error) console.warn('MELI stock update warning:', meliData.message);
+          console.log(`📦 Respuesta MELI:`, JSON.stringify(meliData));
+          if (meliData.error) console.warn('⚠️ MELI error:', meliData.message);
           else console.log(`✅ Stock MELI actualizado: ${producto.meli_id} → ${nuevoStockMeli}`);
         } catch (meliErr) {
-          // No fallar toda la venta si MELI falla, solo loguear
-          console.error('No se pudo actualizar stock en MELI:', meliErr.message);
+          console.error('❌ No se pudo actualizar stock en MELI:', meliErr.message);
         }
+      } else {
+        console.log(`ℹ️ Sin actualización MELI — canal: ${v.canal}, meli_id: ${producto.meli_id}`);
       }
 
       return res.json({ venta, nuevoStockDep, nuevoStockMeli });

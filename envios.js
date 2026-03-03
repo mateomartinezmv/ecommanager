@@ -1,0 +1,62 @@
+// api/envios.js
+const { getSupabase } = require('./_supabase');
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const supabase = getSupabase();
+
+  try {
+    if (req.method === 'GET') {
+      const { data, error } = await supabase
+        .from('envios')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'POST') {
+      const e = req.body;
+      const { data, error } = await supabase.from('envios').insert({
+        id: e.id,
+        venta_id: e.ventaId || null,
+        orden: e.orden || null,
+        comprador: e.comprador || null,
+        producto: e.producto || null,
+        transportista: e.transportista,
+        tracking: e.tracking || null,
+        fecha_despacho: e.fechaDespacho || null,
+        estado: e.estado || 'pendiente',
+        direccion: e.direccion || null,
+      }).select().single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'PUT') {
+      const id = req.query.id;
+      const { estado, tracking } = req.body;
+      const { data, error } = await supabase.from('envios')
+        .update({ estado, tracking })
+        .eq('id', id).select().single();
+      if (error) throw error;
+      return res.json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      const id = req.query.id;
+      const { error } = await supabase.from('envios').delete().eq('id', id);
+      if (error) throw error;
+      return res.json({ ok: true });
+    }
+
+    res.status(405).json({ error: 'Method not allowed' });
+  } catch (err) {
+    console.error('Error en /api/envios:', err);
+    res.status(500).json({ error: err.message });
+  }
+};

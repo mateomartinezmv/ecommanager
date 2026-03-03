@@ -1,0 +1,11 @@
+{
+  "name": "ecommanager",
+  "version": "1.0.0",
+  "description": "EcomManager - CRM gratuito para MELI y mostrador",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  }
+}

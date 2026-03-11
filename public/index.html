@@ -931,7 +931,11 @@ function renderDashboard() {
 // =====================
 function renderStock() {
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
-  const filtered = db.productos.filter(p => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
+  const filtered = db.productos.filter(p => {
+    const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q);
+    const matchTipo = stockTabFilter === 'all' || (p.tipo || 'nuevo') === stockTabFilter;
+    return matchQ && matchTipo;
+  });
   document.getElementById('stock-count').textContent = `${filtered.length} productos`;
   if (filtered.length === 0) { document.getElementById('stock-tbody').innerHTML = ''; document.getElementById('stock-empty').style.display = 'block'; return; }
   document.getElementById('stock-empty').style.display = 'none';

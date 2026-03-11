@@ -464,6 +464,43 @@
   </div>
 </div>
 
+<!-- MODAL: EDITAR ENVÍO -->
+<div class="modal-overlay" id="modal-editar-envio">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">✏️ Editar Envío</div>
+    <input type="hidden" id="ee-id">
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="ee-comprador" placeholder="Nombre del comprador"></div>
+      <div class="form-group"><label class="form-label">Transportista</label>
+        <select id="ee-transportista">
+          <option value="andreani">Andreani</option>
+          <option value="oca">OCA</option>
+          <option value="correo_arg">Correo Argentino</option>
+          <option value="mercado_envios">Mercado Envíos</option>
+          <option value="dhl">DHL</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="ee-tracking" placeholder="Código de seguimiento"></div>
+      <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="ee-costo" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="ee-fecha"></div>
+      <div class="form-group"><label class="form-label">Estado</label>
+        <select id="ee-estado">
+          <option value="pendiente">Pendiente</option>
+          <option value="en_camino">En camino</option>
+          <option value="entregado">Entregado</option>
+          <option value="problema">Problema</option>
+        </select>
+      </div>
+      <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="ee-direccion" placeholder="Calle, número, ciudad"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-editar-envio')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEdicionEnvio()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: AJUSTE STOCK -->
 <div class="modal-overlay" id="modal-ajuste-stock">
   <div class="modal" style="max-width:400px">
@@ -798,6 +835,35 @@ async function cambiarEstadoEnvio(id, estado) {
   catch(e) { console.error('Error cambiando estado envío:', e); }
 }
 
+function abrirEdicionEnvio(id) {
+  const e = db.envios.find(x => x.id === id);
+  if (!e) return;
+  document.getElementById('ee-id').value = e.id;
+  document.getElementById('ee-comprador').value = e.comprador || '';
+  document.getElementById('ee-transportista').value = e.transportista || 'otro';
+  document.getElementById('ee-tracking').value = e.tracking || '';
+  document.getElementById('ee-costo').value = e.costo || '';
+  document.getElementById('ee-fecha').value = e.fechaDespacho || '';
+  document.getElementById('ee-estado').value = e.estado || 'pendiente';
+  document.getElementById('ee-direccion').value = e.direccion || '';
+  openModal('modal-editar-envio');
+}
+
+async function guardarEdicionEnvio() {
+  const id = document.getElementById('ee-id').value;
+  const updates = {
+    estado: document.getElementById('ee-estado').value,
+    tracking: document.getElementById('ee-tracking').value.trim(),
+    costo: parseFloat(document.getElementById('ee-costo').value) || 0,
+  };
+  try {
+    await api('PUT', `/envios?id=${id}`, updates);
+    await loadAll();
+    closeModal('modal-editar-envio');
+    renderEnvios();
+  } catch(e) { alert('Error editando envío: ' + e.message); }
+}
+
 async function deleteEnvio(id) {
   if (!confirm('¿Eliminar este envío?')) return;
   try { await api('DELETE', `/envios?id=${id}`); await loadAll(); renderEnvios(); }
@@ -935,7 +1001,10 @@ function renderEnvios() {
           ${['pendiente','en_camino','entregado','problema'].map(s => `<option value="${s}" ${e.estado===s?'selected':''}>${estadoLabels[s]}</option>`).join('')}
         </select>
       </td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteEnvio('${e.id}')">🗑️</button></td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="abrirEdicionEnvio('${e.id}')" title="Editar">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEnvio('${e.id}')">🗑️</button>
+      </td>
     </tr>
   `).join('');
 }

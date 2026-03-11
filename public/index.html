@@ -235,7 +235,7 @@
           <span id="stock-count" style="font-size:12px;color:var(--text-muted)"></span>
         </div>
         <table>
-          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Stock depósito</th><th>Stock MELI</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Stock depósito</th><th>Stock MELI</th><th>Stock Shopify</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="stock-tbody"></tbody>
         </table>
         <div id="stock-empty" class="empty-state" style="display:none"><div class="empty-icon">📦</div><p>No hay productos todavía.</p></div>
@@ -337,10 +337,12 @@
       <div class="form-group form-full"><label class="form-label">Nombre del producto *</label><input type="text" id="p-nombre" placeholder="Nombre completo del producto"></div>
       <div class="form-group"><label class="form-label">Stock depósito</label><input type="number" id="p-stock-dep" placeholder="0" min="0"></div>
       <div class="form-group"><label class="form-label">Stock publicado MELI</label><input type="number" id="p-stock-meli" placeholder="0" min="0"></div>
+      <div class="form-group"><label class="form-label">Stock Shopify</label><input type="number" id="p-stock-shopify" placeholder="0" min="0"></div>
       <div class="form-group"><label class="form-label">Precio costo</label><input type="number" id="p-costo" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Precio venta *</label><input type="number" id="p-precio" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Alerta stock mínimo</label><input type="number" id="p-alerta" placeholder="5" min="0"></div>
       <div class="form-group"><label class="form-label">ID Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLA0000000"></div>
+      <div class="form-group"><label class="form-label">ID Variant Shopify</label><input type="text" id="p-shopify-id" placeholder="ej: 12345678901234"></div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
     </div>
     <div class="modal-actions">
@@ -515,6 +517,7 @@
       <div class="form-group"><label class="form-label">Producto</label><input type="text" id="ajuste-nombre" disabled style="opacity:0.6"></div>
       <div class="form-group"><label class="form-label">Nuevo stock depósito</label><input type="number" id="ajuste-dep" min="0"></div>
       <div class="form-group"><label class="form-label">Nuevo stock publicado MELI</label><input type="number" id="ajuste-meli" min="0"></div>
+      <div class="form-group"><label class="form-label">Nuevo stock Shopify</label><input type="number" id="ajuste-shopify" min="0"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-ajuste-stock')">Cancelar</button>
@@ -561,7 +564,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, stockDep: p.stock_dep, stockMeli: p.stock_meli, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, notas: p.notas, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -639,7 +642,7 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-costo','p-precio','p-alerta','p-meli-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
 }
 
 async function saveProducto() {
@@ -647,7 +650,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -668,6 +671,8 @@ function editProducto(sku) {
   document.getElementById('p-precio').value = p.precio;
   document.getElementById('p-alerta').value = p.alertaMin;
   document.getElementById('p-meli-id').value = p.meliId || '';
+  document.getElementById('p-shopify-id').value = p.shopifyId || '';
+  document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
   document.getElementById('p-notas').value = p.notas || '';
   document.getElementById('modal-producto-title').textContent = '✏️ Editar Producto';
   openModal('modal-producto');
@@ -686,6 +691,7 @@ function openAjuste(sku) {
   document.getElementById('ajuste-nombre').value = p.nombre;
   document.getElementById('ajuste-dep').value = p.stockDep;
   document.getElementById('ajuste-meli').value = p.stockMeli;
+  document.getElementById('ajuste-shopify').value = p.stockShopify || 0;
   openModal('modal-ajuste-stock');
 }
 
@@ -693,10 +699,11 @@ async function saveAjuste() {
   const sku = document.getElementById('ajuste-sku').value;
   const stockDep = parseInt(document.getElementById('ajuste-dep').value) || 0;
   const stockMeli = parseInt(document.getElementById('ajuste-meli').value) || 0;
+  const stockShopify = parseInt(document.getElementById('ajuste-shopify').value) || 0;
   const p = db.productos.find(x => x.sku === sku);
   if (!p) return;
   try {
-    await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli });
+    await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli, stockShopify });
     if (p.meliId) await api('POST', '/meli/stock', { meli_id: p.meliId, cantidad: stockMeli, sku });
     await loadAll(); closeModal('modal-ajuste-stock'); renderStock();
   } catch(e) { alert('Error ajustando stock: ' + e.message); }
@@ -927,6 +934,7 @@ function renderStock() {
       <td>${p.categoria ? `<span class="badge badge-blue">${p.categoria}</span>` : '—'}</td>
       <td class="${alerta}">${p.stockDep}</td>
       <td>${p.stockMeli}</td>
+      <td>${p.shopifyId ? p.stockShopify : '—'}</td>
       <td>${fmt(p.precio)}</td>
       <td>${p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
       <td>

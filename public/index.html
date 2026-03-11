@@ -257,6 +257,7 @@
         <button class="tab active" onclick="switchVentasTab('all')">Todas</button>
         <button class="tab" onclick="switchVentasTab('meli')">MELI</button>
         <button class="tab" onclick="switchVentasTab('mostrador')">Mostrador</button>
+        <button class="tab" onclick="switchVentasTab('shopify')">🛍️ Shopify</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -942,7 +943,7 @@ function renderStock() {
 // =====================
 function switchVentasTab(tab) {
   ventasTabFilter = tab;
-  document.querySelectorAll('#page-ventas .tab').forEach((t,i) => { t.classList.toggle('active', ['all','meli','mostrador'][i] === tab); });
+  document.querySelectorAll('#page-ventas .tab').forEach((t,i) => { t.classList.toggle('active', ['all','meli','mostrador','shopify'][i] === tab); });
   renderVentas();
 }
 
@@ -1027,6 +1028,7 @@ function renderReportes() {
   const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0), 0);
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
+  const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
   const costoTotal = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const ganancia = totalIngresos - totalComisiones - costoTotal - totalCostoEnvios;
 
@@ -1040,11 +1042,13 @@ function renderReportes() {
 
   const meliIngresos = ventasMeli.reduce((a,v) => a+v.total,0);
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
-  const maxCanal = Math.max(meliIngresos, mosIngresos, 1);
+  const shopIngresos = ventasShopify.reduce((a,v) => a+v.total,0);
+  const maxCanal = Math.max(meliIngresos, mosIngresos, shopIngresos, 1);
   document.getElementById('chart-canal').innerHTML = `
     <div class="chart-bar-wrap">
       <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
       <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🛍️ Shopify</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(shopIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#166534,#22c55e)">${ventasShopify.length} ventas</div></div><span class="chart-bar-val">${fmt(shopIngresos)}</span></div>
     </div>`;
 
   const prodVentas = {};
@@ -1060,7 +1064,7 @@ function renderReportes() {
 // HELPERS
 // =====================
 function fmt(n) { return '$' + (n||0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
-function canalBadge(canal) { return canal === 'meli' ? '<span class="badge badge-meli">🟡 MELI</span>' : '<span class="badge badge-blue">🏪 Mostrador</span>'; }
+function canalBadge(canal) { return canal === 'meli' ? '<span class="badge badge-meli">🟡 MELI</span>' : canal === 'shopify' ? '<span class="badge badge-green">🛍️ Shopify</span>' : '<span class="badge badge-blue">🏪 Mostrador</span>'; }
 function estadoVentaBadge(estado) { const map = { pagada:'badge-green', pendiente:'badge-yellow', cancelada:'badge-red' }; return `<span class="badge ${map[estado]||'badge-gray'}">${estado}</span>`; }
 
 async function importarDesdeMELI() {

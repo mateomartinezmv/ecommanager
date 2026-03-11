@@ -34,7 +34,6 @@
     display: flex;
   }
 
-  /* SIDEBAR */
   #sidebar {
     width: 220px;
     min-height: 100vh;
@@ -47,100 +46,25 @@
     z-index: 100;
   }
 
-  .logo {
-    padding: 24px 20px 20px;
-    border-bottom: 1px solid var(--border);
-  }
+  .logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+  .logo-title { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
 
-  .logo-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: -0.5px;
-  }
-
-  .logo-sub {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-top: 2px;
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  nav {
-    flex: 1;
-    padding: 12px 0;
-  }
-
-  .nav-section {
-    padding: 6px 16px 4px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-muted);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 20px;
-    cursor: pointer;
-    font-size: 14px;
-    color: var(--text-dim);
-    transition: all 0.15s;
-    border-left: 3px solid transparent;
-  }
-
+  nav { flex: 1; padding: 12px 0; }
+  .nav-section { padding: 6px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; cursor: pointer; font-size: 14px; color: var(--text-dim); transition: all 0.15s; border-left: 3px solid transparent; }
   .nav-item:hover { background: var(--surface2); color: var(--text); }
   .nav-item.active { background: var(--surface2); color: var(--accent); border-left-color: var(--accent); }
   .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
 
-  .sidebar-footer {
-    padding: 16px 20px;
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--text-muted);
-  }
+  #main { margin-left: 220px; flex: 1; min-height: 100vh; }
 
-  /* MAIN */
-  #main {
-    margin-left: 220px;
-    flex: 1;
-    min-height: 100vh;
-  }
-
-  .topbar {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 16px 28px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 50;
-  }
-
-  .page-title {
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-  }
-
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
   .topbar-actions { display: flex; gap: 10px; }
 
-  .btn {
-    padding: 8px 16px;
-    border-radius: 7px;
-    border: none;
-    cursor: pointer;
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.15s;
-  }
-
+  .btn { padding: 8px 16px; border-radius: 7px; border: none; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; }
   .btn-primary { background: var(--accent); color: #fff; }
   .btn-primary:hover { background: #3a7de8; }
   .btn-ghost { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
@@ -153,88 +77,29 @@
 
   .content { padding: 28px; }
 
-  /* CARDS */
-  .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 28px;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-  }
-
+  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; position: relative; overflow: hidden; }
+  .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
   .stat-card.blue::before { background: var(--accent); }
   .stat-card.green::before { background: var(--green); }
   .stat-card.yellow::before { background: var(--yellow); }
   .stat-card.purple::before { background: var(--accent2); }
-
+  .stat-card.red::before { background: var(--red); }
   .stat-icon { font-size: 24px; margin-bottom: 10px; }
   .stat-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; font-family: 'JetBrains Mono', monospace; }
   .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
 
-  /* TABLES */
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-
-  .table-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
-  }
-
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
   .table-title { font-size: 15px; font-weight: 600; }
 
   table { width: 100%; border-collapse: collapse; }
-  th {
-    text-align: left;
-    padding: 10px 16px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-  }
-  td {
-    padding: 11px 16px;
-    font-size: 13px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-  }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface2); border-bottom: 1px solid var(--border); }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(79,142,247,0.04); }
 
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 9px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    gap: 4px;
-  }
-
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; gap: 4px; }
   .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
   .badge-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
   .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
@@ -243,121 +108,42 @@
   .badge-gray { background: rgba(100,116,139,0.15); color: var(--text-muted); }
   .badge-purple { background: rgba(124,58,237,0.15); color: #a78bfa; }
 
-  /* MODAL */
-  .modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    z-index: 500;
-    align-items: center;
-    justify-content: center;
-  }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 500; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 28px;
-    width: 520px;
-    max-width: 95vw;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-
-  .modal-title {
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 20px;
-    letter-spacing: -0.3px;
-  }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 520px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
 
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .form-full { grid-column: 1 / -1; }
-
   .form-group { display: flex; flex-direction: column; gap: 6px; }
   .form-label { font-size: 12px; font-weight: 600; color: var(--text-dim); }
 
-  input, select, textarea {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    padding: 9px 12px;
-    color: var(--text);
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.15s;
-    width: 100%;
-  }
+  input, select, textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; transition: border-color 0.15s; width: 100%; }
   input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   select option { background: var(--surface2); }
 
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
-  /* STOCK LOW WARNING */
   .stock-low { color: var(--red); font-weight: 600; }
   .stock-ok { color: var(--green); }
   .stock-med { color: var(--yellow); }
 
-  /* SEARCH */
-  .search-bar {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
-  .search-bar input {
-    padding-left: 36px;
-    width: 240px;
-  }
-  .search-icon {
-    position: absolute;
-    left: 10px;
-    color: var(--text-muted);
-    font-size: 14px;
-  }
+  .search-bar { position: relative; display: flex; align-items: center; }
+  .search-bar input { padding-left: 36px; width: 240px; }
+  .search-icon { position: absolute; left: 10px; color: var(--text-muted); font-size: 14px; }
 
-  /* PAGES */
   .page { display: none; }
   .page.active { display: block; }
 
-  /* EMPTY STATE */
-  .empty-state {
-    text-align: center;
-    padding: 50px 20px;
-    color: var(--text-muted);
-  }
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
   .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
 
-  /* TABS */
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    padding: 4px;
-    width: fit-content;
-  }
-  .tab {
-    padding: 7px 16px;
-    border-radius: 7px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-muted);
-    transition: all 0.15s;
-    border: none;
-    background: none;
-    font-family: 'Space Grotesk', sans-serif;
-  }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 4px; width: fit-content; }
+  .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; border: none; background: none; font-family: 'Space Grotesk', sans-serif; }
   .tab.active { background: var(--surface2); color: var(--text); }
   .tab:hover:not(.active) { color: var(--text-dim); }
 
-  /* CHART */
   .chart-bar-wrap { display: flex; flex-direction: column; gap: 8px; }
   .chart-bar-row { display: flex; align-items: center; gap: 12px; font-size: 12px; }
   .chart-bar-label { width: 100px; color: var(--text-dim); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -379,7 +165,6 @@
 </head>
 <body>
 
-<!-- SIDEBAR -->
 <aside id="sidebar">
   <div class="logo">
     <div class="logo-title">EcomManager</div>
@@ -387,28 +172,17 @@
   </div>
   <nav>
     <div class="nav-section">Principal</div>
-    <div class="nav-item active" onclick="goPage('dashboard')">
-      <span class="icon">📊</span><span>Dashboard</span>
-    </div>
-    <div class="nav-item" onclick="goPage('stock')">
-      <span class="icon">📦</span><span>Stock</span>
-    </div>
+    <div class="nav-item active" onclick="goPage('dashboard')"><span class="icon">📊</span><span>Dashboard</span></div>
+    <div class="nav-item" onclick="goPage('stock')"><span class="icon">📦</span><span>Stock</span></div>
     <div class="nav-section">Ventas</div>
-    <div class="nav-item" onclick="goPage('ventas')">
-      <span class="icon">🛒</span><span>Ventas</span>
-    </div>
-    <div class="nav-item" onclick="goPage('envios')">
-      <span class="icon">🚚</span><span>Envíos</span>
-    </div>
+    <div class="nav-item" onclick="goPage('ventas')"><span class="icon">🛒</span><span>Ventas</span></div>
+    <div class="nav-item" onclick="goPage('envios')"><span class="icon">🚚</span><span>Envíos</span></div>
     <div class="nav-section">Análisis</div>
-    <div class="nav-item" onclick="goPage('reportes')">
-      <span class="icon">📈</span><span>Reportes</span>
-    </div>
+    <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
   </nav>
-  <div class="sidebar-footer">Datos guardados<br>en este navegador</div>
+  <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
 
-<!-- MAIN -->
 <main id="main">
 
   <!-- DASHBOARD -->
@@ -427,15 +201,11 @@
       <div class="cards-grid" id="dash-stats"></div>
       <div class="two-col">
         <div class="table-wrap">
-          <div class="table-header">
-            <span class="table-title">⚠️ Stock crítico</span>
-          </div>
+          <div class="table-header"><span class="table-title">⚠️ Stock crítico</span></div>
           <div id="dash-low-stock"></div>
         </div>
         <div class="table-wrap">
-          <div class="table-header">
-            <span class="table-title">🕐 Últimas ventas</span>
-          </div>
+          <div class="table-header"><span class="table-title">🕐 Últimas ventas</span></div>
           <div id="dash-recent-sales"></div>
         </div>
       </div>
@@ -452,7 +222,7 @@
           <input type="text" id="stock-search" placeholder="Buscar producto..." oninput="renderStock()">
         </div>
         <button class="btn btn-yellow" onclick="importarDesdeMELI()" id="btn-importar-meli">🟡 Importar desde MELI</button>
-        <button class="btn btn-ghost" onclick="descargarTemplateCSV()" title="Descargar plantilla CSV de ejemplo">📄 Plantilla CSV</button>
+        <button class="btn btn-ghost" onclick="descargarTemplateCSV()">📄 Plantilla CSV</button>
         <button class="btn btn-ghost" onclick="document.getElementById('csv-file-input').click()">⬆ Importar CSV</button>
         <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(event)">
         <button class="btn btn-primary" onclick="openModal('modal-producto')">+ Nuevo producto</button>
@@ -465,24 +235,10 @@
           <span id="stock-count" style="font-size:12px;color:var(--text-muted)"></span>
         </div>
         <table>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Producto</th>
-              <th>Categoría</th>
-              <th>Stock depósito</th>
-              <th>Stock MELI</th>
-              <th>Precio venta</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
+          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Stock depósito</th><th>Stock MELI</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="stock-tbody"></tbody>
         </table>
-        <div id="stock-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">📦</div>
-          <p>No hay productos todavía. ¡Agregá el primero!</p>
-        </div>
+        <div id="stock-empty" class="empty-state" style="display:none"><div class="empty-icon">📦</div><p>No hay productos todavía.</p></div>
       </div>
     </div>
   </div>
@@ -504,24 +260,10 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Fecha</th>
-              <th>Canal</th>
-              <th>Producto</th>
-              <th>Cantidad</th>
-              <th>Total</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
+          <thead><tr><th>ID</th><th>Fecha</th><th>Canal</th><th>Producto</th><th>Cantidad</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="ventas-tbody"></tbody>
         </table>
-        <div id="ventas-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">🛒</div>
-          <p>No hay ventas registradas aún.</p>
-        </div>
+        <div id="ventas-empty" class="empty-state" style="display:none"><div class="empty-icon">🛒</div><p>No hay ventas registradas aún.</p></div>
       </div>
     </div>
   </div>
@@ -546,24 +288,10 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Orden</th>
-              <th>Comprador</th>
-              <th>Producto</th>
-              <th>Tracking</th>
-              <th>Transportista</th>
-              <th>Fecha despacho</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Costo envío</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="envios-tbody"></tbody>
         </table>
-        <div id="envios-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">🚚</div>
-          <p>No hay envíos registrados.</p>
-        </div>
+        <div id="envios-empty" class="empty-state" style="display:none"><div class="empty-icon">🚚</div><p>No hay envíos registrados.</p></div>
       </div>
     </div>
   </div>
@@ -598,51 +326,21 @@
 
 </main>
 
-<!-- MODAL: NUEVO PRODUCTO -->
+<!-- MODAL: NUEVO/EDITAR PRODUCTO -->
 <div class="modal-overlay" id="modal-producto">
   <div class="modal">
     <div class="modal-title" id="modal-producto-title">+ Nuevo Producto</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">SKU *</label>
-        <input type="text" id="p-sku" placeholder="ej: ZAP-001">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Categoría</label>
-        <input type="text" id="p-cat" placeholder="ej: Calzado">
-      </div>
-      <div class="form-group form-full">
-        <label class="form-label">Nombre del producto *</label>
-        <input type="text" id="p-nombre" placeholder="Nombre completo del producto">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Stock depósito</label>
-        <input type="number" id="p-stock-dep" placeholder="0" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Stock publicado MELI</label>
-        <input type="number" id="p-stock-meli" placeholder="0" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Precio costo</label>
-        <input type="number" id="p-costo" placeholder="0.00" step="0.01">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Precio venta *</label>
-        <input type="number" id="p-precio" placeholder="0.00" step="0.01">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Alerta stock mínimo</label>
-        <input type="number" id="p-alerta" placeholder="5" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">ID Publicación MELI</label>
-        <input type="text" id="p-meli-id" placeholder="MLA0000000">
-      </div>
-      <div class="form-group form-full">
-        <label class="form-label">Notas</label>
-        <textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea>
-      </div>
+      <div class="form-group"><label class="form-label">SKU *</label><input type="text" id="p-sku" placeholder="ej: ZAP-001"></div>
+      <div class="form-group"><label class="form-label">Categoría</label><input type="text" id="p-cat" placeholder="ej: Calzado"></div>
+      <div class="form-group form-full"><label class="form-label">Nombre del producto *</label><input type="text" id="p-nombre" placeholder="Nombre completo del producto"></div>
+      <div class="form-group"><label class="form-label">Stock depósito</label><input type="number" id="p-stock-dep" placeholder="0" min="0"></div>
+      <div class="form-group"><label class="form-label">Stock publicado MELI</label><input type="number" id="p-stock-meli" placeholder="0" min="0"></div>
+      <div class="form-group"><label class="form-label">Precio costo</label><input type="number" id="p-costo" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Precio venta *</label><input type="number" id="p-precio" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Alerta stock mínimo</label><input type="number" id="p-alerta" placeholder="5" min="0"></div>
+      <div class="form-group"><label class="form-label">ID Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLA0000000"></div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-producto')">Cancelar</button>
@@ -656,49 +354,15 @@
   <div class="modal">
     <div class="modal-title">🟡 Registrar Venta Mercado Libre</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Nro. de orden MELI</label>
-        <input type="text" id="vm-orden" placeholder="ej: 2000000000">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Fecha de venta *</label>
-        <input type="date" id="vm-fecha">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Comprador</label>
-        <input type="text" id="vm-comprador" placeholder="Nombre o usuario MELI">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Producto *</label>
-        <select id="vm-producto"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Cantidad *</label>
-        <input type="number" id="vm-cantidad" placeholder="1" min="1" value="1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Precio unitario *</label>
-        <input type="number" id="vm-precio" placeholder="0.00" step="0.01">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Comisión MELI</label>
-        <input type="number" id="vm-comision" placeholder="0.00" step="0.01">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estado</label>
-        <select id="vm-estado">
-          <option value="pagada">Pagada</option>
-          <option value="pendiente">Pendiente de pago</option>
-          <option value="cancelada">Cancelada</option>
-        </select>
-      </div>
-      <div class="form-group form-full">
-        <label class="form-label">Genera envío</label>
-        <select id="vm-envio">
-          <option value="si">Sí, registrar envío</option>
-          <option value="no">No (retiro en punto)</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Nro. de orden MELI</label><input type="text" id="vm-orden" placeholder="ej: 2000000000"></div>
+      <div class="form-group"><label class="form-label">Fecha de venta *</label><input type="date" id="vm-fecha"></div>
+      <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="vm-comprador" placeholder="Nombre o usuario MELI"></div>
+      <div class="form-group"><label class="form-label">Producto *</label><select id="vm-producto"></select></div>
+      <div class="form-group"><label class="form-label">Cantidad *</label><input type="number" id="vm-cantidad" placeholder="1" min="1" value="1"></div>
+      <div class="form-group"><label class="form-label">Precio unitario *</label><input type="number" id="vm-precio" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Comisión MELI</label><input type="number" id="vm-comision" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Estado</label><select id="vm-estado"><option value="pagada">Pagada</option><option value="pendiente">Pendiente de pago</option><option value="cancelada">Cancelada</option></select></div>
+      <div class="form-group form-full"><label class="form-label">Genera envío</label><select id="vm-envio"><option value="si">Sí, registrar envío</option><option value="no">No (retiro en punto)</option></select></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-venta-meli')">Cancelar</button>
@@ -712,29 +376,42 @@
   <div class="modal">
     <div class="modal-title">🏪 Registrar Venta Mostrador</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Fecha *</label>
-        <input type="date" id="vmos-fecha">
+      <div class="form-group"><label class="form-label">Fecha *</label><input type="date" id="vmos-fecha"></div>
+      <div class="form-group"><label class="form-label">Cliente</label><input type="text" id="vmos-cliente" placeholder="Nombre del cliente"></div>
+      <div class="form-group"><label class="form-label">Producto *</label><select id="vmos-producto"></select></div>
+      <div class="form-group"><label class="form-label">Cantidad *</label><input type="number" id="vmos-cantidad" placeholder="1" min="1" value="1"></div>
+      <div class="form-group"><label class="form-label">Precio unitario *</label><input type="number" id="vmos-precio" placeholder="0.00" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="vmos-notas" rows="2" placeholder="Opcional..."></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-venta-mostrador')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveVenta('mostrador')">Registrar venta</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EDITAR VENTA -->
+<div class="modal-overlay" id="modal-editar-venta">
+  <div class="modal">
+    <div class="modal-title">✏️ Editar Venta</div>
+    <input type="hidden" id="ev-id">
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Fecha</label><input type="date" id="ev-fecha"></div>
+      <div class="form-group"><label class="form-label">Estado</label>
+        <select id="ev-estado">
+          <option value="pagada">Pagada</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="cancelada">Cancelada</option>
+        </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Cliente</label>
-        <input type="text" id="vmos-cliente" placeholder="Nombre del cliente">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Producto *</label>
-        <select id="vmos-producto"></select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Cantidad *</label>
-        <input type="number" id="vmos-cantidad" placeholder="1" min="1" value="1">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Precio unitario *</label>
-        <input type="number" id="vmos-precio" placeholder="0.00" step="0.01">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Método de pago</label>
-        <select id="vmos-pago">
+      <div class="form-group"><label class="form-label">Comprador / Cliente</label><input type="text" id="ev-comprador" placeholder="Nombre"></div>
+      <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1"></div>
+      <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Método de pago</label>
+        <select id="ev-metodo">
+          <option value="">—</option>
           <option value="efectivo">Efectivo</option>
           <option value="debito">Débito</option>
           <option value="credito">Crédito</option>
@@ -742,14 +419,11 @@
           <option value="qr">QR / Billetera</option>
         </select>
       </div>
-      <div class="form-group form-full">
-        <label class="form-label">Notas</label>
-        <textarea id="vmos-notas" rows="2" placeholder="Opcional..."></textarea>
-      </div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="ev-notas" rows="2"></textarea></div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal('modal-venta-mostrador')">Cancelar</button>
-      <button class="btn btn-primary" onclick="saveVenta('mostrador')">Registrar venta</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-editar-venta')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarEdicionVenta()">Guardar cambios</button>
     </div>
   </div>
 </div>
@@ -759,12 +433,8 @@
   <div class="modal">
     <div class="modal-title" id="modal-envio-title">🚚 Datos de envío</div>
     <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Comprador</label>
-        <input type="text" id="env-comprador" placeholder="Nombre del comprador">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Transportista</label>
+      <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="env-comprador" placeholder="Nombre del comprador"></div>
+      <div class="form-group"><label class="form-label">Transportista</label>
         <select id="env-transportista">
           <option value="andreani">Andreani</option>
           <option value="oca">OCA</option>
@@ -774,16 +444,10 @@
           <option value="otro">Otro</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Número de tracking</label>
-        <input type="text" id="env-tracking" placeholder="Código de seguimiento">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Fecha despacho</label>
-        <input type="date" id="env-fecha">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Estado</label>
+      <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="env-tracking" placeholder="Código de seguimiento"></div>
+      <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="env-fecha"></div>
+      <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Estado</label>
         <select id="env-estado">
           <option value="pendiente">Pendiente</option>
           <option value="en_camino">En camino</option>
@@ -791,10 +455,7 @@
           <option value="problema">Problema</option>
         </select>
       </div>
-      <div class="form-group form-full">
-        <label class="form-label">Dirección de entrega</label>
-        <input type="text" id="env-direccion" placeholder="Calle, número, ciudad">
-      </div>
+      <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="env-direccion" placeholder="Calle, número, ciudad"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-envio')">Cancelar</button>
@@ -809,18 +470,9 @@
     <div class="modal-title">🔧 Ajustar Stock</div>
     <input type="hidden" id="ajuste-sku">
     <div class="form-grid" style="grid-template-columns:1fr">
-      <div class="form-group">
-        <label class="form-label">Producto</label>
-        <input type="text" id="ajuste-nombre" disabled style="opacity:0.6">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nuevo stock depósito</label>
-        <input type="number" id="ajuste-dep" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nuevo stock publicado MELI</label>
-        <input type="number" id="ajuste-meli" min="0">
-      </div>
+      <div class="form-group"><label class="form-label">Producto</label><input type="text" id="ajuste-nombre" disabled style="opacity:0.6"></div>
+      <div class="form-group"><label class="form-label">Nuevo stock depósito</label><input type="number" id="ajuste-dep" min="0"></div>
+      <div class="form-group"><label class="form-label">Nuevo stock publicado MELI</label><input type="number" id="ajuste-meli" min="0"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-ajuste-stock')">Cancelar</button>
@@ -831,7 +483,7 @@
 
 <script>
 // =====================
-// DATA LAYER — API
+// DATA LAYER
 // =====================
 let db = { productos: [], ventas: [], envios: [] };
 let ventasTabFilter = 'all';
@@ -839,7 +491,6 @@ let enviosTabFilter = 'all';
 let editingProductoSKU = null;
 let pendingEnvioVentaId = null;
 
-// Helper API
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
@@ -858,7 +509,6 @@ async function loadAll() {
       api('GET', '/ventas'),
       api('GET', '/envios'),
     ]);
-    // Normalizar nombres de campos (snake_case → camelCase)
     db.productos = productos.map(normProducto);
     db.ventas    = ventas.map(normVenta);
     db.envios    = envios.map(normEnvio);
@@ -869,50 +519,32 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return {
-    sku: p.sku, nombre: p.nombre, categoria: p.categoria,
-    stockDep: p.stock_dep, stockMeli: p.stock_meli,
-    costo: p.costo, precio: p.precio, alertaMin: p.alerta_min,
-    meliId: p.meli_id, notas: p.notas, creado: p.created_at,
-  };
+  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, stockDep: p.stock_dep, stockMeli: p.stock_meli, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
-  return {
-    id: v.id, canal: v.canal, fecha: v.fecha,
-    ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente,
-    sku: v.sku, producto: v.producto, cantidad: v.cantidad,
-    precioUnit: v.precio_unit, comision: v.comision, total: v.total,
-    estado: v.estado, metodoPago: v.metodo_pago,
-    generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at,
-  };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normEnvio(e) {
-  return {
-    id: e.id, ventaId: e.venta_id, orden: e.orden,
-    comprador: e.comprador, producto: e.producto,
-    transportista: e.transportista, tracking: e.tracking,
-    fechaDespacho: e.fecha_despacho, estado: e.estado,
-    direccion: e.direccion, creado: e.created_at,
-  };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, creado: e.created_at };
 }
 
-// Detectar si viene de callback MELI
+// MELI callback banners
 const urlParams = new URLSearchParams(window.location.search);
 if (urlParams.get('meli') === 'conectado') {
   setTimeout(() => {
-    document.getElementById('meli-status-banner').innerHTML =
-      '✅ <strong>Mercado Libre conectado correctamente.</strong> El stock se actualizará automáticamente.';
-    document.getElementById('meli-status-banner').style.background = 'rgba(34,197,94,0.12)';
-    document.getElementById('meli-status-banner').style.borderColor = 'rgba(34,197,94,0.3)';
-    document.getElementById('meli-status-banner').style.display = 'block';
+    const b = document.getElementById('meli-status-banner');
+    b.innerHTML = '✅ <strong>Mercado Libre conectado correctamente.</strong>';
+    b.style.background = 'rgba(34,197,94,0.12)';
+    b.style.borderColor = 'rgba(34,197,94,0.3)';
+    b.style.display = 'block';
     history.replaceState({}, '', '/');
   }, 300);
 }
 if (urlParams.get('meli') === 'error') {
   setTimeout(() => {
-    document.getElementById('meli-status-banner').innerHTML =
-      '❌ <strong>Error conectando MELI:</strong> ' + (urlParams.get('msg') || 'Error desconocido');
-    document.getElementById('meli-status-banner').style.display = 'block';
+    const b = document.getElementById('meli-status-banner');
+    b.innerHTML = '❌ <strong>Error conectando MELI:</strong> ' + (urlParams.get('msg') || 'Error desconocido');
+    b.style.display = 'block';
     history.replaceState({}, '', '/');
   }, 300);
 }
@@ -925,7 +557,6 @@ function goPage(page) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   document.querySelector(`.nav-item[onclick="goPage('${page}')"]`).classList.add('active');
-
   if (page === 'dashboard') renderDashboard();
   if (page === 'stock') renderStock();
   if (page === 'ventas') renderVentas();
@@ -940,8 +571,8 @@ function openModal(id) {
   if (id === 'modal-venta-meli' || id === 'modal-venta-mostrador') {
     populateProductoSelects();
     const hoy = new Date().toISOString().slice(0,10);
-    if (id === 'modal-venta-meli') { document.getElementById('vm-fecha').value = hoy; }
-    else { document.getElementById('vmos-fecha').value = hoy; }
+    if (id === 'modal-venta-meli') document.getElementById('vm-fecha').value = hoy;
+    else document.getElementById('vmos-fecha').value = hoy;
   }
   document.getElementById(id).classList.add('open');
 }
@@ -951,7 +582,6 @@ function closeModal(id) {
   if (id === 'modal-producto') { clearProductoForm(); editingProductoSKU = null; document.getElementById('modal-producto-title').textContent = '+ Nuevo Producto'; }
 }
 
-// Close on overlay click
 document.querySelectorAll('.modal-overlay').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m) closeModal(m.id); });
 });
@@ -967,9 +597,7 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-costo','p-precio','p-alerta','p-meli-id','p-notas'].forEach(id => {
-    document.getElementById(id).value = '';
-  });
+  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-costo','p-precio','p-alerta','p-meli-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
 }
 
 async function saveProducto() {
@@ -977,28 +605,11 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-
-  const prod = {
-    sku, nombre,
-    categoria: document.getElementById('p-cat').value.trim(),
-    stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0,
-    stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0,
-    costo: parseFloat(document.getElementById('p-costo').value) || 0,
-    precio,
-    alertaMin: parseInt(document.getElementById('p-alerta').value) || 5,
-    meliId: document.getElementById('p-meli-id').value.trim(),
-    notas: document.getElementById('p-notas').value.trim(),
-  };
-
+  const prod = { sku, nombre, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
-    if (editingProductoSKU) {
-      await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
-    } else {
-      await api('POST', '/productos', prod);
-    }
-    await loadAll();
-    closeModal('modal-producto');
-    renderStock();
+    if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
+    else await api('POST', '/productos', prod);
+    await loadAll(); closeModal('modal-producto'); renderStock();
   } catch(e) { alert('Error guardando producto: ' + e.message); }
 }
 
@@ -1022,11 +633,8 @@ function editProducto(sku) {
 
 async function deleteProducto(sku) {
   if (!confirm(`¿Eliminar el producto ${sku}?`)) return;
-  try {
-    await api('DELETE', `/productos?sku=${sku}`);
-    await loadAll();
-    renderStock();
-  } catch(e) { alert('Error eliminando producto: ' + e.message); }
+  try { await api('DELETE', `/productos?sku=${sku}`); await loadAll(); renderStock(); }
+  catch(e) { alert('Error eliminando producto: ' + e.message); }
 }
 
 function openAjuste(sku) {
@@ -1047,13 +655,8 @@ async function saveAjuste() {
   if (!p) return;
   try {
     await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli });
-    // Si tiene meliId, actualizar también en MELI
-    if (p.meliId) {
-      await api('POST', '/meli/stock', { meli_id: p.meliId, cantidad: stockMeli, sku });
-    }
-    await loadAll();
-    closeModal('modal-ajuste-stock');
-    renderStock();
+    if (p.meliId) await api('POST', '/meli/stock', { meli_id: p.meliId, cantidad: stockMeli, sku });
+    await loadAll(); closeModal('modal-ajuste-stock'); renderStock();
   } catch(e) { alert('Error ajustando stock: ' + e.message); }
 }
 
@@ -1068,18 +671,7 @@ async function saveVenta(canal) {
     const precio = parseFloat(document.getElementById('vm-precio').value) || 0;
     if (!skuSel || !precio) { alert('Seleccioná un producto y el precio.'); return; }
     const prod = db.productos.find(p => p.sku === skuSel);
-    venta = {
-      id: 'V' + Date.now(), canal: 'meli',
-      fecha: document.getElementById('vm-fecha').value || new Date().toISOString().slice(0,10),
-      ordenMeli: document.getElementById('vm-orden').value.trim(),
-      comprador: document.getElementById('vm-comprador').value.trim(),
-      sku: skuSel, producto: prod ? prod.nombre : skuSel,
-      cantidad, precioUnit: precio,
-      comision: parseFloat(document.getElementById('vm-comision').value) || 0,
-      total: precio * cantidad,
-      estado: document.getElementById('vm-estado').value,
-      generaEnvio: document.getElementById('vm-envio').value === 'si',
-    };
+    venta = { id: 'V' + Date.now(), canal: 'meli', fecha: document.getElementById('vm-fecha').value || new Date().toISOString().slice(0,10), ordenMeli: document.getElementById('vm-orden').value.trim(), comprador: document.getElementById('vm-comprador').value.trim(), sku: skuSel, producto: prod ? prod.nombre : skuSel, cantidad, precioUnit: precio, comision: parseFloat(document.getElementById('vm-comision').value) || 0, total: precio * cantidad, estado: document.getElementById('vm-estado').value, generaEnvio: document.getElementById('vm-envio').value === 'si' };
     closeModal('modal-venta-meli');
   } else {
     const skuSel = document.getElementById('vmos-producto').value;
@@ -1087,17 +679,7 @@ async function saveVenta(canal) {
     const precio = parseFloat(document.getElementById('vmos-precio').value) || 0;
     if (!skuSel || !precio) { alert('Seleccioná un producto y el precio.'); return; }
     const prod = db.productos.find(p => p.sku === skuSel);
-    venta = {
-      id: 'V' + Date.now(), canal: 'mostrador',
-      fecha: document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10),
-      cliente: document.getElementById('vmos-cliente').value.trim(),
-      sku: skuSel, producto: prod ? prod.nombre : skuSel,
-      cantidad, precioUnit: precio, comision: 0,
-      total: precio * cantidad, estado: 'pagada',
-      metodoPago: document.getElementById('vmos-pago').value,
-      notas: document.getElementById('vmos-notas').value.trim(),
-      generaEnvio: false,
-    };
+    venta = { id: 'V' + Date.now(), canal: 'mostrador', fecha: document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10), cliente: document.getElementById('vmos-cliente').value.trim(), sku: skuSel, producto: prod ? prod.nombre : skuSel, cantidad, precioUnit: precio, comision: 0, total: precio * cantidad, estado: 'pagada', metodoPago: document.getElementById('vmos-pago').value, notas: document.getElementById('vmos-notas').value.trim(), generaEnvio: false };
     closeModal('modal-venta-mostrador');
   }
   try {
@@ -1108,6 +690,7 @@ async function saveVenta(canal) {
       setTimeout(() => {
         document.getElementById('env-comprador').value = venta.comprador || '';
         document.getElementById('env-fecha').value = venta.fecha;
+        document.getElementById('env-costo').value = '';
         document.getElementById('modal-envio-title').textContent = `🚚 Envío — Orden ${venta.ordenMeli || venta.id}`;
         openModal('modal-envio');
       }, 200);
@@ -1116,18 +699,61 @@ async function saveVenta(canal) {
   } catch(e) { alert('Error registrando venta: ' + e.message); }
 }
 
-async function deleteVenta(id) {
-  if (!confirm('¿Eliminar esta venta? El stock NO se restaurará automáticamente.')) return;
-  try {
-    await api('DELETE', `/ventas?id=${id}`);
-    await loadAll(); renderVentas();
-  } catch(e) { alert('Error eliminando venta: ' + e.message); }
+function abrirEdicionVenta(id) {
+  const v = db.ventas.find(x => x.id === id);
+  if (!v) return;
+  document.getElementById('ev-id').value = v.id;
+  document.getElementById('ev-fecha').value = v.fecha;
+  document.getElementById('ev-estado').value = v.estado;
+  document.getElementById('ev-comprador').value = v.comprador || v.cliente || '';
+  document.getElementById('ev-cantidad').value = v.cantidad;
+  document.getElementById('ev-precio').value = v.precioUnit;
+  document.getElementById('ev-comision').value = v.comision || 0;
+  document.getElementById('ev-metodo').value = v.metodoPago || '';
+  document.getElementById('ev-notas').value = v.notas || '';
+  openModal('modal-editar-venta');
 }
 
-function cambiarEstadoVenta(id, estado) {
-  // Actualización optimista local + sync suave (no hay endpoint de PATCH venta por ahora)
+async function guardarEdicionVenta() {
+  const id = document.getElementById('ev-id').value;
   const v = db.ventas.find(x => x.id === id);
-  if (v) { v.estado = estado; renderVentas(); }
+  if (!v) return;
+  const cantidad = parseInt(document.getElementById('ev-cantidad').value) || 1;
+  const precioUnit = parseFloat(document.getElementById('ev-precio').value) || 0;
+  const comision = parseFloat(document.getElementById('ev-comision').value) || 0;
+  const updates = {
+    fecha: document.getElementById('ev-fecha').value,
+    estado: document.getElementById('ev-estado').value,
+    comprador: v.canal === 'meli' ? document.getElementById('ev-comprador').value.trim() : null,
+    cliente: v.canal !== 'meli' ? document.getElementById('ev-comprador').value.trim() : null,
+    cantidad,
+    precioUnit,
+    comision,
+    total: precioUnit * cantidad,
+    metodoPago: document.getElementById('ev-metodo').value || null,
+    notas: document.getElementById('ev-notas').value.trim(),
+  };
+  try {
+    await api('PUT', `/ventas?id=${id}`, updates);
+    await loadAll();
+    closeModal('modal-editar-venta');
+    renderVentas();
+  } catch(e) { alert('Error editando venta: ' + e.message); }
+}
+
+async function deleteVenta(id) {
+  if (!confirm('¿Eliminar esta venta? El stock NO se restaurará automáticamente.')) return;
+  try { await api('DELETE', `/ventas?id=${id}`); await loadAll(); renderVentas(); }
+  catch(e) { alert('Error eliminando venta: ' + e.message); }
+}
+
+async function cambiarEstadoVenta(id, estado) {
+  const v = db.ventas.find(x => x.id === id);
+  if (!v) return;
+  try {
+    await api('PUT', `/ventas?id=${id}`, { ...v, precioUnit: v.precioUnit, estado });
+    await loadAll(); renderVentas();
+  } catch(e) { console.error('Error cambiando estado:', e); }
 }
 
 // =====================
@@ -1143,6 +769,7 @@ async function saveEnvio() {
     fechaDespacho: document.getElementById('env-fecha').value,
     estado: document.getElementById('env-estado').value,
     direccion: document.getElementById('env-direccion').value.trim(),
+    costo: parseFloat(document.getElementById('env-costo').value) || 0,
   };
   if (pendingEnvioVentaId) {
     const v = db.ventas.find(x => x.id === pendingEnvioVentaId);
@@ -1161,80 +788,55 @@ function openEnvioManual(ventaId) {
   pendingEnvioVentaId = ventaId;
   document.getElementById('env-comprador').value = v ? (v.comprador || v.cliente || '') : '';
   document.getElementById('env-fecha').value = v ? v.fecha : new Date().toISOString().slice(0,10);
+  document.getElementById('env-costo').value = '';
   document.getElementById('modal-envio-title').textContent = v ? `🚚 Envío — ${v.ordenMeli || v.id}` : '🚚 Nuevo Envío';
   openModal('modal-envio');
 }
 
 async function cambiarEstadoEnvio(id, estado) {
-  try {
-    await api('PUT', `/envios?id=${id}`, { estado });
-    await loadAll(); renderEnvios();
-  } catch(e) { console.error('Error cambiando estado envío:', e); }
+  try { await api('PUT', `/envios?id=${id}`, { estado }); await loadAll(); renderEnvios(); }
+  catch(e) { console.error('Error cambiando estado envío:', e); }
+}
+
+async function deleteEnvio(id) {
+  if (!confirm('¿Eliminar este envío?')) return;
+  try { await api('DELETE', `/envios?id=${id}`); await loadAll(); renderEnvios(); }
+  catch(e) { alert('Error eliminando envío: ' + e.message); }
 }
 
 // =====================
 // RENDER: DASHBOARD
 // =====================
 function renderDashboard() {
-  const totalProductos = db.productos.length;
-  const stockTotal = db.productos.reduce((a,p) => a + p.stockDep, 0);
+  const now = new Date();
   const ventasMes = db.ventas.filter(v => {
-    const d = new Date(v.fecha); const now = new Date();
+    const d = new Date(v.fecha);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
   });
   const ingresosMes = ventasMes.reduce((a,v) => a + v.total, 0);
   const enviosPendientes = db.envios.filter(e => e.estado === 'pendiente' || e.estado === 'en_camino').length;
+  const costoEnviosMes = db.envios.filter(e => {
+    const d = new Date(e.creado);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).reduce((a,e) => a + (e.costo || 0), 0);
 
   document.getElementById('dash-stats').innerHTML = `
-    <div class="stat-card blue">
-      <div class="stat-icon">📦</div>
-      <div class="stat-value">${totalProductos}</div>
-      <div class="stat-label">Productos en stock</div>
-    </div>
-    <div class="stat-card green">
-      <div class="stat-icon">💰</div>
-      <div class="stat-value">${fmt(ingresosMes)}</div>
-      <div class="stat-label">Ingresos este mes</div>
-    </div>
-    <div class="stat-card yellow">
-      <div class="stat-icon">🛒</div>
-      <div class="stat-value">${ventasMes.length}</div>
-      <div class="stat-label">Ventas este mes</div>
-    </div>
-    <div class="stat-card purple">
-      <div class="stat-icon">🚚</div>
-      <div class="stat-value">${enviosPendientes}</div>
-      <div class="stat-label">Envíos en curso</div>
-    </div>
+    <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${db.productos.length}</div><div class="stat-label">Productos en stock</div></div>
+    <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(ingresosMes)}</div><div class="stat-label">Ingresos este mes</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">🛒</div><div class="stat-value">${ventasMes.length}</div><div class="stat-label">Ventas este mes</div></div>
+    <div class="stat-card purple"><div class="stat-icon">🚚</div><div class="stat-value">${enviosPendientes}</div><div class="stat-label">Envíos en curso</div></div>
+    <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(costoEnviosMes)}</div><div class="stat-label">Costo envíos este mes</div></div>
   `;
 
-  // Low stock
   const lowStock = db.productos.filter(p => p.stockDep <= p.alertaMin).slice(0,8);
-  if (lowStock.length === 0) {
-    document.getElementById('dash-low-stock').innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay productos con stock crítico</p></div>';
-  } else {
-    document.getElementById('dash-low-stock').innerHTML = `<table><tbody>${lowStock.map(p => `
-      <tr>
-        <td><span class="badge badge-gray">${p.sku}</span></td>
-        <td>${p.nombre}</td>
-        <td class="${p.stockDep === 0 ? 'stock-low' : 'stock-med'}">${p.stockDep} uds</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.sku}')">Ajustar</button></td>
-      </tr>`).join('')}</tbody></table>`;
-  }
+  document.getElementById('dash-low-stock').innerHTML = lowStock.length === 0
+    ? '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay productos con stock crítico</p></div>'
+    : `<table><tbody>${lowStock.map(p => `<tr><td><span class="badge badge-gray">${p.sku}</span></td><td>${p.nombre}</td><td class="${p.stockDep === 0 ? 'stock-low' : 'stock-med'}">${p.stockDep} uds</td><td><button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.sku}')">Ajustar</button></td></tr>`).join('')}</tbody></table>`;
 
-  // Recent sales
   const recent = [...db.ventas].sort((a,b) => new Date(b.creado) - new Date(a.creado)).slice(0,6);
-  if (recent.length === 0) {
-    document.getElementById('dash-recent-sales').innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas registradas</p></div>';
-  } else {
-    document.getElementById('dash-recent-sales').innerHTML = `<table><tbody>${recent.map(v => `
-      <tr>
-        <td>${canalBadge(v.canal)}</td>
-        <td>${v.producto}</td>
-        <td>${fmt(v.total)}</td>
-        <td>${estadoVentaBadge(v.estado)}</td>
-      </tr>`).join('')}</tbody></table>`;
-  }
+  document.getElementById('dash-recent-sales').innerHTML = recent.length === 0
+    ? '<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas registradas</p></div>'
+    : `<table><tbody>${recent.map(v => `<tr><td>${canalBadge(v.canal)}</td><td>${v.producto}</td><td>${fmt(v.total)}</td><td>${estadoVentaBadge(v.estado)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 // =====================
@@ -1242,21 +844,10 @@ function renderDashboard() {
 // =====================
 function renderStock() {
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
-  const filtered = db.productos.filter(p =>
-    p.nombre.toLowerCase().includes(q) ||
-    p.sku.toLowerCase().includes(q) ||
-    (p.categoria || '').toLowerCase().includes(q)
-  );
-
+  const filtered = db.productos.filter(p => p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
   document.getElementById('stock-count').textContent = `${filtered.length} productos`;
-
-  if (filtered.length === 0) {
-    document.getElementById('stock-tbody').innerHTML = '';
-    document.getElementById('stock-empty').style.display = 'block';
-    return;
-  }
+  if (filtered.length === 0) { document.getElementById('stock-tbody').innerHTML = ''; document.getElementById('stock-empty').style.display = 'block'; return; }
   document.getElementById('stock-empty').style.display = 'none';
-
   document.getElementById('stock-tbody').innerHTML = filtered.map(p => {
     const alerta = p.stockDep <= 0 ? 'stock-low' : p.stockDep <= p.alertaMin ? 'stock-med' : 'stock-ok';
     return `<tr>
@@ -1281,23 +872,15 @@ function renderStock() {
 // =====================
 function switchVentasTab(tab) {
   ventasTabFilter = tab;
-  document.querySelectorAll('#page-ventas .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['all','meli','mostrador'][i] === tab);
-  });
+  document.querySelectorAll('#page-ventas .tab').forEach((t,i) => { t.classList.toggle('active', ['all','meli','mostrador'][i] === tab); });
   renderVentas();
 }
 
 function renderVentas() {
   let ventas = [...db.ventas].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (ventasTabFilter !== 'all') ventas = ventas.filter(v => v.canal === ventasTabFilter);
-
-  if (ventas.length === 0) {
-    document.getElementById('ventas-tbody').innerHTML = '';
-    document.getElementById('ventas-empty').style.display = 'block';
-    return;
-  }
+  if (ventas.length === 0) { document.getElementById('ventas-tbody').innerHTML = ''; document.getElementById('ventas-empty').style.display = 'block'; return; }
   document.getElementById('ventas-empty').style.display = 'none';
-
   document.getElementById('ventas-tbody').innerHTML = ventas.map(v => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${v.ordenMeli || v.id.slice(-6)}</span></td>
@@ -1312,7 +895,8 @@ function renderVentas() {
         </select>
       </td>
       <td>
-        ${v.canal === 'meli' ? `<button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')">🚚</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
+        ${v.canal === 'meli' ? `<button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>
@@ -1324,9 +908,7 @@ function renderVentas() {
 // =====================
 function switchEnviosTab(tab) {
   enviosTabFilter = tab;
-  document.querySelectorAll('#page-envios .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['all','pendiente','en_camino','entregado'][i] === tab);
-  });
+  document.querySelectorAll('#page-envios .tab').forEach((t,i) => { t.classList.toggle('active', ['all','pendiente','en_camino','entregado'][i] === tab); });
   renderEnvios();
 }
 
@@ -1335,18 +917,10 @@ function renderEnvios() {
   let envios = [...db.envios].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (enviosTabFilter !== 'all') envios = envios.filter(e => e.estado === enviosTabFilter);
   if (q) envios = envios.filter(e => (e.tracking||'').toLowerCase().includes(q) || (e.comprador||'').toLowerCase().includes(q));
-
-  if (envios.length === 0) {
-    document.getElementById('envios-tbody').innerHTML = '';
-    document.getElementById('envios-empty').style.display = 'block';
-    return;
-  }
+  if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
-
-  const estadoEnvioColors = { pendiente:'badge-yellow', en_camino:'badge-blue', entregado:'badge-green', problema:'badge-red' };
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
   const transportistas = { andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
-
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
@@ -1354,6 +928,7 @@ function renderEnvios() {
       <td>${e.producto || '—'}</td>
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${transportistas[e.transportista] || e.transportista}</td>
+      <td>${e.costo > 0 ? `<span style="color:var(--yellow);font-weight:600">${fmt(e.costo)}</span>` : '—'}</td>
       <td>${e.fechaDespacho || '—'}</td>
       <td>
         <select onchange="cambiarEstadoEnvio('${e.id}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px 8px;color:var(--text);cursor:pointer">
@@ -1365,177 +940,94 @@ function renderEnvios() {
   `).join('');
 }
 
-function deleteEnvio(id) {
-  if (!confirm('¿Eliminar este envío?')) return;
-  db.envios = db.envios.filter(e => e.id !== id);
-  saveDB(db);
-  renderEnvios();
-}
-
 // =====================
 // RENDER: REPORTES
 // =====================
 function renderReportes() {
   const dias = document.getElementById('reporte-periodo').value;
   const now = new Date();
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => {
-    const d = new Date(v.fecha);
-    const diff = (now - d) / (1000*60*60*24);
-    return diff <= parseInt(dias);
-  });
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => { const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias); });
+  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => { const d = new Date(e.creado); return (now - d) / (1000*60*60*24) <= parseInt(dias); });
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
+  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0), 0);
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
-
-  const costoTotal = ventasFiltradas.reduce((a,v) => {
-    const p = db.productos.find(x => x.sku === v.sku);
-    return a + (p ? p.costo * v.cantidad : 0);
-  }, 0);
-  const ganancia = totalIngresos - totalComisiones - costoTotal;
+  const costoTotal = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
+  const ganancia = totalIngresos - totalComisiones - costoTotal - totalCostoEnvios;
 
   document.getElementById('reporte-stats').innerHTML = `
-    <div class="stat-card green">
-      <div class="stat-icon">💰</div>
-      <div class="stat-value">${fmt(totalIngresos)}</div>
-      <div class="stat-label">Ingresos totales</div>
-    </div>
-    <div class="stat-card blue">
-      <div class="stat-icon">📊</div>
-      <div class="stat-value">${ventasFiltradas.length}</div>
-      <div class="stat-label">Ventas realizadas</div>
-    </div>
-    <div class="stat-card yellow">
-      <div class="stat-icon">💸</div>
-      <div class="stat-value">${fmt(totalComisiones)}</div>
-      <div class="stat-label">Comisiones MELI</div>
-    </div>
-    <div class="stat-card purple">
-      <div class="stat-icon">📈</div>
-      <div class="stat-value">${fmt(ganancia)}</div>
-      <div class="stat-label">Ganancia estimada</div>
-    </div>
+    <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(totalIngresos)}</div><div class="stat-label">Ingresos totales</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📊</div><div class="stat-value">${ventasFiltradas.length}</div><div class="stat-label">Ventas realizadas</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalComisiones)}</div><div class="stat-label">Comisiones MELI</div></div>
+    <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia estimada</div></div>
   `;
 
-  // Chart: Canal
   const meliIngresos = ventasMeli.reduce((a,v) => a+v.total,0);
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
   const maxCanal = Math.max(meliIngresos, mosIngresos, 1);
   document.getElementById('chart-canal').innerHTML = `
     <div class="chart-bar-wrap">
-      <div class="chart-bar-row">
-        <span class="chart-bar-label">🟡 MELI</span>
-        <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas</div></div>
-        <span class="chart-bar-val">${fmt(meliIngresos)}</span>
-      </div>
-      <div class="chart-bar-row">
-        <span class="chart-bar-label">🏪 Mostrador</span>
-        <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas</div></div>
-        <span class="chart-bar-val">${fmt(mosIngresos)}</span>
-      </div>
-    </div>
-  `;
+      <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
+    </div>`;
 
-  // Chart: Top productos
   const prodVentas = {};
-  ventasFiltradas.forEach(v => {
-    if (!prodVentas[v.producto]) prodVentas[v.producto] = { total: 0, cant: 0 };
-    prodVentas[v.producto].total += v.total;
-    prodVentas[v.producto].cant += v.cantidad;
-  });
+  ventasFiltradas.forEach(v => { if (!prodVentas[v.producto]) prodVentas[v.producto] = { total: 0, cant: 0 }; prodVentas[v.producto].total += v.total; prodVentas[v.producto].cant += v.cantidad; });
   const topProds = Object.entries(prodVentas).sort((a,b) => b[1].total - a[1].total).slice(0,6);
   const maxProd = topProds.length ? topProds[0][1].total : 1;
   document.getElementById('chart-top-productos').innerHTML = topProds.length === 0
     ? '<div class="empty-state"><p>Sin datos en el período</p></div>'
-    : `<div class="chart-bar-wrap">${topProds.map(([nombre,data],i) => `
-      <div class="chart-bar-row">
-        <span class="chart-bar-label" title="${nombre}">${nombre}</span>
-        <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(data.total/maxProd*100).toFixed(1)}%;background:linear-gradient(90deg,#5b21b6,#7c3aed)">${data.cant} uds</div></div>
-        <span class="chart-bar-val">${fmt(data.total)}</span>
-      </div>`).join('')}</div>`;
+    : `<div class="chart-bar-wrap">${topProds.map(([nombre,data]) => `<div class="chart-bar-row"><span class="chart-bar-label" title="${nombre}">${nombre}</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(data.total/maxProd*100).toFixed(1)}%;background:linear-gradient(90deg,#5b21b6,#7c3aed)">${data.cant} uds</div></div><span class="chart-bar-val">${fmt(data.total)}</span></div>`).join('')}</div>`;
 }
 
 // =====================
 // HELPERS
 // =====================
-function fmt(n) {
-  return '$' + (n||0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-}
+function fmt(n) { return '$' + (n||0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function canalBadge(canal) { return canal === 'meli' ? '<span class="badge badge-meli">🟡 MELI</span>' : '<span class="badge badge-blue">🏪 Mostrador</span>'; }
+function estadoVentaBadge(estado) { const map = { pagada:'badge-green', pendiente:'badge-yellow', cancelada:'badge-red' }; return `<span class="badge ${map[estado]||'badge-gray'}">${estado}</span>`; }
 
-function canalBadge(canal) {
-  return canal === 'meli'
-    ? '<span class="badge badge-meli">🟡 MELI</span>'
-    : '<span class="badge badge-blue">🏪 Mostrador</span>';
-}
-
-function estadoVentaBadge(estado) {
-  const map = { pagada:'badge-green', pendiente:'badge-yellow', cancelada:'badge-red' };
-  return `<span class="badge ${map[estado]||'badge-gray'}">${estado}</span>`;
-}
-
-// =====================
-// IMPORTAR DESDE MELI
-// =====================
 async function importarDesdeMELI() {
   const btn = document.getElementById('btn-importar-meli');
-  btn.disabled = true;
-  btn.textContent = '⏳ Importando...';
+  btn.disabled = true; btn.textContent = '⏳ Importando...';
   try {
     const result = await api('POST', '/meli/importar');
-    await loadAll();
-    renderStock();
-    alert(`✅ ${result.mensaje}\n\nTotal publicaciones en MELI: ${result.total}\nImportados: ${result.importados}\nOmitidos (ya existían): ${result.omitidos}`);
-  } catch(e) {
-    alert('❌ Error importando desde MELI: ' + e.message + '\n\nAsegurate de tener MELI conectado.');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '🟡 Importar desde MELI';
-  }
+    await loadAll(); renderStock();
+    alert(`✅ ${result.mensaje}\n\nTotal: ${result.total}\nImportados: ${result.importados}\nOmitidos: ${result.omitidos}`);
+  } catch(e) { alert('❌ Error importando desde MELI: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '🟡 Importar desde MELI'; }
 }
-
 
 function exportData() {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `ecommanager_backup_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
+  const a = document.createElement('a'); a.href = url; a.download = `ecommanager_backup_${new Date().toISOString().slice(0,10)}.json`; a.click();
   URL.revokeObjectURL(url);
 }
 
 function importData() { document.getElementById('importFile').click(); }
 
 function loadImport(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+  const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = async ev => {
     e.target.value = '';
     try {
       const data = JSON.parse(ev.target.result);
       if (!data.productos || !data.ventas) throw new Error('Formato inválido');
-      if (!confirm(`¿Importar datos? Se subirán a Supabase.\n\nProductos: ${data.productos.length}\nVentas: ${data.ventas.length}`)) return;
-      // Subir productos
-      for (const p of data.productos) {
-        await api('POST', '/productos', p).catch(() => {});
-      }
-      await loadAll();
-      renderDashboard();
+      if (!confirm(`¿Importar?\n\nProductos: ${data.productos.length}\nVentas: ${data.ventas.length}`)) return;
+      for (const p of data.productos) await api('POST', '/productos', p).catch(() => {});
+      await loadAll(); renderDashboard();
       alert('✅ Datos importados correctamente.');
     } catch(err) { alert('❌ Error al importar: ' + err.message); }
   };
   reader.readAsText(file);
 }
 
-// =====================
-// INIT
-// =====================
-async function init() {
-  await loadAll();
-  renderDashboard();
-}
+async function init() { await loadAll(); renderDashboard(); }
 init();
 </script>
 </body>

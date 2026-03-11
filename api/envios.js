@@ -32,6 +32,7 @@ module.exports = async (req, res) => {
         fecha_despacho: e.fechaDespacho || null,
         estado: e.estado || 'pendiente',
         direccion: e.direccion || null,
+        costo: e.costo || 0,
       }).select().single();
       if (error) throw error;
       return res.json(data);
@@ -39,9 +40,11 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { estado, tracking } = req.body;
+      const { estado, tracking, costo } = req.body;
+      const updateData = { estado, tracking };
+      if (costo !== undefined) updateData.costo = costo;
       const { data, error } = await supabase.from('envios')
-        .update({ estado, tracking })
+        .update(updateData)
         .eq('id', id).select().single();
       if (error) throw error;
       return res.json(data);

@@ -1,13 +1,15 @@
 // api/ventas.js
-// GET  /api/ventas → listar
-// POST /api/ventas → crear (también descuenta stock y actualiza MELI si aplica)
+// GET    /api/ventas       → listar
+// POST   /api/ventas       → crear (descuenta stock y actualiza MELI si aplica)
+// PUT    /api/ventas?id=XX → editar venta existente
+// DELETE /api/ventas?id=XX → eliminar
 
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -26,7 +28,6 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const v = req.body;
 
-      // 1. Obtener el producto
       const { data: producto, error: prodErr } = await supabase
         .from('productos')
         .select('*')
@@ -34,13 +35,11 @@ module.exports = async (req, res) => {
         .single();
       if (prodErr || !producto) throw new Error('Producto no encontrado: ' + v.sku);
 
-      // 2. Calcular nuevo stock
       const nuevoStockDep = Math.max(0, producto.stock_dep - v.cantidad);
       const nuevoStockMeli = v.canal === 'meli'
         ? Math.max(0, producto.stock_meli - v.cantidad)
         : producto.stock_meli;
 
-      // 3. Guardar la venta
       const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
         id: v.id,
         canal: v.canal,
@@ -61,39 +60,51 @@ module.exports = async (req, res) => {
       }).select().single();
       if (ventaErr) throw ventaErr;
 
-      // 4. Actualizar stock en Supabase
       await supabase.from('productos').update({
         stock_dep: nuevoStockDep,
         stock_meli: nuevoStockMeli,
         updated_at: new Date().toISOString(),
       }).eq('sku', v.sku);
 
-      // 5. Si es venta MELI y tiene meli_id → actualizar stock en MELI automáticamente
       if (v.canal === 'meli' && producto.meli_id) {
         try {
-          console.log(`🔄 Intentando actualizar stock MELI: ${producto.meli_id} → ${nuevoStockMeli}`);
           const token = await getMeliToken();
-          console.log(`🔑 Token obtenido OK`);
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
             method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ available_quantity: nuevoStockMeli }),
           });
           const meliData = await meliRes.json();
-          console.log(`📦 Respuesta MELI:`, JSON.stringify(meliData));
           if (meliData.error) console.warn('⚠️ MELI error:', meliData.message);
-          else console.log(`✅ Stock MELI actualizado: ${producto.meli_id} → ${nuevoStockMeli}`);
         } catch (meliErr) {
           console.error('❌ No se pudo actualizar stock en MELI:', meliErr.message);
         }
-      } else {
-        console.log(`ℹ️ Sin actualización MELI — canal: ${v.canal}, meli_id: ${producto.meli_id}`);
       }
 
       return res.json({ venta, nuevoStockDep, nuevoStockMeli });
+    }
+
+    if (req.method === 'PUT') {
+      const id = req.query.id;
+      if (!id) return res.status(400).json({ error: 'Falta id' });
+
+      const v = req.body;
+
+      const { data, error } = await supabase.from('ventas').update({
+        fecha: v.fecha,
+        comprador: v.comprador || null,
+        cliente: v.cliente || null,
+        cantidad: v.cantidad,
+        precio_unit: v.precioUnit,
+        comision: v.comision || 0,
+        total: v.total,
+        estado: v.estado,
+        metodo_pago: v.metodoPago || null,
+        notas: v.notas || null,
+      }).eq('id', id).select().single();
+
+      if (error) throw error;
+      return res.json(data);
     }
 
     if (req.method === 'DELETE') {

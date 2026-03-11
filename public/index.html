@@ -436,6 +436,8 @@
       <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="env-comprador" placeholder="Nombre del comprador"></div>
       <div class="form-group"><label class="form-label">Transportista</label>
         <select id="env-transportista">
+          <option value="enviosuy">EnviosUy</option>
+          <option value="gestionpost">GestionPost</option>
           <option value="andreani">Andreani</option>
           <option value="oca">OCA</option>
           <option value="correo_arg">Correo Argentino</option>
@@ -473,6 +475,8 @@
       <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="ee-comprador" placeholder="Nombre del comprador"></div>
       <div class="form-group"><label class="form-label">Transportista</label>
         <select id="ee-transportista">
+          <option value="enviosuy">EnviosUy</option>
+          <option value="gestionpost">GestionPost</option>
           <option value="andreani">Andreani</option>
           <option value="oca">OCA</option>
           <option value="correo_arg">Correo Argentino</option>
@@ -986,7 +990,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>

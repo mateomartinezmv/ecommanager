@@ -30,6 +30,7 @@ module.exports = async (req, res) => {
       const p = req.body;
       const { data, error } = await supabase.from('productos').insert({
         sku: p.sku, nombre: p.nombre, categoria: p.categoria,
+        tipo: p.tipo || 'nuevo',
         stock_dep: p.stockDep || 0,
         stock_meli: p.stockMeli || 0,
         stock_shopify: p.stockShopify || 0,
@@ -56,6 +57,7 @@ module.exports = async (req, res) => {
 
       const { data, error } = await supabase.from('productos').update({
         nombre: p.nombre, categoria: p.categoria,
+        tipo: p.tipo || 'nuevo',
         stock_dep: p.stockDep,
         stock_meli: p.stockMeli,
         stock_shopify: p.stockShopify,

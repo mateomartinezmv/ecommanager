@@ -229,13 +229,18 @@
       </div>
     </div>
     <div class="content">
+      <div class="tabs">
+        <button class="tab active" onclick="switchStockTab('all')">Todos</button>
+        <button class="tab" onclick="switchStockTab('nuevo')">🆕 Nuevos</button>
+        <button class="tab" onclick="switchStockTab('usado')">🔄 Usados</button>
+      </div>
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">Productos en inventario</span>
           <span id="stock-count" style="font-size:12px;color:var(--text-muted)"></span>
         </div>
         <table>
-          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Stock depósito</th><th>Stock MELI</th><th>Stock Shopify</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Tipo</th><th>Stock depósito</th><th>Stock MELI</th><th>Stock Shopify</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="stock-tbody"></tbody>
         </table>
         <div id="stock-empty" class="empty-state" style="display:none"><div class="empty-icon">📦</div><p>No hay productos todavía.</p></div>
@@ -532,6 +537,7 @@
 // =====================
 let db = { productos: [], ventas: [], envios: [] };
 let ventasTabFilter = 'all';
+let stockTabFilter = 'all';
 let enviosTabFilter = 'all';
 let editingProductoSKU = null;
 let pendingEnvioVentaId = null;
@@ -564,7 +570,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -643,6 +649,7 @@ function populateProductoSelects() {
 // =====================
 function clearProductoForm() {
   ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('p-tipo').value = 'nuevo';
 }
 
 async function saveProducto() {
@@ -650,7 +657,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -670,6 +677,7 @@ function editProducto(sku) {
   document.getElementById('p-costo').value = p.costo;
   document.getElementById('p-precio').value = p.precio;
   document.getElementById('p-alerta').value = p.alertaMin;
+  document.getElementById('p-tipo').value = p.tipo || 'nuevo';
   document.getElementById('p-meli-id').value = p.meliId || '';
   document.getElementById('p-shopify-id').value = p.shopifyId || '';
   document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
@@ -932,6 +940,7 @@ function renderStock() {
       <td><span class="badge badge-gray">${p.sku}</span></td>
       <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}</td>
       <td>${p.categoria ? `<span class="badge badge-blue">${p.categoria}</span>` : '—'}</td>
+      <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
       <td class="${alerta}">${p.stockDep}</td>
       <td>${p.stockMeli}</td>
       <td>${p.shopifyId ? p.stockShopify : '—'}</td>
@@ -949,6 +958,14 @@ function renderStock() {
 // =====================
 // RENDER: VENTAS
 // =====================
+function switchStockTab(tab) {
+  stockTabFilter = tab;
+  document.querySelectorAll('#page-stock .tab').forEach((t,i) => {
+    t.classList.toggle('active', ['all','nuevo','usado'][i] === tab);
+  });
+  renderStock();
+}
+
 function switchVentasTab(tab) {
   ventasTabFilter = tab;
   document.querySelectorAll('#page-ventas .tab').forEach((t,i) => { t.classList.toggle('active', ['all','meli','mostrador','shopify'][i] === tab); });

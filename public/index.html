@@ -222,6 +222,7 @@
           <input type="text" id="stock-search" placeholder="Buscar producto..." oninput="renderStock()">
         </div>
         <button class="btn btn-yellow" onclick="importarDesdeMELI()" id="btn-importar-meli">🟡 Importar desde MELI</button>
+        <button class="btn btn-ghost" onclick="syncShopifyStock()" id="btn-sync-shopify">🛍️ Sincronizar Shopify</button>
         <button class="btn btn-ghost" onclick="descargarTemplateCSV()">📄 Plantilla CSV</button>
         <button class="btn btn-ghost" onclick="document.getElementById('csv-file-input').click()">⬆ Importar CSV</button>
         <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVImport(event)">

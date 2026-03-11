@@ -56,6 +56,7 @@ module.exports = async (req, res) => {
         .single();
 
       const { data, error } = await supabase.from('productos').update({
+        sku: p.sku,  // permite cambiar el SKU
         nombre: p.nombre, categoria: p.categoria,
         tipo: p.tipo || 'nuevo',
         stock_dep: p.stockDep,

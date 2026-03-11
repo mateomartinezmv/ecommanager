@@ -1,5 +1,5 @@
 // api/meli/reprocesar.js
-// GET /api/meli/reprocesar?orden=2000015427845516 → reintenta procesar una orden y devuelve el resultado detallado
+// GET /api/meli/reprocesar?orden=2000011960549189
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
@@ -19,20 +19,74 @@ module.exports = async (req, res) => {
     const token = await getMeliToken();
     log.push('✅ Token OK');
 
-    log.push(`Consultando orden ${orderId}...`);
-    const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
+    // Obtener user id
+    const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+      headers: { 'Authorization': `Bearer ${token}` }
     });
-    const order = await orderRes.json();
+    const me = await meRes.json();
+    log.push(`✅ Usuario: ${me.nickname} (${me.id}) site: ${me.site_id}`);
 
-    if (order.error) {
-      return res.json({ ok: false, log, error: `MELI error: ${order.message}`, order });
+    // Intentar múltiples endpoints para encontrar la orden
+    let order = null;
+
+    // Intento 1: endpoint directo
+    log.push(`Intento 1: GET /orders/${orderId}`);
+    const r1 = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const d1 = await r1.json();
+    if (!d1.error) {
+      order = d1;
+      log.push(`✅ Encontrada con endpoint directo`);
+    } else {
+      log.push(`❌ Endpoint directo: ${d1.message}`);
     }
 
-    log.push(`✅ Orden obtenida. Estado: ${order.status}, Items: ${order.order_items?.length}`);
+    // Intento 2: buscar por seller
+    if (!order) {
+      log.push(`Intento 2: GET /orders/search?seller=${me.id}&q=${orderId}`);
+      const r2 = await fetch(`https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const d2 = await r2.json();
+      if (d2.results && d2.results.length > 0) {
+        order = d2.results[0];
+        log.push(`✅ Encontrada por search`);
+      } else {
+        log.push(`❌ Search: ${JSON.stringify(d2.error || d2.message || 'sin resultados')}`);
+      }
+    }
+
+    // Intento 3: buscar últimas órdenes y filtrar
+    if (!order) {
+      log.push(`Intento 3: GET /orders/search?seller=${me.id}&sort=date_desc`);
+      const r3 = await fetch(`https://api.mercadolibre.com/orders/search?seller=${me.id}&sort=date_desc&limit=20`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const d3 = await r3.json();
+      if (d3.results) {
+        log.push(`Órdenes recientes encontradas: ${d3.results.length}`);
+        log.push(`IDs: ${d3.results.map(o => o.id).join(', ')}`);
+        const found = d3.results.find(o => String(o.id) === String(orderId));
+        if (found) {
+          order = found;
+          log.push(`✅ Encontrada en listado reciente`);
+        } else {
+          log.push(`❌ No está en las últimas 20 órdenes`);
+        }
+      } else {
+        log.push(`❌ No se pudo listar órdenes: ${JSON.stringify(d3)}`);
+      }
+    }
+
+    if (!order) {
+      return res.json({ ok: false, log, error: 'No se pudo obtener la orden por ningún endpoint' });
+    }
+
+    log.push(`Orden estado: ${order.status}, items: ${order.order_items?.length}`);
 
     if (order.status !== 'paid') {
-      return res.json({ ok: false, log, error: `Orden no está pagada (estado: ${order.status})` });
+      return res.json({ ok: false, log, error: `Orden no pagada (estado: ${order.status})`, order_status: order.status });
     }
 
     const resultados = [];
@@ -42,32 +96,24 @@ module.exports = async (req, res) => {
       const cantidad = item.quantity || 1;
       const precioUnit = item.unit_price || 0;
 
-      log.push(`Procesando item: ${meliItemId}, cantidad: ${cantidad}, precio: ${precioUnit}`);
+      log.push(`Item: ${meliItemId}, x${cantidad}, $${precioUnit}`);
 
-      // Buscar producto
-      const { data: producto, error: prodErr } = await supabase
+      const { data: producto } = await supabase
         .from('productos')
         .select('*')
         .eq('meli_id', meliItemId)
         .single();
 
-      if (prodErr || !producto) {
-        log.push(`⚠️ Producto con meli_id=${meliItemId} NO encontrado en DB`);
-
-        // Listar todos los meli_id cargados para comparar
-        const { data: todosProductos } = await supabase
-          .from('productos')
-          .select('sku, nombre, meli_id')
-          .not('meli_id', 'is', null);
-
-        log.push(`Productos con meli_id cargado: ${JSON.stringify(todosProductos?.map(p => ({ sku: p.sku, meli_id: p.meli_id })))}`);
+      if (!producto) {
+        const { data: todos } = await supabase
+          .from('productos').select('sku, meli_id').not('meli_id', 'is', null);
+        log.push(`⚠️ meli_id=${meliItemId} no encontrado. meli_ids cargados: ${JSON.stringify(todos?.map(p => p.meli_id))}`);
         resultados.push({ item: meliItemId, error: 'Producto no encontrado' });
         continue;
       }
 
-      log.push(`✅ Producto encontrado: ${producto.sku} - ${producto.nombre}`);
+      log.push(`✅ Producto: ${producto.sku} - ${producto.nombre}`);
 
-      // Verificar si la venta ya existe
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;
       const { data: ventaExistente } = await supabase
         .from('ventas').select('id').eq('id', ventaId).single();
@@ -78,42 +124,28 @@ module.exports = async (req, res) => {
         continue;
       }
 
-      // Descontar stock
       const nuevoStockDep  = Math.max(0, producto.stock_dep  - cantidad);
       const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
 
-      const { error: stockErr } = await supabase.from('productos').update({
-        stock_dep: nuevoStockDep,
-        stock_meli: nuevoStockMeli,
+      await supabase.from('productos').update({
+        stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli,
         updated_at: new Date().toISOString(),
       }).eq('sku', producto.sku);
+      log.push(`✅ Stock: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
 
-      if (stockErr) {
-        log.push(`❌ Error actualizando stock: ${stockErr.message}`);
-      } else {
-        log.push(`✅ Stock actualizado: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
-      }
-
-      // Insertar venta
       const { error: ventaErr } = await supabase.from('ventas').insert({
-        id: ventaId,
-        canal: 'meli',
+        id: ventaId, canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id),
-        comprador: order.buyer?.nickname || order.buyer?.first_name || '',
-        sku: producto.sku,
-        producto: producto.nombre,
-        cantidad,
-        precio_unit: precioUnit,
-        comision: 0,
-        total: precioUnit * cantidad,
-        estado: 'pagada',
-        genera_envio: true,
-        notas: 'Reprocesada manualmente',
+        comprador: order.buyer?.nickname || '',
+        sku: producto.sku, producto: producto.nombre,
+        cantidad, precio_unit: precioUnit, comision: 0,
+        total: precioUnit * cantidad, estado: 'pagada',
+        genera_envio: true, notas: 'Reprocesada manualmente',
       });
 
       if (ventaErr) {
-        log.push(`❌ Error insertando venta: ${ventaErr.message}`);
+        log.push(`❌ Error venta: ${ventaErr.message}`);
         resultados.push({ item: meliItemId, error: ventaErr.message });
       } else {
         log.push(`✅ Venta registrada: ${ventaId}`);
@@ -121,7 +153,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    return res.json({ ok: true, log, resultados, orden: { id: order.id, estado: order.status, comprador: order.buyer?.nickname } });
+    return res.json({ ok: true, log, resultados });
 
   } catch (err) {
     return res.json({ ok: false, log, error: err.message });

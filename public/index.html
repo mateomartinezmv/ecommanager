@@ -947,9 +947,9 @@ function renderStock() {
       <td>${fmt(p.precio)}</td>
       <td>${p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
       <td>
-        <button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.sku}')">📋</button>
-        <button class="btn btn-ghost btn-sm" onclick="editProducto('${p.sku}')">✏️</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteProducto('${p.sku}')">🗑️</button>
+        <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
+        <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
+        <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
       </td>
     </tr>`;
   }).join('');

@@ -714,6 +714,14 @@ async function saveAjuste() {
   if (!p) return;
   try {
     await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli, stockShopify });
+    // Si tiene Shopify ID, sincronizar automáticamente solo ese producto
+    if (p.shopifyId) {
+      try {
+        await api('POST', '/shopify/sync-stock', { sku });
+      } catch(e) {
+        console.warn('Sync Shopify falló (no crítico):', e.message);
+      }
+    }
     await loadAll(); closeModal('modal-ajuste-stock'); renderStock();
   } catch(e) { alert('Error ajustando stock: ' + e.message); }
 }

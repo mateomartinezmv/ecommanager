@@ -714,7 +714,6 @@ async function saveAjuste() {
   if (!p) return;
   try {
     await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli, stockShopify });
-    if (p.meliId) await api('POST', '/meli/stock', { meli_id: p.meliId, cantidad: stockMeli, sku });
     await loadAll(); closeModal('modal-ajuste-stock'); renderStock();
   } catch(e) { alert('Error ajustando stock: ' + e.message); }
 }

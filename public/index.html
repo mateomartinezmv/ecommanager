@@ -894,6 +894,10 @@ async function guardarEdicionEnvio() {
     estado: document.getElementById('ee-estado').value,
     tracking: document.getElementById('ee-tracking').value.trim(),
     costo: parseFloat(document.getElementById('ee-costo').value) || 0,
+    transportista: document.getElementById('ee-transportista').value,
+    comprador: document.getElementById('ee-comprador').value.trim(),
+    fechaDespacho: document.getElementById('ee-fecha').value,
+    direccion: document.getElementById('ee-direccion').value.trim(),
   };
   try {
     await api('PUT', `/envios?id=${id}`, updates);

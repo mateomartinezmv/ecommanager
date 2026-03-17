@@ -154,6 +154,16 @@
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
 
+
+  /* TOGGLE */
+  .toggle-wrap { display: flex; align-items: center; gap: 8px; }
+  .toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 20px; transition: 0.2s; }
+  .toggle-slider:before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked + .toggle-slider { background: var(--yellow); }
+  .toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
+
   @media (max-width: 900px) {
     #sidebar { width: 60px; }
     .nav-item span { display: none; }
@@ -295,7 +305,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Costo envío</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Costo envío</th><th>Colecta</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="envios-tbody"></tbody>
         </table>
         <div id="envios-empty" class="empty-state" style="display:none"><div class="empty-icon">🚚</div><p>No hay envíos registrados.</p></div>
@@ -578,7 +588,7 @@ function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, creado: e.created_at };
 }
 
 // MELI callback banners
@@ -1021,6 +1031,18 @@ function switchEnviosTab(tab) {
   renderEnvios();
 }
 
+async function toggleColecta(checkbox) {
+  const id = checkbox.dataset.id;
+  const colecta = checkbox.checked;
+  const e = db.envios.find(x => x.id === id);
+  if (!e) return;
+  try {
+    await api('PUT', `/envios?id=${id}`, { estado: e.estado, tracking: e.tracking, colecta });
+    await loadAll();
+    renderEnvios();
+  } catch(err) { console.error('Error toggling colecta:', err); }
+}
+
 function renderEnvios() {
   const q = (document.getElementById('envios-search')?.value || '').toLowerCase();
   let envios = [...db.envios].sort((a,b) => new Date(b.creado) - new Date(a.creado));
@@ -1038,6 +1060,15 @@ function renderEnvios() {
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${transportistas[e.transportista] || e.transportista}</td>
       <td>${e.costo > 0 ? `<span style="color:var(--yellow);font-weight:600">${fmt(e.costo)}</span>` : '—'}</td>
+      <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
+        <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
+          <span class="toggle">
+            <input type="checkbox" ${e.colecta ? 'checked' : ''} data-id="${e.id}" onchange="toggleColecta(this)">
+            <span class="toggle-slider"></span>
+          </span>
+          <span style="font-size:11px;color:${e.colecta ? 'var(--yellow)' : 'var(--text-muted)'}">$75</span>
+        </label>` : '—'}
+      </td>
       <td>${e.fechaDespacho || '—'}</td>
       <td>
         <select onchange="cambiarEstadoEnvio('${e.id}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px 8px;color:var(--text);cursor:pointer">

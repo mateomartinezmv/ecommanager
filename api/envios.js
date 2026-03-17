@@ -40,9 +40,10 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { estado, tracking, costo } = req.body;
+      const { estado, tracking, costo, colecta } = req.body;
       const updateData = { estado, tracking };
       if (costo !== undefined) updateData.costo = costo;
+      if (colecta !== undefined) updateData.colecta = colecta;
       const { data, error } = await supabase.from('envios')
         .update(updateData)
         .eq('id', id).select().single();

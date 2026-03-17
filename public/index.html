@@ -923,7 +923,7 @@ function renderDashboard() {
   const costoEnviosMes = db.envios.filter(e => {
     const d = new Date(e.creado);
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).reduce((a,e) => a + (e.costo || 0), 0);
+  }).reduce((a,e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
 
   document.getElementById('dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${db.productos.length}</div><div class="stat-label">Productos en stock</div></div>
@@ -1059,7 +1059,7 @@ function renderEnvios() {
       <td>${e.producto || '—'}</td>
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${transportistas[e.transportista] || e.transportista}</td>
-      <td>${e.costo > 0 ? `<span style="color:var(--yellow);font-weight:600">${fmt(e.costo)}</span>` : '—'}</td>
+      <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
       <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
         <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
           <span class="toggle">
@@ -1094,7 +1094,7 @@ function renderReportes() {
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
-  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0), 0);
+  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
   const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');

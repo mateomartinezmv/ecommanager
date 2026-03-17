@@ -1259,6 +1259,86 @@ function loadImport(e) {
   reader.readAsText(file);
 }
 
+
+// =====================
+// TRANSPORTISTAS
+// =====================
+const NOMBRES_TRANSPORTISTAS = {
+  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani',
+  oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos',
+  dhl: 'DHL', otro: 'Otro'
+};
+
+async function renderTransportistas() {
+  try {
+    const data = await api('GET', '/transportistas');
+
+    const deudas = data.deudas || {};
+    const transportistasConDeuda = Object.entries(deudas).filter(([,v]) => v > 0);
+
+    if (transportistasConDeuda.length === 0) {
+      document.getElementById('transportistas-deudas').innerHTML =
+        '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">✅ Sin deudas pendientes con transportistas</div>';
+    } else {
+      document.getElementById('transportistas-deudas').innerHTML = transportistasConDeuda.map(([t, monto]) => `
+        <div class="stat-card yellow">
+          <div class="stat-icon">🚚</div>
+          <div class="stat-value">${fmt(monto)}</div>
+          <div class="stat-label">Deuda con ${NOMBRES_TRANSPORTISTAS[t] || t}</div>
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" data-t="${t}" onclick="document.getElementById('pag-transportista').value=this.dataset.t;openModal('modal-pago-transportista')">
+            Registrar pago
+          </button>
+        </div>
+      `).join('');
+    }
+
+    const pagos = data.pagos || [];
+    if (pagos.length === 0) {
+      document.getElementById('transportistas-pagos-tbody').innerHTML = '';
+      document.getElementById('transportistas-empty').style.display = 'block';
+      return;
+    }
+    document.getElementById('transportistas-empty').style.display = 'none';
+    document.getElementById('transportistas-pagos-tbody').innerHTML = pagos.map(p => `
+      <tr>
+        <td>${p.fecha}</td>
+        <td><span class="badge badge-blue">${NOMBRES_TRANSPORTISTAS[p.transportista] || p.transportista}</span></td>
+        <td><span style="color:var(--green);font-weight:600">${fmt(p.monto)}</span></td>
+        <td style="color:var(--text-muted);font-size:12px">${p.notas || '—'}</td>
+        <td><button class="btn btn-danger btn-sm" data-id="${p.id}" onclick="eliminarPagoTransportista(this.dataset.id)">🗑️</button></td>
+      </tr>
+    `).join('');
+
+  } catch(e) {
+    console.error('Error cargando transportistas:', e);
+    document.getElementById('transportistas-deudas').innerHTML = '<div style="color:var(--red);padding:20px">Error cargando datos: ' + e.message + '</div>';
+  }
+}
+
+async function registrarPagoTransportista() {
+  const transportista = document.getElementById('pag-transportista').value;
+  const monto = parseFloat(document.getElementById('pag-monto').value);
+  const fecha = document.getElementById('pag-fecha').value;
+  const notas = document.getElementById('pag-notas').value.trim();
+
+  if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
+
+  try {
+    const result = await api('POST', '/transportistas', { transportista, monto, fecha, notas });
+    closeModal('modal-pago-transportista');
+    renderTransportistas();
+    alert('✅ Pago registrado.\nEnvíos marcados como pagados: ' + result.envios_marcados);
+  } catch(e) { alert('Error registrando pago: ' + e.message); }
+}
+
+async function eliminarPagoTransportista(id) {
+  if (!confirm('¿Eliminar este pago?')) return;
+  try {
+    await api('DELETE', '/transportistas?id=' + id);
+    renderTransportistas();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
 async function init() { await loadAll(); renderDashboard(); }
 init();
 </script>

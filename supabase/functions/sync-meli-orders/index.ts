@@ -1,6 +1,5 @@
-// supabase/functions/sync-meli-orders/index.ts
-// Corre cada 2 horas via cron de Supabase
-// Busca las últimas 50 órdenes pagadas de MELI y registra las que falten
+// supabase/functions/procesar-orden-meli/index.ts
+// Procesa órdenes MELI: registra venta, descuenta stock, crea envío con costo Flex automático
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -20,8 +19,9 @@ const COSTOS_ENVIOSUY: Record<number, number | null> = {
   6: 160,
   8: 240, 9: 240,
   10: 200,
-  11: null,
+  11: null, // No realizan envíos
 }
+
 const COSTOS_GESTIONPOST: Record<number, number> = {
   1: 169, 2: 169, 3: 169, 4: 169, 5: 169, 6: 169,
   7: 139,
@@ -29,6 +29,7 @@ const COSTOS_GESTIONPOST: Record<number, number> = {
 }
 const RETIRO_GESTIONPOST = 75
 
+// Palabras clave por zona para detectar desde la dirección
 const ZONAS_KEYWORDS: Record<number, string[]> = {
   1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],
   2: ['la paz', 'colon', 'lezica', 'abayuba', 'jardines del hipodromo'],
@@ -44,7 +45,10 @@ const ZONAS_KEYWORDS: Record<number, string[]> = {
 }
 
 function normalizarTexto(texto: string): string {
-  return texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  return texto.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
 }
 
 function detectarZona(direccion: string): number | null {
@@ -58,14 +62,18 @@ function detectarZona(direccion: string): number | null {
   return null
 }
 
-function calcularCostoFlex(direccion: string) {
+function calcularCostoFlex(direccion: string): { zona: number, recomendada: string, costo: number, enviosuy: number | null, gestionpost: number } | null {
   const zona = detectarZona(direccion)
   if (!zona) return null
+
   const costoEnviosUy = COSTOS_ENVIOSUY[zona] ?? null
   const costoGestionPost = (COSTOS_GESTIONPOST[zona] ?? 200) + RETIRO_GESTIONPOST
-  const recomendada = costoEnviosUy !== null ? 'enviosuy' : 'gestionpost'
-  const costo = costoEnviosUy !== null ? costoEnviosUy : costoGestionPost
-  return { zona, recomendada, costo }
+
+  // EnviosUy por defecto, GestionPost si no cubre la zona
+  const recomendada = 'gestionpost'  // Siempre GestionPost para Flex
+  const costo = costoGestionPost
+
+  return { zona, recomendada, costo, enviosuy: costoEnviosUy, gestionpost: costoGestionPost }
 }
 
 
@@ -74,19 +82,40 @@ function calcularCostoFlex(direccion: string) {
 // =====================
 function calcularComision(precioUnit: number, cantidad: number, tipoEnvio: string, zonaFlex?: number | null): number {
   const base = precioUnit * cantidad * 0.15
-
-  if (tipoEnvio === 'mercado_envios') {
-    return Math.round((base + 125) * 100) / 100
-  }
-
+  if (tipoEnvio === 'mercado_envios') return Math.round((base + 125) * 100) / 100
   if (tipoEnvio === 'flex') {
-    // Bonificación según zona: lejanas -$40, resto -$33.80
     const bonif = zonaFlex && zonaFlex >= 8 ? 40 : 33.80
     return Math.round((base - bonif) * 100) / 100
   }
-
   return Math.round(base * 100) / 100
 }
+
+// =====================
+// MAIN HANDLER
+// =====================
+Deno.serve(async (req) => {
+  const authHeader = req.headers.get('Authorization')
+  if (!authHeader) {
+    return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 })
+  }
+
+  try {
+    const body = await req.json().catch(() => ({}))
+    const ordenId = body.orden_id
+    if (!ordenId) return new Response(JSON.stringify({ error: 'Falta orden_id' }), { status: 400 })
+
+    const log: string[] = []
+    const resultado = await procesarOrden(String(ordenId), log)
+
+    return new Response(JSON.stringify({ ok: true, log, resultado }), {
+      headers: { 'Content-Type': 'application/json' }
+    })
+  } catch (err: any) {
+    return new Response(JSON.stringify({ ok: false, error: err.message }), {
+      status: 500, headers: { 'Content-Type': 'application/json' }
+    })
+  }
+})
 
 // =====================
 // TOKEN MELI
@@ -120,24 +149,117 @@ async function getMeliToken(): Promise<string> {
     }).eq('id', 1)
     return newToken.access_token
   }
+
   return data.access_token
 }
 
 // =====================
-// PROCESAR UNA ORDEN
+// OBTENER ORDEN
 // =====================
-async function procesarOrden(order: any, token: string, log: string[]) {
+async function getOrder(orderId: string, token: string): Promise<any> {
+  const r1 = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  const d1 = await r1.json()
+  if (!d1.error) return d1
+
+  const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  const me = await meRes.json()
+
+  const r2 = await fetch(`https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  const d2 = await r2.json()
+  if (d2.results?.length > 0) return d2.results[0]
+
+  const r3 = await fetch(`https://api.mercadolibre.com/orders/search?seller=${me.id}&sort=date_desc&limit=20`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  })
+  const d3 = await r3.json()
+  if (d3.results) {
+    const found = d3.results.find((o: any) => String(o.id) === String(orderId))
+    if (found) return found
+  }
+
+  throw new Error(`No se pudo obtener la orden ${orderId}`)
+}
+
+// =====================
+// OBTENER DIRECCIÓN DE ENVÍO
+// =====================
+async function getDireccionEnvio(orderId: string, token: string): Promise<string | null> {
+  try {
+    // Intentar obtener shipment de la orden
+    const shipRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}/shipments`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const shipData = await shipRes.json()
+
+    if (shipData && shipData.receiver_address) {
+      const addr = shipData.receiver_address
+      const partes = [
+        addr.street_name, addr.street_number,
+        addr.neighborhood?.name, addr.city?.name,
+        addr.state?.name
+      ].filter(Boolean)
+      return partes.join(', ')
+    }
+
+    // Fallback: dirección del buyer en la orden
+    const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const order = await orderRes.json()
+    if (order.shipping?.receiver_address) {
+      const addr = order.shipping.receiver_address
+      const partes = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean)
+      return partes.join(', ')
+    }
+  } catch (_) {}
+  return null
+}
+
+// =====================
+// PROCESAR ORDEN
+// =====================
+async function procesarOrden(orderId: string, log: string[]): Promise<any> {
+  log.push('Obteniendo token...')
+  const token = await getMeliToken()
+  log.push('✅ Token OK')
+
+  log.push(`Buscando orden ${orderId}...`)
+  const order = await getOrder(orderId, token)
+  log.push(`✅ Orden encontrada. Estado: ${order.status}, items: ${order.order_items?.length}`)
+
   if (order.status !== 'paid') {
-    log.push(`⏭️ Orden ${order.id} ignorada (estado: ${order.status})`)
-    return
+    log.push(`⚠️ Orden no pagada (${order.status}), ignorando`)
+    return { ignorada: true, estado: order.status }
   }
 
   // Detectar tipo de envío
-  const shippingTypeId = order.shipping?.shipping_option?.shipping_method_type || ''
-  const esML = order.shipping?.logistic_type === 'cross_docking' || shippingTypeId === 'ME'
+  const esML = order.shipping?.logistic_type === 'cross_docking'
   const esFlex = order.shipping?.logistic_type === 'self_service_flex' || order.shipping?.logistic_type === 'xd_drop_off'
   const tipoEnvio = esFlex ? 'flex' : esML ? 'mercado_envios' : 'otro'
-  log.push(`📬 Tipo de envío detectado: ${tipoEnvio} (logistic_type: ${order.shipping?.logistic_type || 'n/a'}`)
+  log.push(`📬 Tipo de envío: ${tipoEnvio}`)
+
+  // Obtener dirección de envío para calcular costo Flex
+  log.push('Obteniendo dirección de envío...')
+  const direccion = await getDireccionEnvio(orderId, token)
+  log.push(`📍 Dirección: ${direccion || 'no disponible'}`)
+
+  let flexInfo = null
+  if (direccion) {
+    flexInfo = calcularCostoFlex(direccion)
+    if (flexInfo) {
+      log.push(`🗺️ Zona detectada: ${flexInfo.zona} | Cadetería: ${flexInfo.recomendada} | Costo: $${flexInfo.costo}`)
+    } else {
+      log.push('⚠️ No se pudo detectar la zona Flex desde la dirección')
+    }
+  }
+
+  const resultados = []
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -145,21 +267,15 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     const precioUnit = item.unit_price || 0
     if (!meliItemId) continue
 
-    // Verificar si la venta ya existe
-    const ventaId = `V_MELI_${order.id}_${meliItemId}`
-    const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
-    if (ventaExistente) {
-      log.push(`ℹ️ Venta ${ventaId} ya existe`)
-      continue
-    }
+    log.push(`Procesando item ${meliItemId} x${cantidad} $${precioUnit}`)
 
-    // Buscar producto
-    const { data: producto } = await supabase.from('productos').select('*').eq('meli_id', meliItemId).single()
+    const { data: producto } = await supabase
+      .from('productos').select('*').eq('meli_id', meliItemId).single()
 
     let skuFinal: string, nombreFinal: string
 
     if (!producto) {
-      // Auto-crear producto si no existe
+      log.push(`⚠️ Producto no encontrado, auto-creando...`)
       const skuAuto = `MELI-${meliItemId}`
       let nombreItem = item.item?.title || `Producto MELI ${meliItemId}`
       try {
@@ -176,110 +292,79 @@ async function procesarOrden(order: any, token: string, log: string[]) {
           sku: skuAuto, nombre: nombreItem,
           stock_dep: 0, stock_meli: 0, costo: 0,
           precio: precioUnit, alerta_min: 3,
-          meli_id: meliItemId, notas: 'Auto-creado por sync MELI',
+          meli_id: meliItemId, notas: 'Auto-creado por webhook MELI',
         })
+        log.push(`✅ Producto auto-creado: ${skuAuto}`)
       }
       skuFinal = skuAuto
       nombreFinal = nombreItem
     } else {
-      // Descontar stock
       const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad)
       const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad)
       await supabase.from('productos').update({
         stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli,
         updated_at: new Date().toISOString(),
       }).eq('sku', producto.sku)
+      log.push(`✅ Stock: ${producto.sku} dep=${nuevoStockDep} meli=${nuevoStockMeli}`)
       skuFinal = producto.sku
       nombreFinal = producto.nombre
     }
 
     // Registrar venta
-    await supabase.from('ventas').insert({
-      id: ventaId, canal: 'meli',
-      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-      orden_meli: String(order.id),
-      comprador: order.buyer?.nickname || '',
-      sku: skuFinal, producto: nombreFinal,
-      cantidad, precio_unit: precioUnit, comision: 0,
-      total: precioUnit * cantidad, estado: 'pagada',
-      genera_envio: true, notas: 'Auto-registrada por sync MELI',
-    })
-    log.push(`✅ Venta registrada: ${ventaId} — ${nombreFinal}`)
+    const ventaId = `V_MELI_${order.id}_${meliItemId}`
+    const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
 
-    // Obtener dirección y crear envío
-    let direccion: string | null = null
-    try {
-      const shipRes = await fetch(`https://api.mercadolibre.com/orders/${order.id}/shipments`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+    if (ventaExistente) {
+      log.push(`ℹ️ Venta ${ventaId} ya existe`)
+      resultados.push({ item: meliItemId, estado: 'ya_existe' })
+    } else {
+      const { error: ventaErr } = await supabase.from('ventas').insert({
+        id: ventaId, canal: 'meli',
+        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        orden_meli: String(order.id),
+        comprador: order.buyer?.nickname || '',
+        sku: skuFinal, producto: nombreFinal,
+        cantidad, precio_unit: precioUnit,
+        comision: calcularComision(precioUnit, cantidad, tipoEnvio, flexInfo?.zona),
+        total: precioUnit * cantidad, estado: 'pagada',
+        genera_envio: true, notas: 'Auto-registrada por webhook MELI',
       })
-      const shipData = await shipRes.json()
-      if (shipData?.receiver_address) {
-        const addr = shipData.receiver_address
-        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ')
-      }
-    } catch (_) {}
+      if (ventaErr) throw new Error(`Error insertando venta: ${ventaErr.message}`)
+      log.push(`✅ Venta registrada: ${ventaId}`)
+      resultados.push({ item: meliItemId, estado: 'registrada', ventaId })
+    }
 
-    const flexInfo = direccion ? calcularCostoFlex(direccion) : null
+    // Registrar envío con costo Flex automático
     const envioId = `E_MELI_${order.id}_${meliItemId}`
     const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
 
     if (!envioExistente) {
-      await supabase.from('envios').insert({
-        id: envioId, venta_id: ventaId,
+      const transportista = flexInfo?.recomendada === 'gestionpost' ? 'gestionpost' : 'enviosuy'
+      const costoEnvio = flexInfo?.costo || 0
+
+      const { error: envioErr } = await supabase.from('envios').insert({
+        id: envioId,
+        venta_id: ventaId,
         orden: String(order.id),
         comprador: order.buyer?.nickname || '',
         producto: nombreFinal,
-        transportista: flexInfo?.recomendada === 'gestionpost' ? 'gestionpost' : 'enviosuy',
-        tracking: null, fecha_despacho: null, estado: 'pendiente',
+        transportista,
+        tracking: null,
+        fecha_despacho: null,
+        estado: 'pendiente',
         direccion: direccion || null,
-        costo: flexInfo?.costo || 0,
+        costo: costoEnvio,
       })
-      log.push(`✅ Envío creado: zona ${flexInfo?.zona || '?'} $${flexInfo?.costo || 0}`)
+
+      if (envioErr) {
+        log.push(`⚠️ Error creando envío: ${envioErr.message}`)
+      } else {
+        log.push(`✅ Envío creado: zona ${flexInfo?.zona || '?'} | ${transportista} | $${costoEnvio}`)
+      }
+    } else {
+      log.push(`ℹ️ Envío ${envioId} ya existe`)
     }
   }
+
+  return resultados
 }
-
-// =====================
-// MAIN
-// =====================
-Deno.serve(async (req) => {
-  const log: string[] = []
-
-  try {
-    log.push('🔄 Iniciando sync de órdenes MELI...')
-    const token = await getMeliToken()
-    log.push('✅ Token OK')
-
-    // Obtener usuario MELI
-    const meRes = await fetch('https://api.mercadolibre.com/users/me', {
-      headers: { 'Authorization': `Bearer ${token}` }
-    })
-    const me = await meRes.json()
-    log.push(`👤 Usuario: ${me.nickname} (${me.id})`)
-
-    // Buscar órdenes pagadas de los últimos 3 días
-    const desde = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-    const ordersRes = await fetch(
-      `https://api.mercadolibre.com/orders/search?seller=${me.id}&order.status=paid&sort=date_desc&limit=50&order.date_created.from=${desde}`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
-    )
-    const ordersData = await ordersRes.json()
-    const ordenes = ordersData.results || []
-    log.push(`📦 Órdenes pagadas últimos 3 días: ${ordenes.length}`)
-
-    for (const order of ordenes) {
-      await procesarOrden(order, token, log)
-    }
-
-    log.push('✅ Sync completado')
-    return new Response(JSON.stringify({ ok: true, log }), {
-      headers: { 'Content-Type': 'application/json' }
-    })
-
-  } catch (err: any) {
-    log.push(`❌ Error: ${err.message}`)
-    return new Response(JSON.stringify({ ok: false, error: err.message, log }), {
-      status: 500, headers: { 'Content-Type': 'application/json' }
-    })
-  }
-})

@@ -313,6 +313,40 @@
     </div>
   </div>
 
+  <!-- TRANSPORTISTAS -->
+  <div id="page-transportistas" class="page">
+    <div class="topbar">
+      <div class="page-title">💳 Transportistas</div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openModal('modal-pago-transportista')">+ Registrar pago</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="cards-grid" id="transportistas-deudas"></div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">📋 Historial de pagos</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Transportista</th>
+              <th>Monto</th>
+              <th>Notas</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="transportistas-pagos-tbody"></tbody>
+        </table>
+        <div id="transportistas-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">💳</div>
+          <p>No hay pagos registrados aún.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- REPORTES -->
   <div id="page-reportes" class="page">
     <div class="topbar">
@@ -525,6 +559,44 @@
   </div>
 </div>
 
+<!-- MODAL: PAGO TRANSPORTISTA -->
+<div class="modal-overlay" id="modal-pago-transportista">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">💳 Registrar Pago</div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group">
+        <label class="form-label">Transportista</label>
+        <select id="pag-transportista">
+          <option value="enviosuy">EnviosUy</option>
+          <option value="gestionpost">GestionPost</option>
+          <option value="andreani">Andreani</option>
+          <option value="oca">OCA</option>
+          <option value="correo_arg">Correo Argentino</option>
+          <option value="mercado_envios">MELI Envíos</option>
+          <option value="dhl">DHL</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Monto pagado *</label>
+        <input type="number" id="pag-monto" placeholder="0.00" step="0.01" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha</label>
+        <input type="date" id="pag-fecha">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notas</label>
+        <input type="text" id="pag-notas" placeholder="Ej: Liquidación semana 1 marzo">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-pago-transportista')">Cancelar</button>
+      <button class="btn btn-primary" onclick="registrarPagoTransportista()">Registrar pago</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: AJUSTE STOCK -->
 <div class="modal-overlay" id="modal-ajuste-stock">
   <div class="modal" style="max-width:400px">
@@ -588,7 +660,7 @@ function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
 }
 
 // MELI callback banners
@@ -625,12 +697,18 @@ function goPage(page) {
   if (page === 'ventas') renderVentas();
   if (page === 'envios') renderEnvios();
   if (page === 'reportes') renderReportes();
+  if (page === 'transportistas') renderTransportistas();
 }
 
 // =====================
 // MODALS
 // =====================
 function openModal(id) {
+  if (id === 'modal-pago-transportista') {
+    document.getElementById('pag-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('pag-monto').value = '';
+    document.getElementById('pag-notas').value = '';
+  }
   if (id === 'modal-venta-meli' || id === 'modal-venta-mostrador') {
     populateProductoSelects();
     const hoy = new Date().toISOString().slice(0,10);
@@ -1080,6 +1158,7 @@ function renderEnvios() {
         </select>
       </td>
       <td>
+        ${e.pagado ? '<span class="badge badge-green" style="font-size:10px">✓ Pagado</span>' : ''}
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionEnvio('${e.id}')" title="Editar">✏️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteEnvio('${e.id}')">🗑️</button>
       </td>
@@ -1099,6 +1178,7 @@ function renderReportes() {
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
   const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const totalEnviosSinPagar = enviosFiltrados.filter(e => !e.pagado).reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
   const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
@@ -1110,6 +1190,7 @@ function renderReportes() {
     <div class="stat-card blue"><div class="stat-icon">📊</div><div class="stat-value">${ventasFiltradas.length}</div><div class="stat-label">Ventas realizadas</div></div>
     <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalComisiones)}</div><div class="stat-label">Comisiones MELI</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(totalEnviosSinPagar)}</div><div class="stat-label">Envíos a pagar</div></div>
     <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia estimada</div></div>
   `;
 

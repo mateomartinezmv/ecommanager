@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
       if (colecta !== undefined) updateData.colecta = colecta;
       if (transportista !== undefined) updateData.transportista = transportista;
       if (comprador !== undefined) updateData.comprador = comprador;
-      if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho;
+      if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho || null;
       if (direccion !== undefined) updateData.direccion = direccion;
       const { data, error } = await supabase.from('envios')
         .update(updateData)

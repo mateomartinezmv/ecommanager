@@ -1,81 +1,76 @@
 // api/shopify/notify.js
-// POST /api/shopify/notify → recibe webhooks de Shopify (órdenes pagadas)
+// POST /api/shopify/notify → recibe webhooks de Shopify (orders/paid)
+// Configurar en Shopify Admin → Settings → Notifications → Webhooks
+// Evento: "Order payment" → URL: https://TU-DOMINIO.vercel.app/api/shopify/notify
 
 const { getSupabase } = require('../_supabase');
 const crypto = require('crypto');
 
 module.exports = async (req, res) => {
-  // Responder 200 rápido a Shopify
+  // Shopify requiere respuesta 200 inmediata
   res.status(200).json({ ok: true });
-
   if (req.method !== 'POST') return;
 
-  try {
-    // Verificar que el webhook viene de Shopify
-    const hmac = req.headers['x-shopify-hmac-sha256'];
-    const topic = req.headers['x-shopify-topic'];
+  // Verificar firma HMAC para seguridad (evita requests falsos)
+  const hmacHeader = req.headers['x-shopify-hmac-sha256'];
+  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+  if (secret && hmacHeader) {
     const body = JSON.stringify(req.body);
-
-    if (process.env.SHOPIFY_CLIENT_SECRET && hmac) {
-      const hash = crypto
-        .createHmac('sha256', process.env.SHOPIFY_CLIENT_SECRET)
-        .update(body, 'utf8')
-        .digest('base64');
-      if (hash !== hmac) {
-        console.warn('⚠️ Webhook Shopify con firma inválida');
-        return;
-      }
+    const digest = crypto.createHmac('sha256', secret).update(body).digest('base64');
+    if (digest !== hmacHeader) {
+      console.warn('⚠️ Webhook Shopify con firma inválida — ignorado');
+      return;
     }
+  }
 
-    console.log('📦 Shopify webhook recibido:', topic);
+  const topic = req.headers['x-shopify-topic'];
+  console.log('Shopify webhook:', topic);
 
+  try {
     if (topic === 'orders/paid' || topic === 'orders/create') {
-      await handleOrder(req.body);
+      await handleOrderPaid(req.body);
     }
-
   } catch (err) {
     console.error('Error procesando webhook Shopify:', err.message);
   }
 };
 
-async function handleOrder(order) {
+async function handleOrderPaid(order) {
   const supabase = getSupabase();
+  const lineItems = order.line_items || [];
 
-  // Solo procesar órdenes pagadas
-  if (order.financial_status !== 'paid' && order.financial_status !== 'partially_paid') {
-    console.log(`Orden ${order.id} ignorada — estado: ${order.financial_status}`);
-    return;
-  }
-
-  for (const item of order.line_items) {
+  for (const item of lineItems) {
     const sku = item.sku;
+    const cantidad = item.quantity;
+
     if (!sku) {
-      console.log(`Item sin SKU: ${item.title} — omitido`);
+      console.log(`⚠️ Item sin SKU: ${item.title}`);
       continue;
     }
 
     // Buscar producto por SKU
-    const { data: producto } = await supabase
+    const { data: producto, error } = await supabase
       .from('productos')
       .select('*')
       .eq('sku', sku)
       .single();
 
-    if (!producto) {
-      console.log(`Producto SKU ${sku} no encontrado en DB — omitido`);
+    if (error || !producto) {
+      console.log(`⚠️ SKU no encontrado en CRM: ${sku}`);
       continue;
     }
 
-    const cantidad = item.quantity;
-    const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+    // Descontar stock
+    const nuevoStockDep     = Math.max(0, producto.stock_dep - cantidad);
+    const nuevoStockShopify = Math.max(0, (producto.stock_shopify || 0) - cantidad);
 
-    // Actualizar stock
     await supabase.from('productos').update({
-      stock_dep: nuevoStockDep,
-      updated_at: new Date().toISOString(),
+      stock_dep:      nuevoStockDep,
+      stock_shopify:  nuevoStockShopify,
+      updated_at:     new Date().toISOString(),
     }).eq('sku', sku);
 
-    // Registrar venta (evitar duplicados)
+    // Registrar la venta en la tabla ventas
     const ventaId = `V_SHOP_${order.id}_${item.id}`;
     const { data: ventaExistente } = await supabase
       .from('ventas')
@@ -84,27 +79,26 @@ async function handleOrder(order) {
       .single();
 
     if (!ventaExistente) {
-      const precioUnit = parseFloat(item.price);
-      const total = precioUnit * cantidad;
-
       await supabase.from('ventas').insert({
-        id: ventaId,
-        canal: 'shopify',
-        fecha: order.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli: String(order.order_number || order.id),
-        comprador: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim() || order.email || '',
-        sku,
-        producto: item.title,
+        id:          ventaId,
+        canal:       'shopify',
+        fecha:       order.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        orden_meli:  String(order.order_number),
+        comprador:   order.customer
+                       ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
+                       : order.email || '',
+        sku:         producto.sku,
+        producto:    producto.nombre,
         cantidad,
-        precio_unit: precioUnit,
-        comision: 0,
-        total,
-        estado: 'pagada',
-        genera_envio: order.requires_shipping || false,
-        notas: `Shopify orden #${order.order_number}`,
+        precio_unit: parseFloat(item.price),
+        comision:    0,
+        total:       parseFloat(item.price) * cantidad,
+        estado:      'pagada',
+        genera_envio: true,
+        notas:       `Shopify orden #${order.order_number}`,
       });
 
-      console.log(`✅ Venta Shopify registrada: orden ${order.order_number}, ${item.title} x${cantidad}`);
+      console.log(`✅ Venta Shopify registrada: orden #${order.order_number} | ${producto.nombre} x${cantidad}`);
     }
   }
 }

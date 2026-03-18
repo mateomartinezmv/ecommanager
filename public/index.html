@@ -154,7 +154,6 @@
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
 
-
   /* TOGGLE */
   .toggle-wrap { display: flex; align-items: center; gap: 8px; }
   .toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
@@ -325,25 +324,12 @@
     <div class="content">
       <div class="cards-grid" id="transportistas-deudas"></div>
       <div class="table-wrap">
-        <div class="table-header">
-          <span class="table-title">📋 Historial de pagos</span>
-        </div>
+        <div class="table-header"><span class="table-title">📋 Historial de pagos</span></div>
         <table>
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Transportista</th>
-              <th>Monto</th>
-              <th>Notas</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Fecha</th><th>Transportista</th><th>Monto</th><th>Notas</th><th>Acciones</th></tr></thead>
           <tbody id="transportistas-pagos-tbody"></tbody>
         </table>
-        <div id="transportistas-empty" class="empty-state" style="display:none">
-          <div class="empty-icon">💳</div>
-          <p>No hay pagos registrados aún.</p>
-        </div>
+        <div id="transportistas-empty" class="empty-state" style="display:none"><div class="empty-icon">💳</div><p>No hay pagos registrados aún.</p></div>
       </div>
     </div>
   </div>
@@ -453,27 +439,12 @@
     <input type="hidden" id="ev-id">
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Fecha</label><input type="date" id="ev-fecha"></div>
-      <div class="form-group"><label class="form-label">Estado</label>
-        <select id="ev-estado">
-          <option value="pagada">Pagada</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="cancelada">Cancelada</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Estado</label><select id="ev-estado"><option value="pagada">Pagada</option><option value="pendiente">Pendiente</option><option value="cancelada">Cancelada</option></select></div>
       <div class="form-group"><label class="form-label">Comprador / Cliente</label><input type="text" id="ev-comprador" placeholder="Nombre"></div>
       <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1"></div>
       <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01"></div>
       <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01"></div>
-      <div class="form-group"><label class="form-label">Método de pago</label>
-        <select id="ev-metodo">
-          <option value="">—</option>
-          <option value="efectivo">Efectivo</option>
-          <option value="debito">Débito</option>
-          <option value="credito">Crédito</option>
-          <option value="transferencia">Transferencia</option>
-          <option value="qr">QR / Billetera</option>
-        </select>
-      </div>
+      <div class="form-group"><label class="form-label">Método de pago</label><select id="ev-metodo"><option value="">—</option><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="ev-notas" rows="2"></textarea></div>
     </div>
     <div class="modal-actions">
@@ -565,8 +536,7 @@
   <div class="modal" style="max-width:420px">
     <div class="modal-title">💳 Registrar Pago</div>
     <div class="form-grid" style="grid-template-columns:1fr">
-      <div class="form-group">
-        <label class="form-label">Transportista</label>
+      <div class="form-group"><label class="form-label">Transportista</label>
         <select id="pag-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
@@ -578,18 +548,9 @@
           <option value="otro">Otro</option>
         </select>
       </div>
-      <div class="form-group">
-        <label class="form-label">Monto pagado *</label>
-        <input type="number" id="pag-monto" placeholder="0.00" step="0.01" min="0">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Fecha</label>
-        <input type="date" id="pag-fecha">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Notas</label>
-        <input type="text" id="pag-notas" placeholder="Ej: Liquidación semana 1 marzo">
-      </div>
+      <div class="form-group"><label class="form-label">Monto pagado *</label><input type="number" id="pag-monto" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Fecha</label><input type="date" id="pag-fecha"></div>
+      <div class="form-group"><label class="form-label">Notas</label><input type="text" id="pag-notas" placeholder="Ej: Liquidación semana 1 marzo"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-pago-transportista')">Cancelar</button>
@@ -803,13 +764,9 @@ async function saveAjuste() {
   if (!p) return;
   try {
     await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli, stockShopify });
-    // Si tiene Shopify ID, sincronizar automáticamente solo ese producto
     if (p.shopifyId) {
-      try {
-        await api('POST', '/shopify/sync-stock', { sku });
-      } catch(e) {
-        console.warn('Sync Shopify falló (no crítico):', e.message);
-      }
+      try { await api('POST', '/shopify/sync-stock', { sku }); }
+      catch(e) { console.warn('Sync Shopify falló (no crítico):', e.message); }
     }
     await loadAll(); closeModal('modal-ajuste-stock'); renderStock();
   } catch(e) { alert('Error ajustando stock: ' + e.message); }
@@ -876,23 +833,10 @@ async function guardarEdicionVenta() {
   const cantidad = parseInt(document.getElementById('ev-cantidad').value) || 1;
   const precioUnit = parseFloat(document.getElementById('ev-precio').value) || 0;
   const comision = parseFloat(document.getElementById('ev-comision').value) || 0;
-  const updates = {
-    fecha: document.getElementById('ev-fecha').value,
-    estado: document.getElementById('ev-estado').value,
-    comprador: v.canal === 'meli' ? document.getElementById('ev-comprador').value.trim() : null,
-    cliente: v.canal !== 'meli' ? document.getElementById('ev-comprador').value.trim() : null,
-    cantidad,
-    precioUnit,
-    comision,
-    total: precioUnit * cantidad,
-    metodoPago: document.getElementById('ev-metodo').value || null,
-    notas: document.getElementById('ev-notas').value.trim(),
-  };
+  const updates = { fecha: document.getElementById('ev-fecha').value, estado: document.getElementById('ev-estado').value, comprador: v.canal === 'meli' ? document.getElementById('ev-comprador').value.trim() : null, cliente: v.canal !== 'meli' ? document.getElementById('ev-comprador').value.trim() : null, cantidad, precioUnit, comision, total: precioUnit * cantidad, metodoPago: document.getElementById('ev-metodo').value || null, notas: document.getElementById('ev-notas').value.trim() };
   try {
     await api('PUT', `/ventas?id=${id}`, updates);
-    await loadAll();
-    closeModal('modal-editar-venta');
-    renderVentas();
+    await loadAll(); closeModal('modal-editar-venta'); renderVentas();
   } catch(e) { alert('Error editando venta: ' + e.message); }
 }
 
@@ -915,25 +859,14 @@ async function cambiarEstadoVenta(id, estado) {
 // ENVÍOS
 // =====================
 async function saveEnvio() {
-  const envio = {
-    id: 'E' + Date.now(),
-    ventaId: pendingEnvioVentaId || null,
-    comprador: document.getElementById('env-comprador').value.trim(),
-    transportista: document.getElementById('env-transportista').value,
-    tracking: document.getElementById('env-tracking').value.trim(),
-    fechaDespacho: document.getElementById('env-fecha').value,
-    estado: document.getElementById('env-estado').value,
-    direccion: document.getElementById('env-direccion').value.trim(),
-    costo: parseFloat(document.getElementById('env-costo').value) || 0,
-  };
+  const envio = { id: 'E' + Date.now(), ventaId: pendingEnvioVentaId || null, comprador: document.getElementById('env-comprador').value.trim(), transportista: document.getElementById('env-transportista').value, tracking: document.getElementById('env-tracking').value.trim(), fechaDespacho: document.getElementById('env-fecha').value, estado: document.getElementById('env-estado').value, direccion: document.getElementById('env-direccion').value.trim(), costo: parseFloat(document.getElementById('env-costo').value) || 0 };
   if (pendingEnvioVentaId) {
     const v = db.ventas.find(x => x.id === pendingEnvioVentaId);
     if (v) { envio.orden = v.ordenMeli || v.id; envio.producto = v.producto; }
   }
   try {
     await api('POST', '/envios', envio);
-    await loadAll();
-    pendingEnvioVentaId = null;
+    await loadAll(); pendingEnvioVentaId = null;
     closeModal('modal-envio'); renderEnvios();
   } catch(e) { alert('Error guardando envío: ' + e.message); }
 }
@@ -969,20 +902,10 @@ function abrirEdicionEnvio(id) {
 
 async function guardarEdicionEnvio() {
   const id = document.getElementById('ee-id').value;
-  const updates = {
-    estado: document.getElementById('ee-estado').value,
-    tracking: document.getElementById('ee-tracking').value.trim(),
-    costo: parseFloat(document.getElementById('ee-costo').value) || 0,
-    transportista: document.getElementById('ee-transportista').value,
-    comprador: document.getElementById('ee-comprador').value.trim(),
-    fechaDespacho: document.getElementById('ee-fecha').value,
-    direccion: document.getElementById('ee-direccion').value.trim(),
-  };
+  const updates = { estado: document.getElementById('ee-estado').value, tracking: document.getElementById('ee-tracking').value.trim(), costo: parseFloat(document.getElementById('ee-costo').value) || 0, transportista: document.getElementById('ee-transportista').value, comprador: document.getElementById('ee-comprador').value.trim(), fechaDespacho: document.getElementById('ee-fecha').value, direccion: document.getElementById('ee-direccion').value.trim() };
   try {
     await api('PUT', `/envios?id=${id}`, updates);
-    await loadAll();
-    closeModal('modal-editar-envio');
-    renderEnvios();
+    await loadAll(); closeModal('modal-editar-envio'); renderEnvios();
   } catch(e) { alert('Error editando envío: ' + e.message); }
 }
 
@@ -997,16 +920,10 @@ async function deleteEnvio(id) {
 // =====================
 function renderDashboard() {
   const now = new Date();
-  const ventasMes = db.ventas.filter(v => {
-    const d = new Date(v.fecha);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
+  const ventasMes = db.ventas.filter(v => { const d = new Date(v.fecha); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
   const ingresosMes = ventasMes.reduce((a,v) => a + v.total, 0);
   const enviosPendientes = db.envios.filter(e => e.estado === 'pendiente' || e.estado === 'en_camino').length;
-  const costoEnviosMes = db.envios.filter(e => {
-    const d = new Date(e.creado);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).reduce((a,e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
+  const costoEnviosMes = db.envios.filter(e => { const d = new Date(e.creado); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); }).reduce((a,e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
 
   document.getElementById('dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${db.productos.length}</div><div class="stat-label">Productos en stock</div></div>
@@ -1061,17 +978,15 @@ function renderStock() {
   }).join('');
 }
 
-// =====================
-// RENDER: VENTAS
-// =====================
 function switchStockTab(tab) {
   stockTabFilter = tab;
-  document.querySelectorAll('#page-stock .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['all','nuevo','usado'][i] === tab);
-  });
+  document.querySelectorAll('#page-stock .tab').forEach((t,i) => { t.classList.toggle('active', ['all','nuevo','usado'][i] === tab); });
   renderStock();
 }
 
+// =====================
+// RENDER: VENTAS
+// =====================
 function switchVentasTab(tab) {
   ventasTabFilter = tab;
   document.querySelectorAll('#page-ventas .tab').forEach((t,i) => { t.classList.toggle('active', ['all','meli','mostrador','shopify'][i] === tab); });
@@ -1121,8 +1036,7 @@ async function toggleColecta(checkbox) {
   if (!e) return;
   try {
     await api('PUT', `/envios?id=${id}`, { estado: e.estado, tracking: e.tracking, colecta });
-    await loadAll();
-    renderEnvios();
+    await loadAll(); renderEnvios();
   } catch(err) { console.error('Error toggling colecta:', err); }
 }
 
@@ -1145,10 +1059,7 @@ function renderEnvios() {
       <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
       <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
         <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
-          <span class="toggle">
-            <input type="checkbox" ${e.colecta ? 'checked' : ''} data-id="${e.id}" onchange="toggleColecta(this)">
-            <span class="toggle-slider"></span>
-          </span>
+          <span class="toggle"><input type="checkbox" ${e.colecta ? 'checked' : ''} data-id="${e.id}" onchange="toggleColecta(this)"><span class="toggle-slider"></span></span>
           <span style="font-size:11px;color:${e.colecta ? 'var(--yellow)' : 'var(--text-muted)'}">$75</span>
         </label>` : '—'}
       </td>
@@ -1259,45 +1170,29 @@ function loadImport(e) {
   reader.readAsText(file);
 }
 
-
 // =====================
 // TRANSPORTISTAS
 // =====================
-const NOMBRES_TRANSPORTISTAS = {
-  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani',
-  oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos',
-  dhl: 'DHL', otro: 'Otro'
-};
+const NOMBRES_TRANSPORTISTAS = { enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani', oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos', dhl: 'DHL', otro: 'Otro' };
 
 async function renderTransportistas() {
   try {
     const data = await api('GET', '/transportistas');
-
     const deudas = data.deudas || {};
     const transportistasConDeuda = Object.entries(deudas).filter(([,v]) => v > 0);
-
     if (transportistasConDeuda.length === 0) {
-      document.getElementById('transportistas-deudas').innerHTML =
-        '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">✅ Sin deudas pendientes con transportistas</div>';
+      document.getElementById('transportistas-deudas').innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">✅ Sin deudas pendientes con transportistas</div>';
     } else {
       document.getElementById('transportistas-deudas').innerHTML = transportistasConDeuda.map(([t, monto]) => `
         <div class="stat-card yellow">
           <div class="stat-icon">🚚</div>
           <div class="stat-value">${fmt(monto)}</div>
           <div class="stat-label">Deuda con ${NOMBRES_TRANSPORTISTAS[t] || t}</div>
-          <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" data-t="${t}" onclick="document.getElementById('pag-transportista').value=this.dataset.t;openModal('modal-pago-transportista')">
-            Registrar pago
-          </button>
-        </div>
-      `).join('');
+          <button class="btn btn-primary btn-sm" style="margin-top:10px;width:100%" data-t="${t}" onclick="document.getElementById('pag-transportista').value=this.dataset.t;openModal('modal-pago-transportista')">Registrar pago</button>
+        </div>`).join('');
     }
-
     const pagos = data.pagos || [];
-    if (pagos.length === 0) {
-      document.getElementById('transportistas-pagos-tbody').innerHTML = '';
-      document.getElementById('transportistas-empty').style.display = 'block';
-      return;
-    }
+    if (pagos.length === 0) { document.getElementById('transportistas-pagos-tbody').innerHTML = ''; document.getElementById('transportistas-empty').style.display = 'block'; return; }
     document.getElementById('transportistas-empty').style.display = 'none';
     document.getElementById('transportistas-pagos-tbody').innerHTML = pagos.map(p => `
       <tr>
@@ -1306,9 +1201,7 @@ async function renderTransportistas() {
         <td><span style="color:var(--green);font-weight:600">${fmt(p.monto)}</span></td>
         <td style="color:var(--text-muted);font-size:12px">${p.notas || '—'}</td>
         <td><button class="btn btn-danger btn-sm" data-id="${p.id}" onclick="eliminarPagoTransportista(this.dataset.id)">🗑️</button></td>
-      </tr>
-    `).join('');
-
+      </tr>`).join('');
   } catch(e) {
     console.error('Error cargando transportistas:', e);
     document.getElementById('transportistas-deudas').innerHTML = '<div style="color:var(--red);padding:20px">Error cargando datos: ' + e.message + '</div>';
@@ -1320,9 +1213,7 @@ async function registrarPagoTransportista() {
   const monto = parseFloat(document.getElementById('pag-monto').value);
   const fecha = document.getElementById('pag-fecha').value;
   const notas = document.getElementById('pag-notas').value.trim();
-
   if (!monto || monto <= 0) { alert('Ingresá un monto válido.'); return; }
-
   try {
     const result = await api('POST', '/transportistas', { transportista, monto, fecha, notas });
     closeModal('modal-pago-transportista');
@@ -1333,12 +1224,154 @@ async function registrarPagoTransportista() {
 
 async function eliminarPagoTransportista(id) {
   if (!confirm('¿Eliminar este pago?')) return;
-  try {
-    await api('DELETE', '/transportistas?id=' + id);
-    renderTransportistas();
-  } catch(e) { alert('Error: ' + e.message); }
+  try { await api('DELETE', '/transportistas?id=' + id); renderTransportistas(); }
+  catch(e) { alert('Error: ' + e.message); }
 }
 
+// =====================
+// IMPORTAR CSV
+// =====================
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+async function handleCSVImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    event.target.value = '';
+    try {
+      const text = ev.target.result;
+      // Limpiar BOM si existe
+      const cleanText = text.replace(/^\uFEFF/, '');
+      const lines = cleanText.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+      if (lines.length < 2) { alert('El archivo CSV está vacío.'); return; }
+
+      const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
+
+      if (!headers.includes('sku') || !headers.includes('nombre') || !headers.includes('precio')) {
+        alert('❌ El CSV no tiene el formato correcto.\n\nColumnas requeridas: sku, nombre, precio\n\nDescargá la plantilla con el botón "Plantilla CSV".');
+        return;
+      }
+
+      const productos = [];
+      const errores = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.every(v => !v.trim())) continue;
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = (values[idx] || '').trim(); });
+        if (!row.sku || !row.nombre || !row.precio) {
+          errores.push(`Fila ${i + 1}: faltan campos (sku, nombre o precio)`);
+          continue;
+        }
+        productos.push({
+          sku:       row.sku,
+          nombre:    row.nombre,
+          categoria: row.categoria || '',
+          stockDep:  parseInt(row.stock_dep) || 0,
+          stockMeli: parseInt(row.stock_meli) || 0,
+          stockShopify: parseInt(row.stock_shopify) || 0,
+          costo:     parseFloat(row.costo) || 0,
+          precio:    parseFloat(row.precio) || 0,
+          alertaMin: parseInt(row.alerta_min) || 3,
+          meliId:    row.meli_id || '',
+          shopifyId: row.shopify_id || '',
+          tipo:      row.tipo || 'nuevo',
+          notas:     row.notas || '',
+        });
+      }
+
+      if (productos.length === 0) {
+        alert('❌ No se encontraron productos válidos.\n\n' + errores.slice(0,5).join('\n'));
+        return;
+      }
+
+      const msg = `¿Importar ${productos.length} producto(s)?${errores.length ? `\n\n⚠️ ${errores.length} filas ignoradas.` : ''}\n\nSi el SKU ya existe, se actualizará.`;
+      if (!confirm(msg)) return;
+
+      let importados = 0, actualizados = 0, fallidos = 0;
+
+      for (const prod of productos) {
+        try {
+          const existe = db.productos.find(p => p.sku === prod.sku);
+          if (existe) {
+            await api('PUT', `/productos?sku=${prod.sku}`, prod);
+            actualizados++;
+          } else {
+            await api('POST', '/productos', prod);
+            importados++;
+          }
+        } catch(e) {
+          console.error(`Error importando ${prod.sku}:`, e.message);
+          fallidos++;
+        }
+      }
+
+      await loadAll();
+      renderStock();
+      alert(`✅ Importación completada\n\n🆕 Nuevos: ${importados}\n✏️ Actualizados: ${actualizados}\n❌ Fallidos: ${fallidos}`);
+
+    } catch(err) {
+      alert('❌ Error procesando el CSV: ' + err.message);
+    }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+
+// =====================
+// PLANTILLA CSV
+// =====================
+function descargarTemplateCSV() {
+  const headers = ['sku','nombre','categoria','stock_dep','stock_meli','stock_shopify','costo','precio','alerta_min','meli_id','shopify_id','tipo','notas'];
+  const ejemplo = ['EJEMPLO-001','Nombre del producto','Categoría','10','5','5','500.00','990.00','3','','','nuevo','Notas opcionales'];
+  const csv = '\uFEFF' + [headers.join(','), ejemplo.join(',')].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'plantilla_productos_ecommanager.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// =====================
+// SYNC SHOPIFY
+// =====================
+async function syncShopifyStock() {
+  const btn = document.getElementById('btn-sync-shopify');
+  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  try {
+    const result = await api('POST', '/shopify/sync-stock');
+    await loadAll(); renderStock();
+    alert(`✅ Shopify sincronizado\n\nProductos actualizados: ${result.actualizados || 0}\nErrores: ${result.errores || 0}`);
+  } catch(e) {
+    alert('❌ Error sincronizando Shopify: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🛍️ Sincronizar Shopify';
+  }
+}
+
+// =====================
+// INIT
+// =====================
 async function init() { await loadAll(); renderDashboard(); }
 init();
 </script>

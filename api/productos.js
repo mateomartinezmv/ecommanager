@@ -55,20 +55,22 @@ module.exports = async (req, res) => {
         .eq('sku', sku)
         .single();
 
-      const { data, error } = await supabase.from('productos').update({
-        sku: p.sku,  // permite cambiar el SKU
-        nombre: p.nombre, categoria: p.categoria,
-        tipo: p.tipo || 'nuevo',
-        stock_dep: p.stockDep,
-        stock_meli: p.stockMeli,
-        stock_shopify: p.stockShopify,
-        costo: p.costo, precio: p.precio,
-        alerta_min: p.alertaMin,
-        meli_id: p.meliId || null,
-        shopify_id: p.shopifyId || null,
-        notas: p.notas,
-      }).eq('sku', sku).select().single();
-      if (error) throw error;
+// Construir objeto de update solo con campos presentes
+const updateFields = {};
+if (p.nombre !== undefined)    updateFields.nombre = p.nombre;
+if (p.categoria !== undefined) updateFields.categoria = p.categoria;
+if (p.stockDep !== undefined)  updateFields.stock_dep = p.stockDep;
+if (p.stockMeli !== undefined) updateFields.stock_meli = p.stockMeli;
+if (p.costo !== undefined)     updateFields.costo = p.costo;
+if (p.precio !== undefined)    updateFields.precio = p.precio;
+if (p.alertaMin !== undefined) updateFields.alerta_min = p.alertaMin;
+if (p.meliId !== undefined)    updateFields.meli_id = p.meliId;
+if (p.notas !== undefined)     updateFields.notas = p.notas;
+// shopify_id, shopify_handle, stock_shopify NUNCA se pisan desde este endpoint
+updateFields.updated_at = new Date().toISOString();
+
+const { data, error } = await supabase.from('productos').update(updateFields)
+  .eq('sku', sku).select().single();
 
       const meliId = p.meliId || anterior?.meli_id;
       const shopifyId = p.shopifyId || anterior?.shopify_id;

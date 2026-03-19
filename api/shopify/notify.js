@@ -1,104 +1,92 @@
 // api/shopify/notify.js
-// POST /api/shopify/notify → recibe webhooks de Shopify (orders/paid)
-// Configurar en Shopify Admin → Settings → Notifications → Webhooks
-// Evento: "Order payment" → URL: https://TU-DOMINIO.vercel.app/api/shopify/notify
+// POST /api/shopify/notify → recibe webhook orders/paid de Shopify
 
 const { getSupabase } = require('../_supabase');
-const crypto = require('crypto');
+const { getMeliToken } = require('../_meliToken');
 
 module.exports = async (req, res) => {
-  // Shopify requiere respuesta 200 inmediata
+  // Responder 200 rápido siempre
   res.status(200).json({ ok: true });
   if (req.method !== 'POST') return;
 
-  // Verificar firma HMAC para seguridad (evita requests falsos)
-  const hmacHeader = req.headers['x-shopify-hmac-sha256'];
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  if (secret && hmacHeader) {
-    const body = JSON.stringify(req.body);
-    const digest = crypto.createHmac('sha256', secret).update(body).digest('base64');
-    if (digest !== hmacHeader) {
-      console.warn('⚠️ Webhook Shopify con firma inválida — ignorado');
-      return;
-    }
-  }
-
-  const topic = req.headers['x-shopify-topic'];
-  console.log('Shopify webhook:', topic);
-
   try {
-    if (topic === 'orders/paid' || topic === 'orders/create') {
-      await handleOrderPaid(req.body);
+    const order = req.body;
+    if (!order || !order.line_items) return;
+
+    const supabase = getSupabase();
+
+    for (const item of order.line_items) {
+      const variantId = String(item.variant_id);
+      const cantidad = item.quantity;
+
+      // Buscar producto por shopify_id
+      const { data: producto } = await supabase
+        .from('productos')
+        .select('*')
+        .eq('shopify_id', variantId)
+        .single();
+
+      if (!producto) {
+        console.log(`⚠️ Variante Shopify ${variantId} no encontrada en CRM`);
+        continue;
+      }
+
+      // Nuevo stock
+      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
+
+      // Actualizar CRM
+      await supabase.from('productos').update({
+        stock_dep: nuevoStockDep,
+        stock_meli: nuevoStockMeli,
+        updated_at: new Date().toISOString(),
+      }).eq('sku', producto.sku);
+
+      // Registrar venta (evitar duplicados por order_id + variant_id)
+      const ventaId = `V_SHOP_${order.id}_${variantId}`;
+      const { data: ventaExistente } = await supabase
+        .from('ventas')
+        .select('id')
+        .eq('id', ventaId)
+        .single();
+
+      if (!ventaExistente) {
+        await supabase.from('ventas').insert({
+          id: ventaId,
+          canal: 'shopify',
+          fecha: order.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+          orden_meli: null,
+          comprador: `${order.customer?.first_name || ''} ${order.customer?.last_name || ''}`.trim() || order.email || '',
+          sku: producto.sku,
+          producto: producto.nombre,
+          cantidad,
+          precio_unit: parseFloat(item.price) || 0,
+          comision: 0,
+          total: parseFloat(item.price) * cantidad,
+          estado: 'pagada',
+          genera_envio: true,
+        });
+        console.log(`✅ Venta Shopify registrada: orden ${order.id}, ${producto.nombre} x${cantidad}`);
+      }
+
+      // ── Sync → MELI ──
+      if (producto.meli_id) {
+        try {
+          const token = await getMeliToken();
+          const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ available_quantity: nuevoStockMeli }),
+          });
+          const meliData = await meliRes.json();
+          if (meliData.error) console.warn(`⚠️ MELI sync error: ${meliData.message}`);
+          else console.log(`✅ MELI sync: ${producto.meli_id} → ${nuevoStockMeli}`);
+        } catch (meliErr) {
+          console.error('❌ Error sync MELI tras venta Shopify:', meliErr.message);
+        }
+      }
     }
   } catch (err) {
-    console.error('Error procesando webhook Shopify:', err.message);
+    console.error('Error en /api/shopify/notify:', err.message);
   }
 };
-
-async function handleOrderPaid(order) {
-  const supabase = getSupabase();
-  const lineItems = order.line_items || [];
-
-  for (const item of lineItems) {
-    const sku = item.sku;
-    const cantidad = item.quantity;
-
-    if (!sku) {
-      console.log(`⚠️ Item sin SKU: ${item.title}`);
-      continue;
-    }
-
-    // Buscar producto por SKU
-    const { data: producto, error } = await supabase
-      .from('productos')
-      .select('*')
-      .eq('sku', sku)
-      .single();
-
-    if (error || !producto) {
-      console.log(`⚠️ SKU no encontrado en CRM: ${sku}`);
-      continue;
-    }
-
-    // Descontar stock
-    const nuevoStockDep     = Math.max(0, producto.stock_dep - cantidad);
-    const nuevoStockShopify = Math.max(0, (producto.stock_shopify || 0) - cantidad);
-
-    await supabase.from('productos').update({
-      stock_dep:      nuevoStockDep,
-      stock_shopify:  nuevoStockShopify,
-      updated_at:     new Date().toISOString(),
-    }).eq('sku', sku);
-
-    // Registrar la venta en la tabla ventas
-    const ventaId = `V_SHOP_${order.id}_${item.id}`;
-    const { data: ventaExistente } = await supabase
-      .from('ventas')
-      .select('id')
-      .eq('id', ventaId)
-      .single();
-
-    if (!ventaExistente) {
-      await supabase.from('ventas').insert({
-        id:          ventaId,
-        canal:       'shopify',
-        fecha:       order.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli:  String(order.order_number),
-        comprador:   order.customer
-                       ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
-                       : order.email || '',
-        sku:         producto.sku,
-        producto:    producto.nombre,
-        cantidad,
-        precio_unit: parseFloat(item.price),
-        comision:    0,
-        total:       parseFloat(item.price) * cantidad,
-        estado:      'pagada',
-        genera_envio: true,
-        notas:       `Shopify orden #${order.order_number}`,
-      });
-
-      console.log(`✅ Venta Shopify registrada: orden #${order.order_number} | ${producto.nombre} x${cantidad}`);
-    }
-  }
-}

@@ -1513,6 +1513,7 @@ function renderReportesInventario(ventasFiltradas) {
           <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(d.costo/maxCat*100).toFixed(1)}%;background:linear-gradient(90deg,#0e7490,#06b6d4)">${d.items} prods · ${d.stock} uds</div></div>
           <span class="chart-bar-val">${fmt(d.costo)}</span>
         </div>`).join('')}</div>`;
+}
 
 // =====================
 // HELPERS

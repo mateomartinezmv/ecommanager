@@ -6,10 +6,12 @@
     "api/transportistas.js": { "maxDuration": 10 },
     "api/meli/notify.js": { "maxDuration": 10 },
     "api/meli/importar.js": { "maxDuration": 30 },
-    "api/meli/auth.js": { "maxDuration": 10 },
-    "api/meli/callback.js": { "maxDuration": 10 },
-    "api/meli/stock.js": { "maxDuration": 10 },
-    "api/shopify/notify.js": { "maxDuration": 10 }
+    "api/meli/reprocesar.js": { "maxDuration": 30 },
+    "api/meli/status.js": { "maxDuration": 10 },
+    "api/shopify/notify.js": { "maxDuration": 10 },
+    "api/shopify/sync-stock.js": { "maxDuration": 30 },
+    "api/shopify/productos.js": { "maxDuration": 10 },
+    "api/shopify/setup-webhook.js": { "maxDuration": 10 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },

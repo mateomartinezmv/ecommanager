@@ -547,11 +547,7 @@
         <select id="env-transportista" onchange="onTransportistaChange()">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">Mercado Envíos</option>
-          <option value="dhl">DHL</option>
           <option value="dac">DAC (a cargo del comprador)</option>
           <option value="ues">UES (envío a mi cargo)</option>
           <option value="otro">Otro</option>
@@ -559,7 +555,6 @@
       </div>
       <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="env-tracking" placeholder="Código de seguimiento"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="env-fecha"></div>
-      <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Estado</label>
         <select id="env-estado">
           <option value="pendiente">Pendiente</option>
@@ -571,7 +566,7 @@
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="env-direccion" placeholder="Calle, número, ciudad"></div>
       <div class="form-group form-full" id="env-ues-costo-wrap" style="display:none">
         <label class="form-label">💸 Costo del envío UES (a tu cargo)</label>
-        <input type="number" id="env-ues-costo" placeholder="0.00" step="0.01" min="0">
+        <input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0">
       </div>
     </div>
     <div class="modal-actions">
@@ -592,11 +587,9 @@
         <select id="ee-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">Mercado Envíos</option>
-          <option value="dhl">DHL</option>
+          <option value="dac">DAC (a cargo del comprador)</option>
+          <option value="ues">UES (envío a mi cargo)</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -629,11 +622,8 @@
         <select id="pag-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">MELI Envíos</option>
-          <option value="dhl">DHL</option>
+          <option value="ues">UES</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -792,7 +782,7 @@ function onTransportistaChange() {
   const val = document.getElementById('env-transportista').value;
   const wrap = document.getElementById('env-ues-costo-wrap');
   if (wrap) { wrap.style.display = val === 'ues' ? 'block' : 'none'; }
-  if (val !== 'ues') { const inp = document.getElementById('env-ues-costo'); if(inp) inp.value = ''; }
+  if (val !== 'ues') { const inp = document.getElementById('env-costo'); if(inp) inp.value = ''; }
 }
 
 document.querySelectorAll('.modal-overlay').forEach(m => {
@@ -1162,7 +1152,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', mercado_envios:'MELI Envíos', dac:'DAC (comprador)', ues:'UES (mi cargo)', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
@@ -1562,7 +1552,7 @@ function loadImport(e) {
 // =====================
 // TRANSPORTISTAS
 // =====================
-const NOMBRES_TRANSPORTISTAS = { enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani', oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos', dhl: 'DHL', otro: 'Otro' };
+const NOMBRES_TRANSPORTISTAS = { enviosuy: 'EnviosUy', gestionpost: 'GestionPost', mercado_envios: 'MELI Envíos', dac: 'DAC (comprador)', ues: 'UES (mi cargo)', otro: 'Otro' };
 
 async function renderTransportistas() {
   try {

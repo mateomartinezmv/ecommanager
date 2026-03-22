@@ -133,11 +133,14 @@ async function procesarOrden(order: any, token: string, log: string[]) {
   }
 
   // Detectar tipo de envío
+  // Debug: loguear todo el objeto shipping para entender la estructura
+  log.push(`🔍 shipping completo: ${JSON.stringify(order.shipping || {})}`)
+
   const shippingTypeId = order.shipping?.shipping_option?.shipping_method_type || ''
-  const esML = order.shipping?.logistic_type === 'cross_docking' || shippingTypeId === 'ME'
-  const esFlex = order.shipping?.logistic_type === 'self_service_flex' || order.shipping?.logistic_type === 'xd_drop_off'
-  const tipoEnvio = esFlex ? 'flex' : esML ? 'mercado_envios' : 'otro'
-  log.push(`📬 Tipo de envío detectado: ${tipoEnvio} (logistic_type: ${order.shipping?.logistic_type || 'n/a'}`)
+  // tipoEnvio se determina después de consultar /shipments — usar mercado_envios como default
+  // El logistic_type real se obtiene en el bloque de shipments más abajo
+  const tipoEnvio = 'mercado_envios' // se sobreescribe abajo si es flex
+  log.push(`📬 shipping_id: ${order.shipping?.id || 'n/a'} — tipo se determina al consultar shipment`)
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -193,6 +196,29 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       nombreFinal = producto.nombre
     }
 
+    // Obtener shipment PRIMERO para tener logistic_type y dirección
+    let direccion: string | null = null
+    let logisticType: string = ''
+    try {
+      const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${order.shipping?.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const shipData = await shipRes.json()
+      logisticType = shipData?.logistic_type || shipData?.type || ''
+      log.push(`🔍 shipment logistic_type: ${logisticType}`)
+      if (shipData?.receiver_address) {
+        const addr = shipData.receiver_address
+        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ')
+      }
+    } catch (_) {}
+
+    const esFlex = logisticType === 'self_service_flex' || logisticType === 'xd_drop_off'
+    const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
+    const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
+    const costoEnvio = flexInfo?.costo || 0
+    const comision = calcularComision(precioUnit, cantidad, esFlex ? 'flex' : 'mercado_envios', flexInfo?.zona)
+    log.push(`💰 Comisión: $${comision} | Envío: ${transportisteFinal}`)
+
     // Registrar venta
     await supabase.from('ventas').insert({
       id: ventaId, canal: 'meli',
@@ -200,26 +226,12 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       orden_meli: String(order.id),
       comprador: order.buyer?.nickname || '',
       sku: skuFinal, producto: nombreFinal,
-      cantidad, precio_unit: precioUnit, comision: 0,
+      cantidad, precio_unit: precioUnit, comision,
       total: precioUnit * cantidad, estado: 'pagada',
       genera_envio: true, notas: 'Auto-registrada por sync MELI',
     })
     log.push(`✅ Venta registrada: ${ventaId} — ${nombreFinal}`)
 
-    // Obtener dirección y crear envío
-    let direccion: string | null = null
-    try {
-      const shipRes = await fetch(`https://api.mercadolibre.com/orders/${order.id}/shipments`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const shipData = await shipRes.json()
-      if (shipData?.receiver_address) {
-        const addr = shipData.receiver_address
-        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ')
-      }
-    } catch (_) {}
-
-    const flexInfo = direccion ? calcularCostoFlex(direccion) : null
     const envioId = `E_MELI_${order.id}_${meliItemId}`
     const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
 
@@ -229,12 +241,12 @@ async function procesarOrden(order: any, token: string, log: string[]) {
         orden: String(order.id),
         comprador: order.buyer?.nickname || '',
         producto: nombreFinal,
-        transportista: flexInfo?.recomendada === 'gestionpost' ? 'gestionpost' : 'enviosuy',
+        transportista: transportisteFinal,
         tracking: null, fecha_despacho: null, estado: 'pendiente',
         direccion: direccion || null,
-        costo: flexInfo?.costo || 0,
+        costo: costoEnvio,
       })
-      log.push(`✅ Envío creado: zona ${flexInfo?.zona || '?'} $${flexInfo?.costo || 0}`)
+      log.push(`✅ Envío creado: ${transportisteFinal} zona ${flexInfo?.zona || '?'} $${costoEnvio}`)
     }
   }
 }

@@ -92,7 +92,7 @@ module.exports = async (req, res) => {
 
     // Detectar tipo de envío
     const logisticType = order.shipping?.logistic_type || '';
-    const esFlex = logisticType === 'self_service_flex' || logisticType === 'xd_drop_off';
+    const esFlex = logisticType === 'self_service_flex';
     const tipoEnvio = esFlex ? 'flex' : 'mercado_envios';
     log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: ${logisticType})`);
 

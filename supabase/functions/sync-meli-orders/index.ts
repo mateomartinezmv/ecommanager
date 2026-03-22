@@ -212,7 +212,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       }
     } catch (_) {}
 
-    const esFlex = logisticType === 'self_service_flex' || logisticType === 'xd_drop_off'
+    const esFlex = logisticType === 'self_service_flex'
     const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
     const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
     const costoEnvio = flexInfo?.costo || 0

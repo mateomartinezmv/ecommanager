@@ -31,13 +31,8 @@ function detectarZona(dir) {
   return null;
 }
 function calcularComision(precioUnit, cantidad, tipoEnvio, zona) {
-  const base = precioUnit * cantidad * 0.15;
-  if (tipoEnvio === 'mercado_envios') return Math.round((base + 125) * 100) / 100;
-  if (tipoEnvio === 'flex') {
-    const bonif = zona && zona >= 8 ? 40 : 33.80;
-    return Math.round((base - bonif) * 100) / 100;
-  }
-  return Math.round(base * 100) / 100;
+  // Comisión = 15% del precio. El costo de envío se guarda separado en envios.costo
+  return Math.round(precioUnit * cantidad * 0.15 * 100) / 100;
 }
 
 module.exports = async (req, res) => {

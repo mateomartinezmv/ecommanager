@@ -199,6 +199,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     // Obtener shipment PRIMERO para tener logistic_type y dirección
     let direccion: string | null = null
     let logisticType: string = ''
+    let costoEnvioReal: number = 0
     try {
       const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${order.shipping?.id}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -206,6 +207,8 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       const shipData = await shipRes.json()
       logisticType = shipData?.logistic_type || shipData?.type || ''
       log.push(`🔍 shipment logistic_type: ${logisticType}`)
+      // Leer costo real del envío desde list_cost
+      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address
         direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ')
@@ -215,7 +218,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     const esFlex = logisticType === 'self_service_flex'
     const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
     const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
-    const costoEnvio = flexInfo?.costo || 0
+    const costoEnvio = costoEnvioReal > 0 ? costoEnvioReal : (flexInfo?.costo || 0)
     const comision = calcularComision(precioUnit, cantidad, esFlex ? 'flex' : 'mercado_envios', flexInfo?.zona)
     log.push(`💰 Comisión: $${comision} | Envío: ${transportisteFinal}`)
 

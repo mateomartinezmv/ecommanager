@@ -285,7 +285,16 @@ Deno.serve(async (req) => {
     log.push(`📦 Órdenes últimos 7 días: ${ordenes.length} (${ordersData1.results?.length || 0} pagadas + ${ordersData2.results?.length || 0} recientes deduplicadas)`)
 
     for (const order of ordenes) {
-      await procesarOrden(order, token, log)
+      // Obtener detalle completo de la orden para tener logistic_type
+      let orderDetalle = order
+      try {
+        const detRes = await fetch(`https://api.mercadolibre.com/orders/${order.id}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
+        const detData = await detRes.json()
+        if (!detData.error) orderDetalle = detData
+      } catch(_) {}
+      await procesarOrden(orderDetalle, token, log)
     }
 
     log.push('✅ Sync completado')

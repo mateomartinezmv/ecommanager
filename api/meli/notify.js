@@ -15,6 +15,17 @@ module.exports = async (req, res) => {
   try {
     if (topic === 'orders_v2' || topic === 'orders') {
       await handleOrder(resource);
+    } else if (topic === 'payments') {
+      // payments resource es /collections/PAYMENT_ID → buscar la orden asociada
+      const paymentId = resource.replace('/collections/', '').split('/')[0];
+      const token = await getMeliToken();
+      const payRes = await fetch(`https://api.mercadolibre.com/collections/${paymentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const pay = await payRes.json();
+      if (pay.collection?.order_id) {
+        await handleOrder(`/orders/${pay.collection.order_id}`);
+      }
     }
   } catch (err) {
     console.error('Error procesando notificación MELI:', err.message);

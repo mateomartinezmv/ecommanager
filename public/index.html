@@ -373,6 +373,13 @@
           <div style="padding:20px" id="chart-top-productos"></div>
         </div>
       </div>
+      <div class="table-wrap" style="margin-bottom:20px">
+        <div class="table-header">
+          <span class="table-title">📐 Márgenes por producto</span>
+          <span style="font-size:11px;color:var(--text-muted)">Verde ≥40% · Amarillo ≥20% · Rojo &lt;20% (solo costo de producto, sin comisiones ni envíos)</span>
+        </div>
+        <div id="reporte-margenes"></div>
+      </div>
     </div>
   </div>
 
@@ -1183,36 +1190,82 @@ function renderReportes() {
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
   const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
-  const costoTotal = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
-  const ganancia = totalIngresos - totalComisiones - costoTotal - totalCostoEnvios;
+  const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
+  const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
+  const ticketPromedio = ventasFiltradas.length > 0 ? totalIngresos / ventasFiltradas.length : 0;
+  const unidadesVendidas = ventasFiltradas.reduce((a,v) => a + v.cantidad, 0);
 
   document.getElementById('reporte-stats').innerHTML = `
     <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(totalIngresos)}</div><div class="stat-label">Ingresos totales</div></div>
     <div class="stat-card blue"><div class="stat-icon">📊</div><div class="stat-value">${ventasFiltradas.length}</div><div class="stat-label">Ventas realizadas</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${unidadesVendidas}</div><div class="stat-label">Unidades vendidas</div></div>
+    <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${fmt(ticketPromedio)}</div><div class="stat-label">Ticket promedio</div></div>
     <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalComisiones)}</div><div class="stat-label">Comisiones MELI</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">🏭</div><div class="stat-value">${fmt(costoProductos)}</div><div class="stat-label">Costo de productos</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
     <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(totalEnviosSinPagar)}</div><div class="stat-label">Envíos a pagar</div></div>
     <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia estimada</div></div>
+    <div class="${parseFloat(margenPct) >= 30 ? 'stat-card green' : parseFloat(margenPct) >= 15 ? 'stat-card yellow' : 'stat-card red'}"><div class="stat-icon">%</div><div class="stat-value">${margenPct}%</div><div class="stat-label">Margen neto</div></div>
   `;
 
   const meliIngresos = ventasMeli.reduce((a,v) => a+v.total,0);
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
   const shopIngresos = ventasShopify.reduce((a,v) => a+v.total,0);
   const maxCanal = Math.max(meliIngresos, mosIngresos, shopIngresos, 1);
+  const meliTicket = ventasMeli.length ? meliIngresos/ventasMeli.length : 0;
+  const mosTicket = ventasMostrador.length ? mosIngresos/ventasMostrador.length : 0;
+  const shopTicket = ventasShopify.length ? shopIngresos/ventasShopify.length : 0;
   document.getElementById('chart-canal').innerHTML = `
     <div class="chart-bar-wrap">
-      <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
-      <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
-      <div class="chart-bar-row"><span class="chart-bar-label">🛍️ Shopify</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(shopIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#166534,#22c55e)">${ventasShopify.length} ventas</div></div><span class="chart-bar-val">${fmt(shopIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas · ${fmt(meliTicket)} ticket</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas · ${fmt(mosTicket)} ticket</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🛍️ Shopify</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(shopIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#166534,#22c55e)">${ventasShopify.length} ventas · ${fmt(shopTicket)} ticket</div></div><span class="chart-bar-val">${fmt(shopIngresos)}</span></div>
     </div>`;
 
   const prodVentas = {};
-  ventasFiltradas.forEach(v => { if (!prodVentas[v.producto]) prodVentas[v.producto] = { total: 0, cant: 0 }; prodVentas[v.producto].total += v.total; prodVentas[v.producto].cant += v.cantidad; });
-  const topProds = Object.entries(prodVentas).sort((a,b) => b[1].total - a[1].total).slice(0,6);
-  const maxProd = topProds.length ? topProds[0][1].total : 1;
+  ventasFiltradas.forEach(v => {
+    if (!prodVentas[v.sku]) {
+      const p = db.productos.find(x => x.sku === v.sku);
+      prodVentas[v.sku] = { nombre: v.producto, total: 0, cant: 0, costo: p ? p.costo : 0 };
+    }
+    prodVentas[v.sku].total += v.total;
+    prodVentas[v.sku].cant += v.cantidad;
+  });
+  const topProds = Object.values(prodVentas).sort((a,b) => b.total - a.total).slice(0,6);
+  const maxProd = topProds.length ? topProds[0].total : 1;
   document.getElementById('chart-top-productos').innerHTML = topProds.length === 0
     ? '<div class="empty-state"><p>Sin datos en el período</p></div>'
-    : `<div class="chart-bar-wrap">${topProds.map(([nombre,data]) => `<div class="chart-bar-row"><span class="chart-bar-label" title="${nombre}">${nombre}</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(data.total/maxProd*100).toFixed(1)}%;background:linear-gradient(90deg,#5b21b6,#7c3aed)">${data.cant} uds</div></div><span class="chart-bar-val">${fmt(data.total)}</span></div>`).join('')}</div>`;
+    : `<div class="chart-bar-wrap">${topProds.map(d => `<div class="chart-bar-row"><span class="chart-bar-label" title="${d.nombre}">${d.nombre}</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(d.total/maxProd*100).toFixed(1)}%;background:linear-gradient(90deg,#5b21b6,#7c3aed)">${d.cant} uds</div></div><span class="chart-bar-val">${fmt(d.total)}</span></div>`).join('')}</div>`;
+
+  const margenContainer = document.getElementById('reporte-margenes');
+  if (margenContainer) {
+    const prodMargen = Object.values(prodVentas)
+      .map(d => {
+        const costoT = d.costo * d.cant;
+        const ganP = d.total - costoT;
+        const mg = d.total > 0 ? ((ganP / d.total) * 100).toFixed(1) : 0;
+        const ticket = d.cant > 0 ? d.total / d.cant : 0;
+        return { ...d, costoT, ganP, mg, ticket };
+      })
+      .sort((a,b) => b.ganP - a.ganP);
+    margenContainer.innerHTML = prodMargen.length === 0
+      ? '<div class="empty-state"><p>Sin datos</p></div>'
+      : `<table><thead><tr><th>Producto</th><th>Uds</th><th>Ingresos</th><th>Costo prod.</th><th>Ganancia</th><th>Margen</th><th>Ticket prom.</th></tr></thead><tbody>
+          ${prodMargen.map(d => {
+            const color = parseFloat(d.mg) >= 40 ? 'var(--green)' : parseFloat(d.mg) >= 20 ? 'var(--yellow)' : 'var(--red)';
+            return \`<tr>
+              <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="\${d.nombre}">\${d.nombre}</td>
+              <td>\${d.cant}</td>
+              <td>\${fmt(d.total)}</td>
+              <td style="color:var(--text-muted)">\${fmt(d.costoT)}</td>
+              <td style="color:var(--green);font-weight:600">\${fmt(d.ganP)}</td>
+              <td><span style="color:\${color};font-weight:700">\${d.mg}%</span></td>
+              <td style="font-family:'JetBrains Mono',monospace">\${fmt(d.ticket)}</td>
+            </tr>\`;
+          }).join('')}
+        </tbody></table>`;
+  }
 }
 
 // =====================

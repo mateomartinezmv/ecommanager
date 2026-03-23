@@ -86,32 +86,37 @@ module.exports = async (req, res) => {
     log.push(`Orden estado: ${order.status}, items: ${order.order_items?.length}`);
     if (order.status !== 'paid') return res.json({ ok: false, log, error: `Orden no pagada (estado: ${order.status})` });
 
-    // Detectar tipo de envío
-    const logisticType = order.shipping?.logistic_type || '';
-    const esFlex = logisticType === 'self_service_flex';
-    const tipoEnvio = esFlex ? 'flex' : 'mercado_envios';
-    log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: ${logisticType})`);
-
-    // Obtener dirección y costo real del shipment
+    // Obtener shipment para determinar tipo de envío, dirección y costo real
+    const shippingId = order.shipping?.id;
+    let logisticType = '';
     let direccion = null;
     let costoEnvioReal = 0;
-    try {
-      const shipId = order.shipping?.id;
-      const shipUrl = shipId
-        ? `https://api.mercadolibre.com/shipments/${shipId}`
-        : `https://api.mercadolibre.com/orders/${orderId}/shipments`;
-      const shipRes = await fetch(shipUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-      const shipData = await shipRes.json();
-      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
-      if (shipData?.receiver_address) {
-        const addr = shipData.receiver_address;
-        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ');
-      }
-    } catch(_) {}
+    if (shippingId) {
+      try {
+        const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+        const shipData = await shipRes.json();
+        log.push(`🔍 shipData: ${JSON.stringify(shipData)}`);
+        logisticType = shipData?.logistic_type || '';
+        costoEnvioReal = shipData?.shipping_option?.cost || 0;
+        if (shipData?.receiver_address) {
+          const addr = shipData.receiver_address;
+          direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
+        }
+      } catch(_) {}
+    }
     log.push(`📍 Dirección: ${direccion || 'no disponible'}`);
 
-    const zona = direccion ? detectarZona(direccion) : null;
-    const costoFlex = esFlex && zona ? (COSTOS_GESTIONPOST[zona] || 200) + 75 : 0;
+    const esFlex = logisticType === 'fulfillment' || logisticType === 'self_service';
+    const tipoEnvio = esFlex ? 'gestionpost' : 'mercado_envios';
+    log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: "${logisticType}")`);
+
+    // Comisión desde fee_details
+    const feeDetails = order.fee_details || [];
+    const totalFee = feeDetails
+      .filter(f => f.type === 'mercadopago_fee' || f.type === 'ml_fee')
+      .reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+    const hasFeeDetails = totalFee > 0;
+    const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
 
     const resultados = [];
 
@@ -134,36 +139,40 @@ module.exports = async (req, res) => {
       await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
       log.push(`✅ Stock: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
 
-      // Para Flex: costo real (lo pagás vos). Para ME: $0 (ya incluido en comisión)
-      const costoEnvioFinal = esFlex ? costoFlex : 0;
-      const comision = calcularComision(precioUnit, cantidad, costoEnvioReal);
-      log.push(`💰 Comisión: $${comision} (${tipoEnvio})`);
+      // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)
+      const costoEnvioFinal = esFlex ? costoEnvioReal : 0;
+      const comisionItem = hasFeeDetails
+        ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
+        : Math.abs(item.sale_fee || 0);
+      log.push(`💰 Comisión: $${comisionItem} (${tipoEnvio})`);
 
       const { error: ventaErr } = await supabase.from('ventas').insert({
         id: ventaId, canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id), comprador: order.buyer?.nickname || '',
         sku: producto.sku, producto: producto.nombre,
-        cantidad, precio_unit: precioUnit, comision,
+        cantidad, precio_unit: precioUnit, comision: comisionItem,
         total: precioUnit * cantidad, estado: 'pagada',
-        genera_envio: true, notas: 'Reprocesada manualmente',
+        genera_envio: !!shippingId, notas: 'Reprocesada manualmente',
       });
       if (ventaErr) { log.push(`❌ Error venta: ${ventaErr.message}`); resultados.push({ item: meliItemId, error: ventaErr.message }); continue; }
       log.push(`✅ Venta registrada: ${ventaId}`);
 
-      const envioId = `E_MELI_${order.id}_${meliItemId}`;
-      const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
-      if (!envioExistente) {
-        await supabase.from('envios').insert({
-          id: envioId, venta_id: ventaId, orden: String(order.id),
-          comprador: order.buyer?.nickname || '', producto: producto.nombre,
-          transportista: esFlex ? 'gestionpost' : 'mercado_envios',
-          tracking: null, fecha_despacho: null, estado: 'pendiente',
-          direccion: direccion || null, costo: costoEnvioFinal,
-        });
-        log.push(`✅ Envío: ${esFlex ? 'GestionPost' : 'MELI Envíos'} $${esFlex ? costoFlex : 0}`);
+      if (shippingId) {
+        const envioId = `E_MELI_${order.id}_${meliItemId}`;
+        const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
+        if (!envioExistente) {
+          await supabase.from('envios').insert({
+            id: envioId, venta_id: ventaId, orden: String(order.id),
+            comprador: order.buyer?.nickname || '', producto: producto.nombre,
+            transportista: tipoEnvio,
+            tracking: null, fecha_despacho: null, estado: 'pendiente',
+            direccion: direccion || null, costo: costoEnvioFinal,
+          });
+          log.push(`✅ Envío: ${tipoEnvio} $${costoEnvioFinal}`);
+        }
       }
-      resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision, tipoEnvio });
+      resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision: comisionItem, tipoEnvio });
     }
 
     return res.json({ ok: true, log, resultados });

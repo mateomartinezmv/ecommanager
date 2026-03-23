@@ -84,6 +84,7 @@ module.exports = async (req, res) => {
     if (!order) return res.json({ ok: false, log, error: 'No se pudo obtener la orden por ningún endpoint' });
 
     log.push(`Orden estado: ${order.status}, items: ${order.order_items?.length}`);
+    log.push(`🔍 order.shipping: ${JSON.stringify(order.shipping || {})}`);
     if (order.status !== 'paid') return res.json({ ok: false, log, error: `Orden no pagada (estado: ${order.status})` });
 
     // Obtener shipment para determinar tipo de envío, dirección y costo real

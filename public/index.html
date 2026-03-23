@@ -359,7 +359,22 @@
           <option value="90">Últimos 90 días</option>
           <option value="all">Todo el tiempo</option>
         </select>
+        <button class="btn btn-ghost btn-sm" onclick="toggleComparador()" id="btn-comparar">⚖️ Comparar períodos</button>
       </div>
+    </div>
+    <div id="panel-comparador" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:14px 28px;gap:16px;flex-wrap:wrap;align-items:center" class="topbar">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim)">Período A</span>
+      <input type="date" id="comp-a-desde" style="width:150px;padding:7px 10px" onchange="renderComparador()">
+      <span style="color:var(--text-muted)">→</span>
+      <input type="date" id="comp-a-hasta" style="width:150px;padding:7px 10px" onchange="renderComparador()">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim);margin-left:12px">vs Período B</span>
+      <input type="date" id="comp-b-desde" style="width:150px;padding:7px 10px" onchange="renderComparador()">
+      <span style="color:var(--text-muted)">→</span>
+      <input type="date" id="comp-b-hasta" style="width:150px;padding:7px 10px" onchange="renderComparador()">
+      <button class="btn btn-ghost btn-sm" onclick="setMesActualVsAnterior()">📅 Este mes vs anterior</button>
+    </div>
+    <div id="panel-comparador-resultado" style="display:none" class="content">
+      <div id="comparador-tabla"></div>
     </div>
     <div class="content">
       <div class="cards-grid" id="reporte-stats"></div>
@@ -1389,6 +1404,138 @@ async function eliminarPagoTransportista(id) {
     await api('DELETE', '/transportistas?id=' + id);
     renderTransportistas();
   } catch(e) { alert('Error: ' + e.message); }
+}
+
+// =====================
+// COMPARADOR DE PERÍODOS
+// =====================
+function toggleComparador() {
+  const panel = document.getElementById('panel-comparador');
+  const resultado = document.getElementById('panel-comparador-resultado');
+  const btn = document.getElementById('btn-comparar');
+  const visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'flex';
+  resultado.style.display = visible ? 'none' : 'block';
+  btn.style.background = visible ? '' : 'var(--accent)';
+  btn.style.color = visible ? '' : '#fff';
+  if (!visible) {
+    // Inicializar con este mes vs anterior
+    setMesActualVsAnterior();
+  }
+}
+
+function setMesActualVsAnterior() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+
+  // Mes actual: 1° al último día
+  const aDesde = new Date(y, m, 1);
+  const aHasta = new Date(y, m + 1, 0);
+
+  // Mes anterior
+  const bDesde = new Date(y, m - 1, 1);
+  const bHasta = new Date(y, m, 0);
+
+  const fmt = d => d.toISOString().slice(0, 10);
+  document.getElementById('comp-a-desde').value = fmt(aDesde);
+  document.getElementById('comp-a-hasta').value = fmt(aHasta);
+  document.getElementById('comp-b-desde').value = fmt(bDesde);
+  document.getElementById('comp-b-hasta').value = fmt(bHasta);
+
+  renderComparador();
+}
+
+function filtrarPeriodo(desde, hasta) {
+  const d0 = new Date(desde);
+  const d1 = new Date(hasta);
+  d1.setHours(23, 59, 59);
+  return {
+    ventas: db.ventas.filter(v => { const d = new Date(v.fecha); return d >= d0 && d <= d1; }),
+    envios: db.envios.filter(e => { const d = new Date(e.creado || e.fecha_despacho || e.fechaDespacho || '2000-01-01'); return d >= d0 && d <= d1; }),
+  };
+}
+
+function calcularMetricas(ventas, envios) {
+  const ingresos = ventas.reduce((a, v) => a + v.total, 0);
+  const comisiones = ventas.reduce((a, v) => a + (v.comision || 0), 0);
+  const costoEnvios = envios.reduce((a, e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
+  const costoProductos = ventas.reduce((a, v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
+  const ganancia = ingresos - comisiones - costoProductos - costoEnvios;
+  const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : 0;
+  const ticket = ventas.length > 0 ? ingresos / ventas.length : 0;
+  const unidades = ventas.reduce((a, v) => a + v.cantidad, 0);
+  return { ingresos, comisiones, costoEnvios, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: ventas.length };
+}
+
+function renderComparador() {
+  const aDesde = document.getElementById('comp-a-desde').value;
+  const aHasta = document.getElementById('comp-a-hasta').value;
+  const bDesde = document.getElementById('comp-b-desde').value;
+  const bHasta = document.getElementById('comp-b-hasta').value;
+
+  if (!aDesde || !aHasta || !bDesde || !bHasta) return;
+
+  const pA = filtrarPeriodo(aDesde, aHasta);
+  const pB = filtrarPeriodo(bDesde, bHasta);
+  const mA = calcularMetricas(pA.ventas, pA.envios);
+  const mB = calcularMetricas(pB.ventas, pB.envios);
+
+  const labelA = aDesde.slice(5) + ' → ' + aHasta.slice(5);
+  const labelB = bDesde.slice(5) + ' → ' + bHasta.slice(5);
+
+  const metricas = [
+    { nombre: 'Ingresos', a: mA.ingresos, b: mB.ingresos, tipo: 'money', mejor: 'mayor' },
+    { nombre: 'Ventas', a: mA.ventas, b: mB.ventas, tipo: 'num', mejor: 'mayor' },
+    { nombre: 'Unidades vendidas', a: mA.unidades, b: mB.unidades, tipo: 'num', mejor: 'mayor' },
+    { nombre: 'Ticket promedio', a: mA.ticket, b: mB.ticket, tipo: 'money', mejor: 'mayor' },
+    { nombre: 'Comisiones MELI', a: mA.comisiones, b: mB.comisiones, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Costo de productos', a: mA.costoProductos, b: mB.costoProductos, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Costo de envíos', a: mA.costoEnvios, b: mB.costoEnvios, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Ganancia estimada', a: mA.ganancia, b: mB.ganancia, tipo: 'money', mejor: 'mayor' },
+    { nombre: 'Margen neto', a: mA.margen, b: mB.margen, tipo: 'pct', mejor: 'mayor' },
+  ];
+
+  const filas = metricas.map(m => {
+    const diff = m.a - m.b;
+    const diffPct = m.b !== 0 ? ((diff / Math.abs(m.b)) * 100).toFixed(1) : (m.a !== 0 ? 100 : 0);
+    const sube = diff > 0;
+    const igual = diff === 0;
+
+    // Para métricas donde "menor es mejor", invertir el color
+    const esBueno = m.mejor === 'mayor' ? sube : !sube;
+    const colorDiff = igual ? 'var(--text-muted)' : (esBueno ? 'var(--green)' : 'var(--red)');
+    const flechaDiff = igual ? '—' : (sube ? '↑' : '↓');
+
+    const valA = m.tipo === 'money' ? fmt(m.a) : m.tipo === 'pct' ? m.a + '%' : m.a;
+    const valB = m.tipo === 'money' ? fmt(m.b) : m.tipo === 'pct' ? m.b + '%' : m.b;
+    const valDiff = m.tipo === 'money' ? fmt(Math.abs(diff)) : m.tipo === 'pct' ? Math.abs(diff).toFixed(1) + '%' : Math.abs(diff);
+
+    return '<tr>' +
+      '<td style="font-weight:600">' + m.nombre + '</td>' +
+      '<td style="font-family:JetBrains Mono,monospace;text-align:right">' + valA + '</td>' +
+      '<td style="font-family:JetBrains Mono,monospace;text-align:right">' + valB + '</td>' +
+      '<td style="text-align:right"><span style="color:' + colorDiff + ';font-weight:700">' + flechaDiff + ' ' + valDiff + '</span></td>' +
+      '<td style="text-align:right"><span style="color:' + colorDiff + ';font-size:11px">' + (igual ? '' : (sube ? '+' : '-') + Math.abs(diffPct) + '%') + '</span></td>' +
+      '</tr>';
+  }).join('');
+
+  document.getElementById('comparador-tabla').innerHTML =
+    '<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px">' +
+    '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">' +
+    '<span style="font-size:15px;font-weight:600">⚖️ Comparación de períodos</span>' +
+    '<span style="font-size:12px;color:var(--text-muted);margin-left:8px">' +
+    '<span style="background:rgba(79,142,247,0.15);color:var(--accent);padding:2px 8px;border-radius:10px">A: ' + labelA + '</span>' +
+    ' vs ' +
+    '<span style="background:rgba(124,58,237,0.15);color:#a78bfa;padding:2px 8px;border-radius:10px">B: ' + labelB + '</span>' +
+    '</span></div>' +
+    '<table><thead><tr>' +
+    '<th>Métrica</th>' +
+    '<th style="text-align:right;color:var(--accent)">Período A</th>' +
+    '<th style="text-align:right;color:#a78bfa">Período B</th>' +
+    '<th style="text-align:right">Diferencia</th>' +
+    '<th style="text-align:right">Variación</th>' +
+    '</tr></thead><tbody>' + filas + '</tbody></table></div>';
 }
 
 async function init() { await loadAll(); renderDashboard(); }

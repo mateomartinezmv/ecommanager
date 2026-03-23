@@ -95,6 +95,7 @@ module.exports = async (req, res) => {
       try {
         const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const shipData = await shipRes.json();
+        log.push(`🔍 shipData: ${JSON.stringify(shipData)}`);
         logisticType = shipData?.logistic_type || '';
         costoEnvioReal = shipData?.shipping_option?.cost || 0;
         if (shipData?.receiver_address) {

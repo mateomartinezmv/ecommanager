@@ -208,8 +208,10 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     const esFlex = logisticType === 'self_service_flex'
     const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
     const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
-    const costoEnvio = costoEnvioReal > 0 ? costoEnvioReal : (flexInfo?.costo || 0)
-    const comision = calcularComision(precioUnit, cantidad, costoEnvio)
+    // Para Flex: costo real del envío (lo pagás vos a GestionPost)
+    // Para ME: $0 porque ya está incluido en la comisión
+    const costoEnvio = esFlex ? (flexInfo?.costo || costoEnvioReal || 0) : 0
+    const comision = calcularComision(precioUnit, cantidad, costoEnvioReal)
     log.push(`💰 Comisión: $${comision} | Envío: ${transportisteFinal}`)
 
     // Registrar venta

@@ -134,8 +134,9 @@ module.exports = async (req, res) => {
       await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
       log.push(`✅ Stock: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
 
-      const costoEnvioFinal = esFlex ? costoFlex : costoEnvioReal;
-      const comision = calcularComision(precioUnit, cantidad, costoEnvioFinal);
+      // Para Flex: costo real (lo pagás vos). Para ME: $0 (ya incluido en comisión)
+      const costoEnvioFinal = esFlex ? costoFlex : 0;
+      const comision = calcularComision(precioUnit, cantidad, costoEnvioReal);
       log.push(`💰 Comisión: $${comision} (${tipoEnvio})`);
 
       const { error: ventaErr } = await supabase.from('ventas').insert({

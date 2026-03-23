@@ -326,7 +326,8 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
 
     if (!envioExistente) {
       const transportista = esFlex ? 'gestionpost' : 'mercado_envios'
-      const costoEnvio = costoReal > 0 ? costoReal : (flexInfo?.costo || 0)
+      // Para Flex: costo real (lo pagás vos). Para ME: $0 (ya incluido en comisión)
+      const costoEnvio = esFlex ? (flexInfo?.costo || costoReal || 0) : 0
 
       const { error: envioErr } = await supabase.from('envios').insert({
         id: envioId,

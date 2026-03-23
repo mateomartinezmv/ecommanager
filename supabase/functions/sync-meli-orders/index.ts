@@ -122,15 +122,45 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     return
   }
 
-  // Detectar tipo de envío
-  // Debug: loguear todo el objeto shipping para entender la estructura
-  log.push(`🔍 shipping completo: ${JSON.stringify(order.shipping || {})}`)
+  // Leer shipment para determinar tipo de envío
+  const shippingId = order.shipping?.id
+  let logisticType = ''
+  let direccion: string | null = null
+  let costoEnvioReal = 0
 
-  const shippingTypeId = order.shipping?.shipping_option?.shipping_method_type || ''
-  // tipoEnvio se determina después de consultar /shipments — usar mercado_envios como default
-  // El logistic_type real se obtiene en el bloque de shipments más abajo
-  const tipoEnvio = 'mercado_envios' // se sobreescribe abajo si es flex
-  log.push(`📬 shipping_id: ${order.shipping?.id || 'n/a'} — tipo se determina al consultar shipment`)
+  if (shippingId) {
+    try {
+      const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const shipData = await shipRes.json()
+      logisticType = shipData?.logistic_type || ''
+      costoEnvioReal = shipData?.shipping_option?.cost || 0
+      if (shipData?.receiver_address) {
+        const addr = shipData.receiver_address
+        direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`
+      }
+    } catch (_) {
+      // Fallback: mercado_envios, costo 0
+    }
+  }
+
+  log.push(`🔍 shipment logistic_type: ${logisticType || 'n/a'} (shipping_id: ${shippingId || 'n/a'})`)
+
+  const esFlex = logisticType === 'fulfillment' || logisticType === 'self_service'
+  const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
+  // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)
+  const costoEnvio = esFlex ? costoEnvioReal : 0
+
+  // Comisión desde fee_details
+  const feeDetails = order.fee_details || []
+  const totalFee = feeDetails
+    .filter((f: any) => f.type === 'mercadopago_fee' || f.type === 'ml_fee')
+    .reduce((s: number, f: any) => s + Math.abs(f.amount || 0), 0)
+  const hasFeeDetails = totalFee > 0
+  const orderTotalCalc = (order.order_items || []).reduce((s: number, i: any) => s + (i.unit_price * i.quantity), 0) || 1
+
+  log.push(`📬 Tipo envío: ${transportisteFinal} | comisión total: $${totalFee}`)
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -186,33 +216,12 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       nombreFinal = producto.nombre
     }
 
-    // Obtener shipment PRIMERO para tener logistic_type y dirección
-    let direccion: string | null = null
-    let logisticType: string = ''
-    let costoEnvioReal: number = 0
-    try {
-      const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${order.shipping?.id}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-      const shipData = await shipRes.json()
-      logisticType = shipData?.logistic_type || shipData?.type || ''
-      log.push(`🔍 shipment logistic_type: ${logisticType}`)
-      // Leer costo real del envío desde list_cost
-      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0
-      if (shipData?.receiver_address) {
-        const addr = shipData.receiver_address
-        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ')
-      }
-    } catch (_) {}
+    // Comisión por item
+    const comisionItem = hasFeeDetails
+      ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
+      : Math.abs(item.sale_fee || 0)
 
-    const esFlex = logisticType === 'self_service_flex'
-    const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
-    const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
-    // Para Flex: costo real del envío (lo pagás vos a GestionPost)
-    // Para ME: $0 porque ya está incluido en la comisión
-    const costoEnvio = esFlex ? (flexInfo?.costo || costoEnvioReal || 0) : 0
-    const comision = calcularComision(precioUnit, cantidad, costoEnvioReal)
-    log.push(`💰 Comisión: $${comision} | Envío: ${transportisteFinal}`)
+    log.push(`💰 Comisión: $${comisionItem} | Envío: ${transportisteFinal}`)
 
     // Registrar venta
     await supabase.from('ventas').insert({
@@ -221,27 +230,29 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       orden_meli: String(order.id),
       comprador: order.buyer?.nickname || '',
       sku: skuFinal, producto: nombreFinal,
-      cantidad, precio_unit: precioUnit, comision,
+      cantidad, precio_unit: precioUnit, comision: comisionItem,
       total: precioUnit * cantidad, estado: 'pagada',
-      genera_envio: true, notas: 'Auto-registrada por sync MELI',
+      genera_envio: !!shippingId, notas: 'Auto-registrada por sync MELI',
     })
     log.push(`✅ Venta registrada: ${ventaId} — ${nombreFinal}`)
 
-    const envioId = `E_MELI_${order.id}_${meliItemId}`
-    const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
+    if (shippingId) {
+      const envioId = `E_MELI_${order.id}_${meliItemId}`
+      const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
 
-    if (!envioExistente) {
-      await supabase.from('envios').insert({
-        id: envioId, venta_id: ventaId,
-        orden: String(order.id),
-        comprador: order.buyer?.nickname || '',
-        producto: nombreFinal,
-        transportista: transportisteFinal,
-        tracking: null, fecha_despacho: null, estado: 'pendiente',
-        direccion: direccion || null,
-        costo: costoEnvio,
-      })
-      log.push(`✅ Envío creado: ${transportisteFinal} zona ${flexInfo?.zona || '?'} $${costoEnvio}`)
+      if (!envioExistente) {
+        await supabase.from('envios').insert({
+          id: envioId, venta_id: ventaId,
+          orden: String(order.id),
+          comprador: order.buyer?.nickname || '',
+          producto: nombreFinal,
+          transportista: transportisteFinal,
+          tracking: null, fecha_despacho: null, estado: 'pendiente',
+          direccion: direccion || null,
+          costo: costoEnvio,
+        })
+        log.push(`✅ Envío creado: ${transportisteFinal} $${costoEnvio}`)
+      }
     }
   }
 }

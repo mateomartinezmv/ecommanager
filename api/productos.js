@@ -1,6 +1,12 @@
 // api/productos.js
+// GET  /api/productos        → listar todos
+// POST /api/productos        → crear
+// PUT  /api/productos?sku=XX → actualizar (sincroniza stock con MELI y Shopify si aplica)
+// DELETE /api/productos?sku=XX → eliminar
+
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
+const { getShopifyToken } = require('./_shopifyToken');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -24,9 +30,15 @@ module.exports = async (req, res) => {
       const p = req.body;
       const { data, error } = await supabase.from('productos').insert({
         sku: p.sku, nombre: p.nombre, categoria: p.categoria,
-        stock_dep: p.stockDep || 0, stock_meli: p.stockMeli || 0,
+        tipo: p.tipo || 'nuevo',
+        stock_dep: p.stockDep || 0,
+        stock_meli: p.stockMeli || 0,
+        stock_shopify: p.stockShopify || 0,
         costo: p.costo || 0, precio: p.precio,
-        alerta_min: p.alertaMin || 5, meli_id: p.meliId, notas: p.notas,
+        alerta_min: p.alertaMin || 5,
+        meli_id: p.meliId || null,
+        shopify_id: p.shopifyId || null,
+        notas: p.notas,
       }).select().single();
       if (error) throw error;
       return res.json(data);
@@ -36,38 +48,34 @@ module.exports = async (req, res) => {
       const sku = req.query.sku;
       const p = req.body;
 
-      // Obtener producto anterior
+      // Obtener producto anterior para comparar stock
       const { data: anterior } = await supabase
         .from('productos')
-        .select('*')
+        .select('stock_meli, stock_shopify, meli_id, shopify_id')
         .eq('sku', sku)
         .single();
 
-      // Construir campos a actualizar — NUNCA pisar shopify_id ni shopify_handle
-      const updateFields = {};
-      if (p.nombre !== undefined)    updateFields.nombre = p.nombre;
-      if (p.categoria !== undefined) updateFields.categoria = p.categoria;
-      if (p.stockDep !== undefined)  updateFields.stock_dep = p.stockDep;
-      if (p.stockMeli !== undefined) updateFields.stock_meli = p.stockMeli;
-      if (p.costo !== undefined)     updateFields.costo = p.costo;
-      if (p.precio !== undefined)    updateFields.precio = p.precio;
-      if (p.alertaMin !== undefined) updateFields.alerta_min = p.alertaMin;
-      if (p.meliId !== undefined)    updateFields.meli_id = p.meliId;
-      if (p.notas !== undefined)     updateFields.notas = p.notas;
-      updateFields.updated_at = new Date().toISOString();
-
-      const { data, error } = await supabase.from('productos')
-        .update(updateFields)
-        .eq('sku', sku).select().single();
+      const { data, error } = await supabase.from('productos').update({
+        sku: p.sku,  // permite cambiar el SKU
+        nombre: p.nombre, categoria: p.categoria,
+        tipo: p.tipo || 'nuevo',
+        stock_dep: p.stockDep,
+        stock_meli: p.stockMeli,
+        stock_shopify: p.stockShopify,
+        costo: p.costo, precio: p.precio,
+        alerta_min: p.alertaMin,
+        meli_id: p.meliId || null,
+        shopify_id: p.shopifyId || null,
+        notas: p.notas,
+      }).eq('sku', sku).select().single();
       if (error) throw error;
 
-      const meliId = p.meliId ?? anterior?.meli_id;
-      const shopifyId = anterior?.shopify_id;
-      const stockMeliCambio = anterior && anterior.stock_meli !== p.stockMeli;
-      const stockDepCambio = anterior && anterior.stock_dep !== p.stockDep;
+      const meliId = p.meliId || anterior?.meli_id;
+      const shopifyId = p.shopifyId || anterior?.shopify_id;
+      const forzarSync = p.forzarSync === true;
 
-      // ── Sync → MELI ──
-      if (meliId && stockMeliCambio) {
+      // Sincronizar stock MELI si cambió o se forzó
+      if (meliId && (forzarSync || (anterior && anterior.stock_meli !== p.stockMeli))) {
         try {
           const token = await getMeliToken();
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${meliId}`, {
@@ -76,20 +84,19 @@ module.exports = async (req, res) => {
             body: JSON.stringify({ available_quantity: p.stockMeli }),
           });
           const meliData = await meliRes.json();
-          if (meliData.error) console.warn('⚠️ MELI sync warning:', meliData.message);
-          else console.log(`✅ MELI sync: ${meliId} → ${p.stockMeli}`);
+          if (meliData.error) console.warn('⚠️ MELI stock sync warning:', meliData.message);
+          else console.log(`✅ Stock MELI sincronizado: ${meliId} → ${p.stockMeli}`);
         } catch (meliErr) {
-          console.error('❌ Error sync MELI:', meliErr.message);
+          console.error('❌ Error sincronizando stock MELI:', meliErr.message);
         }
       }
 
-      // ── Sync → Shopify ──
-      if (shopifyId && (stockDepCambio || stockMeliCambio)) {
+      // Sincronizar stock Shopify si cambió
+      if (shopifyId && (forzarSync || (anterior && anterior.stock_shopify !== p.stockShopify))) {
         try {
-          const nuevoStock = p.stockDep !== undefined ? p.stockDep : anterior.stock_dep;
-          await syncShopifyStock(shopifyId, nuevoStock);
+          await syncShopifyStock(shopifyId, p.stockShopify);
         } catch (shopErr) {
-          console.error('❌ Error sync Shopify:', shopErr.message);
+          console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
         }
       }
 
@@ -110,38 +117,42 @@ module.exports = async (req, res) => {
   }
 };
 
-// ── Helper: actualizar stock en Shopify ──
-async function syncShopifyStock(variantId, quantity) {
-  const shop = process.env.SHOPIFY_STORE_URL; // ej: martinez-motos.myshopify.com
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
-  if (!shop || !token) {
-    console.warn('⚠️ Shopify no configurado (faltan env vars)');
-    return;
-  }
+// Sincronizar stock en Shopify via Inventory API
+async function syncShopifyStock(shopifyId, cantidad) {
+  const SHOP = 'martinez-motos.myshopify.com';
+  const token = await getShopifyToken();
 
-  // 1. Obtener location_id (inventory location)
-  const locRes = await fetch(`https://${shop}/admin/api/2024-01/locations.json`, {
-    headers: { 'X-Shopify-Access-Token': token }
+  // shopifyId puede ser un variant_id o inventory_item_id
+  // Primero obtenemos el inventory_item_id del variant
+  const variantRes = await fetch(`https://${SHOP}/admin/api/2024-01/variants/${shopifyId}.json`, {
+    headers: { 'X-Shopify-Access-Token': token },
+  });
+  const variantData = await variantRes.json();
+  if (!variantData.variant) throw new Error('Variant no encontrado: ' + shopifyId);
+
+  const inventoryItemId = variantData.variant.inventory_item_id;
+
+  // Obtener location_id (usamos la primera ubicación)
+  const locRes = await fetch(`https://${SHOP}/admin/api/2024-01/locations.json`, {
+    headers: { 'X-Shopify-Access-Token': token },
   });
   const locData = await locRes.json();
   const locationId = locData.locations?.[0]?.id;
-  if (!locationId) throw new Error('No se encontró location en Shopify');
+  if (!locationId) throw new Error('No se encontró ubicación en Shopify');
 
-  // 2. Obtener inventory_item_id de la variante
-  const varRes = await fetch(`https://${shop}/admin/api/2024-01/variants/${variantId}.json`, {
-    headers: { 'X-Shopify-Access-Token': token }
-  });
-  const varData = await varRes.json();
-  const inventoryItemId = varData.variant?.inventory_item_id;
-  if (!inventoryItemId) throw new Error(`Variant ${variantId} no encontrado en Shopify`);
-
-  // 3. Setear stock
-  const setRes = await fetch(`https://${shop}/admin/api/2024-01/inventory_levels/set.json`, {
+  // Ajustar inventario
+  const setRes = await fetch(`https://${SHOP}/admin/api/2024-01/inventory_levels/set.json`, {
     method: 'POST',
     headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location_id: locationId, inventory_item_id: inventoryItemId, available: quantity }),
+    body: JSON.stringify({
+      location_id: locationId,
+      inventory_item_id: inventoryItemId,
+      available: cantidad,
+    }),
   });
   const setData = await setRes.json();
   if (setData.errors) throw new Error(JSON.stringify(setData.errors));
-  console.log(`✅ Shopify sync: variant ${variantId} → ${quantity}`);
+
+  console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${cantidad}`);
+  return setData;
 }

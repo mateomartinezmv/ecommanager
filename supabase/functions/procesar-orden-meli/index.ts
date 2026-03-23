@@ -80,9 +80,10 @@ function calcularCostoFlex(direccion: string): { zona: number, recomendada: stri
 // =====================
 // CALCULAR COMISIÓN MELI
 // =====================
-function calcularComision(precioUnit: number, cantidad: number, tipoEnvio: string, zonaFlex?: number | null): number {
-  // Comisión = 15% del precio. El costo de envío se guarda separado en envios.costo
-  return Math.round(precioUnit * cantidad * 0.15 * 100) / 100
+function calcularComision(precioUnit: number, cantidad: number, costoEnvio: number = 0): number {
+  // Comisión = 15% del precio + costo de envío que cobra MELI
+  const base = Math.round(precioUnit * cantidad * 0.15 * 100) / 100
+  return Math.round((base + costoEnvio) * 100) / 100
 }
 
 // =====================
@@ -227,13 +228,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     return { ignorada: true, estado: order.status }
   }
 
-  // Detectar tipo de envío
-  const esML = order.shipping?.logistic_type === 'cross_docking'
-  const esFlex = order.shipping?.logistic_type === 'self_service_flex'
-  const tipoEnvio = esFlex ? 'flex' : esML ? 'mercado_envios' : 'otro'
-  log.push(`📬 Tipo de envío: ${tipoEnvio}`)
-
-  // Obtener dirección de envío para calcular costo Flex
+  // Obtener datos de envío
   log.push('Obteniendo datos de envío...')
   const shipmentId = order.shipping?.id ? String(order.shipping.id) : null
   const { direccion, logisticType: shipLogisticType, costoReal } = await getDatosEnvio(orderId, shipmentId, token)
@@ -316,7 +311,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
         comprador: order.buyer?.nickname || '',
         sku: skuFinal, producto: nombreFinal,
         cantidad, precio_unit: precioUnit,
-        comision: calcularComision(precioUnit, cantidad, esFlex ? 'flex' : 'mercado_envios', flexInfo?.zona),
+        comision: calcularComision(precioUnit, cantidad, costoEnvio),
         total: precioUnit * cantidad, estado: 'pagada',
         genera_envio: true, notas: 'Auto-registrada por webhook MELI',
       })

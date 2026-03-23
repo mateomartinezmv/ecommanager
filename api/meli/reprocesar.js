@@ -30,9 +30,10 @@ function detectarZona(dir) {
   }
   return null;
 }
-function calcularComision(precioUnit, cantidad, tipoEnvio, zona) {
-  // Comisión = 15% del precio. El costo de envío se guarda separado en envios.costo
-  return Math.round(precioUnit * cantidad * 0.15 * 100) / 100;
+function calcularComision(precioUnit, cantidad, costoEnvio = 0) {
+  // Comisión = 15% del precio + costo de envío que cobra MELI
+  const base = Math.round(precioUnit * cantidad * 0.15 * 100) / 100;
+  return Math.round((base + costoEnvio) * 100) / 100;
 }
 
 module.exports = async (req, res) => {
@@ -91,11 +92,17 @@ module.exports = async (req, res) => {
     const tipoEnvio = esFlex ? 'flex' : 'mercado_envios';
     log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: ${logisticType})`);
 
-    // Obtener dirección
+    // Obtener dirección y costo real del shipment
     let direccion = null;
+    let costoEnvioReal = 0;
     try {
-      const shipRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}/shipments`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const shipId = order.shipping?.id;
+      const shipUrl = shipId
+        ? `https://api.mercadolibre.com/shipments/${shipId}`
+        : `https://api.mercadolibre.com/orders/${orderId}/shipments`;
+      const shipRes = await fetch(shipUrl, { headers: { 'Authorization': `Bearer ${token}` } });
       const shipData = await shipRes.json();
+      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
         direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name].filter(Boolean).join(', ');
@@ -127,7 +134,8 @@ module.exports = async (req, res) => {
       await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
       log.push(`✅ Stock: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
 
-      const comision = calcularComision(precioUnit, cantidad, tipoEnvio, zona);
+      const costoEnvioFinal = esFlex ? costoFlex : costoEnvioReal;
+      const comision = calcularComision(precioUnit, cantidad, costoEnvioFinal);
       log.push(`💰 Comisión: $${comision} (${tipoEnvio})`);
 
       const { error: ventaErr } = await supabase.from('ventas').insert({
@@ -150,7 +158,7 @@ module.exports = async (req, res) => {
           comprador: order.buyer?.nickname || '', producto: producto.nombre,
           transportista: esFlex ? 'gestionpost' : 'mercado_envios',
           tracking: null, fecha_despacho: null, estado: 'pendiente',
-          direccion: direccion || null, costo: esFlex ? costoFlex : 0,
+          direccion: direccion || null, costo: costoEnvioFinal,
         });
         log.push(`✅ Envío: ${esFlex ? 'GestionPost' : 'MELI Envíos'} $${esFlex ? costoFlex : 0}`);
       }

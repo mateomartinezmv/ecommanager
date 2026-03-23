@@ -72,20 +72,10 @@ function calcularCostoFlex(direccion: string) {
 // =====================
 // CALCULAR COMISIÓN MELI
 // =====================
-function calcularComision(precioUnit: number, cantidad: number, tipoEnvio: string, zonaFlex?: number | null): number {
-  const base = precioUnit * cantidad * 0.15
-
-  if (tipoEnvio === 'mercado_envios') {
-    return Math.round((base + 125) * 100) / 100
-  }
-
-  if (tipoEnvio === 'flex') {
-    // Bonificación según zona: lejanas -$40, resto -$33.80
-    const bonif = zonaFlex && zonaFlex >= 8 ? 40 : 33.80
-    return Math.round((base - bonif) * 100) / 100
-  }
-
-  return Math.round(base * 100) / 100
+function calcularComision(precioUnit: number, cantidad: number, costoEnvio: number): number {
+  // Comisión = 15% del precio + costo de envío que cobra MELI
+  const base = Math.round(precioUnit * cantidad * 0.15 * 100) / 100
+  return Math.round((base + costoEnvio) * 100) / 100
 }
 
 // =====================
@@ -219,7 +209,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion) : null
     const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
     const costoEnvio = costoEnvioReal > 0 ? costoEnvioReal : (flexInfo?.costo || 0)
-    const comision = calcularComision(precioUnit, cantidad, esFlex ? 'flex' : 'mercado_envios', flexInfo?.zona)
+    const comision = calcularComision(precioUnit, cantidad, costoEnvio)
     log.push(`💰 Comisión: $${comision} | Envío: ${transportisteFinal}`)
 
     // Registrar venta

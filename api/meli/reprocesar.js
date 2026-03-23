@@ -84,7 +84,6 @@ module.exports = async (req, res) => {
     if (!order) return res.json({ ok: false, log, error: 'No se pudo obtener la orden por ningún endpoint' });
 
     log.push(`Orden estado: ${order.status}, items: ${order.order_items?.length}`);
-    log.push(`🔍 order.shipping: ${JSON.stringify(order.shipping || {})}`);
     if (order.status !== 'paid') return res.json({ ok: false, log, error: `Orden no pagada (estado: ${order.status})` });
 
     // Obtener shipment para determinar tipo de envío, dirección y costo real
@@ -96,9 +95,8 @@ module.exports = async (req, res) => {
       try {
         const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers: { 'Authorization': `Bearer ${token}` } });
         const shipData = await shipRes.json();
-        log.push(`🔍 shipData: ${JSON.stringify(shipData)}`);
         logisticType = shipData?.logistic_type || '';
-        costoEnvioReal = shipData?.shipping_option?.cost || 0;
+        costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
         if (shipData?.receiver_address) {
           const addr = shipData.receiver_address;
           direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;

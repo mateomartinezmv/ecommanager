@@ -665,9 +665,7 @@
     <input type="hidden" id="ajuste-sku">
     <div class="form-grid" style="grid-template-columns:1fr">
       <div class="form-group"><label class="form-label">Producto</label><input type="text" id="ajuste-nombre" disabled style="opacity:0.6"></div>
-      <div class="form-group"><label class="form-label">Nuevo stock depósito</label><input type="number" id="ajuste-dep" min="0"></div>
-      <div class="form-group"><label class="form-label">Nuevo stock publicado MELI</label><input type="number" id="ajuste-meli" min="0"></div>
-      <div class="form-group"><label class="form-label">Nuevo stock Shopify</label><input type="number" id="ajuste-shopify" min="0"></div>
+      <div class="form-group"><label class="form-label">Nuevo stock (depósito, MELI y Shopify)</label><input type="number" id="ajuste-dep" min="0"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-ajuste-stock')">Cancelar</button>
@@ -846,20 +844,16 @@ function openAjuste(sku) {
   document.getElementById('ajuste-sku').value = p.sku;
   document.getElementById('ajuste-nombre').value = p.nombre;
   document.getElementById('ajuste-dep').value = p.stockDep;
-  document.getElementById('ajuste-meli').value = p.stockMeli;
-  document.getElementById('ajuste-shopify').value = p.stockShopify || 0;
   openModal('modal-ajuste-stock');
 }
 
 async function saveAjuste() {
   const sku = document.getElementById('ajuste-sku').value;
-  const stockDep = parseInt(document.getElementById('ajuste-dep').value) || 0;
-  const stockMeli = parseInt(document.getElementById('ajuste-meli').value) || 0;
-  const stockShopify = parseInt(document.getElementById('ajuste-shopify').value) || 0;
+  const stock = parseInt(document.getElementById('ajuste-dep').value) || 0;
   const p = db.productos.find(x => x.sku === sku);
   if (!p) return;
   try {
-    await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep, stockMeli, stockShopify, forzarSync: true });
+    await api('PUT', `/productos?sku=${sku}`, { ...p, stockDep: stock, stockMeli: stock, stockShopify: stock, forzarSync: true });
     // Si tiene Shopify ID, sincronizar automáticamente solo ese producto
     if (p.shopifyId) {
       try {
@@ -1288,7 +1282,7 @@ function renderVentas() {
       </td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
-        ${v.canal === 'meli' ? `<button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>` : ''}
+        ${v.canal !== 'shopify' ? `<button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>

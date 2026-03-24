@@ -33,12 +33,12 @@ module.exports = async (req, res) => {
 
       // Nuevo stock
       const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
-      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
 
       // Actualizar CRM
       await supabase.from('productos').update({
         stock_dep: nuevoStockDep,
-        stock_meli: nuevoStockMeli,
+        stock_meli: nuevoStockDep,
+        stock_shopify: nuevoStockDep,
         updated_at: new Date().toISOString(),
       }).eq('sku', producto.sku);
 
@@ -76,7 +76,7 @@ module.exports = async (req, res) => {
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ available_quantity: nuevoStockMeli }),
+            body: JSON.stringify({ available_quantity: nuevoStockDep }),
           });
           const meliData = await meliRes.json();
           if (meliData.error) console.warn(`⚠️ MELI sync error: ${meliData.message}`);

@@ -57,7 +57,7 @@ async function handleOrder(resource) {
       });
       const shipData = await shipRes.json();
       logisticType = shipData?.logistic_type || '';
-      costoEnvioReal = shipData?.shipping_option?.cost || 0;
+      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
         direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;

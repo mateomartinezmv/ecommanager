@@ -266,7 +266,7 @@
       <div class="page-title">🛒 Ventas</div>
       <div class="topbar-actions">
         <button class="btn btn-yellow" onclick="openModal('modal-venta-meli')">🟡 Venta MELI</button>
-        <button class="btn btn-primary" onclick="openModal('modal-venta-mostrador')">🏪 Venta Mostrador</button>
+        <button class="btn btn-primary" onclick="vmosOpenModal()">🏪 Venta Mostrador</button>
       </div>
     </div>
     <div class="content">
@@ -450,15 +450,53 @@
 
 <!-- MODAL: VENTA MOSTRADOR -->
 <div class="modal-overlay" id="modal-venta-mostrador">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-title">🏪 Registrar Venta Mostrador</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Fecha *</label><input type="date" id="vmos-fecha"></div>
       <div class="form-group"><label class="form-label">Cliente</label><input type="text" id="vmos-cliente" placeholder="Nombre del cliente"></div>
-      <div class="form-group"><label class="form-label">Producto *</label><select id="vmos-producto"></select></div>
-      <div class="form-group"><label class="form-label">Cantidad *</label><input type="number" id="vmos-cantidad" placeholder="1" min="1" value="1"></div>
-      <div class="form-group"><label class="form-label">Precio unitario *</label><input type="number" id="vmos-precio" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
+      <div class="form-group"></div>
+    </div>
+
+    <div style="margin:12px 0 6px;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em">Agregar producto</div>
+    <div style="display:grid;grid-template-columns:1fr 80px 110px auto;gap:8px;align-items:end;margin-bottom:6px">
+      <div style="position:relative">
+        <input type="text" id="vmos-search" placeholder="Buscar por nombre o SKU..." autocomplete="off"
+          oninput="vmosOnSearch()" onkeydown="vmosSearchKeydown(event)"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+        <div id="vmos-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;z-index:200;margin-top:2px"></div>
+      </div>
+      <input type="number" id="vmos-cantidad" placeholder="Cant." min="1" value="1"
+        style="padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+      <input type="number" id="vmos-precio" placeholder="Precio" step="0.01"
+        style="padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
+      <button class="btn btn-primary" onclick="vmosAddToCart()" style="white-space:nowrap;height:36px">+ Agregar</button>
+    </div>
+
+    <div id="vmos-cart-container" style="display:none;margin:10px 0">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border)">
+            <th style="text-align:left;padding:5px 4px;font-weight:600">Producto</th>
+            <th style="text-align:center;padding:5px 4px;font-weight:600">Cant.</th>
+            <th style="text-align:right;padding:5px 4px;font-weight:600">P. Unit.</th>
+            <th style="text-align:right;padding:5px 4px;font-weight:600">Subtotal</th>
+            <th style="width:28px"></th>
+          </tr>
+        </thead>
+        <tbody id="vmos-cart-body"></tbody>
+        <tfoot>
+          <tr style="border-top:1px solid var(--border);font-weight:700">
+            <td colspan="3" style="padding:6px 4px;text-align:right;color:var(--text-secondary)">Total</td>
+            <td style="padding:6px 4px;text-align:right" id="vmos-total">$0</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="form-grid" style="margin-top:8px">
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="vmos-notas" rows="2" placeholder="Opcional..."></textarea></div>
     </div>
     <div class="modal-actions">
@@ -732,11 +770,9 @@ function openModal(id) {
     document.getElementById('pag-monto').value = '';
     document.getElementById('pag-notas').value = '';
   }
-  if (id === 'modal-venta-meli' || id === 'modal-venta-mostrador') {
+  if (id === 'modal-venta-meli') {
     populateProductoSelects();
-    const hoy = new Date().toISOString().slice(0,10);
-    if (id === 'modal-venta-meli') document.getElementById('vm-fecha').value = hoy;
-    else document.getElementById('vmos-fecha').value = hoy;
+    document.getElementById('vm-fecha').value = new Date().toISOString().slice(0,10);
   }
   document.getElementById(id).classList.add('open');
 }
@@ -754,7 +790,6 @@ function populateProductoSelects() {
   const opts = db.productos.map(p => `<option value="${p.sku}">${p.nombre} (${p.sku}) — Stock: ${p.stockDep}</option>`).join('');
   const empty = `<option value="">— Seleccionar producto —</option>`;
   document.getElementById('vm-producto').innerHTML = empty + opts;
-  document.getElementById('vmos-producto').innerHTML = empty + opts;
 }
 
 // =====================
@@ -838,6 +873,131 @@ async function saveAjuste() {
 }
 
 // =====================
+// VENTAS MOSTRADOR — CARRITO
+// =====================
+let vmosCart = [];
+let vmosSelectedSku = null;
+let vmosDropdownIndex = -1;
+
+function vmosOpenModal() {
+  vmosCart = [];
+  vmosSelectedSku = null;
+  document.getElementById('vmos-search').value = '';
+  document.getElementById('vmos-cantidad').value = '1';
+  document.getElementById('vmos-precio').value = '';
+  document.getElementById('vmos-dropdown').style.display = 'none';
+  document.getElementById('vmos-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('vmos-cliente').value = '';
+  document.getElementById('vmos-notas').value = '';
+  vmosRenderCart();
+  openModal('modal-venta-mostrador');
+}
+
+function vmosGetResults() {
+  const q = document.getElementById('vmos-search').value.trim().toLowerCase();
+  if (!q) return [];
+  return db.productos.filter(p =>
+    p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+  ).slice(0, 8);
+}
+
+function vmosOnSearch() {
+  vmosSelectedSku = null;
+  vmosDropdownIndex = -1;
+  const results = vmosGetResults();
+  const dd = document.getElementById('vmos-dropdown');
+  if (!results.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = results.map((p, i) =>
+    `<div data-i="${i}" onclick="vmosPickFromDropdown(${i})"
+      style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+      onmouseenter="this.style.background='var(--bg-tertiary)'" onmouseleave="this.style.background=''">
+      <span style="font-weight:600">${p.nombre}</span>
+      <span style="color:var(--text-secondary);margin-left:8px">${p.sku}</span>
+      <span style="color:var(--text-secondary);float:right">Stock: ${p.stockDep}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function vmosPickFromDropdown(i) {
+  const results = vmosGetResults();
+  const p = results[i];
+  if (!p) return;
+  vmosSelectedSku = p.sku;
+  document.getElementById('vmos-search').value = `${p.nombre} (${p.sku})`;
+  if (!document.getElementById('vmos-precio').value) {
+    document.getElementById('vmos-precio').value = p.precio || '';
+  }
+  document.getElementById('vmos-dropdown').style.display = 'none';
+  vmosDropdownIndex = -1;
+}
+
+function vmosSearchKeydown(e) {
+  const dd = document.getElementById('vmos-dropdown');
+  const items = dd.querySelectorAll('div[data-i]');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    vmosDropdownIndex = Math.min(vmosDropdownIndex + 1, items.length - 1);
+    items.forEach((el, i) => el.style.background = i === vmosDropdownIndex ? 'var(--bg-tertiary)' : '');
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    vmosDropdownIndex = Math.max(vmosDropdownIndex - 1, 0);
+    items.forEach((el, i) => el.style.background = i === vmosDropdownIndex ? 'var(--bg-tertiary)' : '');
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (vmosDropdownIndex >= 0) vmosPickFromDropdown(vmosDropdownIndex);
+    else if (items.length === 1) vmosPickFromDropdown(0);
+  } else if (e.key === 'Escape') {
+    dd.style.display = 'none';
+  }
+}
+
+function vmosAddToCart() {
+  if (!vmosSelectedSku) { alert('Seleccioná un producto de la lista.'); return; }
+  const cantidad = parseInt(document.getElementById('vmos-cantidad').value) || 1;
+  const precio = parseFloat(document.getElementById('vmos-precio').value) || 0;
+  if (!precio) { alert('Ingresá el precio unitario.'); return; }
+  const prod = db.productos.find(p => p.sku === vmosSelectedSku);
+  const existing = vmosCart.find(x => x.sku === vmosSelectedSku);
+  if (existing) {
+    existing.cantidad += cantidad;
+    existing.subtotal = existing.cantidad * existing.precioUnit;
+  } else {
+    vmosCart.push({ sku: vmosSelectedSku, nombre: prod ? prod.nombre : vmosSelectedSku, cantidad, precioUnit: precio, subtotal: cantidad * precio });
+  }
+  document.getElementById('vmos-search').value = '';
+  document.getElementById('vmos-cantidad').value = '1';
+  document.getElementById('vmos-precio').value = '';
+  vmosSelectedSku = null;
+  document.getElementById('vmos-dropdown').style.display = 'none';
+  vmosRenderCart();
+  document.getElementById('vmos-search').focus();
+}
+
+function vmosRemoveFromCart(sku) {
+  vmosCart = vmosCart.filter(x => x.sku !== sku);
+  vmosRenderCart();
+}
+
+function vmosRenderCart() {
+  const container = document.getElementById('vmos-cart-container');
+  const body = document.getElementById('vmos-cart-body');
+  if (!vmosCart.length) { container.style.display = 'none'; return; }
+  container.style.display = 'block';
+  body.innerHTML = vmosCart.map(item =>
+    `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 4px">${item.nombre} <span style="color:var(--text-secondary);font-size:11px">${item.sku}</span></td>
+      <td style="padding:5px 4px;text-align:center">${item.cantidad}</td>
+      <td style="padding:5px 4px;text-align:right">$${item.precioUnit.toLocaleString()}</td>
+      <td style="padding:5px 4px;text-align:right">$${item.subtotal.toLocaleString()}</td>
+      <td style="padding:5px 4px;text-align:center"><span onclick="vmosRemoveFromCart('${item.sku}')" style="cursor:pointer;color:var(--text-secondary);font-size:16px;line-height:1" title="Eliminar">×</span></td>
+    </tr>`
+  ).join('');
+  const total = vmosCart.reduce((s, x) => s + x.subtotal, 0);
+  document.getElementById('vmos-total').textContent = `$${total.toLocaleString()}`;
+}
+
+// =====================
 // VENTAS
 // =====================
 async function saveVenta(canal) {
@@ -850,30 +1010,38 @@ async function saveVenta(canal) {
     const prod = db.productos.find(p => p.sku === skuSel);
     venta = { id: 'V' + Date.now(), canal: 'meli', fecha: document.getElementById('vm-fecha').value || new Date().toISOString().slice(0,10), ordenMeli: document.getElementById('vm-orden').value.trim(), comprador: document.getElementById('vm-comprador').value.trim(), sku: skuSel, producto: prod ? prod.nombre : skuSel, cantidad, precioUnit: precio, comision: parseFloat(document.getElementById('vm-comision').value) || 0, total: precio * cantidad, estado: document.getElementById('vm-estado').value, generaEnvio: document.getElementById('vm-envio').value === 'si' };
     closeModal('modal-venta-meli');
+    try {
+      await api('POST', '/ventas', venta);
+      await loadAll();
+      if (venta.generaEnvio) {
+        pendingEnvioVentaId = venta.id;
+        setTimeout(() => {
+          document.getElementById('env-comprador').value = venta.comprador || '';
+          document.getElementById('env-fecha').value = venta.fecha;
+          document.getElementById('env-costo').value = '';
+          document.getElementById('modal-envio-title').textContent = `🚚 Envío — Orden ${venta.ordenMeli || venta.id}`;
+          openModal('modal-envio');
+        }, 200);
+      }
+      renderVentas(); renderStock();
+    } catch(e) { alert('Error registrando venta: ' + e.message); }
   } else {
-    const skuSel = document.getElementById('vmos-producto').value;
-    const cantidad = parseInt(document.getElementById('vmos-cantidad').value) || 1;
-    const precio = parseFloat(document.getElementById('vmos-precio').value) || 0;
-    if (!skuSel || !precio) { alert('Seleccioná un producto y el precio.'); return; }
-    const prod = db.productos.find(p => p.sku === skuSel);
-    venta = { id: 'V' + Date.now(), canal: 'mostrador', fecha: document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10), cliente: document.getElementById('vmos-cliente').value.trim(), sku: skuSel, producto: prod ? prod.nombre : skuSel, cantidad, precioUnit: precio, comision: 0, total: precio * cantidad, estado: 'pagada', metodoPago: document.getElementById('vmos-pago').value, notas: document.getElementById('vmos-notas').value.trim(), generaEnvio: false };
+    if (!vmosCart.length) { alert('Agregá al menos un producto al carrito.'); return; }
+    const fecha = document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10);
+    const cliente = document.getElementById('vmos-cliente').value.trim();
+    const metodoPago = document.getElementById('vmos-pago').value;
+    const notas = document.getElementById('vmos-notas').value.trim();
     closeModal('modal-venta-mostrador');
+    try {
+      for (let i = 0; i < vmosCart.length; i++) {
+        const item = vmosCart[i];
+        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, total: item.subtotal, estado: 'pagada', metodoPago, notas, generaEnvio: false };
+        await api('POST', '/ventas', v);
+      }
+      await loadAll();
+      renderVentas(); renderStock();
+    } catch(e) { alert('Error registrando venta: ' + e.message); }
   }
-  try {
-    await api('POST', '/ventas', venta);
-    await loadAll();
-    if (venta.generaEnvio) {
-      pendingEnvioVentaId = venta.id;
-      setTimeout(() => {
-        document.getElementById('env-comprador').value = venta.comprador || '';
-        document.getElementById('env-fecha').value = venta.fecha;
-        document.getElementById('env-costo').value = '';
-        document.getElementById('modal-envio-title').textContent = `🚚 Envío — Orden ${venta.ordenMeli || venta.id}`;
-        openModal('modal-envio');
-      }, 200);
-    }
-    renderVentas(); renderStock();
-  } catch(e) { alert('Error registrando venta: ' + e.message); }
 }
 
 function abrirEdicionVenta(id) {

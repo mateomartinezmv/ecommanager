@@ -353,7 +353,7 @@
     <div class="topbar">
       <div class="page-title">📈 Reportes</div>
       <div class="topbar-actions">
-        <select id="reporte-periodo" onchange="renderReportes()" style="width:auto;padding:8px 14px">
+        <select id="reporte-periodo" onchange="onReportePeriodoChange()" style="width:auto;padding:8px 14px">
           <option value="7">Últimos 7 días</option>
           <option value="30" selected>Últimos 30 días</option>
           <option value="90">Últimos 90 días</option>
@@ -377,23 +377,57 @@
       <div id="comparador-tabla"></div>
     </div>
     <div class="content">
-      <div class="cards-grid" id="reporte-stats"></div>
-      <div class="two-col">
-        <div class="table-wrap">
-          <div class="table-header"><span class="table-title">📊 Ventas por canal</span></div>
-          <div style="padding:20px" id="chart-canal"></div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchReportesTab('resumen')">📈 Resumen</button>
+        <button class="tab" onclick="switchReportesTab('comisiones')">📊 Comisiones MELI</button>
+      </div>
+      <!-- Panel Resumen -->
+      <div id="panel-resumen">
+        <div class="cards-grid" id="reporte-stats"></div>
+        <div class="two-col">
+          <div class="table-wrap">
+            <div class="table-header"><span class="table-title">📊 Ventas por canal</span></div>
+            <div style="padding:20px" id="chart-canal"></div>
+          </div>
+          <div class="table-wrap">
+            <div class="table-header"><span class="table-title">🏆 Top productos vendidos</span></div>
+            <div style="padding:20px" id="chart-top-productos"></div>
+          </div>
         </div>
-        <div class="table-wrap">
-          <div class="table-header"><span class="table-title">🏆 Top productos vendidos</span></div>
-          <div style="padding:20px" id="chart-top-productos"></div>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <span class="table-title">📐 Márgenes por producto</span>
+            <span style="font-size:11px;color:var(--text-muted)">Verde ≥40% · Amarillo ≥20% · Rojo &lt;20%</span>
+          </div>
+          <div id="reporte-margenes"></div>
         </div>
       </div>
-      <div class="table-wrap" style="margin-bottom:20px">
-        <div class="table-header">
-          <span class="table-title">📐 Márgenes por producto</span>
-          <span style="font-size:11px;color:var(--text-muted)">Verde ≥40% · Amarillo ≥20% · Rojo &lt;20%</span>
+      <!-- Panel Comisiones MELI -->
+      <div id="panel-comisiones" style="display:none">
+        <div class="cards-grid" id="comisiones-stats"></div>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <span class="table-title">📋 Desglose por venta MELI</span>
+            <span style="font-size:11px;color:var(--text-muted)">Verde ≥25% · Amarillo ≥10% · Rojo &lt;10%</span>
+          </div>
+          <div id="comisiones-desglose"></div>
         </div>
-        <div id="reporte-margenes"></div>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <span class="table-title">📦 Resumen por producto MELI</span>
+          </div>
+          <div id="comisiones-resumen-producto"></div>
+        </div>
+        <div class="two-col">
+          <div class="table-wrap">
+            <div class="table-header"><span class="table-title">🏆 Más rentables</span></div>
+            <div style="padding:20px" id="chart-meli-top"></div>
+          </div>
+          <div class="table-wrap">
+            <div class="table-header"><span class="table-title">⚠️ Revisar</span></div>
+            <div style="padding:20px" id="chart-meli-bottom"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1442,6 +1476,151 @@ function renderReportes() {
       ? '<div class="empty-state"><p>Sin datos en el período</p></div>'
       : '<table><thead><tr><th>Producto</th><th>Uds</th><th>Ingresos</th><th>Costo prod.</th><th>Ganancia</th><th>Margen</th><th>Ticket prom.</th></tr></thead><tbody>' + filas + '</tbody></table>';
   }
+}
+
+function onReportePeriodoChange() {
+  const active = document.querySelector('#page-reportes .tab.active');
+  const tab = active ? active.getAttribute('onclick').match(/'(\w+)'/)[1] : 'resumen';
+  if (tab === 'comisiones') renderComisiones();
+  else renderReportes();
+}
+
+function switchReportesTab(tab) {
+  document.querySelectorAll('#page-reportes .tab').forEach((t,i) => {
+    t.classList.toggle('active', ['resumen','comisiones'][i] === tab);
+  });
+  document.getElementById('panel-resumen').style.display = tab === 'resumen' ? '' : 'none';
+  document.getElementById('panel-comisiones').style.display = tab === 'comisiones' ? '' : 'none';
+  if (tab === 'comisiones') renderComisiones();
+  else renderReportes();
+}
+
+function renderComisiones() {
+  const dias = document.getElementById('reporte-periodo').value;
+  const now = new Date();
+  const ventasMeli = (dias === 'all' ? db.ventas : db.ventas.filter(v => {
+    const d = new Date(v.fecha);
+    return (now - d) / (1000*60*60*24) <= parseInt(dias);
+  })).filter(v => v.canal === 'meli');
+
+  const meliIds = new Set(ventasMeli.map(v => v.id));
+  const enviosMeli = db.envios.filter(e => meliIds.has(e.ventaId));
+
+  // ── Cards
+  const totalComisiones = ventasMeli.reduce((a,v) => a + (v.comision||0), 0);
+  const totalCostoEnvios = enviosMeli.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const totalCargos = totalComisiones + totalCostoEnvios;
+  const totalIngresos = ventasMeli.reduce((a,v) => a + v.total, 0);
+  const totalCostoProd = ventasMeli.reduce((a,v) => {
+    const p = db.productos.find(x => x.sku === v.sku);
+    return a + (p ? p.costo * v.cantidad : 0);
+  }, 0);
+  const ingresoNeto = totalIngresos - totalComisiones - totalCostoEnvios - totalCostoProd;
+
+  document.getElementById('comisiones-stats').innerHTML =
+    `<div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalComisiones)}</div><div class="stat-label">Total comisiones MELI</div></div>` +
+    `<div class="stat-card red"><div class="stat-icon">📦</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Total costos de envío</div></div>` +
+    `<div class="stat-card red"><div class="stat-icon">🧾</div><div class="stat-value">${fmt(totalCargos)}</div><div class="stat-label">Total cargos</div></div>` +
+    `<div class="${ingresoNeto >= 0 ? 'stat-card green' : 'stat-card red'}"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ingresoNeto)}</div><div class="stat-label">Ingreso neto real</div></div>`;
+
+  // ── Tabla desglose por venta
+  const ventasOrdenadas = [...ventasMeli].sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+  const filasDesglose = ventasOrdenadas.map(v => {
+    const envio = enviosMeli.find(e => e.ventaId === v.id);
+    const p = db.productos.find(x => x.sku === v.sku);
+    const ingresos = v.total;
+    const comision = v.comision || 0;
+    const costoEnvio = envio ? (envio.costo || 0) : 0;
+    const colecta = envio && envio.colecta ? 75 : 0;
+    const costoProd = p ? p.costo * v.cantidad : 0;
+    const ganancia = ingresos - comision - costoEnvio - colecta - costoProd;
+    const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : '0.0';
+    const mc = parseFloat(margen) >= 25 ? 'var(--green)' : parseFloat(margen) >= 10 ? 'var(--yellow)' : 'var(--red)';
+    return '<tr>' +
+      '<td>' + v.fecha + '</td>' +
+      '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + v.producto + '">' + v.producto + '</td>' +
+      '<td>' + v.cantidad + '</td>' +
+      '<td>' + fmt(v.precioUnit) + '</td>' +
+      '<td>' + fmt(ingresos) + '</td>' +
+      '<td style="color:var(--yellow)">' + fmt(comision) + '</td>' +
+      '<td>' + fmt(costoEnvio) + '</td>' +
+      '<td style="text-align:center">' + (envio && envio.colecta ? '✓' : '—') + '</td>' +
+      '<td style="color:var(--text-muted)">' + fmt(costoProd) + '</td>' +
+      '<td style="color:' + (ganancia >= 0 ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' + fmt(ganancia) + '</td>' +
+      '<td><span style="color:' + mc + ';font-weight:700">' + margen + '%</span></td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('comisiones-desglose').innerHTML = ventasOrdenadas.length === 0
+    ? '<div class="empty-state"><p>Sin ventas MELI en el período</p></div>'
+    : '<table><thead><tr><th>Fecha</th><th>Producto</th><th>Qty</th><th>Precio</th><th>Ingresos</th><th>Comisión</th><th>Costo envío</th><th>Colecta $75</th><th>Costo prod.</th><th>Ganancia neta</th><th>Margen %</th></tr></thead><tbody>' + filasDesglose + '</tbody></table>';
+
+  // ── Tabla resumen por producto
+  const porProd = {};
+  ventasMeli.forEach(v => {
+    const key = v.sku || v.producto;
+    const envio = enviosMeli.find(e => e.ventaId === v.id);
+    const p = db.productos.find(x => x.sku === v.sku);
+    const costoEnvio = envio ? (envio.costo || 0) + (envio.colecta ? 75 : 0) : 0;
+    const costoProd = p ? p.costo * v.cantidad : 0;
+    const ganancia = v.total - (v.comision||0) - costoEnvio - costoProd;
+    if (!porProd[key]) porProd[key] = { nombre: v.producto, unidades: 0, ingresos: 0, comisiones: 0, costoEnvios: 0, costoProd: 0, ganancia: 0, ventas: 0 };
+    porProd[key].unidades  += v.cantidad;
+    porProd[key].ingresos  += v.total;
+    porProd[key].comisiones+= v.comision || 0;
+    porProd[key].costoEnvios += costoEnvio;
+    porProd[key].costoProd += costoProd;
+    porProd[key].ganancia  += ganancia;
+    porProd[key].ventas    += 1;
+  });
+  const resumenArr = Object.values(porProd).sort((a,b) => b.ganancia - a.ganancia);
+  const filasResumen = resumenArr.map(d => {
+    const margen = d.ingresos > 0 ? ((d.ganancia / d.ingresos) * 100).toFixed(1) : '0.0';
+    const mc = parseFloat(margen) >= 25 ? 'var(--green)' : parseFloat(margen) >= 10 ? 'var(--yellow)' : 'var(--red)';
+    return '<tr>' +
+      '<td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + d.nombre + '">' + d.nombre + '</td>' +
+      '<td>' + d.unidades + '</td>' +
+      '<td>' + fmt(d.ingresos) + '</td>' +
+      '<td style="color:var(--yellow)">' + fmt(d.comisiones) + '</td>' +
+      '<td>' + fmt(d.costoEnvios) + '</td>' +
+      '<td style="color:var(--text-muted)">' + fmt(d.costoProd) + '</td>' +
+      '<td style="color:' + (d.ganancia >= 0 ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' + fmt(d.ganancia) + '</td>' +
+      '<td><span style="color:' + mc + ';font-weight:700">' + margen + '%</span></td>' +
+      '</tr>';
+  }).join('');
+  document.getElementById('comisiones-resumen-producto').innerHTML = resumenArr.length === 0
+    ? '<div class="empty-state"><p>Sin ventas MELI en el período</p></div>'
+    : '<table><thead><tr><th>Producto</th><th>Unidades</th><th>Ingresos</th><th>Comisiones</th><th>Costo envíos</th><th>Costo producto</th><th>Ganancia total</th><th>Margen %</th></tr></thead><tbody>' + filasResumen + '</tbody></table>';
+
+  // ── Gráficos top 5 rentables / menos rentables (≥2 ventas)
+  const aptos = resumenArr.filter(d => d.ventas >= 2);
+  const top5  = [...aptos].sort((a,b) => {
+    const ma = a.ingresos > 0 ? a.ganancia/a.ingresos : -Infinity;
+    const mb = b.ingresos > 0 ? b.ganancia/b.ingresos : -Infinity;
+    return mb - ma;
+  }).slice(0,5);
+  const bot5  = [...aptos].sort((a,b) => {
+    const ma = a.ingresos > 0 ? a.ganancia/a.ingresos : Infinity;
+    const mb = b.ingresos > 0 ? b.ganancia/b.ingresos : Infinity;
+    return ma - mb;
+  }).slice(0,5);
+
+  function buildChart(arr, colorFn) {
+    if (!arr.length) return '<div class="empty-state"><p>Sin datos suficientes</p></div>';
+    const maxMg = Math.max(...arr.map(d => Math.abs(d.ingresos > 0 ? (d.ganancia/d.ingresos)*100 : 0)), 1);
+    return '<div class="chart-bar-wrap">' + arr.map(d => {
+      const mg = d.ingresos > 0 ? ((d.ganancia/d.ingresos)*100).toFixed(1) : '0.0';
+      const w  = (Math.abs(parseFloat(mg)) / maxMg * 100).toFixed(1);
+      const color = colorFn(parseFloat(mg));
+      return '<div class="chart-bar-row">' +
+        '<span class="chart-bar-label" title="' + d.nombre + '">' + d.nombre + '</span>' +
+        '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + w + '%;background:' + color + '">' + mg + '%</div></div>' +
+        '<span class="chart-bar-val">' + fmt(d.ganancia) + '</span>' +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  document.getElementById('chart-meli-top').innerHTML    = buildChart(top5, mg => mg >= 25 ? 'linear-gradient(90deg,#166534,#22c55e)' : mg >= 10 ? 'linear-gradient(90deg,#854d0e,#eab308)' : 'linear-gradient(90deg,#991b1b,#ef4444)');
+  document.getElementById('chart-meli-bottom').innerHTML = buildChart(bot5, mg => mg >= 25 ? 'linear-gradient(90deg,#166534,#22c55e)' : mg >= 10 ? 'linear-gradient(90deg,#854d0e,#eab308)' : 'linear-gradient(90deg,#991b1b,#ef4444)');
 }
 
 // =====================

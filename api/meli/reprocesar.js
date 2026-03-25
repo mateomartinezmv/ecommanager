@@ -134,9 +134,8 @@ module.exports = async (req, res) => {
       if (ventaExistente) { log.push(`ℹ️ Venta ${ventaId} ya existe`); resultados.push({ item: meliItemId, estado: 'ya_existe', ventaId }); continue; }
 
       const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
-      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
-      await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
-      log.push(`✅ Stock: dep=${nuevoStockDep} meli=${nuevoStockMeli}`);
+      await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockDep, stock_shopify: nuevoStockDep, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
+      log.push(`✅ Stock: ${nuevoStockDep}`);
 
       // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)
       const costoEnvioFinal = esFlex ? costoEnvioReal : 0;

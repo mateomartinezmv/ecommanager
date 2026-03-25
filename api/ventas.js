@@ -36,9 +36,6 @@ module.exports = async (req, res) => {
       if (prodErr || !producto) throw new Error('Producto no encontrado: ' + v.sku);
 
       const nuevoStockDep = Math.max(0, producto.stock_dep - v.cantidad);
-      const nuevoStockMeli = v.canal === 'meli'
-        ? Math.max(0, producto.stock_meli - v.cantidad)
-        : producto.stock_meli;
 
       const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
         id: v.id,
@@ -62,7 +59,8 @@ module.exports = async (req, res) => {
 
       await supabase.from('productos').update({
         stock_dep: nuevoStockDep,
-        stock_meli: nuevoStockMeli,
+        stock_meli: nuevoStockDep,
+        stock_shopify: nuevoStockDep,
         updated_at: new Date().toISOString(),
       }).eq('sku', v.sku);
 
@@ -72,7 +70,7 @@ module.exports = async (req, res) => {
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ available_quantity: nuevoStockMeli }),
+            body: JSON.stringify({ available_quantity: nuevoStockDep }),
           });
           const meliData = await meliRes.json();
           if (meliData.error) console.warn('⚠️ MELI error:', meliData.message);
@@ -81,7 +79,7 @@ module.exports = async (req, res) => {
         }
       }
 
-      return res.json({ venta, nuevoStockDep, nuevoStockMeli });
+      return res.json({ venta, nuevoStock: nuevoStockDep });
     }
 
     if (req.method === 'PUT') {

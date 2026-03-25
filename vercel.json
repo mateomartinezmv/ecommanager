@@ -11,7 +11,8 @@
     "api/shopify/notify.js": { "maxDuration": 10 },
     "api/shopify/sync-stock.js": { "maxDuration": 30 },
     "api/shopify/productos.js": { "maxDuration": 10 },
-    "api/shopify/buscar-sku.js": { "maxDuration": 10 }
+    "api/shopify/buscar-sku.js": { "maxDuration": 10 },
+    "api/shopify/reprocesar.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },

@@ -5,13 +5,18 @@ const { getSupabase } = require('../_supabase');
 const { getMeliToken } = require('../_meliToken');
 
 module.exports = async (req, res) => {
-  // Responder 200 rápido siempre
-  res.status(200).json({ ok: true });
-  if (req.method !== 'POST') return;
+  if (req.method !== 'POST') return res.status(200).json({ ok: true });
 
   try {
-    const order = req.body;
-    if (!order || !order.line_items) return;
+    let order = req.body;
+    // Vercel a veces entrega el body como string o Buffer
+    if (typeof order === 'string') { try { order = JSON.parse(order); } catch(_) {} }
+    if (Buffer.isBuffer(order)) { try { order = JSON.parse(order.toString()); } catch(_) {} }
+
+    if (!order || !order.line_items) {
+      console.warn('⚠️ shopify/notify: body vacío o sin line_items', typeof order);
+      return res.status(200).json({ ok: true });
+    }
 
     const supabase = getSupabase();
 
@@ -80,13 +85,16 @@ module.exports = async (req, res) => {
           });
           const meliData = await meliRes.json();
           if (meliData.error) console.warn(`⚠️ MELI sync error: ${meliData.message}`);
-          else console.log(`✅ MELI sync: ${producto.meli_id} → ${nuevoStockMeli}`);
+          else console.log(`✅ MELI sync: ${producto.meli_id} → ${nuevoStockDep}`);
         } catch (meliErr) {
           console.error('❌ Error sync MELI tras venta Shopify:', meliErr.message);
         }
       }
     }
+
+    return res.status(200).json({ ok: true });
   } catch (err) {
     console.error('Error en /api/shopify/notify:', err.message);
+    return res.status(200).json({ ok: true }); // Siempre 200 para que Shopify no reintente
   }
 };

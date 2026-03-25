@@ -1282,7 +1282,7 @@ function renderVentas() {
       </td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
-        ${v.canal !== 'shopify' ? `<button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>

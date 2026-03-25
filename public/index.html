@@ -558,6 +558,7 @@
           <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="dhl">DHL</option>
+          <option value="ues">UES</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -597,6 +598,7 @@
           <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="dhl">DHL</option>
+          <option value="ues">UES</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -635,6 +637,7 @@
           <option value="correo_arg">Correo Argentino</option>
           <option value="mercado_envios">MELI Envíos</option>
           <option value="dhl">DHL</option>
+          <option value="ues">UES</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -1318,7 +1321,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', ues:'UES', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
@@ -1495,7 +1498,7 @@ function loadImport(e) {
 const NOMBRES_TRANSPORTISTAS = {
   enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani',
   oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos',
-  dhl: 'DHL', otro: 'Otro'
+  dhl: 'DHL', ues: 'UES', otro: 'Otro'
 };
 
 async function renderTransportistas() {

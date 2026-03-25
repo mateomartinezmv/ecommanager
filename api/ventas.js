@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
         orden_meli: v.ordenMeli || null,
         comprador: v.comprador || null,
         cliente: v.cliente || null,
+        cliente_id: v.clienteId || null,
         sku: v.sku,
         producto: v.producto,
         cantidad: v.cantidad,

@@ -1,10 +1,13 @@
 // api/meli/notify.js
 // POST /api/meli/notify → recibe notificaciones de MELI (ventas, stock)
+// GET  /api/meli/notify → diagnóstico de conexión MELI
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
 module.exports = async (req, res) => {
+  if (req.method === 'GET') return handleStatus(req, res);
+
   // MELI espera un 200 rápido
   res.status(200).json({ ok: true });
   if (req.method !== 'POST') return;
@@ -131,6 +134,18 @@ async function handleOrder(resource) {
         genera_envio: !!shippingId,
       });
       console.log(`✅ Venta MELI registrada: orden ${order.id}, ${producto.nombre} x${cantidad}`);
+
+      // Auto-vincular cliente por meli_nickname si existe
+      const buyerNickname = order.buyer?.nickname;
+      if (buyerNickname) {
+        try {
+          const { data: clienteMeli } = await supabase
+            .from('clientes').select('id').eq('meli_nickname', buyerNickname).single();
+          if (clienteMeli) {
+            await supabase.from('ventas').update({ cliente_id: clienteMeli.id }).eq('id', ventaId);
+          }
+        } catch (_) {}
+      }
     }
 
     // Crear envío si hay shipping_id (si no hay, es retiro en punto)
@@ -165,6 +180,51 @@ async function handleOrder(resource) {
       }
     }
   }
+}
+
+async function handleStatus(req, res) {
+  const supabase = getSupabase();
+  const resultado = {
+    timestamp: new Date().toISOString(),
+    meli_conectado: false,
+    usuario_meli: null,
+    token_expira: null,
+    ultimas_notificaciones: [],
+    error: null,
+  };
+  try {
+    const { data: tokenData } = await supabase
+      .from('meli_tokens').select('expires_at, meli_user_id, updated_at').eq('id', 1).single();
+    if (tokenData) {
+      resultado.meli_conectado = true;
+      resultado.token_expira = tokenData.expires_at;
+      resultado.meli_user_id = tokenData.meli_user_id;
+      resultado.token_actualizado = tokenData.updated_at;
+      try {
+        const token = await getMeliToken();
+        const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const me = await meRes.json();
+        resultado.usuario_meli = me.nickname || me.id;
+        resultado.token_valido = !me.error;
+      } catch (e) {
+        resultado.token_valido = false;
+        resultado.token_error = e.message;
+      }
+    }
+  } catch (e) {
+    resultado.error = 'MELI no conectado: ' + e.message;
+  }
+  try {
+    const { data: logs } = await supabase
+      .from('meli_notify_log').select('*')
+      .order('recibido_at', { ascending: false }).limit(10);
+    resultado.ultimas_notificaciones = logs || [];
+  } catch (_) {
+    resultado.ultimas_notificaciones = [];
+  }
+  return res.json(resultado);
 }
 
 async function syncShopifyStock(variantId, quantity) {

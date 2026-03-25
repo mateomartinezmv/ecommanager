@@ -188,6 +188,7 @@
     <div class="nav-item" onclick="goPage('ventas')"><span class="icon">🛒</span><span>Ventas</span></div>
     <div class="nav-item" onclick="goPage('envios')"><span class="icon">🚚</span><span>Envíos</span></div>
     <div class="nav-item" onclick="goPage('transportistas')"><span class="icon">💳</span><span>Transportistas</span></div>
+    <div class="nav-item" onclick="goPage('clientes')"><span class="icon">👥</span><span>Clientes</span></div>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
   </nav>
@@ -348,6 +349,44 @@
     </div>
   </div>
 
+  <!-- CLIENTES -->
+  <div id="page-clientes" class="page">
+    <div class="topbar">
+      <div class="page-title">👥 Clientes</div>
+      <div class="topbar-actions">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="clientes-search" placeholder="Buscar por nombre, teléfono o email..." oninput="renderClientes()">
+        </div>
+        <button class="btn btn-primary" onclick="clientesOpenModal()">+ Nuevo cliente</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="cards-grid" id="clientes-stats"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Teléfono</th>
+              <th>Canal origen</th>
+              <th>Compras</th>
+              <th>Monto total</th>
+              <th>Última compra</th>
+              <th>Ticket prom.</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="clientes-tbody"></tbody>
+        </table>
+        <div id="clientes-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">👥</div>
+          <p>No hay clientes registrados aún.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- REPORTES -->
   <div id="page-reportes" class="page">
     <div class="topbar">
@@ -454,7 +493,15 @@
     <div class="modal-title">🏪 Registrar Venta Mostrador</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Fecha *</label><input type="date" id="vmos-fecha"></div>
-      <div class="form-group"><label class="form-label">Cliente</label><input type="text" id="vmos-cliente" placeholder="Nombre del cliente"></div>
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <div style="position:relative">
+          <input type="text" id="vmos-cliente-search" placeholder="Buscar o escribir nombre..." autocomplete="off"
+            oninput="vmosClienteSearch()" onkeydown="vmosClienteKeydown(event)">
+          <div id="vmos-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:180px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        </div>
+        <input type="hidden" id="vmos-cliente-id">
+      </div>
       <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
       <div class="form-group"></div>
     </div>
@@ -674,11 +721,50 @@
   </div>
 </div>
 
+<!-- MODAL: NUEVO/EDITAR CLIENTE -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title" id="modal-cliente-title">👥 Nuevo Cliente</div>
+    <div class="form-grid">
+      <div class="form-group form-full"><label class="form-label">Nombre *</label><input type="text" id="cli-nombre" placeholder="Nombre completo"></div>
+      <div class="form-group"><label class="form-label">Teléfono (Uruguay)</label><input type="text" id="cli-telefono" placeholder="ej: 099 123 456"></div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" id="cli-email" placeholder="correo@ejemplo.com"></div>
+      <div class="form-group"><label class="form-label">Canal origen</label>
+        <select id="cli-canal">
+          <option value="mostrador">🏪 Mostrador</option>
+          <option value="meli">🟡 MELI</option>
+          <option value="shopify">🛍️ Shopify</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Usuario MELI (para auto-vincular)</label><input type="text" id="cli-meli-nick" placeholder="ej: comprador123"></div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="cli-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-cliente')">Cancelar</button>
+      <button class="btn btn-primary" onclick="clienteGuardar()">Guardar cliente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: DETALLE CLIENTE -->
+<div class="modal-overlay" id="modal-detalle-cliente">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-title" id="detalle-cliente-nombre">Cliente</div>
+    <div class="cards-grid" id="detalle-cliente-stats" style="margin-bottom:16px"></div>
+    <div id="detalle-cliente-info"></div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.05em">Historial de compras</div>
+    <div id="detalle-cliente-historial"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-detalle-cliente')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [] };
+let db = { productos: [], ventas: [], envios: [], clientes: [] };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let enviosTabFilter = 'all';
@@ -698,14 +784,16 @@ async function api(method, path, body) {
 
 async function loadAll() {
   try {
-    const [productos, ventas, envios] = await Promise.all([
+    const [productos, ventas, envios, clientes] = await Promise.all([
       api('GET', '/productos'),
       api('GET', '/ventas'),
       api('GET', '/envios'),
+      api('GET', '/clientes').catch(() => []),
     ]);
     db.productos = productos.map(normProducto);
     db.ventas    = ventas.map(normVenta);
     db.envios    = envios.map(normEnvio);
+    db.clientes  = clientes.map(normCliente);
   } catch(e) {
     console.error('Error cargando datos:', e);
     alert('⚠️ Error conectando con la base de datos: ' + e.message);
@@ -716,7 +804,10 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+}
+function normCliente(c) {
+  return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
   return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
@@ -757,6 +848,7 @@ function goPage(page) {
   if (page === 'envios') renderEnvios();
   if (page === 'reportes') renderReportes();
   if (page === 'transportistas') renderTransportistas();
+  if (page === 'clientes') renderClientes();
 }
 
 // =====================
@@ -881,7 +973,9 @@ function vmosOpenModal() {
   document.getElementById('vmos-precio').value = '';
   document.getElementById('vmos-dropdown').style.display = 'none';
   document.getElementById('vmos-fecha').value = new Date().toISOString().slice(0,10);
-  document.getElementById('vmos-cliente').value = '';
+  document.getElementById('vmos-cliente-search').value = '';
+  document.getElementById('vmos-cliente-id').value = '';
+  document.getElementById('vmos-cliente-dd').style.display = 'none';
   document.getElementById('vmos-notas').value = '';
   vmosRenderCart();
   openModal('modal-venta-mostrador');
@@ -1022,14 +1116,15 @@ async function saveVenta(canal) {
   } else {
     if (!vmosCart.length) { alert('Agregá al menos un producto al carrito.'); return; }
     const fecha = document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10);
-    const cliente = document.getElementById('vmos-cliente').value.trim();
+    const cliente = document.getElementById('vmos-cliente-search').value.trim();
+    const clienteId = document.getElementById('vmos-cliente-id').value || null;
     const metodoPago = document.getElementById('vmos-pago').value;
     const notas = document.getElementById('vmos-notas').value.trim();
     closeModal('modal-venta-mostrador');
     try {
       for (let i = 0; i < vmosCart.length; i++) {
         const item = vmosCart[i];
-        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, total: item.subtotal, estado: 'pagada', metodoPago, notas, generaEnvio: false };
+        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, total: item.subtotal, estado: 'pagada', metodoPago, notas, generaEnvio: false };
         await api('POST', '/ventas', v);
       }
       await loadAll();
@@ -1698,6 +1793,220 @@ function renderComparador() {
     '<th style="text-align:right">Diferencia</th>' +
     '<th style="text-align:right">Variación</th>' +
     '</tr></thead><tbody>' + filas + '</tbody></table></div>';
+}
+
+// =====================
+// CLIENTES
+// =====================
+let editingClienteId = null;
+
+function canalOrigenBadge(canal) {
+  if (canal === 'meli') return '<span class="badge badge-meli">🟡 MELI</span>';
+  if (canal === 'shopify') return '<span class="badge badge-green">🛍️ Shopify</span>';
+  return '<span class="badge badge-blue">🏪 Mostrador</span>';
+}
+
+function abrirWhatsApp(clienteId) {
+  const c = db.clientes.find(x => x.id === clienteId);
+  if (!c || !c.telefono) return;
+  let n = c.telefono.replace(/\D/g, '');
+  if (!n.startsWith('598')) {
+    if (n.startsWith('0')) n = n.slice(1);
+    n = '598' + n;
+  }
+  const msg = encodeURIComponent(`Hola ${c.nombre}! Te escribimos desde Martinez Motos. Tenemos productos nuevos que pueden interesarte 🏍️`);
+  window.open(`https://wa.me/${n}?text=${msg}`, '_blank');
+}
+
+function renderClientes() {
+  const q = (document.getElementById('clientes-search')?.value || '').toLowerCase();
+  const clientes = db.clientes.filter(c =>
+    !q ||
+    c.nombre.toLowerCase().includes(q) ||
+    (c.telefono || '').includes(q) ||
+    (c.email || '').toLowerCase().includes(q)
+  );
+
+  const hoy = new Date();
+  const activos = db.clientes.filter(c => {
+    if (!c.ultimaCompra) return false;
+    return (hoy - new Date(c.ultimaCompra)) / (1000 * 60 * 60 * 24) <= 60;
+  }).length;
+  const montoTotal = db.clientes.reduce((s, c) => s + (c.montoTotal || 0), 0);
+  const totalComprasGlobal = db.clientes.reduce((s, c) => s + (c.totalCompras || 0), 0);
+  const ticketGlobal = totalComprasGlobal > 0 ? montoTotal / totalComprasGlobal : 0;
+
+  document.getElementById('clientes-stats').innerHTML = `
+    <div class="stat-card blue"><div class="stat-icon">👥</div><div class="stat-value">${db.clientes.length}</div><div class="stat-label">Total clientes</div></div>
+    <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-value">${activos}</div><div class="stat-label">Activos (últimos 60 días)</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">💰</div><div class="stat-value">${fmt(montoTotal)}</div><div class="stat-label">Monto total acumulado</div></div>
+    <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${fmt(ticketGlobal)}</div><div class="stat-label">Ticket promedio global</div></div>
+  `;
+
+  const empty = document.getElementById('clientes-empty');
+  const tbody = document.getElementById('clientes-tbody');
+  if (!clientes.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = clientes.map(c => `
+    <tr>
+      <td><strong>${c.nombre}</strong>${c.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${c.notas}</span>` : ''}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${c.telefono || '—'}</td>
+      <td>${canalOrigenBadge(c.canalOrigen)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;text-align:center">${c.totalCompras}</td>
+      <td style="font-weight:600">${fmt(c.montoTotal)}</td>
+      <td style="color:var(--text-muted)">${c.ultimaCompra || '—'}</td>
+      <td>${fmt(c.ticketPromedio)}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="clienteVerDetalle(this.dataset.id)" title="Ver detalle">🔍</button>
+        <button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="clientesOpenModal(this.dataset.id)" title="Editar">✏️</button>
+        ${c.telefono ? `<button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="abrirWhatsApp(this.dataset.id)" title="WhatsApp">📱</button>` : ''}
+        <button class="btn btn-danger btn-sm" data-id="${c.id}" onclick="clienteEliminar(this.dataset.id)" title="Eliminar">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function clientesOpenModal(id) {
+  editingClienteId = id || null;
+  document.getElementById('modal-cliente-title').textContent = id ? '✏️ Editar Cliente' : '👥 Nuevo Cliente';
+  if (id) {
+    const c = db.clientes.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('cli-nombre').value = c.nombre;
+    document.getElementById('cli-telefono').value = c.telefono || '';
+    document.getElementById('cli-email').value = c.email || '';
+    document.getElementById('cli-canal').value = c.canalOrigen || 'mostrador';
+    document.getElementById('cli-meli-nick').value = c.meliNickname || '';
+    document.getElementById('cli-notas').value = c.notas || '';
+  } else {
+    ['cli-nombre','cli-telefono','cli-email','cli-meli-nick','cli-notas'].forEach(eid => { document.getElementById(eid).value = ''; });
+    document.getElementById('cli-canal').value = 'mostrador';
+  }
+  openModal('modal-cliente');
+}
+
+async function clienteGuardar() {
+  const nombre = document.getElementById('cli-nombre').value.trim();
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+  const datos = {
+    nombre,
+    telefono: document.getElementById('cli-telefono').value.trim(),
+    email: document.getElementById('cli-email').value.trim(),
+    canal_origen: document.getElementById('cli-canal').value,
+    meli_nickname: document.getElementById('cli-meli-nick').value.trim(),
+    notas: document.getElementById('cli-notas').value.trim(),
+  };
+  try {
+    if (editingClienteId) await api('PUT', `/clientes?id=${editingClienteId}`, datos);
+    else await api('POST', '/clientes', datos);
+    closeModal('modal-cliente');
+    const lista = await api('GET', '/clientes');
+    db.clientes = lista.map(normCliente);
+    renderClientes();
+  } catch(e) { alert('Error guardando cliente: ' + e.message); }
+}
+
+async function clienteEliminar(id) {
+  const c = db.clientes.find(x => x.id === id);
+  if (!confirm(`¿Eliminar al cliente "${c?.nombre}"? Las ventas vinculadas no se eliminarán.`)) return;
+  try {
+    await api('DELETE', `/clientes?id=${id}`);
+    const lista = await api('GET', '/clientes');
+    db.clientes = lista.map(normCliente);
+    renderClientes();
+  } catch(e) { alert('Error eliminando cliente: ' + e.message); }
+}
+
+async function clienteVerDetalle(id) {
+  try {
+    const data = await api('GET', `/clientes?id=${id}`);
+    document.getElementById('detalle-cliente-nombre').textContent = data.nombre;
+
+    const diasCliente = data.created_at
+      ? Math.floor((new Date() - new Date(data.created_at)) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    document.getElementById('detalle-cliente-stats').innerHTML = `
+      <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(data.monto_total)}</div><div class="stat-label">Total gastado</div></div>
+      <div class="stat-card blue"><div class="stat-icon">🛒</div><div class="stat-value">${data.total_compras}</div><div class="stat-label">Compras realizadas</div></div>
+      <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${fmt(data.ticket_promedio)}</div><div class="stat-label">Ticket promedio</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">📅</div><div class="stat-value">${diasCliente}</div><div class="stat-label">Días como cliente</div></div>
+    `;
+
+    const infoItems = [];
+    if (data.telefono) infoItems.push(`<div><span style="font-size:11px;color:var(--text-muted)">Teléfono</span><div style="font-family:'JetBrains Mono',monospace">${data.telefono}</div></div>`);
+    if (data.email) infoItems.push(`<div><span style="font-size:11px;color:var(--text-muted)">Email</span><div>${data.email}</div></div>`);
+    infoItems.push(`<div><span style="font-size:11px;color:var(--text-muted)">Canal origen</span><div style="margin-top:4px">${canalOrigenBadge(data.canal_origen)}</div></div>`);
+    if (data.meli_nickname) infoItems.push(`<div><span style="font-size:11px;color:var(--text-muted)">Usuario MELI</span><div style="margin-top:4px"><span class="badge badge-meli">${data.meli_nickname}</span></div></div>`);
+    if (data.notas) infoItems.push(`<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted)">Notas</span><div style="color:var(--text-dim)">${data.notas}</div></div>`);
+
+    document.getElementById('detalle-cliente-info').innerHTML = infoItems.length
+      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:4px">${infoItems.join('')}</div>`
+      : '';
+
+    const ventas = data.ventas || [];
+    document.getElementById('detalle-cliente-historial').innerHTML = ventas.length === 0
+      ? '<div class="empty-state" style="padding:24px"><div class="empty-icon">🛒</div><p>Sin compras registradas</p></div>'
+      : `<div class="table-wrap"><table>
+          <thead><tr><th>Fecha</th><th>Canal</th><th>Producto</th><th>Cant.</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody>${ventas.map(v => `
+            <tr>
+              <td>${v.fecha}</td>
+              <td>${canalBadge(v.canal)}</td>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.producto || '—'}</td>
+              <td style="text-align:center">${v.cantidad}</td>
+              <td style="font-weight:600">${fmt(v.total)}</td>
+              <td>${estadoVentaBadge(v.estado)}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table></div>`;
+
+    openModal('modal-detalle-cliente');
+  } catch(e) { alert('Error cargando detalle del cliente: ' + e.message); }
+}
+
+// ── Selector de cliente en modal Mostrador ──────────────────────────────────
+function vmosClienteSearch() {
+  document.getElementById('vmos-cliente-id').value = '';
+  const q = document.getElementById('vmos-cliente-search').value.trim().toLowerCase();
+  const dd = document.getElementById('vmos-cliente-dd');
+  if (!q) { dd.style.display = 'none'; return; }
+  const results = db.clientes
+    .filter(c => c.nombre.toLowerCase().includes(q) || (c.telefono||'').includes(q) || (c.email||'').toLowerCase().includes(q))
+    .slice(0, 6);
+  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  const items = results.map(c =>
+    `<div onclick="vmosClientePick('${c.id}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+      <span style="font-weight:600">${c.nombre}</span>${c.telefono ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">${c.telefono}</span>` : ''}
+    </div>`
+  );
+  items.push(`<div onclick="vmosClienteCrearNuevo()" style="padding:7px 10px;cursor:pointer;font-size:13px;color:var(--accent)" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">+ Crear cliente "${nombre}"</div>`);
+  dd.innerHTML = items.join('');
+  dd.style.display = 'block';
+}
+
+function vmosClientePick(id) {
+  const c = db.clientes.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('vmos-cliente-search').value = c.nombre;
+  document.getElementById('vmos-cliente-id').value = id;
+  document.getElementById('vmos-cliente-dd').style.display = 'none';
+}
+
+async function vmosClienteCrearNuevo() {
+  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  if (!nombre) return;
+  document.getElementById('vmos-cliente-dd').style.display = 'none';
+  try {
+    const nuevo = await api('POST', '/clientes', { nombre, canal_origen: 'mostrador' });
+    db.clientes.push(normCliente({ ...nuevo, total_compras: 0, monto_total: 0, ultima_compra: null, ticket_promedio: 0 }));
+    document.getElementById('vmos-cliente-id').value = nuevo.id;
+  } catch(e) { alert('Error creando cliente: ' + e.message); }
+}
+
+function vmosClienteKeydown(e) {
+  if (e.key === 'Escape') document.getElementById('vmos-cliente-dd').style.display = 'none';
 }
 
 async function init() { await loadAll(); renderDashboard(); }

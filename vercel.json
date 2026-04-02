@@ -10,6 +10,7 @@
     "api/meli/notify.js": { "maxDuration": 10 },
     "api/meli/importar.js": { "maxDuration": 30 },
     "api/meli/reprocesar.js": { "maxDuration": 30 },
+    "api/meli/actualizar-envios.js": { "maxDuration": 60 },
     "api/shopify/notify.js": { "maxDuration": 10 },
     "api/shopify/sync-stock.js": { "maxDuration": 30 },
     "api/shopify/productos.js": { "maxDuration": 10 },

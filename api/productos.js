@@ -7,6 +7,7 @@
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
+const { updateShopifyStock } = require('./_shopifyHelper');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -38,9 +39,21 @@ module.exports = async (req, res) => {
         alerta_min: p.alertaMin || 5,
         meli_id: p.meliId || null,
         shopify_id: p.shopifyId || null,
+        shopify_variant_id: p.shopifyVariantId || null,
         notas: p.notas,
       }).select().single();
       if (error) throw error;
+
+      // Sincronizar stock inicial con Shopify variant si corresponde
+      if (p.shopifyVariantId && (p.stockDep || 0) > 0) {
+        try {
+          await updateShopifyStock(p.shopifyVariantId, p.stockDep || 0);
+          console.log(`✅ Stock Shopify sincronizado (nuevo producto): variant ${p.shopifyVariantId} → ${p.stockDep}`);
+        } catch (shopErr) {
+          console.warn('⚠️ Error sincronizando stock Shopify en POST:', shopErr.message);
+        }
+      }
+
       return res.json(data);
     }
 
@@ -51,7 +64,7 @@ module.exports = async (req, res) => {
       // Obtener producto anterior para comparar stock
       const { data: anterior } = await supabase
         .from('productos')
-        .select('stock_meli, stock_shopify, meli_id, shopify_id')
+        .select('stock_dep, stock_meli, stock_shopify, meli_id, shopify_id, shopify_variant_id')
         .eq('sku', sku)
         .single();
 
@@ -66,6 +79,7 @@ module.exports = async (req, res) => {
         alerta_min: p.alertaMin,
         meli_id: p.meliId || null,
         shopify_id: p.shopifyId || null,
+        shopify_variant_id: p.shopifyVariantId || null,
         notas: p.notas,
       }).eq('sku', sku).select().single();
       if (error) throw error;
@@ -91,12 +105,24 @@ module.exports = async (req, res) => {
         }
       }
 
-      // Sincronizar stock Shopify si cambió
+      // Sincronizar stock Shopify (shopify_id legacy) si cambió
       if (shopifyId && (forzarSync || (anterior && anterior.stock_shopify !== p.stockShopify))) {
         try {
           await syncShopifyStock(shopifyId, p.stockShopify);
         } catch (shopErr) {
           console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
+        }
+      }
+
+      // Sincronizar stock Shopify via shopify_variant_id si stock_dep cambió
+      const shopifyVariantId = p.shopifyVariantId || anterior?.shopify_variant_id;
+      if (shopifyVariantId && (forzarSync || (anterior && anterior.stock_dep !== p.stockDep))) {
+        try {
+          console.log(`🔄 Sincronizando stock Shopify variant ${shopifyVariantId} → ${p.stockDep}`);
+          await updateShopifyStock(shopifyVariantId, p.stockDep);
+          console.log(`✅ Stock Shopify sincronizado: variant ${shopifyVariantId} → ${p.stockDep}`);
+        } catch (shopErr) {
+          console.warn('⚠️ Error sincronizando stock Shopify variant:', shopErr.message);
         }
       }
 

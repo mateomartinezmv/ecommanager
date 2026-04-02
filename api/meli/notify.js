@@ -4,6 +4,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { updateShopifyStock } = require('../_shopifyHelper');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -195,11 +196,12 @@ async function handleOrder(resource) {
       }
     }
 
-    if (producto.shopify_id) {
+    if (producto.shopify_variant_id) {
       try {
-        await syncShopifyStock(producto.shopify_id, nuevoStockDep);
+        await updateShopifyStock(producto.shopify_variant_id, nuevoStockDep);
+        console.log(`✅ Stock Shopify sincronizado desde MELI: variant ${producto.shopify_variant_id} → ${nuevoStockDep}`);
       } catch (shopErr) {
-        console.error('❌ Error sync Shopify:', shopErr.message);
+        console.warn(`⚠️ Error sync Shopify para variant ${producto.shopify_variant_id}:`, shopErr.message);
       }
     }
   }
@@ -250,27 +252,3 @@ async function handleStatus(req, res) {
   return res.json(resultado);
 }
 
-async function syncShopifyStock(variantId, quantity) {
-  const shop = process.env.SHOPIFY_STORE_URL;
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
-  if (!shop || !token) return;
-  const locRes = await fetch(`https://${shop}/admin/api/2024-01/locations.json`, {
-    headers: { 'X-Shopify-Access-Token': token }
-  });
-  const locData = await locRes.json();
-  const locationId = locData.locations?.[0]?.id;
-  if (!locationId) throw new Error('No location en Shopify');
-  const varRes = await fetch(`https://${shop}/admin/api/2024-01/variants/${variantId}.json`, {
-    headers: { 'X-Shopify-Access-Token': token }
-  });
-  const varData = await varRes.json();
-  const inventoryItemId = varData.variant?.inventory_item_id;
-  if (!inventoryItemId) throw new Error(`Variant ${variantId} no encontrado`);
-  const setRes = await fetch(`https://${shop}/admin/api/2024-01/inventory_levels/set.json`, {
-    method: 'POST',
-    headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ location_id: locationId, inventory_item_id: inventoryItemId, available: quantity }),
-  });
-  const setData = await setRes.json();
-  if (setData.errors) throw new Error(JSON.stringify(setData.errors));
-}

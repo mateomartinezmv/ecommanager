@@ -488,6 +488,7 @@
       <div class="form-group"><label class="form-label">Precio venta *</label><input type="number" id="p-precio" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Alerta stock mínimo</label><input type="number" id="p-alerta" placeholder="5" min="0"></div>
       <div class="form-group"><label class="form-label">ID Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLA0000000"></div>
+      <div class="form-group"><label class="form-label">Variant ID Shopify</label><input type="text" id="p-shopify-variant-id" placeholder="ej: 123456789"></div>
       <div class="form-group"><label class="form-label">ID Variant Shopify</label><input type="text" id="p-shopify-id" placeholder="ej: 12345678901234"></div>
       <div class="form-group"><label class="form-label">Tipo</label><select id="p-tipo"><option value="nuevo">🆕 Nuevo</option><option value="usado">🔄 Usado</option></select></div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
@@ -835,7 +836,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, shopifyVariantId: p.shopify_variant_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -920,7 +921,7 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-variant-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('p-tipo').value = 'nuevo';
 }
 
@@ -929,7 +930,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyVariantId: document.getElementById('p-shopify-variant-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -951,6 +952,7 @@ function editProducto(sku) {
   document.getElementById('p-alerta').value = p.alertaMin;
   document.getElementById('p-tipo').value = p.tipo || 'nuevo';
   document.getElementById('p-meli-id').value = p.meliId || '';
+  document.getElementById('p-shopify-variant-id').value = p.shopifyVariantId || '';
   document.getElementById('p-shopify-id').value = p.shopifyId || '';
   document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
   document.getElementById('p-notas').value = p.notas || '';

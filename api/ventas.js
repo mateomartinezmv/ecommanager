@@ -6,6 +6,7 @@
 
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
+const { updateShopifyStock } = require('./_shopifyHelper');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -77,6 +78,17 @@ module.exports = async (req, res) => {
           if (meliData.error) console.warn('⚠️ MELI error:', meliData.message);
         } catch (meliErr) {
           console.error('❌ No se pudo actualizar stock en MELI:', meliErr.message);
+        }
+      }
+
+      // Paso 6: Sincronizar stock con Shopify si el producto tiene shopify_variant_id
+      if (producto.shopify_variant_id) {
+        try {
+          console.log(`🔄 Sincronizando stock Shopify variant ${producto.shopify_variant_id} → ${nuevoStockDep}`);
+          await updateShopifyStock(producto.shopify_variant_id, nuevoStockDep);
+          console.log(`✅ Stock Shopify sincronizado: variant ${producto.shopify_variant_id} → ${nuevoStockDep}`);
+        } catch (shopErr) {
+          console.warn('⚠️ Error sincronizando stock Shopify:', shopErr.message);
         }
       }
 

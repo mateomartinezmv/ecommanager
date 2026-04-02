@@ -234,7 +234,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
   const { direccion, logisticType: shipLogisticType, costoReal } = await getDatosEnvio(orderId, shipmentId, token)
   log.push(`📍 Dirección: ${direccion || 'no disponible'}`)
 
-  const FLEX_TYPES = ['fulfillment', 'self_service', 'self_service_flex', 'xd_drop_off', 'cross_docking']
+  const FLEX_TYPES = ['self_service', 'self_service_flex']
   const esFlex = FLEX_TYPES.includes(shipLogisticType)
   log.push(`📬 Tipo de envío: ${esFlex ? 'flex' : 'mercado_envios'} (logistic_type: ${shipLogisticType || 'n/a'}) | Costo real: $${costoReal}`)
 

@@ -147,7 +147,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
 
   log.push(`🔍 shipment logistic_type: ${logisticType || 'n/a'} (shipping_id: ${shippingId || 'n/a'})`)
 
-  const FLEX_TYPES = ['fulfillment', 'self_service', 'self_service_flex', 'xd_drop_off', 'cross_docking']
+  const FLEX_TYPES = ['self_service', 'self_service_flex']
   const esFlex = FLEX_TYPES.includes(logisticType)
   const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
   // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)

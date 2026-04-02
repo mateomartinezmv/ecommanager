@@ -12,7 +12,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
-const FLEX_TYPES = ['fulfillment', 'self_service', 'self_service_flex', 'xd_drop_off', 'cross_docking'];
+const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
 const ZONAS_KEYWORDS = {
   1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],

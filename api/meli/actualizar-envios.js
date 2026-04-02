@@ -47,13 +47,14 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const dias = parseInt(req.query.dias) || 30;
+  const limit = parseInt(req.query.limit) || 0; // 0 = sin límite
   const dryRun = req.query.dry === '1';
   const supabase = getSupabase();
   const log = [];
 
   try {
     const token = await getMeliToken();
-    log.push(`✅ Token OK | dry=${dryRun} | dias=${dias}`);
+    log.push(`✅ Token OK | dry=${dryRun} | dias=${dias} | limit=${limit || 'sin límite'}`);
 
     // Traer envíos de los últimos N días vinculados a órdenes MELI
     const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -65,12 +66,13 @@ module.exports = async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (enviosErr) throw new Error('Error leyendo envíos: ' + enviosErr.message);
-    log.push(`📦 Envíos MELI en últimos ${dias} días: ${envios.length}`);
+    const enviosFiltrados = limit > 0 ? envios.slice(0, limit) : envios;
+    log.push(`📦 Envíos MELI en últimos ${dias} días: ${envios.length} | procesando: ${enviosFiltrados.length}`);
 
     const resultados = [];
     let actualizados = 0, sinCambio = 0, errores = 0;
 
-    for (const envio of envios) {
+    for (const envio of enviosFiltrados) {
       const ordenId = envio.orden;
       if (!ordenId) { errores++; continue; }
 

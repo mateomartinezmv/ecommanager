@@ -275,32 +275,50 @@ Deno.serve(async (req) => {
     const me = await meRes.json()
     log.push(`👤 Usuario: ${me.nickname} (${me.id})`)
 
-    // Buscar órdenes de los últimos 7 días (sin filtro de status para capturar todas las series de IDs)
-    const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    // Buscar órdenes de los últimos 14 días con paginación para no perder órdenes
+    // (aumentado de 7 a 14 días y de 50 a 200 por página para mayor cobertura)
+    const DAYS_BACK = 14
+    const PAGE_SIZE = 200
+    const desde = new Date(Date.now() - DAYS_BACK * 24 * 60 * 60 * 1000).toISOString()
 
-    // Búsqueda 1: órdenes pagadas
-    const ordersRes1 = await fetch(
-      `https://api.mercadolibre.com/orders/search?seller=${me.id}&order.status=paid&sort=date_desc&limit=50&order.date_created.from=${desde}`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
-    )
-    const ordersData1 = await ordersRes1.json()
+    // Función auxiliar para paginar resultados de MELI
+    async function fetchAllOrders(baseUrl: string): Promise<any[]> {
+      const results: any[] = []
+      let offset = 0
+      while (true) {
+        const url = `${baseUrl}&limit=${PAGE_SIZE}&offset=${offset}`
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+        const data = await res.json()
+        const batch = data.results || []
+        results.push(...batch)
+        // Si devolvió menos que PAGE_SIZE, no hay más páginas
+        if (batch.length < PAGE_SIZE) break
+        offset += PAGE_SIZE
+        // Tope de seguridad: máximo 1000 órdenes por búsqueda
+        if (offset >= 1000) break
+      }
+      return results
+    }
 
-    // Búsqueda 2: órdenes recientes sin filtro de status (captura serie 20000121...)
-    const ordersRes2 = await fetch(
-      `https://api.mercadolibre.com/orders/search?seller=${me.id}&sort=date_desc&limit=50&order.date_created.from=${desde}`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
+    // Búsqueda 1: órdenes pagadas (paginada)
+    const paidResults = await fetchAllOrders(
+      `https://api.mercadolibre.com/orders/search?seller=${me.id}&order.status=paid&sort=date_desc&order.date_created.from=${desde}`
     )
-    const ordersData2 = await ordersRes2.json()
+
+    // Búsqueda 2: órdenes recientes sin filtro de status (captura series de IDs alternativas)
+    const recentResults = await fetchAllOrders(
+      `https://api.mercadolibre.com/orders/search?seller=${me.id}&sort=date_desc&order.date_created.from=${desde}`
+    )
 
     // Combinar y deduplicar por ID
-    const todasOrdenes = [...(ordersData1.results || []), ...(ordersData2.results || [])]
+    const todasOrdenes = [...paidResults, ...recentResults]
     const idsVistos = new Set()
     const ordenes = todasOrdenes.filter(o => {
       if (idsVistos.has(o.id)) return false
       idsVistos.add(o.id)
       return true
     })
-    log.push(`📦 Órdenes últimos 7 días: ${ordenes.length} (${ordersData1.results?.length || 0} pagadas + ${ordersData2.results?.length || 0} recientes deduplicadas)`)
+    log.push(`📦 Órdenes últimos ${DAYS_BACK} días: ${ordenes.length} (${paidResults.length} pagadas + ${recentResults.length} recientes deduplicadas)`)
 
     for (const order of ordenes) {
       // Obtener detalle completo de la orden para tener logistic_type

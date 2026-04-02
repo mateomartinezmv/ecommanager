@@ -15,6 +15,16 @@ module.exports = async (req, res) => {
   const { topic, resource } = req.body || {};
   console.log('MELI notify:', topic, resource);
 
+  // Registrar la notificación en el log de auditoría
+  try {
+    const supabaseLog = getSupabase();
+    await supabaseLog.from('meli_notify_log').insert({
+      topic: topic || null,
+      resource: resource || null,
+      recibido_at: new Date().toISOString(),
+    });
+  } catch (_) { /* no bloquear el flujo si falla el log */ }
+
   try {
     if (topic === 'orders_v2' || topic === 'orders') {
       await handleOrder(resource);
@@ -86,15 +96,40 @@ async function handleOrder(resource) {
     const meliItemId = item.item.id;
     const cantidad = item.quantity;
 
-    const { data: producto } = await supabase
+    let { data: producto } = await supabase
       .from('productos')
       .select('*')
       .eq('meli_id', meliItemId)
       .single();
 
     if (!producto) {
-      console.log(`⚠️ Producto con MELI ID ${meliItemId} no encontrado`);
-      continue;
+      // Auto-crear producto para no perder la venta (igual que sync-meli-orders)
+      console.log(`⚠️ meli_id=${meliItemId} no encontrado — auto-creando producto`);
+      const skuAuto = `MELI-${meliItemId}`;
+      let nombreItem = item.item?.title || `Producto MELI ${meliItemId}`;
+      try {
+        const ir = await fetch(`https://api.mercadolibre.com/items/${meliItemId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const itemData = await ir.json();
+        if (!itemData.error) nombreItem = itemData.title;
+      } catch (_) {}
+
+      const { data: existeEnDb } = await supabase.from('productos').select('sku').eq('sku', skuAuto).single();
+      if (!existeEnDb) {
+        await supabase.from('productos').insert({
+          sku: skuAuto, nombre: nombreItem,
+          stock_dep: 0, stock_meli: 0, costo: 0,
+          precio: item.unit_price || 0, alerta_min: 3,
+          meli_id: meliItemId, notas: 'Auto-creado por webhook MELI',
+        });
+      }
+      const { data: p2 } = await supabase.from('productos').select('*').eq('sku', skuAuto).single();
+      if (!p2) {
+        console.error(`❌ No se pudo crear/obtener producto para meli_id=${meliItemId}`);
+        continue;
+      }
+      producto = p2;
     }
 
     const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);

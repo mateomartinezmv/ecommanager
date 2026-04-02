@@ -300,6 +300,10 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     const ventaId = `V_MELI_${order.id}_${meliItemId}`
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
 
+    // Calcular costo y transportista del envío (necesario también para la comisión de la venta)
+    const transportista = esFlex ? 'gestionpost' : 'mercado_envios'
+    const costoEnvio = esFlex ? (flexInfo?.costo || costoReal || 0) : 0
+
     if (ventaExistente) {
       log.push(`ℹ️ Venta ${ventaId} ya existe`)
       resultados.push({ item: meliItemId, estado: 'ya_existe' })
@@ -313,7 +317,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
         cantidad, precio_unit: precioUnit,
         comision: calcularComision(precioUnit, cantidad, costoEnvio),
         total: precioUnit * cantidad, estado: 'pagada',
-        genera_envio: true, notas: 'Auto-registrada por webhook MELI',
+        genera_envio: !!shipmentId, notas: 'Auto-registrada por webhook MELI',
       })
       if (ventaErr) throw new Error(`Error insertando venta: ${ventaErr.message}`)
       log.push(`✅ Venta registrada: ${ventaId}`)
@@ -325,9 +329,6 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
 
     if (!envioExistente) {
-      const transportista = esFlex ? 'gestionpost' : 'mercado_envios'
-      // Para Flex: costo real (lo pagás vos). Para ME: $0 (ya incluido en comisión)
-      const costoEnvio = esFlex ? (flexInfo?.costo || costoReal || 0) : 0
 
       const { error: envioErr } = await supabase.from('envios').insert({
         id: envioId,

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendario de Reposición — EcomManager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: #2a2a38;
+    --accent: #4f8ef7;
+    --accent2: #7c3aed;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --red: #ef4444;
+    --meli: #ffe600;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Space Grotesk', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+  /* ── Sidebar ── */
+  #sidebar { width: 220px; min-height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
+  .logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+  .logo-title { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  nav { flex: 1; padding: 12px 0; }
+  .nav-section { padding: 6px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 14px; color: var(--text-dim); transition: all 0.15s; border-left: 3px solid transparent; text-decoration: none; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--surface2); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+
+  /* ── Layout ── */
+  #main { margin-left: 220px; flex: 1; min-height: 100vh; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .content { padding: 28px; }
+
+  /* ── Buttons ── */
+  .btn { padding: 8px 16px; border-radius: 7px; border: none; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .btn-ghost { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-ghost.active-view { background: var(--surface2); color: var(--accent); border-color: var(--accent); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  /* ── Badges ── */
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; gap: 4px; }
+  .badge-green  { background: rgba(34,197,94,0.15);  color: var(--green); }
+  .badge-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .badge-red    { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .badge-gray   { background: rgba(100,116,139,0.15);color: var(--text-muted); }
+  .badge-blue   { background: rgba(79,142,247,0.15); color: var(--accent); }
+
+  /* ── Filters bar ── */
+  .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  select { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; cursor: pointer; }
+  select:focus { border-color: var(--accent); }
+  select option { background: var(--surface2); }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 4px; width: fit-content; margin-bottom: 20px; }
+  .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; border: none; background: none; font-family: 'Space Grotesk', sans-serif; }
+  .tab.active { background: var(--surface2); color: var(--text); }
+
+  /* ── List view ── */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .table-title { font-size: 15px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface2); border-bottom: 1px solid var(--border); }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(79,142,247,0.04); }
+
+  /* Lead-time bar */
+  .window-bar { display: flex; align-items: center; height: 8px; border-radius: 4px; background: var(--surface2); min-width: 120px; overflow: hidden; position: relative; }
+  .window-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--orange), var(--red)); }
+
+  /* ── Calendar view ── */
+  .cal-nav { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  .cal-nav-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; cursor: pointer; color: var(--text-dim); font-size: 16px; transition: all 0.15s; }
+  .cal-nav-btn:hover { color: var(--text); border-color: var(--accent); }
+  .cal-month-label { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; min-width: 200px; text-align: center; }
+
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .cal-dow { text-align: center; padding: 8px 4px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .cal-day {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    min-height: 100px; padding: 8px 8px 6px; display: flex; flex-direction: column; gap: 3px;
+  }
+  .cal-day.other-month { background: var(--bg); border-color: transparent; }
+  .cal-day.today-cell { border-color: var(--accent); }
+  .cal-day-num { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 2px; }
+  .cal-day.today-cell .cal-day-num { color: var(--accent); }
+
+  .cal-event {
+    border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default;
+  }
+  .cal-event-restock { background: rgba(249,115,22,0.2); color: var(--orange); border-left: 2px solid var(--orange); }
+  .cal-event-stockout { background: rgba(239,68,68,0.2);  color: var(--red);    border-left: 2px solid var(--red); }
+  .cal-event-ordered  { background: rgba(34,197,94,0.15); color: var(--green);  border-left: 2px solid var(--green); }
+
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
+  .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; }
+
+  @media (max-width: 900px) {
+    #sidebar { width: 60px; }
+    .nav-item span:not(.icon) { display: none; }
+    .logo-title, .logo-sub, .nav-section, .sidebar-footer { display: none; }
+    #main { margin-left: 60px; }
+    .cal-grid { grid-template-columns: repeat(7, minmax(0,1fr)); }
+    .cal-day { min-height: 60px; padding: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <div class="logo-title">EcomManager</div>
+    <div class="logo-sub">v1.0 — local</div>
+  </div>
+  <nav>
+    <div class="nav-section">Principal</div>
+    <a class="nav-item" href="/"><span class="icon">📊</span><span>Dashboard</span></a>
+    <a class="nav-item" href="/"><span class="icon">📦</span><span>Stock</span></a>
+    <div class="nav-section">Ventas</div>
+    <a class="nav-item" href="/"><span class="icon">🛒</span><span>Ventas</span></a>
+    <a class="nav-item" href="/"><span class="icon">🚚</span><span>Envíos</span></a>
+    <a class="nav-item" href="/"><span class="icon">💳</span><span>Transportistas</span></a>
+    <a class="nav-item" href="/"><span class="icon">👥</span><span>Clientes</span></a>
+    <div class="nav-section">Análisis</div>
+    <a class="nav-item" href="/"><span class="icon">📈</span><span>Reportes</span></a>
+    <div class="nav-section">Compras</div>
+    <a class="nav-item" href="/importaciones.html"><span class="icon">📥</span><span>Importaciones</span></a>
+    <a class="nav-item active" href="/reposicion.html"><span class="icon">📅</span><span>Reposición</span></a>
+  </nav>
+  <div class="sidebar-footer">Datos en Supabase</div>
+</aside>
+
+<main id="main">
+  <div class="topbar">
+    <div class="page-title">📅 Calendario de Reposición</div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost btn-sm" onclick="reload()">↻ Actualizar</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Legend -->
+    <div class="legend" style="margin-bottom:20px">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Ordenar ya (restock_date)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Quiebre de stock (stockout_date)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ya ordenado</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Ordenar pronto (&lt;7 días)</div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <select id="filter-cat" onchange="applyFilters()">
+        <option value="">Todas las categorías</option>
+      </select>
+      <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
+    </div>
+
+    <!-- View tabs -->
+    <div class="tabs">
+      <button class="tab active" id="tab-lista"     onclick="switchView('lista')">📋 Lista</button>
+      <button class="tab"        id="tab-calendario" onclick="switchView('calendario')">📅 Calendario</button>
+    </div>
+
+    <!-- LIST VIEW -->
+    <div id="view-lista">
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">Productos por urgencia</span>
+        </div>
+        <div id="list-container">
+          <div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALENDAR VIEW -->
+    <div id="view-calendario" style="display:none">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="prevMonth()">‹</button>
+        <div class="cal-month-label" id="cal-month-label"></div>
+        <button class="cal-nav-btn" onclick="nextMonth()">›</button>
+      </div>
+      <div class="cal-grid" id="cal-dow-row">
+        <div class="cal-dow">Lun</div>
+        <div class="cal-dow">Mar</div>
+        <div class="cal-dow">Mié</div>
+        <div class="cal-dow">Jue</div>
+        <div class="cal-dow">Vie</div>
+        <div class="cal-dow">Sáb</div>
+        <div class="cal-dow">Dom</div>
+      </div>
+      <div class="cal-grid" id="cal-days"></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let allProducts   = [];
+let filtered      = [];
+let currentView   = 'lista';
+let calYear       = new Date().getFullYear();
+let calMonth      = new Date().getMonth(); // 0-based
+
+const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ─── Load data ────────────────────────────────────────────────────────────────
+async function load() {
+  try {
+    const r = await fetch('/api/restock');
+    if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
+    allProducts = await r.json();
+
+    // Populate category filter
+    const cats = [...new Set(allProducts.map(p => p.categoria).filter(Boolean))].sort();
+    const sel = document.getElementById('filter-cat');
+    cats.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+
+    applyFilters();
+  } catch(e) {
+    document.getElementById('list-container').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">❌</div><p>${e.message}</p></div>`;
+  }
+}
+
+function reload() { allProducts = []; load(); }
+
+// ─── Filters ──────────────────────────────────────────────────────────────────
+function applyFilters() {
+  const cat = document.getElementById('filter-cat').value;
+  filtered = cat ? allProducts.filter(p => p.categoria === cat) : [...allProducts];
+  document.getElementById('filtered-count').textContent =
+    filtered.length ? `${filtered.length} producto${filtered.length !== 1 ? 's' : ''}` : '';
+  if (currentView === 'lista') renderList();
+  else renderCalendar();
+}
+
+// ─── Urgency helpers ─────────────────────────────────────────────────────────
+function urgencyClass(p, todayStr) {
+  if (p.already_ordered) return 'ordered';
+  if (!p.restock_date)   return 'no-velocity';
+  if (p.stockout_date <= todayStr) return 'stocked-out';
+  if (p.restock_date  <= todayStr) return 'overdue';
+  const daysUntil = Math.round((new Date(p.restock_date) - new Date(todayStr)) / 86400000);
+  if (daysUntil <= 7)  return 'urgent';
+  if (daysUntil <= 30) return 'soon';
+  return 'ok';
+}
+
+function urgencyBadge(cls) {
+  const map = {
+    ordered:      ['badge-green',  '✅ Ya ordenado'],
+    'stocked-out':['badge-red',    '🚨 Sin stock'],
+    overdue:      ['badge-orange', '🔴 Ordenar ya'],
+    urgent:       ['badge-yellow', '⚠️ Urgente'],
+    soon:         ['badge-blue',   '🔵 Próximo'],
+    ok:           ['badge-gray',   '✓ OK'],
+    'no-velocity':['badge-gray',   '— Sin ventas'],
+  };
+  const [css, label] = map[cls] || ['badge-gray', cls];
+  return `<span class="badge ${css}">${label}</span>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+// ─── List view ────────────────────────────────────────────────────────────────
+function renderList() {
+  const el = document.getElementById('list-container');
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos con datos de ventas en los últimos 30 días.</p></div>`;
+    return;
+  }
+
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  const rows = filtered.map(p => {
+    const cls     = urgencyClass(p, todayStr);
+    const badge   = urgencyBadge(cls);
+
+    // Lead-time window bar: show progress of consumed coverage vs 75-day lead time
+    let barHtml = '—';
+    if (p.days_coverage !== null) {
+      const totalDays   = p.days_coverage;
+      const coverPct    = totalDays > 0 ? Math.min(100, Math.max(0, ((totalDays - 75) / totalDays) * 100)) : 0;
+      barHtml = `
+        <div title="Ventana: ${fmtDate(p.restock_date)} → ${fmtDate(p.stockout_date)}" style="display:flex;flex-direction:column;gap:2px">
+          <div class="window-bar"><div class="window-fill" style="width:${coverPct}%"></div></div>
+          <div style="font-size:10px;color:var(--text-muted)">${fmtDate(p.restock_date)} → ${fmtDate(p.stockout_date)}</div>
+        </div>`;
+    }
+
+    return `
+      <tr>
+        <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${p.sku}</span></td>
+        <td>${p.nombre}</td>
+        <td style="color:var(--text-muted);font-size:12px">${p.categoria || '—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
+        <td style="font-family:'JetBrains Mono',monospace">${p.daily_velocity > 0 ? p.daily_velocity.toFixed(2) + '/día' : '—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace">${p.days_coverage !== null ? p.days_coverage + ' días' : '—'}</td>
+        <td>${barHtml}</td>
+        <td>${badge}</td>
+      </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Producto</th>
+          <th>Categoría</th>
+          <th>Stock</th>
+          <th>Velocidad</th>
+          <th>Cobertura</th>
+          <th>Ventana 75 días</th>
+          <th>Estado</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ─── Calendar view ────────────────────────────────────────────────────────────
+function renderCalendar() {
+  const label = document.getElementById('cal-month-label');
+  label.textContent = `${MONTHS_ES[calMonth]} ${calYear}`;
+
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  // Build a map: dateStr → events[]
+  const events = {};
+  function addEvent(dateStr, ev) {
+    if (!dateStr) return;
+    if (!events[dateStr]) events[dateStr] = [];
+    events[dateStr].push(ev);
+  }
+
+  filtered.forEach(p => {
+    if (p.already_ordered) {
+      if (p.restock_date) addEvent(p.restock_date, { type: 'ordered',  label: p.sku + ' ' + p.nombre });
+    } else {
+      if (p.restock_date)  addEvent(p.restock_date,  { type: 'restock',  label: p.sku + ' ' + p.nombre });
+      if (p.stockout_date) addEvent(p.stockout_date, { type: 'stockout', label: p.sku + ' ' + p.nombre });
+    }
+  });
+
+  // Build grid
+  const firstDay   = new Date(calYear, calMonth, 1);
+  const lastDay    = new Date(calYear, calMonth + 1, 0);
+  // Monday = 0 offset
+  let startDow = firstDay.getDay(); // 0=Sun..6=Sat
+  startDow = startDow === 0 ? 6 : startDow - 1; // convert to Mon=0..Sun=6
+
+  const cells = [];
+  // Leading empty cells
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
+  // Trailing empty cells to complete last row
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const daysEl = document.getElementById('cal-days');
+  daysEl.innerHTML = cells.map(day => {
+    if (!day) return `<div class="cal-day other-month"></div>`;
+    const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const isToday = dateStr === todayStr;
+    const dayEvents = events[dateStr] || [];
+
+    const evHtml = dayEvents.slice(0,4).map(ev => {
+      const cls = ev.type === 'restock' ? 'cal-event-restock'
+                : ev.type === 'stockout' ? 'cal-event-stockout'
+                : 'cal-event-ordered';
+      const icon = ev.type === 'restock' ? '🟠' : ev.type === 'stockout' ? '🔴' : '✅';
+      return `<div class="cal-event ${cls}" title="${ev.label}">${icon} ${ev.label}</div>`;
+    }).join('');
+
+    const more = dayEvents.length > 4
+      ? `<div style="font-size:10px;color:var(--text-muted);padding:1px 4px">+${dayEvents.length - 4} más</div>`
+      : '';
+
+    return `
+      <div class="cal-day${isToday ? ' today-cell' : ''}">
+        <div class="cal-day-num">${day}</div>
+        ${evHtml}${more}
+      </div>`;
+  }).join('');
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function prevMonth() {
+  if (calMonth === 0) { calMonth = 11; calYear--; }
+  else calMonth--;
+  renderCalendar();
+}
+function nextMonth() {
+  if (calMonth === 11) { calMonth = 0; calYear++; }
+  else calMonth++;
+  renderCalendar();
+}
+
+// ─── View switching ──────────────────────────────────────────────────────────
+function switchView(v) {
+  currentView = v;
+  document.getElementById('view-lista').style.display       = v === 'lista'     ? 'block' : 'none';
+  document.getElementById('view-calendario').style.display  = v === 'calendario'? 'block' : 'none';
+  document.getElementById('tab-lista').classList.toggle('active',      v === 'lista');
+  document.getElementById('tab-calendario').classList.toggle('active', v === 'calendario');
+  if (v === 'lista')      renderList();
+  if (v === 'calendario') renderCalendar();
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+load();
+</script>
+</body>
+</html>

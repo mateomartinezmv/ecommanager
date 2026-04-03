@@ -105,7 +105,8 @@ module.exports = async (req, res) => {
     }
     log.push(`📍 Dirección: ${direccion || 'no disponible'}`);
 
-    const esFlex = logisticType === 'fulfillment' || logisticType === 'self_service';
+    const FLEX_TYPES = ['self_service', 'self_service_flex'];
+    const esFlex = FLEX_TYPES.includes(logisticType);
     const tipoEnvio = esFlex ? 'gestionpost' : 'mercado_envios';
     log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: "${logisticType}")`);
 
@@ -125,8 +126,29 @@ module.exports = async (req, res) => {
       const precioUnit = item.unit_price || 0;
       log.push(`Item: ${meliItemId}, x${cantidad}, $${precioUnit}`);
 
-      const { data: producto } = await supabase.from('productos').select('*').eq('meli_id', meliItemId).single();
-      if (!producto) { log.push(`⚠️ meli_id=${meliItemId} no encontrado`); resultados.push({ item: meliItemId, error: 'Producto no encontrado' }); continue; }
+      let { data: producto } = await supabase.from('productos').select('*').eq('meli_id', meliItemId).single();
+      if (!producto) {
+        log.push(`⚠️ meli_id=${meliItemId} no encontrado — auto-creando`);
+        const skuAuto = `MELI-${meliItemId}`;
+        let nombreItem = item.item?.title || `Producto MELI ${meliItemId}`;
+        try {
+          const ir = await fetch(`https://api.mercadolibre.com/items/${meliItemId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+          const itemData = await ir.json();
+          if (!itemData.error) nombreItem = itemData.title;
+        } catch (_) {}
+        const { data: existeEnDb } = await supabase.from('productos').select('sku').eq('sku', skuAuto).single();
+        if (!existeEnDb) {
+          await supabase.from('productos').insert({
+            sku: skuAuto, nombre: nombreItem,
+            stock_dep: 0, stock_meli: 0, costo: 0,
+            precio: precioUnit, alerta_min: 3,
+            meli_id: meliItemId, notas: 'Auto-creado por reprocesar',
+          });
+        }
+        const { data: p2 } = await supabase.from('productos').select('*').eq('sku', skuAuto).single();
+        if (!p2) { log.push(`❌ No se pudo crear producto ${meliItemId}`); resultados.push({ item: meliItemId, error: 'No se pudo crear producto' }); continue; }
+        producto = p2;
+      }
       log.push(`✅ Producto: ${producto.sku} - ${producto.nombre}`);
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;

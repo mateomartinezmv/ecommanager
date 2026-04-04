@@ -96,7 +96,7 @@
 
   .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 500; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 680px; max-width: 96vw; max-height: 90vh; overflow-y: auto; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 760px; max-width: 96vw; max-height: 92vh; overflow-y: auto; }
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
 
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -115,19 +115,44 @@
   .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
 
-  /* Line items table inside the form */
-  .items-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 8px; }
+  .items-table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: visible; margin-top: 8px; }
   .items-table-wrap table { font-size: 12px; }
   .items-table-wrap th { padding: 8px 10px; font-size: 10px; }
   .items-table-wrap td { padding: 6px 8px; }
   .items-table-wrap input { padding: 5px 8px; font-size: 12px; }
   .items-table-wrap .btn-sm { padding: 3px 8px; font-size: 11px; }
 
-  /* Detail modal items */
   .items-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
   .item-row { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; font-size: 13px; }
   .item-row .item-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
   .item-row .item-val { font-weight: 600; }
+
+  /* Search dropdown */
+  .sku-wrap { position: relative; }
+  .sku-dd {
+    display: none; position: absolute; top: 100%; left: 0; z-index: 600;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; min-width: 280px; max-height: 200px;
+    overflow-y: auto; box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  }
+  .sku-dd-item {
+    padding: 8px 12px; cursor: pointer;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  .sku-dd-item:last-child { border-bottom: none; }
+  .sku-dd-item:hover { background: var(--surface2); }
+
+  /* Totals box */
+  .totals-box {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px;
+    display: flex; flex-direction: column; gap: 8px; margin-top: 16px;
+  }
+  .totals-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-dim); }
+  .totals-row.divider { border-top: 1px solid var(--border); padding-top: 8px; }
+  .totals-row.main { font-size: 14px; font-weight: 600; color: var(--text); }
+  .totals-row.grand { font-size: 16px; font-weight: 700; color: var(--green); border-top: 1px solid var(--border); padding-top: 8px; }
+  .totals-val { font-family: 'JetBrains Mono', monospace; }
 
   @media (max-width: 900px) {
     #sidebar { width: 60px; }
@@ -158,7 +183,6 @@
     <a class="nav-item" href="/"><span class="icon">📈</span><span>Reportes</span></a>
     <div class="nav-section">Compras</div>
     <a class="nav-item active" href="/importaciones.html"><span class="icon">📥</span><span>Importaciones</span></a>
-    <a class="nav-item" href="/reposicion.html"><span class="icon">📅</span><span>Reposición</span></a>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -194,7 +218,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Llegada estimada</label>
-        <input type="date" id="new-est-arrival" placeholder="Auto: +75 días">
+        <input type="date" id="new-est-arrival">
       </div>
       <div class="form-group">
         <label class="form-label">Estado inicial</label>
@@ -209,6 +233,7 @@
       </div>
     </div>
 
+    <!-- Artículos -->
     <div style="margin-top:20px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="font-size:13px;font-weight:600">Artículos</span>
@@ -218,11 +243,10 @@
         <table>
           <thead>
             <tr>
-              <th>SKU</th>
+              <th>SKU / Nombre</th>
               <th>Producto</th>
               <th>Cantidad</th>
-              <th>Costo unit.</th>
-              <th>Moneda</th>
+              <th>Costo unit. (USD)</th>
               <th></th>
             </tr>
           </thead>
@@ -230,6 +254,31 @@
         </table>
       </div>
       <p id="items-error" style="font-size:12px;color:var(--red);margin-top:6px;display:none">Agregá al menos un artículo.</p>
+    </div>
+
+    <!-- Costos adicionales -->
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Costos adicionales (USD)</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Traslado Interno</label>
+          <input type="number" id="new-traslado" placeholder="0.00" step="0.01" min="0" value="0" oninput="recalcTotals()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nacionalización y manejo de mercadería</label>
+          <input type="number" id="new-nacional" placeholder="0.00" step="0.01" min="0" value="0" oninput="recalcTotals()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Totales -->
+    <div class="totals-box">
+      <div class="totals-row"><span>Subtotal artículos</span><span class="totals-val" id="tot-items">USD 0.00</span></div>
+      <div class="totals-row"><span>Traslado interno</span><span class="totals-val" id="tot-traslado">USD 0.00</span></div>
+      <div class="totals-row"><span>Nacionalización y manejo</span><span class="totals-val" id="tot-nacional">USD 0.00</span></div>
+      <div class="totals-row divider main"><span>Subtotal</span><span class="totals-val" id="tot-subtotal" style="color:var(--accent)">USD 0.00</span></div>
+      <div class="totals-row"><span>IVA (22%)</span><span class="totals-val" id="tot-iva">USD 0.00</span></div>
+      <div class="totals-row grand"><span>Total c/IVA</span><span class="totals-val" id="tot-total">USD 0.00</span></div>
     </div>
 
     <div class="modal-actions">
@@ -251,7 +300,8 @@
 
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
-let imports = [];
+let imports  = [];
+let productos = [];
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(method, path, body) {
@@ -266,7 +316,10 @@ async function apiFetch(method, path, body) {
 // ─── Load ─────────────────────────────────────────────────────────────────────
 async function load() {
   try {
-    imports = await apiFetch('GET', '/api/importaciones');
+    [imports, productos] = await Promise.all([
+      apiFetch('GET', '/api/importaciones'),
+      apiFetch('GET', '/api/productos').catch(() => []),
+    ]);
     render();
   } catch(e) {
     document.getElementById('imports-table-container').innerHTML =
@@ -279,7 +332,11 @@ function statusBadge(s) {
   const map = {
     ordered:    ['badge-blue',   '📦 Ordenado'],
     in_transit: ['badge-yellow', '✈️ En tránsito'],
+    en_transito:['badge-yellow', '✈️ En tránsito'],
     arrived:    ['badge-green',  '✅ Llegado'],
+    en_deposito:['badge-green',  '📦 En depósito'],
+    recibido:   ['badge-green',  '✅ Recibido'],
+    en_aduana:  ['badge-blue',   '🏛️ En aduana'],
     cancelled:  ['badge-gray',   '❌ Cancelado'],
   };
   const [cls, label] = map[s] || ['badge-gray', s];
@@ -291,6 +348,8 @@ function fmtDate(d) {
   const [y,m,day] = d.split('-');
   return `${day}/${m}/${y}`;
 }
+
+function usd(v) { return 'USD ' + Number(v || 0).toFixed(2); }
 
 function render() {
   const el = document.getElementById('imports-table-container');
@@ -304,15 +363,19 @@ function render() {
   }
 
   const rows = imports.map(imp => {
-    const canArrive = imp.status !== 'arrived' && imp.status !== 'cancelled';
+    const canArrive = imp.status !== 'arrived' && imp.status !== 'recibido' && imp.status !== 'cancelled';
+    const estado = imp.status || imp.estado;
+    const fecha  = imp.order_date || imp.fecha;
+    const llegada = imp.estimated_arrival_date || imp.llegada;
+    const items  = imp.items || imp.import_items || [];
     return `
     <tr>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${imp.id.slice(0,8)}…</td>
-      <td>${fmtDate(imp.order_date)}</td>
-      <td>${fmtDate(imp.estimated_arrival_date)}</td>
-      <td>${imp.actual_arrival_date ? fmtDate(imp.actual_arrival_date) : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td>${statusBadge(imp.status)}</td>
-      <td style="font-family:'JetBrains Mono',monospace">${imp.total_items}</td>
+      <td>${fmtDate(fecha)}</td>
+      <td>${fmtDate(llegada)}</td>
+      <td>${statusBadge(estado)}</td>
+      <td style="text-align:center">${items.length}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)">${usd(imp.subtotal)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">${usd(imp.total)}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="verDetalle('${imp.id}')">Ver items</button>
@@ -327,17 +390,77 @@ function render() {
     <table>
       <thead>
         <tr>
-          <th>ID</th>
           <th>Fecha orden</th>
           <th>Llegada est.</th>
-          <th>Llegada real</th>
           <th>Estado</th>
           <th>Ítems</th>
+          <th>Subtotal USD</th>
+          <th>Total c/IVA USD</th>
           <th>Acciones</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// ─── Search dropdown ──────────────────────────────────────────────────────────
+function buscarProd(input) {
+  const q = input.value.trim().toLowerCase();
+  const dd = input.parentElement.querySelector('.sku-dd');
+  if (!q || !productos.length) { dd.style.display = 'none'; return; }
+
+  const res = productos.filter(p =>
+    (p.sku || '').toLowerCase().includes(q) ||
+    (p.nombre || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+
+  if (!res.length) { dd.style.display = 'none'; return; }
+
+  dd.innerHTML = res.map(p =>
+    `<div class="sku-dd-item" onmousedown="pickProd(this,'${p.sku.replace(/'/g,"\\'")}','${(p.nombre||'').replace(/'/g,"\\'")}')">
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:11px">${p.sku}</span>
+      <span style="margin-left:8px">${p.nombre}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function pickProd(item, sku, nombre) {
+  const wrap = item.closest('.sku-wrap');
+  wrap.querySelector('input').value = sku;
+  wrap.querySelector('.sku-dd').style.display = 'none';
+  const tr = wrap.closest('tr');
+  tr.querySelector('.li-name').value = nombre;
+  recalcTotals();
+}
+
+function cerrarDd(input, delay) {
+  setTimeout(() => {
+    const dd = input.parentElement.querySelector('.sku-dd');
+    if (dd) dd.style.display = 'none';
+  }, delay);
+}
+
+// ─── Totals recalc ────────────────────────────────────────────────────────────
+function recalcTotals() {
+  let subItems = 0;
+  document.querySelectorAll('#line-items-body tr').forEach(tr => {
+    const qty  = parseFloat(tr.querySelector('.li-qty')?.value)  || 0;
+    const cost = parseFloat(tr.querySelector('.li-cost')?.value) || 0;
+    subItems += qty * cost;
+  });
+  const traslado = parseFloat(document.getElementById('new-traslado').value) || 0;
+  const nacional = parseFloat(document.getElementById('new-nacional').value) || 0;
+  const subtotal = subItems + traslado + nacional;
+  const iva      = subtotal * 0.22;
+  const total    = subtotal + iva;
+
+  document.getElementById('tot-items').textContent    = usd(subItems);
+  document.getElementById('tot-traslado').textContent = usd(traslado);
+  document.getElementById('tot-nacional').textContent = usd(nacional);
+  document.getElementById('tot-subtotal').textContent = usd(subtotal);
+  document.getElementById('tot-iva').textContent      = usd(iva);
+  document.getElementById('tot-total').textContent    = usd(total);
 }
 
 // ─── New Import Modal ─────────────────────────────────────────────────────────
@@ -347,9 +470,12 @@ function openNew() {
   document.getElementById('new-est-arrival').value = '';
   document.getElementById('new-notes').value = '';
   document.getElementById('new-status').value = 'ordered';
+  document.getElementById('new-traslado').value = '0';
+  document.getElementById('new-nacional').value = '0';
   document.getElementById('line-items-body').innerHTML = '';
   document.getElementById('items-error').style.display = 'none';
-  addLineItem(); // start with one empty row
+  recalcTotals();
+  addLineItem();
   document.getElementById('modal-nueva').classList.add('open');
 }
 
@@ -357,39 +483,33 @@ function addLineItem() {
   const tbody = document.getElementById('line-items-body');
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td><input type="text" placeholder="SKU-001" class="li-sku"></td>
-    <td><input type="text" placeholder="Nombre del producto" class="li-name"></td>
-    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px"></td>
-    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px"></td>
     <td>
-      <select class="li-currency" style="width:70px">
-        <option value="USD">USD</option>
-        <option value="ARS">ARS</option>
-        <option value="UYU">UYU</option>
-        <option value="EUR">EUR</option>
-      </select>
+      <div class="sku-wrap">
+        <input type="text" placeholder="SKU o nombre..." class="li-sku"
+               oninput="buscarProd(this);recalcTotals()"
+               onblur="cerrarDd(this,200)"
+               onkeydown="if(event.key==='Escape')cerrarDd(this,0)">
+        <div class="sku-dd"></div>
+      </div>
     </td>
-    <td><button class="btn btn-danger btn-sm" onclick="removeLineItem(this)">✕</button></td>`;
+    <td><input type="text" placeholder="Nombre del producto" class="li-name"></td>
+    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" oninput="recalcTotals()"></td>
+    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" oninput="recalcTotals()"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove();recalcTotals()">✕</button></td>`;
   tbody.appendChild(tr);
 }
 
-function removeLineItem(btn) {
-  btn.closest('tr').remove();
-}
-
 async function submitNew() {
-  const orderDate = document.getElementById('new-order-date').value;
-  if (!orderDate) { alert('Ingresá la fecha de orden.'); return; }
+  const fecha = document.getElementById('new-order-date').value;
+  if (!fecha) { alert('Ingresá la fecha de orden.'); return; }
 
-  const tbody = document.getElementById('line-items-body');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const rows  = Array.from(document.querySelectorAll('#line-items-body tr'));
   const items = rows.map(tr => ({
-    sku:              tr.querySelector('.li-sku').value.trim(),
-    product_name:     tr.querySelector('.li-name').value.trim(),
-    quantity_ordered: parseInt(tr.querySelector('.li-qty').value) || 0,
-    unit_cost:        tr.querySelector('.li-cost').value !== '' ? parseFloat(tr.querySelector('.li-cost').value) : null,
-    currency:         tr.querySelector('.li-currency').value,
-  })).filter(i => i.sku && i.product_name && i.quantity_ordered > 0);
+    sku:    tr.querySelector('.li-sku').value.trim(),
+    nombre: tr.querySelector('.li-name').value.trim(),
+    qty:    parseInt(tr.querySelector('.li-qty').value) || 0,
+    costo:  parseFloat(tr.querySelector('.li-cost').value) || 0,
+  })).filter(i => (i.sku || i.nombre) && i.qty > 0);
 
   if (!items.length) {
     document.getElementById('items-error').style.display = 'block';
@@ -397,15 +517,18 @@ async function submitNew() {
   }
   document.getElementById('items-error').style.display = 'none';
 
-  const estArrival = document.getElementById('new-est-arrival').value || null;
+  const traslado = parseFloat(document.getElementById('new-traslado').value) || 0;
+  const nacional = parseFloat(document.getElementById('new-nacional').value) || 0;
 
   try {
     const rec = await apiFetch('POST', '/api/importaciones', {
-      order_date:            orderDate,
-      estimated_arrival_date: estArrival,
-      status:                document.getElementById('new-status').value,
-      notes:                 document.getElementById('new-notes').value.trim() || null,
+      fecha,
+      llegada:  document.getElementById('new-est-arrival').value || null,
+      estado:   document.getElementById('new-status').value,
+      notas:    document.getElementById('new-notes').value.trim() || null,
       items,
+      traslado,
+      nacional,
     });
     imports.unshift(rec);
     render();
@@ -418,11 +541,10 @@ async function submitNew() {
 // ─── Mark as Arrived ─────────────────────────────────────────────────────────
 async function marcarLlegado(id) {
   if (!confirm('¿Marcar esta importación como llegada?')) return;
-  const today = new Date().toISOString().slice(0,10);
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
-      status: 'arrived',
-      actual_arrival_date: today,
+      estado: 'recibido',
+      llegada: new Date().toISOString().slice(0,10),
     });
     const idx = imports.findIndex(i => i.id === id);
     if (idx !== -1) imports[idx] = updated;
@@ -434,7 +556,7 @@ async function marcarLlegado(id) {
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 async function eliminar(id) {
-  if (!confirm('¿Eliminar esta importación y todos sus ítems?')) return;
+  if (!confirm('¿Eliminar esta importación?')) return;
   try {
     await apiFetch('DELETE', `/api/importaciones?id=${id}`);
     imports = imports.filter(i => i.id !== id);
@@ -444,33 +566,45 @@ async function eliminar(id) {
   }
 }
 
-// ─── View Items Detail ────────────────────────────────────────────────────────
+// ─── View Detail ──────────────────────────────────────────────────────────────
 function verDetalle(id) {
   const imp = imports.find(i => i.id === id);
   if (!imp) return;
 
-  const items = imp.import_items || [];
+  const items = imp.items || imp.import_items || [];
+  const fecha   = imp.order_date || imp.fecha;
+  const llegada = imp.estimated_arrival_date || imp.llegada;
+  const estado  = imp.status || imp.estado;
+
   const itemsHtml = items.length
     ? items.map(it => `
         <div class="item-row">
-          <div><div class="item-label">SKU</div><div class="item-val" style="font-family:'JetBrains Mono',monospace">${it.sku}</div></div>
-          <div><div class="item-label">Producto</div><div class="item-val">${it.product_name}</div></div>
-          <div><div class="item-label">Cantidad</div><div class="item-val">${it.quantity_ordered}</div></div>
-          <div><div class="item-label">Costo unit.</div><div class="item-val">${it.unit_cost != null ? it.currency + ' ' + Number(it.unit_cost).toFixed(2) : '—'}</div></div>
+          <div><div class="item-label">SKU</div><div class="item-val" style="font-family:'JetBrains Mono',monospace">${it.sku || '—'}</div></div>
+          <div><div class="item-label">Producto</div><div class="item-val">${it.nombre || it.product_name || '—'}</div></div>
+          <div><div class="item-label">Cantidad</div><div class="item-val">${it.qty || it.quantity_ordered || 0}</div></div>
+          <div><div class="item-label">Costo unit.</div><div class="item-val">${it.costo != null ? usd(it.costo) : (it.unit_cost != null ? usd(it.unit_cost) : '—')}</div></div>
         </div>`).join('')
     : '<p style="color:var(--text-muted);font-size:13px">Sin ítems registrados.</p>';
 
   document.getElementById('detalle-content').innerHTML = `
     <div class="modal-title">Detalle de importación</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Fecha orden</span><div style="font-weight:600;margin-top:2px">${fmtDate(imp.order_date)}</div></div>
-      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Estado</span><div style="margin-top:4px">${statusBadge(imp.status)}</div></div>
-      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Llegada estimada</span><div style="font-weight:600;margin-top:2px">${fmtDate(imp.estimated_arrival_date)}</div></div>
-      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Llegada real</span><div style="font-weight:600;margin-top:2px">${fmtDate(imp.actual_arrival_date)}</div></div>
-      ${imp.notes ? `<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Notas</span><div style="margin-top:2px;font-size:13px">${imp.notes}</div></div>` : ''}
+      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Fecha orden</span><div style="font-weight:600;margin-top:2px">${fmtDate(fecha)}</div></div>
+      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Estado</span><div style="margin-top:4px">${statusBadge(estado)}</div></div>
+      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Llegada estimada</span><div style="font-weight:600;margin-top:2px">${fmtDate(llegada)}</div></div>
+      ${imp.notas ? `<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Notas</span><div style="margin-top:2px;font-size:13px">${imp.notas}</div></div>` : ''}
     </div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">Artículos (${items.length})</div>
-    <div class="items-list">${itemsHtml}</div>`;
+    <div class="items-list">${itemsHtml}</div>
+    ${imp.subtotal != null ? `
+    <div class="totals-box" style="margin-top:16px">
+      <div class="totals-row"><span>Subtotal artículos</span><span class="totals-val">${usd(imp.subtotal - (imp.traslado||0) - (imp.nacional||0))}</span></div>
+      <div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(imp.traslado)}</span></div>
+      <div class="totals-row"><span>Nacionalización y manejo</span><span class="totals-val">${usd(imp.nacional)}</span></div>
+      <div class="totals-row divider main"><span>Subtotal</span><span class="totals-val" style="color:var(--accent)">${usd(imp.subtotal)}</span></div>
+      <div class="totals-row"><span>IVA (22%)</span><span class="totals-val">${usd(imp.iva)}</span></div>
+      <div class="totals-row grand"><span>Total c/IVA</span><span class="totals-val">${usd(imp.total)}</span></div>
+    </div>` : ''}`;
   document.getElementById('modal-detalle').classList.add('open');
 }
 

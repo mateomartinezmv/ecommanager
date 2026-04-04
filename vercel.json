@@ -1,5 +1,6 @@
 {
   "functions": {
+    "api/importaciones.js": { "maxDuration": 10 },
     "api/clientes.js": { "maxDuration": 10 },
     "api/productos.js": { "maxDuration": 10 },
     "api/ventas.js": { "maxDuration": 10 },

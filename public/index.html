@@ -189,6 +189,8 @@
     <div class="nav-item" onclick="goPage('envios')"><span class="icon">🚚</span><span>Envíos</span></div>
     <div class="nav-item" onclick="goPage('transportistas')"><span class="icon">💳</span><span>Transportistas</span></div>
     <div class="nav-item" onclick="goPage('clientes')"><span class="icon">👥</span><span>Clientes</span></div>
+    <div class="nav-section">Compras</div>
+    <div class="nav-item" onclick="goPage('importaciones')"><span class="icon">🛳️</span><span>Importaciones</span></div>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
     <div class="nav-section">Compras</div>
@@ -470,6 +472,27 @@
             <div style="padding:20px" id="chart-meli-bottom"></div>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: IMPORTACIONES -->
+  <div id="page-importaciones" class="page">
+    <div class="topbar">
+      <div class="page-title">🛳️ Importaciones</div>
+      <div class="topbar-actions">
+        <button class="btn btn-primary btn-sm" onclick="openModal('modal-importacion')">+ Nueva Importación</button>
+      </div>
+    </div>
+    <div class="content">
+      <div class="cards-grid" id="importaciones-stats"></div>
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">📋 Órdenes de compra</span></div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Llegada est.</th><th>Items</th><th>Traslado</th><th>Nacionalización</th><th>Subtotal USD</th><th>Total c/IVA USD</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr></thead>
+          <tbody id="importaciones-tbody"></tbody>
+        </table>
+        <div id="importaciones-empty" class="empty-state" style="display:none"><div class="empty-icon">🛳️</div><p>No hay importaciones registradas.</p></div>
       </div>
     </div>
   </div>
@@ -783,6 +806,84 @@
   </div>
 </div>
 
+<!-- MODAL: NUEVA IMPORTACIÓN -->
+<div class="modal-overlay" id="modal-importacion">
+  <div class="modal" style="max-width:780px">
+    <div class="modal-title">🛳️ Nueva Importación</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Fecha de orden *</label><input type="date" id="imp-fecha"></div>
+      <div class="form-group"><label class="form-label">Llegada estimada</label><input type="date" id="imp-llegada"></div>
+      <div class="form-group"><label class="form-label">Estado inicial</label>
+        <select id="imp-estado">
+          <option value="en_transito">✈️ En tránsito</option>
+          <option value="en_aduana">🏛️ En aduana</option>
+          <option value="en_deposito">📦 En depósito</option>
+          <option value="recibido">✅ Recibido</option>
+        </select>
+      </div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="imp-notas" rows="2" placeholder="Proveedor, detalles del pedido..."></textarea></div>
+    </div>
+
+    <!-- Artículos -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em">Artículos</span>
+      <button class="btn btn-ghost btn-sm" onclick="impAddItem()">+ Agregar ítem</button>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px">
+      <table style="width:100%">
+        <thead><tr>
+          <th style="text-align:left;padding:8px 12px;font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">SKU</th>
+          <th style="text-align:left;padding:8px 12px;font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Producto</th>
+          <th style="text-align:left;padding:8px 12px;font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Cantidad</th>
+          <th style="text-align:left;padding:8px 12px;font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Costo Unit. (USD)</th>
+          <th style="padding:8px 12px"></th>
+        </tr></thead>
+        <tbody id="imp-items-tbody"></tbody>
+      </table>
+    </div>
+
+    <!-- Costos adicionales -->
+    <div style="font-size:13px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Costos adicionales (USD)</div>
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group"><label class="form-label">Traslado Interno</label><input type="number" id="imp-traslado" placeholder="0.00" step="0.01" min="0" oninput="impRecalc()" value="0"></div>
+      <div class="form-group"><label class="form-label">Nacionalización y manejo de mercadería</label><input type="number" id="imp-nacional" placeholder="0.00" step="0.01" min="0" oninput="impRecalc()" value="0"></div>
+    </div>
+
+    <!-- Totales -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 18px;display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim)">
+        <span>Subtotal artículos</span>
+        <span id="imp-sub-items" style="font-family:'JetBrains Mono',monospace">USD 0.00</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim)">
+        <span>Traslado interno</span>
+        <span id="imp-sub-traslado" style="font-family:'JetBrains Mono',monospace">USD 0.00</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim)">
+        <span>Nacionalización y manejo</span>
+        <span id="imp-sub-nacional" style="font-family:'JetBrains Mono',monospace">USD 0.00</span>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:14px;font-weight:600;color:var(--text)">
+        <span>Subtotal</span>
+        <span id="imp-subtotal" style="font-family:'JetBrains Mono',monospace;color:var(--accent)">USD 0.00</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--text-dim)">
+        <span>IVA (22%)</span>
+        <span id="imp-iva" style="font-family:'JetBrains Mono',monospace">USD 0.00</span>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;justify-content:space-between;font-size:16px;font-weight:700;color:var(--green)">
+        <span>Total c/IVA</span>
+        <span id="imp-total" style="font-family:'JetBrains Mono',monospace">USD 0.00</span>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-importacion')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveImportacion()">Guardar Importación</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: DETALLE CLIENTE -->
 <div class="modal-overlay" id="modal-detalle-cliente">
   <div class="modal" style="max-width:720px">
@@ -801,7 +902,7 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [] };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [] };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let enviosTabFilter = 'all';
@@ -831,6 +932,8 @@ async function loadAll() {
     db.ventas    = ventas.map(normVenta);
     db.envios    = envios.map(normEnvio);
     db.clientes  = clientes.map(normCliente);
+    const importaciones = await api('GET', '/importaciones').catch(() => []);
+    db.importaciones = importaciones;
   } catch(e) {
     console.error('Error cargando datos:', e);
     alert('⚠️ Error conectando con la base de datos: ' + e.message);
@@ -886,12 +989,24 @@ function goPage(page) {
   if (page === 'reportes') renderReportes();
   if (page === 'transportistas') renderTransportistas();
   if (page === 'clientes') renderClientes();
+  if (page === 'importaciones') renderImportaciones();
 }
 
 // =====================
 // MODALS
 // =====================
 function openModal(id) {
+  if (id === 'modal-importacion') {
+    document.getElementById('imp-fecha').value = new Date().toISOString().slice(0,10);
+    document.getElementById('imp-llegada').value = '';
+    document.getElementById('imp-estado').value = 'en_transito';
+    document.getElementById('imp-notas').value = '';
+    document.getElementById('imp-traslado').value = '0';
+    document.getElementById('imp-nacional').value = '0';
+    document.getElementById('imp-items-tbody').innerHTML = '';
+    impAddItem();
+    impRecalc();
+  }
   if (id === 'modal-pago-transportista') {
     document.getElementById('pag-fecha').value = new Date().toISOString().slice(0,10);
     document.getElementById('pag-monto').value = '';
@@ -2189,6 +2304,137 @@ async function vmosClienteCrearNuevo() {
 
 function vmosClienteKeydown(e) {
   if (e.key === 'Escape') document.getElementById('vmos-cliente-dd').style.display = 'none';
+}
+
+// =====================
+// IMPORTACIONES
+// =====================
+const ESTADO_IMP_LABEL = {
+  en_transito: '✈️ En tránsito',
+  en_aduana:   '🏛️ En aduana',
+  en_deposito: '📦 En depósito',
+  recibido:    '✅ Recibido',
+};
+
+function impAddItem() {
+  const tbody = document.getElementById('imp-items-tbody');
+  const idx = tbody.rows.length;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td style="padding:6px 8px"><input type="text" placeholder="SKU-001" style="width:90px" oninput="impAutoFill(this,${idx})"></td>
+    <td style="padding:6px 8px"><input type="text" placeholder="Nombre del producto" style="width:180px"></td>
+    <td style="padding:6px 8px"><input type="number" placeholder="10" min="1" value="1" style="width:70px" oninput="impRecalc()"></td>
+    <td style="padding:6px 8px"><input type="number" placeholder="0.00" step="0.01" min="0" value="0" style="width:100px" oninput="impRecalc()"></td>
+    <td style="padding:6px 8px"><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove();impRecalc()">✕</button></td>`;
+  tbody.appendChild(tr);
+  impRecalc();
+}
+
+function impAutoFill(skuInput, idx) {
+  const sku = skuInput.value.trim().toUpperCase();
+  const prod = db.productos.find(p => p.sku === sku);
+  if (!prod) return;
+  const cells = skuInput.closest('tr').querySelectorAll('input');
+  cells[1].value = prod.nombre;
+}
+
+function impRecalc() {
+  const rows = document.querySelectorAll('#imp-items-tbody tr');
+  let subItems = 0;
+  rows.forEach(tr => {
+    const inputs = tr.querySelectorAll('input');
+    const qty  = parseFloat(inputs[2]?.value) || 0;
+    const cost = parseFloat(inputs[3]?.value) || 0;
+    subItems += qty * cost;
+  });
+  const traslado  = parseFloat(document.getElementById('imp-traslado').value) || 0;
+  const nacional  = parseFloat(document.getElementById('imp-nacional').value) || 0;
+  const subtotal  = subItems + traslado + nacional;
+  const iva       = subtotal * 0.22;
+  const total     = subtotal + iva;
+
+  const usd = v => 'USD ' + v.toFixed(2);
+  document.getElementById('imp-sub-items').textContent    = usd(subItems);
+  document.getElementById('imp-sub-traslado').textContent = usd(traslado);
+  document.getElementById('imp-sub-nacional').textContent = usd(nacional);
+  document.getElementById('imp-subtotal').textContent     = usd(subtotal);
+  document.getElementById('imp-iva').textContent          = usd(iva);
+  document.getElementById('imp-total').textContent        = usd(total);
+}
+
+async function saveImportacion() {
+  const fecha    = document.getElementById('imp-fecha').value;
+  if (!fecha) { alert('La fecha de orden es obligatoria.'); return; }
+  const llegada  = document.getElementById('imp-llegada').value;
+  const estado   = document.getElementById('imp-estado').value;
+  const notas    = document.getElementById('imp-notas').value.trim();
+  const traslado = parseFloat(document.getElementById('imp-traslado').value) || 0;
+  const nacional = parseFloat(document.getElementById('imp-nacional').value) || 0;
+
+  const rows = document.querySelectorAll('#imp-items-tbody tr');
+  const items = [];
+  rows.forEach(tr => {
+    const inputs = tr.querySelectorAll('input');
+    const sku    = inputs[0]?.value.trim();
+    const nombre = inputs[1]?.value.trim();
+    const qty    = parseFloat(inputs[2]?.value) || 0;
+    const costo  = parseFloat(inputs[3]?.value) || 0;
+    if (sku || nombre) items.push({ sku, nombre, qty, costo });
+  });
+
+  try {
+    const nueva = await api('POST', '/importaciones', { fecha, llegada, estado, notas, items, traslado, nacional });
+    db.importaciones.unshift(nueva);
+    closeModal('modal-importacion');
+    renderImportaciones();
+  } catch(e) { alert('Error guardando importación: ' + e.message); }
+}
+
+async function deleteImportacion(id) {
+  if (!confirm('¿Eliminar esta importación?')) return;
+  try {
+    await api('DELETE', '/importaciones?id=' + id);
+    db.importaciones = db.importaciones.filter(i => i.id !== id);
+    renderImportaciones();
+  } catch(e) { alert('Error eliminando: ' + e.message); }
+}
+
+function renderImportaciones() {
+  const list = db.importaciones;
+  const usd  = v => 'USD ' + v.toFixed(2);
+
+  // Stats
+  const totalOrdenes  = list.length;
+  const totalUSD      = list.reduce((s, i) => s + i.total, 0);
+  const enTransito    = list.filter(i => i.estado === 'en_transito').length;
+  const recibidas     = list.filter(i => i.estado === 'recibido').length;
+  document.getElementById('importaciones-stats').innerHTML = `
+    <div class="stat-card blue"><div class="stat-icon">📋</div><div class="stat-value">${totalOrdenes}</div><div class="stat-label">Total órdenes</div></div>
+    <div class="stat-card green"><div class="stat-icon">💵</div><div class="stat-value">${usd(totalUSD)}</div><div class="stat-label">Inversión total</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">✈️</div><div class="stat-value">${enTransito}</div><div class="stat-label">En tránsito</div></div>
+    <div class="stat-card purple"><div class="stat-icon">✅</div><div class="stat-value">${recibidas}</div><div class="stat-label">Recibidas</div></div>`;
+
+  const tbody = document.getElementById('importaciones-tbody');
+  const empty = document.getElementById('importaciones-empty');
+  if (!list.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = list.map(i => `
+    <tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${i.fecha}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted)">${i.llegada || '—'}</td>
+      <td style="text-align:center">${i.items.length}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${usd(i.traslado)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${usd(i.nacional)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--accent)">${usd(i.subtotal)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">${usd(i.total)}</td>
+      <td><span style="font-size:12px">${ESTADO_IMP_LABEL[i.estado] || i.estado}</span></td>
+      <td style="color:var(--text-muted);font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.notas || '—'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteImportacion(${i.id})">Eliminar</button></td>
+    </tr>`).join('');
 }
 
 async function init() { await loadAll(); renderDashboard(); }

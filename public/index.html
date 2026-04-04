@@ -190,12 +190,10 @@
     <div class="nav-item" onclick="goPage('transportistas')"><span class="icon">💳</span><span>Transportistas</span></div>
     <div class="nav-item" onclick="goPage('clientes')"><span class="icon">👥</span><span>Clientes</span></div>
     <div class="nav-section">Compras</div>
-    <div class="nav-item" onclick="goPage('importaciones')"><span class="icon">🛳️</span><span>Importaciones</span></div>
-    <div class="nav-section">Análisis</div>
-    <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
-    <div class="nav-section">Compras</div>
     <a class="nav-item" href="/importaciones.html" style="text-decoration:none"><span class="icon">📥</span><span>Importaciones</span></a>
     <a class="nav-item" href="/reposicion.html" style="text-decoration:none"><span class="icon">📅</span><span>Reposición</span></a>
+    <div class="nav-section">Análisis</div>
+    <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -989,7 +987,6 @@ function goPage(page) {
   if (page === 'reportes') renderReportes();
   if (page === 'transportistas') renderTransportistas();
   if (page === 'clientes') renderClientes();
-  if (page === 'importaciones') renderImportaciones();
 }
 
 // =====================

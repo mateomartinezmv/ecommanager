@@ -51,6 +51,7 @@ module.exports = async (req, res) => {
         subtotal,
         iva,
         total,
+        saldo_pendiente: b.saldo_pendiente === true,
       }).select().single();
       if (error) throw error;
       return res.json(data);
@@ -60,11 +61,14 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'Falta ?id=' });
       const b = req.body || {};
-      const { data, error } = await supabase.from('importaciones').update({
-        estado:  b.estado,
-        notas:   b.notas?.trim() || null,
-        llegada: b.llegada || null,
-      }).eq('id', id).select().single();
+      const fields = {};
+      if (b.estado   !== undefined) fields.estado   = b.estado;
+      if (b.notas    !== undefined) fields.notas    = b.notas?.trim() || null;
+      if (b.llegada  !== undefined) fields.llegada  = b.llegada || null;
+      if (b.saldo_pendiente !== undefined) fields.saldo_pendiente = b.saldo_pendiente === true;
+
+      const { data, error } = await supabase.from('importaciones')
+        .update(fields).eq('id', id).select().single();
       if (error) throw error;
       return res.json(data);
     }

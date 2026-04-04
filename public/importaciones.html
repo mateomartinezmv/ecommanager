@@ -183,6 +183,7 @@
     <a class="nav-item" href="/"><span class="icon">📈</span><span>Reportes</span></a>
     <div class="nav-section">Compras</div>
     <a class="nav-item active" href="/importaciones.html"><span class="icon">📥</span><span>Importaciones</span></a>
+    <a class="nav-item" href="/reposicion.html"><span class="icon">📅</span><span>Reposición</span></a>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -269,6 +270,18 @@
           <input type="number" id="new-nacional" placeholder="0.00" step="0.01" min="0" value="0" oninput="recalcTotals()">
         </div>
       </div>
+    </div>
+
+    <!-- Pago en dos partes -->
+    <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:13px;font-weight:600">¿Falta pagar el 50% restante?</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">El primer pago (50%) ya fue realizado. Marcá si el saldo sigue pendiente.</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--yellow)">
+        <input type="checkbox" id="new-saldo-pendiente" style="width:18px;height:18px;accent-color:var(--yellow);cursor:pointer">
+        Saldo pendiente
+      </label>
     </div>
 
     <!-- Total pagado → cálculo inverso de IVA -->
@@ -378,6 +391,11 @@ function render() {
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)">${usd(imp.subtotal)}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">${usd(imp.total)}</td>
       <td>
+        ${imp.saldo_pendiente
+          ? `<button class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:var(--yellow);border:1px solid rgba(245,158,11,0.3)" onclick="toggleSaldo('${imp.id}',false)">🔴 Saldo pendiente</button>`
+          : `<button class="btn btn-sm" style="background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.3)" onclick="toggleSaldo('${imp.id}',true)">✅ Pagado</button>`}
+      </td>
+      <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="verDetalle('${imp.id}')">Ver items</button>
           ${canArrive ? `<button class="btn btn-green btn-sm" onclick="marcarLlegado('${imp.id}')">✅ Llegó</button>` : ''}
@@ -397,6 +415,7 @@ function render() {
           <th>Ítems</th>
           <th>Base sin IVA</th>
           <th>Total c/IVA (pagado)</th>
+          <th>2do Pago (50%)</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -463,6 +482,7 @@ function openNew() {
   document.getElementById('new-traslado').value = '0';
   document.getElementById('new-nacional').value = '0';
   document.getElementById('new-total-pagado').value = '';
+  document.getElementById('new-saldo-pendiente').checked = false;
   document.getElementById('line-items-body').innerHTML = '';
   document.getElementById('items-error').style.display = 'none';
   recalcTotals();
@@ -523,7 +543,8 @@ async function submitNew() {
       items,
       traslado,
       nacional,
-      total:    totalPagado,
+      total:            totalPagado,
+      saldo_pendiente:  document.getElementById('new-saldo-pendiente').checked,
     });
     imports.unshift(rec);
     render();
@@ -616,6 +637,16 @@ function verDetalle(id) {
       <div class="totals-row grand"><span>Total pagado</span><span class="totals-val">${usd(totalPagado)}</span></div>
     </div>`;
   document.getElementById('modal-detalle').classList.add('open');
+}
+
+// ─── Toggle 2do pago ─────────────────────────────────────────────────────────
+async function toggleSaldo(id, nuevoEstado) {
+  try {
+    const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, { saldo_pendiente: nuevoEstado });
+    const idx = imports.findIndex(i => i.id === id);
+    if (idx !== -1) imports[idx] = { ...imports[idx], saldo_pendiente: updated.saldo_pendiente };
+    render();
+  } catch(e) { alert('Error actualizando saldo: ' + e.message); }
 }
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────

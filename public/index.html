@@ -2318,10 +2318,12 @@ const ESTADO_IMP_LABEL = {
 
 function impAddItem() {
   const tbody = document.getElementById('imp-items-tbody');
-  const idx = tbody.rows.length;
   const tr = document.createElement('tr');
   tr.innerHTML = `
-    <td style="padding:6px 8px"><input type="text" placeholder="SKU-001" style="width:90px" oninput="impAutoFill(this,${idx})"></td>
+    <td style="padding:6px 8px;position:relative">
+      <input type="text" placeholder="SKU o nombre..." style="width:140px" oninput="impBuscarProd(this)" onblur="impCerrarDd(this,200)" onkeydown="if(event.key==='Escape')impCerrarDd(this,0)">
+      <div class="imp-dd" style="display:none;position:absolute;top:100%;left:0;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:7px;min-width:260px;max-height:200px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)"></div>
+    </td>
     <td style="padding:6px 8px"><input type="text" placeholder="Nombre del producto" style="width:180px"></td>
     <td style="padding:6px 8px"><input type="number" placeholder="10" min="1" value="1" style="width:70px" oninput="impRecalc()"></td>
     <td style="padding:6px 8px"><input type="number" placeholder="0.00" step="0.01" min="0" value="0" style="width:100px" oninput="impRecalc()"></td>
@@ -2330,12 +2332,43 @@ function impAddItem() {
   impRecalc();
 }
 
-function impAutoFill(skuInput, idx) {
-  const sku = skuInput.value.trim().toUpperCase();
-  const prod = db.productos.find(p => p.sku === sku);
-  if (!prod) return;
-  const cells = skuInput.closest('tr').querySelectorAll('input');
-  cells[1].value = prod.nombre;
+function impBuscarProd(input) {
+  const q = input.value.trim().toLowerCase();
+  const dd = input.nextElementSibling;
+  if (!q) { dd.style.display = 'none'; return; }
+
+  const resultados = db.productos.filter(p =>
+    p.sku.toLowerCase().includes(q) || p.nombre.toLowerCase().includes(q)
+  ).slice(0, 8);
+
+  if (!resultados.length) { dd.style.display = 'none'; return; }
+
+  dd.innerHTML = resultados.map(p => `
+    <div onmousedown="impPickProd(this,'${p.sku.replace(/'/g,"\\'")}','${p.nombre.replace(/'/g,"\\'")}')"
+         style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
+         onmouseenter="this.style.background='var(--surface2)'"
+         onmouseleave="this.style.background=''">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent)">${p.sku}</span>
+      <span style="margin-left:8px">${p.nombre}</span>
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function impPickProd(item, sku, nombre) {
+  const td = item.closest('td');
+  const input = td.querySelector('input[type="text"]');
+  const dd = td.querySelector('.imp-dd');
+  input.value = sku;
+  dd.style.display = 'none';
+  const inputs = td.closest('tr').querySelectorAll('input');
+  inputs[1].value = nombre;
+}
+
+function impCerrarDd(input, delay) {
+  setTimeout(() => {
+    const dd = input.nextElementSibling;
+    if (dd) dd.style.display = 'none';
+  }, delay);
 }
 
 function impRecalc() {

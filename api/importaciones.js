@@ -34,10 +34,10 @@ module.exports = async (req, res) => {
       const traslado = Number(b.traslado) || 0;
       const nacional = Number(b.nacional) || 0;
       const items    = Array.isArray(b.items) ? b.items : [];
-      const subItems = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.costo) || 0), 0);
-      const subtotal = subItems + traslado + nacional;
-      const iva      = subtotal * 0.22;
-      const total    = subtotal + iva;
+      // Cálculo inverso: el usuario ingresa el total que ya incluye IVA
+      const total    = Number(b.total) || 0;
+      const subtotal = total / 1.22;   // base imponible
+      const iva      = total - subtotal;
 
       const { data, error } = await supabase.from('importaciones').insert({
         id:       'IMP' + Date.now(),

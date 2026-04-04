@@ -271,14 +271,15 @@
       </div>
     </div>
 
-    <!-- Totales -->
+    <!-- Total pagado → cálculo inverso de IVA -->
+    <div style="margin-top:16px" class="form-group">
+      <label class="form-label">Total pagado con IVA (USD) * — el valor que figura en la factura</label>
+      <input type="number" id="new-total-pagado" placeholder="ej: 891.00" step="0.01" min="0" oninput="recalcTotals()" style="font-size:15px;font-weight:600;color:var(--green)">
+    </div>
     <div class="totals-box">
-      <div class="totals-row"><span>Subtotal artículos</span><span class="totals-val" id="tot-items">USD 0.00</span></div>
-      <div class="totals-row"><span>Traslado interno</span><span class="totals-val" id="tot-traslado">USD 0.00</span></div>
-      <div class="totals-row"><span>Nacionalización y manejo</span><span class="totals-val" id="tot-nacional">USD 0.00</span></div>
-      <div class="totals-row divider main"><span>Subtotal</span><span class="totals-val" id="tot-subtotal" style="color:var(--accent)">USD 0.00</span></div>
-      <div class="totals-row"><span>IVA (22%)</span><span class="totals-val" id="tot-iva">USD 0.00</span></div>
-      <div class="totals-row grand"><span>Total c/IVA</span><span class="totals-val" id="tot-total">USD 0.00</span></div>
+      <div class="totals-row"><span>Base imponible (sin IVA)</span><span class="totals-val" id="tot-base" style="color:var(--accent)">USD 0.00</span></div>
+      <div class="totals-row"><span>IVA 22%</span><span class="totals-val" id="tot-iva">USD 0.00</span></div>
+      <div class="totals-row grand"><span>Total pagado</span><span class="totals-val" id="tot-total">USD 0.00</span></div>
     </div>
 
     <div class="modal-actions">
@@ -394,8 +395,8 @@ function render() {
           <th>Llegada est.</th>
           <th>Estado</th>
           <th>Ítems</th>
-          <th>Subtotal USD</th>
-          <th>Total c/IVA USD</th>
+          <th>Base sin IVA</th>
+          <th>Total c/IVA (pagado)</th>
           <th>Acciones</th>
         </tr>
       </thead>
@@ -441,26 +442,15 @@ function cerrarDd(input, delay) {
   }, delay);
 }
 
-// ─── Totals recalc ────────────────────────────────────────────────────────────
+// ─── Totals recalc (cálculo inverso: el usuario ingresa el total con IVA) ──────
 function recalcTotals() {
-  let subItems = 0;
-  document.querySelectorAll('#line-items-body tr').forEach(tr => {
-    const qty  = parseFloat(tr.querySelector('.li-qty')?.value)  || 0;
-    const cost = parseFloat(tr.querySelector('.li-cost')?.value) || 0;
-    subItems += qty * cost;
-  });
-  const traslado = parseFloat(document.getElementById('new-traslado').value) || 0;
-  const nacional = parseFloat(document.getElementById('new-nacional').value) || 0;
-  const subtotal = subItems + traslado + nacional;
-  const iva      = subtotal * 0.22;
-  const total    = subtotal + iva;
+  const total    = parseFloat(document.getElementById('new-total-pagado').value) || 0;
+  const base     = total / 1.22;
+  const iva      = total - base;
 
-  document.getElementById('tot-items').textContent    = usd(subItems);
-  document.getElementById('tot-traslado').textContent = usd(traslado);
-  document.getElementById('tot-nacional').textContent = usd(nacional);
-  document.getElementById('tot-subtotal').textContent = usd(subtotal);
-  document.getElementById('tot-iva').textContent      = usd(iva);
-  document.getElementById('tot-total').textContent    = usd(total);
+  document.getElementById('tot-base').textContent  = usd(base);
+  document.getElementById('tot-iva').textContent   = usd(iva);
+  document.getElementById('tot-total').textContent = usd(total);
 }
 
 // ─── New Import Modal ─────────────────────────────────────────────────────────
@@ -472,6 +462,7 @@ function openNew() {
   document.getElementById('new-status').value = 'ordered';
   document.getElementById('new-traslado').value = '0';
   document.getElementById('new-nacional').value = '0';
+  document.getElementById('new-total-pagado').value = '';
   document.getElementById('line-items-body').innerHTML = '';
   document.getElementById('items-error').style.display = 'none';
   recalcTotals();
@@ -503,6 +494,9 @@ async function submitNew() {
   const fecha = document.getElementById('new-order-date').value;
   if (!fecha) { alert('Ingresá la fecha de orden.'); return; }
 
+  const totalPagado = parseFloat(document.getElementById('new-total-pagado').value) || 0;
+  if (!totalPagado) { alert('Ingresá el total pagado con IVA.'); return; }
+
   const rows  = Array.from(document.querySelectorAll('#line-items-body tr'));
   const items = rows.map(tr => ({
     sku:    tr.querySelector('.li-sku').value.trim(),
@@ -529,6 +523,7 @@ async function submitNew() {
       items,
       traslado,
       nacional,
+      total:    totalPagado,
     });
     imports.unshift(rec);
     render();
@@ -576,14 +571,31 @@ function verDetalle(id) {
   const llegada = imp.estimated_arrival_date || imp.llegada;
   const estado  = imp.status || imp.estado;
 
+  // Cálculo inverso de IVA desde el total pagado (aplica a registros viejos y nuevos)
+  const totalPagado = Number(imp.total || 0);
+  const base        = totalPagado / 1.22;
+  const ivaCalc     = totalPagado - base;
+
+  // Prorrateo del total (con IVA) sobre los artículos ingresados
+  const itemsCostSum = items.reduce((s, it) => s + (Number(it.qty||it.quantity_ordered||0)) * (Number(it.costo||it.unit_cost||0)), 0);
+
   const itemsHtml = items.length
-    ? items.map(it => `
-        <div class="item-row">
-          <div><div class="item-label">SKU</div><div class="item-val" style="font-family:'JetBrains Mono',monospace">${it.sku || '—'}</div></div>
+    ? items.map(it => {
+        const qty      = Number(it.qty || it.quantity_ordered || 0);
+        const unitCost = Number(it.costo || it.unit_cost || 0);
+        const itCost   = qty * unitCost;
+        const realUnit = (itemsCostSum > 0 && qty > 0)
+          ? (itCost / itemsCostSum) * totalPagado / qty
+          : 0;
+        return `
+        <div class="item-row" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr">
+          <div><div class="item-label">SKU</div><div class="item-val" style="font-family:'JetBrains Mono',monospace;font-size:11px">${it.sku || '—'}</div></div>
           <div><div class="item-label">Producto</div><div class="item-val">${it.nombre || it.product_name || '—'}</div></div>
-          <div><div class="item-label">Cantidad</div><div class="item-val">${it.qty || it.quantity_ordered || 0}</div></div>
-          <div><div class="item-label">Costo unit.</div><div class="item-val">${it.costo != null ? usd(it.costo) : (it.unit_cost != null ? usd(it.unit_cost) : '—')}</div></div>
-        </div>`).join('')
+          <div><div class="item-label">Cantidad</div><div class="item-val">${qty}</div></div>
+          <div><div class="item-label">Costo declarado/u</div><div class="item-val">${usd(unitCost)}</div></div>
+          <div><div class="item-label">Costo real c/IVA/u</div><div class="item-val" style="color:var(--green)">${usd(realUnit)}</div></div>
+        </div>`;
+      }).join('')
     : '<p style="color:var(--text-muted);font-size:13px">Sin ítems registrados.</p>';
 
   document.getElementById('detalle-content').innerHTML = `
@@ -596,15 +608,13 @@ function verDetalle(id) {
     </div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">Artículos (${items.length})</div>
     <div class="items-list">${itemsHtml}</div>
-    ${imp.subtotal != null ? `
     <div class="totals-box" style="margin-top:16px">
-      <div class="totals-row"><span>Subtotal artículos</span><span class="totals-val">${usd(imp.subtotal - (imp.traslado||0) - (imp.nacional||0))}</span></div>
-      <div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(imp.traslado)}</span></div>
-      <div class="totals-row"><span>Nacionalización y manejo</span><span class="totals-val">${usd(imp.nacional)}</span></div>
-      <div class="totals-row divider main"><span>Subtotal</span><span class="totals-val" style="color:var(--accent)">${usd(imp.subtotal)}</span></div>
-      <div class="totals-row"><span>IVA (22%)</span><span class="totals-val">${usd(imp.iva)}</span></div>
-      <div class="totals-row grand"><span>Total c/IVA</span><span class="totals-val">${usd(imp.total)}</span></div>
-    </div>` : ''}`;
+      ${imp.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(imp.traslado)}</span></div>` : ''}
+      ${imp.nacional ? `<div class="totals-row"><span>Nacionalización y manejo</span><span class="totals-val">${usd(imp.nacional)}</span></div>` : ''}
+      <div class="totals-row divider"><span>Base imponible (sin IVA)</span><span class="totals-val" style="color:var(--accent)">${usd(base)}</span></div>
+      <div class="totals-row"><span>IVA 22%</span><span class="totals-val">${usd(ivaCalc)}</span></div>
+      <div class="totals-row grand"><span>Total pagado</span><span class="totals-val">${usd(totalPagado)}</span></div>
+    </div>`;
   document.getElementById('modal-detalle').classList.add('open');
 }
 

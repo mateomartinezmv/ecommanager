@@ -64,7 +64,7 @@ module.exports = async (req, res) => {
         .select('id, costo, colecta')
         .eq('transportista', transportista)
         .eq('pagado', false)
-        .gt('costo', 0)
+        .or('costo.gt.0,colecta.eq.true')
         .order('created_at', { ascending: true });
 
       let restante = monto;

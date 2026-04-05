@@ -315,7 +315,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
-          <option value="correo_arg">Correo Argentino</option>
+
           <option value="mercado_envios">MELI Envíos</option>
           <option value="otro">Otro</option>
         </select>
@@ -449,6 +449,7 @@
       <!-- Panel Resumen -->
       <div id="panel-resumen">
         <div class="cards-grid" id="reporte-stats"></div>
+        <div id="reporte-highlights" style="margin-bottom:20px"></div>
         <div class="two-col">
           <div class="table-wrap">
             <div class="table-header"><span class="table-title">📊 Ventas por canal</span></div>
@@ -682,7 +683,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
-          <option value="correo_arg">Correo Argentino</option>
+
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="otro">Otro</option>
         </select>
@@ -719,7 +720,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
-          <option value="correo_arg">Correo Argentino</option>
+
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="otro">Otro</option>
         </select>
@@ -755,7 +756,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
-          <option value="correo_arg">Correo Argentino</option>
+
           <option value="mercado_envios">MELI Envíos</option>
           <option value="otro">Otro</option>
         </select>
@@ -1602,7 +1603,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mercado_envios:'MELI Envíos', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
@@ -1725,6 +1726,106 @@ function renderReportes() {
     margenContainer.innerHTML = prodMargen.length === 0
       ? '<div class="empty-state"><p>Sin datos en el período</p></div>'
       : '<table><thead><tr><th>Producto</th><th>Uds</th><th>Ingresos</th><th>Costo prod.</th><th>Ganancia</th><th>Margen</th><th>Ticket prom.</th></tr></thead><tbody>' + filas + '</tbody></table>';
+  }
+
+  // ── Métricas clave / Highlights ──────────────────────────────────────────
+  const hlDiv = document.getElementById('reporte-highlights');
+  if (hlDiv && ventasFiltradas.length > 0) {
+    const prodArr = Object.values(prodVentas);
+
+    // Producto más vendido (por unidades)
+    const topUds = [...prodArr].sort((a,b) => b.cant - a.cant)[0];
+
+    // Producto con más ganancia bruta
+    const topGan = [...prodArr]
+      .map(d => ({ ...d, gan: d.total - d.costo * d.cant }))
+      .sort((a,b) => b.gan - a.gan)[0];
+
+    // Mejor canal por ingresos
+    const canalData = [
+      { label: '🟡 MELI',      ing: meliIngresos, v: ventasMeli.length },
+      { label: '🏪 Mostrador', ing: mosIngresos,  v: ventasMostrador.length },
+      { label: '🛍️ Shopify',   ing: shopIngresos, v: ventasShopify.length }
+    ];
+    const mejorCanal = [...canalData].sort((a,b) => b.ing - a.ing)[0];
+    const totalCanalIng = meliIngresos + mosIngresos + shopIngresos || 1;
+
+    // Día con más ventas
+    const ventasPorDia = {};
+    ventasFiltradas.forEach(v => { ventasPorDia[v.fecha] = (ventasPorDia[v.fecha] || 0) + 1; });
+    const topDia = Object.entries(ventasPorDia).sort((a,b) => b[1] - a[1])[0];
+
+    // Top cliente por monto total
+    const porCliente = {};
+    ventasFiltradas.forEach(v => {
+      const key = v.cliente || v.comprador;
+      if (!key) return;
+      if (!porCliente[key]) porCliente[key] = { total: 0, count: 0 };
+      porCliente[key].total += v.total;
+      porCliente[key].count++;
+    });
+    const topClienteEntry = Object.entries(porCliente).sort((a,b) => b[1].total - a[1].total)[0];
+
+    // Tasa de envíos generados
+    const conEnvio = ventasFiltradas.filter(v => v.generaEnvio).length;
+    const tasaEnvios = ((conEnvio / ventasFiltradas.length) * 100).toFixed(0);
+
+    // Promedio de unidades por venta
+    const promedioUds = (unidadesVendidas / ventasFiltradas.length).toFixed(1);
+
+    hlDiv.innerHTML = `
+      <div class="table-wrap" style="margin-bottom:0">
+        <div class="table-header"><span class="table-title">⚡ Métricas clave del período</span></div>
+        <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px">
+          ${topUds ? `<div class="stat-card purple" style="margin:0">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" style="font-size:13px;line-height:1.4;word-break:break-word">${topUds.nombre}</div>
+            <div class="stat-label">Producto más vendido · <strong>${topUds.cant} uds</strong></div>
+          </div>` : ''}
+          ${topGan && topGan.gan > 0 ? `<div class="stat-card green" style="margin:0">
+            <div class="stat-icon">💎</div>
+            <div class="stat-value" style="font-size:13px;line-height:1.4;word-break:break-word">${topGan.nombre}</div>
+            <div class="stat-label">Mayor ganancia · <strong>${fmt(topGan.gan)}</strong></div>
+          </div>` : ''}
+          ${mejorCanal && mejorCanal.ing > 0 ? `<div class="stat-card yellow" style="margin:0">
+            <div class="stat-icon">📡</div>
+            <div class="stat-value" style="font-size:20px">${mejorCanal.label}</div>
+            <div class="stat-label">Mejor canal · ${mejorCanal.v} ventas · <strong>${fmt(mejorCanal.ing)}</strong></div>
+          </div>` : ''}
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📊</div>
+            <div style="margin-top:6px">
+              ${canalData.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                <span style="font-size:12px;color:var(--text-dim)">${c.label}</span>
+                <span style="font-size:12px;font-weight:700">${(c.ing/totalCanalIng*100).toFixed(1)}%</span>
+              </div>`).join('')}
+            </div>
+            <div class="stat-label">Distribución por canal</div>
+          </div>
+          ${topDia ? `<div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📅</div>
+            <div class="stat-value" style="font-size:18px">${topDia[0]}</div>
+            <div class="stat-label">Día pico · <strong>${topDia[1]} ventas</strong></div>
+          </div>` : ''}
+          ${topClienteEntry ? `<div class="stat-card purple" style="margin:0">
+            <div class="stat-icon">👑</div>
+            <div class="stat-value" style="font-size:16px;word-break:break-word">${topClienteEntry[0]}</div>
+            <div class="stat-label">Top cliente · ${topClienteEntry[1].count} compras · <strong>${fmt(topClienteEntry[1].total)}</strong></div>
+          </div>` : ''}
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">🚚</div>
+            <div class="stat-value">${tasaEnvios}%</div>
+            <div class="stat-label">De ventas generan envío</div>
+          </div>
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📦</div>
+            <div class="stat-value">${promedioUds}</div>
+            <div class="stat-label">Uds. promedio por venta</div>
+          </div>
+        </div>
+      </div>`;
+  } else if (hlDiv) {
+    hlDiv.innerHTML = '';
   }
 }
 
@@ -2013,7 +2114,7 @@ function loadImport(e) {
 // =====================
 const NOMBRES_TRANSPORTISTAS = {
   enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES',
-  correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos', otro: 'Otro'
+  mercado_envios: 'MELI Envíos', otro: 'Otro'
 };
 
 async function renderTransportistas() {
@@ -2596,7 +2697,11 @@ function renderImportaciones() {
     </tr>`).join('');
 }
 
-async function init() { await loadAll(); renderDashboard(); }
+async function init() {
+  await loadAll();
+  const goto = urlParams.get('goto');
+  if (goto) { goPage(goto); } else { renderDashboard(); }
+}
 init();
 </script>
 </body>

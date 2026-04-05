@@ -172,6 +172,8 @@
     .two-col, .three-col { grid-template-columns: 1fr; }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
 
@@ -273,6 +275,17 @@
         <button class="btn btn-primary" onclick="vmosOpenModal()">🏪 Venta Mostrador</button>
       </div>
     </div>
+    <div style="padding:12px 28px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="ventas-search" placeholder="Buscar cliente, producto, ID MELI..." oninput="renderVentas()" style="width:280px">
+      </div>
+      <input type="date" id="ventas-desde" onchange="renderVentas()" title="Desde" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+      <span style="color:var(--text-muted);font-size:12px">→</span>
+      <input type="date" id="ventas-hasta" onchange="renderVentas()" title="Hasta" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+      <button class="btn btn-ghost btn-sm" onclick="exportVentasCSV()" title="Exportar a Excel/CSV">⬇ CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportVentasPDF()" title="Exportar a PDF">🖨️ PDF</button>
+    </div>
     <div class="content">
       <div class="tabs">
         <button class="tab active" onclick="switchVentasTab('all')">Todas</button>
@@ -294,11 +307,23 @@
   <div id="page-envios" class="page">
     <div class="topbar">
       <div class="page-title">🚚 Envíos</div>
-      <div class="topbar-actions">
+      <div class="topbar-actions" style="flex-wrap:wrap;gap:8px">
         <div class="search-bar">
           <span class="search-icon">🔍</span>
-          <input type="text" id="envios-search" placeholder="Buscar tracking..." oninput="renderEnvios()">
+          <input type="text" id="envios-search" placeholder="Buscar tracking, comprador, producto..." oninput="renderEnvios()" style="width:260px">
         </div>
+        <select id="envios-transportista" onchange="renderEnvios()" style="padding:7px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;cursor:pointer">
+          <option value="">Todos los transportistas</option>
+          <option value="enviosuy">EnviosUy</option>
+          <option value="gestionpost">GestionPost</option>
+          <option value="ues">UES</option>
+
+          <option value="mercado_envios">MELI Envíos</option>
+          <option value="otro">Otro</option>
+        </select>
+        <input type="date" id="envios-desde" onchange="renderEnvios()" title="Desde" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+        <span style="color:var(--text-muted);font-size:12px">→</span>
+        <input type="date" id="envios-hasta" onchange="renderEnvios()" title="Hasta" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
       </div>
     </div>
     <div class="content">
@@ -426,6 +451,7 @@
       <!-- Panel Resumen -->
       <div id="panel-resumen">
         <div class="cards-grid" id="reporte-stats"></div>
+        <div id="reporte-highlights" style="margin-bottom:20px"></div>
         <div class="two-col">
           <div class="table-wrap">
             <div class="table-header"><span class="table-title">📊 Ventas por canal</span></div>
@@ -658,11 +684,9 @@
         <select id="env-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
+          <option value="ues">UES</option>
+
           <option value="mercado_envios">Mercado Envíos</option>
-          <option value="dhl">DHL</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -697,11 +721,9 @@
         <select id="ee-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
+          <option value="ues">UES</option>
+
           <option value="mercado_envios">Mercado Envíos</option>
-          <option value="dhl">DHL</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -735,11 +757,9 @@
         <select id="pag-transportista">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
-          <option value="andreani">Andreani</option>
-          <option value="oca">OCA</option>
-          <option value="correo_arg">Correo Argentino</option>
+          <option value="ues">UES</option>
+
           <option value="mercado_envios">MELI Envíos</option>
-          <option value="dhl">DHL</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -1507,8 +1527,20 @@ function switchVentasTab(tab) {
 }
 
 function renderVentas() {
+  const q = (document.getElementById('ventas-search')?.value || '').toLowerCase();
+  const desde = document.getElementById('ventas-desde')?.value || '';
+  const hasta = document.getElementById('ventas-hasta')?.value || '';
   let ventas = [...db.ventas].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (ventasTabFilter !== 'all') ventas = ventas.filter(v => v.canal === ventasTabFilter);
+  if (q) ventas = ventas.filter(v =>
+    (v.comprador||'').toLowerCase().includes(q) ||
+    (v.cliente||'').toLowerCase().includes(q) ||
+    (v.ordenMeli||'').toLowerCase().includes(q) ||
+    (v.producto||'').toLowerCase().includes(q) ||
+    (v.sku||'').toLowerCase().includes(q)
+  );
+  if (desde) ventas = ventas.filter(v => (v.fecha||'') >= desde);
+  if (hasta) ventas = ventas.filter(v => (v.fecha||'') <= hasta);
   if (ventas.length === 0) { document.getElementById('ventas-tbody').innerHTML = ''; document.getElementById('ventas-empty').style.display = 'block'; return; }
   document.getElementById('ventas-empty').style.display = 'none';
   document.getElementById('ventas-tbody').innerHTML = ventas.map(v => `
@@ -1556,13 +1588,24 @@ async function toggleColecta(checkbox) {
 
 function renderEnvios() {
   const q = (document.getElementById('envios-search')?.value || '').toLowerCase();
+  const tFilter = document.getElementById('envios-transportista')?.value || '';
+  const desde = document.getElementById('envios-desde')?.value || '';
+  const hasta = document.getElementById('envios-hasta')?.value || '';
   let envios = [...db.envios].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (enviosTabFilter !== 'all') envios = envios.filter(e => e.estado === enviosTabFilter);
-  if (q) envios = envios.filter(e => (e.tracking||'').toLowerCase().includes(q) || (e.comprador||'').toLowerCase().includes(q));
+  if (q) envios = envios.filter(e =>
+    (e.tracking||'').toLowerCase().includes(q) ||
+    (e.comprador||'').toLowerCase().includes(q) ||
+    (e.producto||'').toLowerCase().includes(q) ||
+    (e.orden||'').toLowerCase().includes(q)
+  );
+  if (tFilter) envios = envios.filter(e => e.transportista === tFilter);
+  if (desde) envios = envios.filter(e => (e.fechaDespacho || (e.creado||'').slice(0,10)) >= desde);
+  if (hasta) envios = envios.filter(e => (e.fechaDespacho || (e.creado||'').slice(0,10)) <= hasta);
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', andreani:'Andreani', oca:'OCA', correo_arg:'Correo Arg.', mercado_envios:'MELI Envíos', dhl:'DHL', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mercado_envios:'MELI Envíos', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
@@ -1685,6 +1728,106 @@ function renderReportes() {
     margenContainer.innerHTML = prodMargen.length === 0
       ? '<div class="empty-state"><p>Sin datos en el período</p></div>'
       : '<table><thead><tr><th>Producto</th><th>Uds</th><th>Ingresos</th><th>Costo prod.</th><th>Ganancia</th><th>Margen</th><th>Ticket prom.</th></tr></thead><tbody>' + filas + '</tbody></table>';
+  }
+
+  // ── Métricas clave / Highlights ──────────────────────────────────────────
+  const hlDiv = document.getElementById('reporte-highlights');
+  if (hlDiv && ventasFiltradas.length > 0) {
+    const prodArr = Object.values(prodVentas);
+
+    // Producto más vendido (por unidades)
+    const topUds = [...prodArr].sort((a,b) => b.cant - a.cant)[0];
+
+    // Producto con más ganancia bruta
+    const topGan = [...prodArr]
+      .map(d => ({ ...d, gan: d.total - d.costo * d.cant }))
+      .sort((a,b) => b.gan - a.gan)[0];
+
+    // Mejor canal por ingresos
+    const canalData = [
+      { label: '🟡 MELI',      ing: meliIngresos, v: ventasMeli.length },
+      { label: '🏪 Mostrador', ing: mosIngresos,  v: ventasMostrador.length },
+      { label: '🛍️ Shopify',   ing: shopIngresos, v: ventasShopify.length }
+    ];
+    const mejorCanal = [...canalData].sort((a,b) => b.ing - a.ing)[0];
+    const totalCanalIng = meliIngresos + mosIngresos + shopIngresos || 1;
+
+    // Día con más ventas
+    const ventasPorDia = {};
+    ventasFiltradas.forEach(v => { ventasPorDia[v.fecha] = (ventasPorDia[v.fecha] || 0) + 1; });
+    const topDia = Object.entries(ventasPorDia).sort((a,b) => b[1] - a[1])[0];
+
+    // Top cliente por monto total
+    const porCliente = {};
+    ventasFiltradas.forEach(v => {
+      const key = v.cliente || v.comprador;
+      if (!key) return;
+      if (!porCliente[key]) porCliente[key] = { total: 0, count: 0 };
+      porCliente[key].total += v.total;
+      porCliente[key].count++;
+    });
+    const topClienteEntry = Object.entries(porCliente).sort((a,b) => b[1].total - a[1].total)[0];
+
+    // Tasa de envíos generados
+    const conEnvio = ventasFiltradas.filter(v => v.generaEnvio).length;
+    const tasaEnvios = ((conEnvio / ventasFiltradas.length) * 100).toFixed(0);
+
+    // Promedio de unidades por venta
+    const promedioUds = (unidadesVendidas / ventasFiltradas.length).toFixed(1);
+
+    hlDiv.innerHTML = `
+      <div class="table-wrap" style="margin-bottom:0">
+        <div class="table-header"><span class="table-title">⚡ Métricas clave del período</span></div>
+        <div style="padding:16px 20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px">
+          ${topUds ? `<div class="stat-card purple" style="margin:0">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" style="font-size:13px;line-height:1.4;word-break:break-word">${topUds.nombre}</div>
+            <div class="stat-label">Producto más vendido · <strong>${topUds.cant} uds</strong></div>
+          </div>` : ''}
+          ${topGan && topGan.gan > 0 ? `<div class="stat-card green" style="margin:0">
+            <div class="stat-icon">💎</div>
+            <div class="stat-value" style="font-size:13px;line-height:1.4;word-break:break-word">${topGan.nombre}</div>
+            <div class="stat-label">Mayor ganancia · <strong>${fmt(topGan.gan)}</strong></div>
+          </div>` : ''}
+          ${mejorCanal && mejorCanal.ing > 0 ? `<div class="stat-card yellow" style="margin:0">
+            <div class="stat-icon">📡</div>
+            <div class="stat-value" style="font-size:20px">${mejorCanal.label}</div>
+            <div class="stat-label">Mejor canal · ${mejorCanal.v} ventas · <strong>${fmt(mejorCanal.ing)}</strong></div>
+          </div>` : ''}
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📊</div>
+            <div style="margin-top:6px">
+              ${canalData.map(c => `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                <span style="font-size:12px;color:var(--text-dim)">${c.label}</span>
+                <span style="font-size:12px;font-weight:700">${(c.ing/totalCanalIng*100).toFixed(1)}%</span>
+              </div>`).join('')}
+            </div>
+            <div class="stat-label">Distribución por canal</div>
+          </div>
+          ${topDia ? `<div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📅</div>
+            <div class="stat-value" style="font-size:18px">${topDia[0]}</div>
+            <div class="stat-label">Día pico · <strong>${topDia[1]} ventas</strong></div>
+          </div>` : ''}
+          ${topClienteEntry ? `<div class="stat-card purple" style="margin:0">
+            <div class="stat-icon">👑</div>
+            <div class="stat-value" style="font-size:16px;word-break:break-word">${topClienteEntry[0]}</div>
+            <div class="stat-label">Top cliente · ${topClienteEntry[1].count} compras · <strong>${fmt(topClienteEntry[1].total)}</strong></div>
+          </div>` : ''}
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">🚚</div>
+            <div class="stat-value">${tasaEnvios}%</div>
+            <div class="stat-label">De ventas generan envío</div>
+          </div>
+          <div class="stat-card blue" style="margin:0">
+            <div class="stat-icon">📦</div>
+            <div class="stat-value">${promedioUds}</div>
+            <div class="stat-label">Uds. promedio por venta</div>
+          </div>
+        </div>
+      </div>`;
+  } else if (hlDiv) {
+    hlDiv.innerHTML = '';
   }
 }
 
@@ -1860,6 +2003,276 @@ function exportData() {
 
 function importData() { document.getElementById('importFile').click(); }
 
+// =====================
+// EXPORTAR VENTAS
+// =====================
+function _getVentasFiltradas() {
+  const q = (document.getElementById('ventas-search')?.value || '').toLowerCase();
+  const desde = document.getElementById('ventas-desde')?.value || '';
+  const hasta = document.getElementById('ventas-hasta')?.value || '';
+  let ventas = [...db.ventas].sort((a,b) => new Date(b.creado) - new Date(a.creado));
+  if (ventasTabFilter !== 'all') ventas = ventas.filter(v => v.canal === ventasTabFilter);
+  if (q) ventas = ventas.filter(v =>
+    (v.comprador||'').toLowerCase().includes(q) ||
+    (v.cliente||'').toLowerCase().includes(q) ||
+    (v.ordenMeli||'').toLowerCase().includes(q) ||
+    (v.producto||'').toLowerCase().includes(q) ||
+    (v.sku||'').toLowerCase().includes(q)
+  );
+  if (desde) ventas = ventas.filter(v => (v.fecha||'') >= desde);
+  if (hasta) ventas = ventas.filter(v => (v.fecha||'') <= hasta);
+  return { ventas, desde, hasta };
+}
+
+function _enrichVenta(v) {
+  const p = db.productos.find(x => x.sku === v.sku);
+  const costoUnit   = p ? (p.costo || 0) : 0;
+  const ingresoNeto = (v.total || 0) - (v.comision || 0);
+  const costoTotal  = costoUnit * (v.cantidad || 0);
+  const gananciaBruta = ingresoNeto - costoTotal;
+  const margen = ingresoNeto > 0 ? Math.round((gananciaBruta / ingresoNeto) * 1000) / 10 : 0;
+  return { ...v, costoUnit, ingresoNeto, costoTotal, gananciaBruta, margen };
+}
+
+function exportVentasCSV() {
+  const { ventas, desde, hasta } = _getVentasFiltradas();
+  if (!ventas.length) { alert('No hay ventas para exportar con los filtros actuales.'); return; }
+  const headers = ['ID/Orden','Fecha','Canal','Comprador','Producto','SKU','Cantidad','Precio Unit.','Costo Unit.','Comision','Ingreso Neto','Costo Total','Ganancia Bruta','Margen %','Total','Estado','Metodo Pago'];
+  const rows = ventas.map(v => {
+    const e = _enrichVenta(v);
+    return [
+      e.ordenMeli || e.id,
+      e.fecha || '',
+      e.canal || '',
+      e.comprador || e.cliente || '',
+      e.producto || '',
+      e.sku || '',
+      e.cantidad || 0,
+      (e.precioUnit || 0).toFixed(2),
+      e.costoUnit.toFixed(2),
+      (e.comision || 0).toFixed(2),
+      e.ingresoNeto.toFixed(2),
+      e.costoTotal.toFixed(2),
+      e.gananciaBruta.toFixed(2),
+      e.margen,
+      (e.total || 0).toFixed(2),
+      e.estado || '',
+      e.metodoPago || ''
+    ];
+  });
+  const csv = [headers, ...rows]
+    .map(r => r.map(c => `"${(c).toString().replace(/"/g,'""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const tab = ventasTabFilter === 'all' ? 'all' : ventasTabFilter;
+  a.download = `ventas_${tab}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportVentasPDF() {
+  const { ventas, desde, hasta } = _getVentasFiltradas();
+  if (!ventas.length) { alert('No hay ventas para exportar con los filtros actuales.'); return; }
+
+  const enriched = ventas.map(_enrichVenta);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  const BG_HEAD = [17, 17, 17];
+  const BG_ROW  = [28, 28, 38];
+  const TEXT_W  = [245, 245, 245];
+  const GREEN   = [34, 197, 94];
+  const YELLOW  = [245, 158, 11];
+  const RED     = [239, 68, 68];
+
+  const fechas = enriched.map(r => r.fecha).filter(Boolean).sort();
+  const periodoStr = desde || hasta
+    ? `${desde || '...'} → ${hasta || '...'}`
+    : fechas.length ? `${fechas[0]} → ${fechas[fechas.length-1]}` : '—';
+  const fechaHoy = new Date().toISOString().slice(0,10);
+  const tab = ventasTabFilter === 'all' ? 'ALL' : ventasTabFilter.toUpperCase();
+  const f2 = n => '$' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ── Header
+  doc.setFillColor(...BG_HEAD);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...TEXT_W);
+  doc.text('MARTINEZ MOTOS — Reporte de Ventas', 14, 10);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Período: ${periodoStr}   ·   Generado: ${fechaHoy}   ·   Filtro: ${tab}`, 14, 17);
+
+  let y = 28;
+
+  // ── Título sección resumen
+  doc.setFillColor(...BG_HEAD);
+  doc.rect(0, y - 5, 297, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_W);
+  doc.text('RESUMEN EJECUTIVO', 14, y);
+  y += 5;
+
+  // ── Métricas
+  const ingresosBrutos = enriched.reduce((s,r) => s + (r.total||0), 0);
+  const comisionesSum  = enriched.reduce((s,r) => s + (r.comision||0), 0);
+  const ingresosNetos  = ingresosBrutos - comisionesSum;
+  const costoTotalSum  = enriched.reduce((s,r) => s + r.costoTotal, 0);
+  const gananciaBruta  = ingresosNetos - costoTotalSum;
+
+  const metricas = [
+    ['Total ventas', enriched.length],
+    ['Ingresos brutos', f2(ingresosBrutos)],
+    ['Comisiones MELI', f2(comisionesSum)],
+    ['Ingresos netos', f2(ingresosNetos)],
+    ['Costo total', f2(costoTotalSum)],
+    ['Ganancia bruta est.', f2(gananciaBruta)]
+  ];
+  const cardW = (297 - 28) / metricas.length;
+  metricas.forEach(([label, val], i) => {
+    const cx = 14 + i * cardW;
+    doc.setFillColor(...BG_ROW);
+    doc.rect(cx, y, cardW - 2, 16, 'F');
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(label, cx + 2, y + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_W);
+    doc.text(String(val), cx + 2, y + 12);
+  });
+  y += 22;
+
+  // ── Por canal
+  const canales = ['meli','mostrador','shopify'];
+  const porCanal = canales.map(c => {
+    const cv = enriched.filter(r => r.canal === c);
+    const ing = cv.reduce((s,r) => s + (r.total||0), 0);
+    const pct = ingresosBrutos > 0 ? ((ing/ingresosBrutos)*100).toFixed(1) : '0.0';
+    return [c.charAt(0).toUpperCase()+c.slice(1), cv.length, f2(ing), pct+'%'];
+  }).filter(row => parseInt(row[1]) > 0);
+
+  if (porCanal.length) {
+    doc.autoTable({
+      startY: y,
+      head: [['Canal','Ventas','Ingresos','% del total']],
+      body: porCanal,
+      margin: { left: 14, right: 14 },
+      tableWidth: 100,
+      styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+      headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' },
+      theme: 'grid'
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  }
+
+  // ── Top 5 SKUs
+  const porSku = {};
+  enriched.forEach(r => {
+    if (!porSku[r.sku]) porSku[r.sku] = { producto:r.producto, unidades:0, ingresos:0, ingresoNeto:0, costoTotal:0 };
+    porSku[r.sku].unidades   += r.cantidad || 0;
+    porSku[r.sku].ingresos   += r.total || 0;
+    porSku[r.sku].ingresoNeto+= r.ingresoNeto;
+    porSku[r.sku].costoTotal += r.costoTotal;
+  });
+  const top5 = Object.entries(porSku)
+    .sort((a,b) => b[1].ingresos - a[1].ingresos)
+    .slice(0,5)
+    .map(([sku,d]) => {
+      const mg = d.ingresoNeto > 0 ? (((d.ingresoNeto-d.costoTotal)/d.ingresoNeto)*100).toFixed(1)+'%' : '0.0%';
+      return [sku, d.producto, d.unidades, f2(d.ingresos), mg];
+    });
+
+  if (top5.length) {
+    doc.autoTable({
+      startY: y,
+      head: [['SKU','Producto','Unidades','Ingresos','Margen %']],
+      body: top5,
+      margin: { left: 14, right: 14 },
+      tableWidth: 140,
+      styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+      headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' },
+      theme: 'grid'
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  }
+
+  // ── Método de pago (solo mostrador)
+  const mostrador = enriched.filter(r => r.canal === 'mostrador');
+  if (mostrador.length) {
+    const porMetodo = {};
+    mostrador.forEach(r => {
+      const m = r.metodoPago || 'Sin especificar';
+      if (!porMetodo[m]) porMetodo[m] = { ventas:0, total:0 };
+      porMetodo[m].ventas++;
+      porMetodo[m].total += r.total || 0;
+    });
+    doc.autoTable({
+      startY: y,
+      head: [['Método de pago','Ventas','Total']],
+      body: Object.entries(porMetodo).map(([m,d]) => [m, d.ventas, f2(d.total)]),
+      margin: { left: 14, right: 14 },
+      tableWidth: 100,
+      styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+      headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' },
+      theme: 'grid'
+    });
+  }
+
+  // ── Página 2: Detalle
+  doc.addPage();
+  doc.setFillColor(...BG_HEAD);
+  doc.rect(0, 0, 297, 14, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...TEXT_W);
+  doc.text('DETALLE DE VENTAS', 14, 9);
+
+  doc.autoTable({
+    startY: 18,
+    head: [['ID/Orden','Fecha','Canal','Comprador','Producto','SKU','Cant.','P.Unit','Costo Unit','Comisión','Ing.Neto','Costo Tot','Gan.Bruta','Margen%','Total','Estado','Método Pago']],
+    body: enriched.map(r => [
+      r.ordenMeli || r.id,
+      r.fecha || '',
+      r.canal || '',
+      r.comprador || r.cliente || '',
+      r.producto || '',
+      r.sku || '',
+      r.cantidad || 0,
+      (r.precioUnit||0).toFixed(2),
+      r.costoUnit.toFixed(2),
+      (r.comision||0).toFixed(2),
+      r.ingresoNeto.toFixed(2),
+      r.costoTotal.toFixed(2),
+      r.gananciaBruta.toFixed(2),
+      r.margen + '%',
+      (r.total||0).toFixed(2),
+      r.estado || '',
+      r.metodoPago || ''
+    ]),
+    margin: { left: 6, right: 6 },
+    styles: { font:'helvetica', fontSize:6.5, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:2, overflow:'ellipsize' },
+    headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold', fontSize:7 },
+    theme: 'grid',
+    didParseCell: d => {
+      if (d.section === 'body' && d.column.index === 13) {
+        const val = parseFloat(d.cell.raw);
+        d.cell.styles.textColor = val >= 30 ? GREEN : val >= 10 ? YELLOW : RED;
+        d.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
+
+  const tab2 = ventasTabFilter === 'all' ? 'all' : ventasTabFilter;
+  doc.save(`ventas_${tab2}_${fechaHoy}.pdf`);
+}
+
 function loadImport(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -1882,9 +2295,8 @@ function loadImport(e) {
 // TRANSPORTISTAS
 // =====================
 const NOMBRES_TRANSPORTISTAS = {
-  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', andreani: 'Andreani',
-  oca: 'OCA', correo_arg: 'Correo Arg.', mercado_envios: 'MELI Envíos',
-  dhl: 'DHL', otro: 'Otro'
+  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES',
+  mercado_envios: 'MELI Envíos', otro: 'Otro'
 };
 
 async function renderTransportistas() {
@@ -2467,7 +2879,11 @@ function renderImportaciones() {
     </tr>`).join('');
 }
 
-async function init() { await loadAll(); renderDashboard(); }
+async function init() {
+  await loadAll();
+  const goto = urlParams.get('goto');
+  if (goto) { goPage(goto); } else { renderDashboard(); }
+}
 init();
 </script>
 </body>

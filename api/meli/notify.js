@@ -35,16 +35,50 @@ module.exports = async (req, res) => {
     } else if (topic === 'payments') {
       const token = await getMeliToken();
       const paymentId = (resource || '').replace('/collections/', '').split('/')[0];
-      const payRes = await fetch(`https://api.mercadolibre.com/collections/${paymentId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const pay = await payRes.json();
-      if (pay.collection?.order_id) {
-        await handleOrder(`/orders/${pay.collection.order_id}`);
+
+      // Intentar obtener order_id desde /payments/{id} (endpoint moderno)
+      // y /collections/{id} (fallback, API legacy)
+      let orderId = null;
+      try {
+        const payRes = await fetch(`https://api.mercadolibre.com/payments/${paymentId}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const pay = await payRes.json();
+        orderId = pay?.order?.id || pay?.collection?.order_id || null;
+      } catch (_) {}
+
+      if (!orderId) {
+        // Fallback: endpoint legacy /collections
+        try {
+          const colRes = await fetch(`https://api.mercadolibre.com/collections/${paymentId}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const col = await colRes.json();
+          orderId = col?.collection?.order_id || null;
+        } catch (_) {}
+      }
+
+      if (orderId) {
+        await handleOrder(`/orders/${orderId}`);
+      } else {
+        console.error(`⚠️ payments webhook: no se pudo obtener order_id para payment ${paymentId}`);
+        await supabase.from('meli_notify_log').insert({
+          topic: 'payments_sin_orden',
+          resource: resource || null,
+          recibido_at: new Date().toISOString(),
+        }).catch(() => {});
       }
     }
   } catch (err) {
     console.error('Error procesando notificación MELI:', err.message);
+    // Registrar el error en DB para no perderlo (Vercel logs son efímeros)
+    try {
+      await supabase.from('meli_notify_log').insert({
+        topic: `ERROR:${topic || 'unknown'}`,
+        resource: `${resource || ''} | ${err.message}`,
+        recibido_at: new Date().toISOString(),
+      });
+    } catch (_) {}
   }
 };
 

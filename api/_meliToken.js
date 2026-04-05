@@ -16,8 +16,18 @@ async function getMeliToken() {
   const now = new Date();
   const expiresAt = new Date(data.expires_at);
 
-  // Si expira en menos de 5 minutos, refrescar
-  if (expiresAt - now < 5 * 60 * 1000) {
+  // Si expira en menos de 30 minutos, refrescar preventivamente
+  // (ventana amplia para evitar race condition cuando llegan múltiples webhooks simultáneos)
+  if (expiresAt - now < 30 * 60 * 1000) {
+    // Leer de nuevo para ver si otro proceso ya refrescó el token
+    const { data: fresh } = await supabase
+      .from('meli_tokens').select('*').eq('id', 1).single();
+    const freshExpiry = new Date(fresh?.expires_at || 0);
+    if (fresh && freshExpiry - now >= 30 * 60 * 1000) {
+      // Otro proceso ya lo refrescó — usar ese token
+      return fresh.access_token;
+    }
+
     const refreshRes = await fetch('https://api.mercadolibre.com/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

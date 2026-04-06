@@ -98,18 +98,9 @@ function calcularCostos(zona) {
     ? COSTOS.gestionpost[zona] + COSTOS.gestionpost.retiro
     : null;
 
-  // Lógica de recomendación:
-  // - Si EnviosUy no cubre la zona → GestionPost
-  // - Si ambas cubren → EnviosUy por defecto (es la preferida)
-  let recomendada, costoRecomendado;
-
-  if (costoEnviosUy === null) {
-    recomendada = 'gestionpost';
-    costoRecomendado = costoGestionPost;
-  } else {
-    recomendada = 'enviosuy';
-    costoRecomendado = costoEnviosUy;
-  }
+  // Recomendación base: EnviosUy si cubre, sino GestionPost
+  const recomendada = costoEnviosUy === null ? 'gestionpost' : 'enviosuy';
+  const costoRecomendado = recomendada === 'enviosuy' ? costoEnviosUy : costoGestionPost;
 
   return {
     zona,
@@ -118,6 +109,65 @@ function calcularCostos(zona) {
     recomendada,
     costoRecomendado,
   };
+}
+
+// =====================
+// SELECCIÓN POR HORARIO (MONTEVIDEO)
+// =====================
+
+/**
+ * Devuelve hora, minuto y día de semana en timezone America/Montevideo
+ * @param {Date|string} fecha
+ * @returns {{ hora: number, minuto: number, weekday: string }}
+ */
+function getTimeMVD(fecha) {
+  const date = fecha instanceof Date ? fecha : new Date(fecha);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return {
+    hora: parseInt(map.hour),
+    minuto: parseInt(map.minute || '0'),
+    weekday: map.weekday, // 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'
+  };
+}
+
+/**
+ * Selecciona transportista para envíos Flex según zona y horario de la compra (MVD)
+ *
+ * Zona 11 → siempre GestionPost (EnviosUy no cubre en Flex)
+ * Lun-Vie: <15hs o >16hs → EnviosUy; 15-16hs → GestionPost
+ * Sáb: <12hs o ≥13hs → EnviosUy; 12-13hs → GestionPost
+ * Dom: siempre EnviosUy (se despacha el lunes)
+ *
+ * @param {number} zona
+ * @param {Date|string} [fecha] - Fecha/hora de la compra (default: ahora)
+ * @returns {'enviosuy'|'gestionpost'}
+ */
+function seleccionarTransportista(zona, fecha) {
+  if (zona === 11) return 'gestionpost';
+
+  const { hora, minuto, weekday } = getTimeMVD(fecha || new Date());
+  const hm = hora * 60 + minuto;
+
+  if (weekday === 'Sun') return 'enviosuy';
+
+  if (weekday === 'Sat') {
+    if (hm < 12 * 60) return 'enviosuy';
+    if (hm < 13 * 60) return 'gestionpost';
+    return 'enviosuy';
+  }
+
+  // Lunes a Viernes
+  if (hm < 15 * 60) return 'enviosuy';
+  if (hm < 16 * 60) return 'gestionpost';
+  return 'enviosuy';
 }
 
 /**
@@ -131,4 +181,22 @@ function calcularCostoFlex(direccion) {
   return calcularCostos(zona);
 }
 
-module.exports = { detectarZona, calcularCostos, calcularCostoFlex, COSTOS, ZONAS_KEYWORDS };
+/**
+ * Calcula zona + costos seleccionando transportista según horario de la compra
+ * @param {string} direccion
+ * @param {Date|string} [fecha] - Fecha de la compra (default: ahora)
+ * @returns {object|null}
+ */
+function calcularCostoFlexConHorario(direccion, fecha) {
+  const zona = detectarZona(direccion);
+  if (!zona) return null;
+  const costos = calcularCostos(zona);
+  if (!costos) return null;
+
+  const recomendada = seleccionarTransportista(zona, fecha || new Date());
+  const costoRecomendado = recomendada === 'enviosuy' ? costos.enviosuy : costos.gestionpost;
+
+  return { ...costos, recomendada, costoRecomendado };
+}
+
+module.exports = { detectarZona, calcularCostos, calcularCostoFlex, calcularCostoFlexConHorario, seleccionarTransportista, COSTOS, ZONAS_KEYWORDS };

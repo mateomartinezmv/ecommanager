@@ -4,6 +4,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { calcularCostoFlexConHorario } = require('../_flexZonas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -115,8 +116,15 @@ async function handleOrder(resource) {
   }
 
   const esFlex = FLEX_TYPES.includes(logisticType);
-  const transportista = esFlex ? 'gestionpost' : 'mercado_envios';
-  const costoEnvioFinal = esFlex ? costoEnvioReal : 0;
+  let transportista, costoEnvioFinal;
+  if (esFlex) {
+    const flexInfo = direccion ? calcularCostoFlexConHorario(direccion, order.date_created) : null;
+    transportista = flexInfo?.recomendada || 'gestionpost';
+    costoEnvioFinal = flexInfo?.costoRecomendado ?? costoEnvioReal ?? 0;
+  } else {
+    transportista = 'mercado_envios';
+    costoEnvioFinal = 0;
+  }
 
   const feeDetails = order.fee_details || [];
   const totalFee = feeDetails

@@ -58,13 +58,50 @@ function detectarZona(direccion: string): number | null {
   return null
 }
 
-function calcularCostoFlex(direccion: string) {
+// =====================
+// SELECCIÓN POR HORARIO (MONTEVIDEO)
+// =====================
+function getTimeMVD(fecha: string | Date): { hora: number; minuto: number; weekday: string } {
+  const date = fecha instanceof Date ? fecha : new Date(fecha)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  }).formatToParts(date)
+  const map: Record<string, string> = {}
+  for (const p of parts) map[p.type] = p.value
+  return {
+    hora: parseInt(map.hour),
+    minuto: parseInt(map.minute || '0'),
+    weekday: map.weekday,
+  }
+}
+
+function seleccionarTransportista(zona: number, fecha: string | Date): 'enviosuy' | 'gestionpost' {
+  if (zona === 11) return 'gestionpost'
+  const { hora, minuto, weekday } = getTimeMVD(fecha)
+  const hm = hora * 60 + minuto
+  if (weekday === 'Sun') return 'enviosuy'
+  if (weekday === 'Sat') {
+    if (hm < 12 * 60) return 'enviosuy'
+    if (hm < 13 * 60) return 'gestionpost'
+    return 'enviosuy'
+  }
+  // Lun-Vie
+  if (hm < 15 * 60) return 'enviosuy'
+  if (hm < 16 * 60) return 'gestionpost'
+  return 'enviosuy'
+}
+
+function calcularCostoFlex(direccion: string, fecha: string | Date) {
   const zona = detectarZona(direccion)
   if (!zona) return null
   const costoEnviosUy = COSTOS_ENVIOSUY[zona] ?? null
   const costoGestionPost = (COSTOS_GESTIONPOST[zona] ?? 200) + RETIRO_GESTIONPOST
-  const recomendada = 'gestionpost'  // Siempre GestionPost para Flex
-  const costo = costoGestionPost
+  const recomendada = seleccionarTransportista(zona, fecha)
+  const costo = recomendada === 'enviosuy' ? (costoEnviosUy ?? costoGestionPost) : costoGestionPost
   return { zona, recomendada, costo }
 }
 
@@ -149,9 +186,10 @@ async function procesarOrden(order: any, token: string, log: string[]) {
 
   const FLEX_TYPES = ['self_service', 'self_service_flex']
   const esFlex = FLEX_TYPES.includes(logisticType)
-  const transportisteFinal = esFlex ? 'gestionpost' : 'mercado_envios'
-  // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)
-  const costoEnvio = esFlex ? costoEnvioReal : 0
+  const flexFecha = order.date_created || new Date().toISOString()
+  const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion, flexFecha) : null
+  const transportisteFinal = esFlex ? (flexInfo?.recomendada || 'gestionpost') : 'mercado_envios'
+  const costoEnvio = esFlex ? (flexInfo?.costo ?? costoEnvioReal ?? 0) : 0
 
   // Comisión desde fee_details
   const feeDetails = order.fee_details || []

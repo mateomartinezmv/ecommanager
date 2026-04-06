@@ -14,6 +14,8 @@ const { getSupabase } = require('../_supabase');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
+const COSTOS_ENVIOSUY = { 1:190, 2:190, 3:190, 4:190, 5:180, 6:160, 7:180, 8:240, 9:240, 10:200, 11:null };
+
 const ZONAS_KEYWORDS = {
   1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],
   2: ['la paz', 'colon', 'lezica', 'abayuba', 'jardines del hipodromo'],
@@ -40,6 +42,30 @@ function detectarZona(dir) {
     for (const kw of kws) { if (d.includes(normalizarTexto(kw))) return parseInt(zona); }
   }
   return null;
+}
+function getTimeMVD(fecha) {
+  const date = fecha instanceof Date ? fecha : new Date(fecha);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return { hora: parseInt(map.hour), minuto: parseInt(map.minute || '0'), weekday: map.weekday };
+}
+function seleccionarTransportista(zona, fecha) {
+  if (zona === 11) return 'gestionpost';
+  const { hora, minuto, weekday } = getTimeMVD(fecha);
+  const hm = hora * 60 + minuto;
+  if (weekday === 'Sun') return 'enviosuy';
+  if (weekday === 'Sat') {
+    if (hm < 12 * 60) return 'enviosuy';
+    if (hm < 13 * 60) return 'gestionpost';
+    return 'enviosuy';
+  }
+  if (hm < 15 * 60) return 'enviosuy';
+  if (hm < 16 * 60) return 'gestionpost';
+  return 'enviosuy';
 }
 
 module.exports = async (req, res) => {
@@ -102,17 +128,33 @@ module.exports = async (req, res) => {
         const shipData = await shipRes.json();
         const logisticType = shipData?.logistic_type || '';
         const esFlex = FLEX_TYPES.includes(logisticType);
-        const transportistaCorrecto = esFlex ? 'gestionpost' : 'mercado_envios';
 
-        // Recalcular dirección y costo si hay cambio
+        // Recalcular dirección si falta
         let direccion = envio.direccion;
         if (!direccion && shipData?.receiver_address) {
           const addr = shipData.receiver_address;
           direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
         }
-        const zona = esFlex ? detectarZona(direccion) : null;
-        const costoFlexCalculado = zona ? (COSTOS_GESTIONPOST[zona] || 200) + RETIRO_GESTIONPOST : (shipData?.base_cost || 0);
-        const costoCorrecto = esFlex ? costoFlexCalculado : 0;
+
+        let transportistaCorrecto, costoCorrecto, zona;
+        if (esFlex) {
+          zona = detectarZona(direccion);
+          const orderFecha = order.date_created || new Date().toISOString();
+          if (zona) {
+            transportistaCorrecto = seleccionarTransportista(zona, orderFecha);
+            if (transportistaCorrecto === 'enviosuy') {
+              costoCorrecto = COSTOS_ENVIOSUY[zona] ?? (shipData?.base_cost || 0);
+            } else {
+              costoCorrecto = (COSTOS_GESTIONPOST[zona] || 200) + RETIRO_GESTIONPOST;
+            }
+          } else {
+            transportistaCorrecto = 'gestionpost';
+            costoCorrecto = shipData?.base_cost || 0;
+          }
+        } else {
+          transportistaCorrecto = 'mercado_envios';
+          costoCorrecto = 0;
+        }
 
         const hayCambioTransportista = envio.transportista !== transportistaCorrecto;
         const hayCambioDir = !envio.direccion && direccion;

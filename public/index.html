@@ -1350,6 +1350,10 @@ async function deleteVenta(id) {
   catch(e) { alert('Error eliminando venta: ' + e.message); }
 }
 
+function abrirEtiquetaMeli(ordenMeli) {
+  window.open(`/api/meli/etiqueta?orden=${ordenMeli}`, '_blank');
+}
+
 async function cambiarEstadoVenta(id, estado) {
   const v = db.ventas.find(x => x.id === id);
   if (!v) return;
@@ -1559,6 +1563,7 @@ function renderVentas() {
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>
+        ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>

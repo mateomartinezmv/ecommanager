@@ -14,6 +14,7 @@
     "api/meli/actualizar-envios.js": { "maxDuration": 60 },
     "api/meli/etiqueta.js": { "maxDuration": 15 },
     "api/shopify/notify.js": { "maxDuration": 10 },
+    "api/meli/sync-stock.js": { "maxDuration": 30 },
     "api/shopify/sync-stock.js": { "maxDuration": 30 },
     "api/shopify/productos.js": { "maxDuration": 10 },
     "api/shopify/buscar-sku.js": { "maxDuration": 10 }

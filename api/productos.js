@@ -51,17 +51,20 @@ module.exports = async (req, res) => {
       // Obtener producto anterior para comparar stock
       const { data: anterior } = await supabase
         .from('productos')
-        .select('stock_meli, stock_shopify, meli_id, shopify_id')
+        .select('stock_dep, stock_meli, stock_shopify, meli_id, shopify_id')
         .eq('sku', sku)
         .single();
+
+      // stock_dep es la fuente de verdad — stock_meli y stock_shopify siempre lo siguen
+      const stockCanon = p.stockDep;
 
       const { data, error } = await supabase.from('productos').update({
         sku: p.sku,  // permite cambiar el SKU
         nombre: p.nombre, categoria: p.categoria,
         tipo: p.tipo || 'nuevo',
-        stock_dep: p.stockDep,
-        stock_meli: p.stockMeli,
-        stock_shopify: p.stockShopify,
+        stock_dep: stockCanon,
+        stock_meli: stockCanon,
+        stock_shopify: stockCanon,
         costo: p.costo, precio: p.precio,
         alerta_min: p.alertaMin,
         meli_id: p.meliId || null,
@@ -73,28 +76,29 @@ module.exports = async (req, res) => {
       const meliId = p.meliId || anterior?.meli_id;
       const shopifyId = p.shopifyId || anterior?.shopify_id;
       const forzarSync = p.forzarSync === true;
+      const stockCambio = !anterior || anterior.stock_dep !== stockCanon;
 
-      // Sincronizar stock MELI si cambió o se forzó
-      if (meliId && (forzarSync || (anterior && anterior.stock_meli !== p.stockMeli))) {
+      // Sincronizar stock MELI si stock_dep cambió, si se enlazó un meli_id nuevo, o se forzó
+      if (meliId && (forzarSync || stockCambio || (!anterior?.meli_id && meliId))) {
         try {
           const token = await getMeliToken();
           const meliRes = await fetch(`https://api.mercadolibre.com/items/${meliId}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ available_quantity: p.stockMeli }),
+            body: JSON.stringify({ available_quantity: stockCanon }),
           });
           const meliData = await meliRes.json();
           if (meliData.error) console.warn('⚠️ MELI stock sync warning:', meliData.message);
-          else console.log(`✅ Stock MELI sincronizado: ${meliId} → ${p.stockMeli}`);
+          else console.log(`✅ Stock MELI sincronizado: ${meliId} → ${stockCanon}`);
         } catch (meliErr) {
           console.error('❌ Error sincronizando stock MELI:', meliErr.message);
         }
       }
 
-      // Sincronizar stock Shopify si cambió
-      if (shopifyId && (forzarSync || (anterior && anterior.stock_shopify !== p.stockShopify))) {
+      // Sincronizar stock Shopify si stock_dep cambió, si se enlazó un shopify_id nuevo, o se forzó
+      if (shopifyId && (forzarSync || stockCambio || (!anterior?.shopify_id && shopifyId))) {
         try {
-          await syncShopifyStock(shopifyId, p.stockShopify);
+          await syncShopifyStock(shopifyId, stockCanon);
         } catch (shopErr) {
           console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
         }

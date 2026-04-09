@@ -167,14 +167,6 @@ async function handleOrder(resource) {
       producto = p2;
     }
 
-    const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
-    await supabase.from('productos').update({
-      stock_dep: nuevoStockDep,
-      stock_meli: nuevoStockDep,
-      stock_shopify: nuevoStockDep,
-      updated_at: new Date().toISOString(),
-    }).eq('sku', producto.sku);
-
     const comisionItem = hasFeeDetails
       ? Math.round((totalFee * (item.unit_price * cantidad) / orderTotalCalc) * 100) / 100
       : Math.abs(item.sale_fee || 0);
@@ -183,6 +175,13 @@ async function handleOrder(resource) {
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
 
     if (!ventaExistente) {
+      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+      await supabase.from('productos').update({
+        stock_dep: nuevoStockDep,
+        stock_meli: nuevoStockDep,
+        stock_shopify: nuevoStockDep,
+        updated_at: new Date().toISOString(),
+      }).eq('sku', producto.sku);
       const { error: ventaErr } = await supabase.from('ventas').insert({
         id: ventaId,
         canal: 'meli',
@@ -214,34 +213,34 @@ async function handleOrder(resource) {
           }
         } catch (_) {}
       }
-    }
 
-    if (shippingId) {
-      const envioId = `E_MELI_${order.id}_${meliItemId}`;
-      const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
-      if (!envioExistente) {
-        await supabase.from('envios').insert({
-          id: envioId,
-          venta_id: ventaId,
-          orden: String(order.id),
-          comprador: order.buyer?.nickname || '',
-          producto: producto.nombre,
-          transportista,
-          tracking: null,
-          fecha_despacho: null,
-          estado: 'pendiente',
-          direccion: direccion || null,
-          costo: costoEnvioFinal,
-        });
-        console.log(`✅ Envío creado: ${envioId} | ${transportista} $${costoEnvioFinal}`);
+      if (shippingId) {
+        const envioId = `E_MELI_${order.id}_${meliItemId}`;
+        const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
+        if (!envioExistente) {
+          await supabase.from('envios').insert({
+            id: envioId,
+            venta_id: ventaId,
+            orden: String(order.id),
+            comprador: order.buyer?.nickname || '',
+            producto: producto.nombre,
+            transportista,
+            tracking: null,
+            fecha_despacho: null,
+            estado: 'pendiente',
+            direccion: direccion || null,
+            costo: costoEnvioFinal,
+          });
+          console.log(`✅ Envío creado: ${envioId} | ${transportista} $${costoEnvioFinal}`);
+        }
       }
-    }
 
-    if (producto.shopify_id) {
-      try {
-        await syncShopifyStock(producto.shopify_id, nuevoStockDep);
-      } catch (shopErr) {
-        console.error('❌ Error sync Shopify:', shopErr.message);
+      if (producto.shopify_id) {
+        try {
+          await syncShopifyStock(producto.shopify_id, nuevoStockDep);
+        } catch (shopErr) {
+          console.error('❌ Error sync Shopify:', shopErr.message);
+        }
       }
     }
   }

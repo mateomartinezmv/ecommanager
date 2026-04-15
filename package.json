@@ -3,12 +3,10 @@
   "version": "1.0.0",
   "description": "EcomManager - CRM gratuito para MELI y mostrador",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "vercel dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
-    "node-fetch": "^3.3.2",
-    "express": "^4.19.2"
+    "node-fetch": "^3.3.2"
   }
 }

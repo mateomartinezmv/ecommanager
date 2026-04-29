@@ -36,8 +36,8 @@ const ZONAS_KEYWORDS: Record<number, string[]> = {
   3: ['toledo', 'manga', 'piedras blancas', 'flor de maronas', 'maronas', 'ituzaingo'],
   4: ['barros blancos', 'pueblo nuevo', 'bolivar', 'las canteras'],
   5: ['pocitos', 'buceo', 'malvin', 'punta carretas', 'parque rodo', 'palermo', 'cordon', 'tres cruces', 'villa espanola', 'union'],
-  6: ['punta gorda', 'carrasco', 'shangrila', 'neptunia', 'el pinar'],
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'reducto', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'cerro', 'la teja', 'paso molino', 'penarol'],
+  6: ['punta gorda', 'carrasco', 'shangrila', 'neptunia', 'el pinar', 'reducto'],
+  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'cerro', 'la teja', 'paso molino', 'penarol'],
   8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico'],
   9: ['pando', 'toledo este', 'lagomar', 'solymar', 'la floresta'],
   10: ['ciudad de la costa', 'atlantida', 'parque del plata', 'salinas', 'costa'],
@@ -236,6 +236,20 @@ async function getDatosEnvio(orderId: string, shipmentId: string | null, token: 
     if (shipData?.receiver_address) {
       const addr = shipData.receiver_address
       direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name, addr.state?.name].filter(Boolean).join(', ')
+    }
+    const FLEX_TYPES = ['self_service', 'self_service_flex']
+    if (FLEX_TYPES.includes(logisticType)) {
+      console.log('FLEX_SHIPDATA_DEBUG:', JSON.stringify({
+        id: shipData?.id,
+        logistic_type: shipData?.logistic_type,
+        service_id: shipData?.service_id,
+        substatus: shipData?.substatus,
+        tags: shipData?.tags,
+        shipping_option: shipData?.shipping_option,
+        neighborhood: shipData?.receiver_address?.neighborhood,
+        receiver_types: shipData?.receiver_address?.types,
+        route: shipData?.route,
+      }))
     }
   } catch (_) {}
   return { direccion, logisticType, costoReal }

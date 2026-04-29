@@ -42,11 +42,11 @@ const ZONAS_KEYWORDS = {
   // Zona 5 — Sur-Centro (Pocitos, Buceo, Malvín, Punta Carretas)
   5: ['pocitos', 'buceo', 'malvin', 'malvín', 'punta carretas', 'parque rodo', 'parque rodó', 'palermo', 'cordon', 'cordón', 'tres cruces', 'villa española', 'villa espanola', 'unión', 'union'],
 
-  // Zona 6 — Sur (Punta Gorda, Carrasco, Shangrilá)
-  6: ['punta gorda', 'carrasco', 'shangrila', 'shangrilá', 'neptunia', 'el pinar'],
+  // Zona 6 — Sur + barrios interiores (Punta Gorda, Carrasco, Shangrilá, Reducto)
+  6: ['punta gorda', 'carrasco', 'shangrila', 'shangrilá', 'neptunia', 'el pinar', 'reducto'],
 
   // Zona 7 — Centro (Ciudad Vieja, Centro, Goes, La Comercial, Aguada)
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'reducto', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'nuevo parís', 'cerro', 'la teja', 'paso molino', 'peñarol', 'penarol'],
+  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'nuevo parís', 'cerro', 'la teja', 'paso molino', 'peñarol', 'penarol'],
 
   // Zona 8 — Norte (Progreso, Las Piedras, La Paz dpto Canelones)
   8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico', 'canelones'],

@@ -65,7 +65,6 @@ function detectarZona(direccion: string): number | null {
   }
   return null
 }
-  }
 
 // =====================
 // SELECCIÓN POR HORARIO (MONTEVIDEO)

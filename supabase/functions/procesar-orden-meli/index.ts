@@ -31,17 +31,17 @@ const RETIRO_GESTIONPOST = 75
 
 // Palabras clave por zona para detectar desde la dirección
 const ZONAS_KEYWORDS: Record<number, string[]> = {
-  1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],
-  2: ['la paz', 'colon', 'lezica', 'abayuba', 'jardines del hipodromo'],
-  3: ['toledo', 'manga', 'piedras blancas', 'flor de maronas', 'maronas', 'ituzaingo'],
-  4: ['barros blancos', 'pueblo nuevo', 'bolivar', 'las canteras'],
-  5: ['pocitos', 'buceo', 'malvin', 'punta carretas', 'parque rodo', 'palermo', 'cordon', 'tres cruces', 'villa espanola', 'union'],
-  6: ['punta gorda', 'carrasco', 'shangrila', 'neptunia', 'el pinar', 'reducto'],
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'cerro', 'la teja', 'paso molino', 'penarol'],
-  8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico'],
-  9: ['pando', 'toledo este', 'lagomar', 'solymar', 'la floresta'],
-  10: ['ciudad de la costa', 'atlantida', 'parque del plata', 'salinas', 'costa'],
-  11: ['canelones ciudad', 'canelones capital', '14 de julio'],
+  1: ['villa del cerro', 'punta espinillo', 'santiago vazquez', 'tres ombues', 'paso de la arena', 'pajas blancas', 'nuevo paris', 'la paloma', 'victoria', 'casabo', 'cerro'],
+  2: ['cuchilla pereira', 'conciliacion', 'abayuba', 'melilla', 'lezica', 'colon'],
+  3: ['toledo chico', 'villa garcia', 'manga'],
+  4: ['banados de carrasco', 'bella italia', 'chacarita', 'punta rieles'],
+  5: ['flor de maronas', 'carrasco norte', 'malvin norte', 'puerto buceo', 'pocitos nuevo', 'playa verde', 'las canteras', 'punta gorda', 'maronas', 'carrasco', 'buceo', 'malvin', 'union'],
+  6: ['ciudad vieja', 'parque batlle', 'villa biarritz', 'villa dolores', 'la blanqueada', 'punta carretas', 'la comercial', 'parque rodo', 'barrio sur', 'villa munoz', 'tres cruces', 'jacinto vera', 'larranaga', 'figurita', 'reducto', 'palermo', 'aguada', 'pocitos', 'cordon', 'centro', 'goes'],
+  7: ['cementerio del norte', 'paso de las duranas', 'jardines hipodromo', 'piedras blancas', 'villa espanola', 'brazo oriental', 'bella vista', 'arroyo seco', 'aires puros', 'castro perez', 'castellanos', 'paso molino', 'las acacias', 'ituzaingo', 'atahualpa', 'casavalle', 'belvedere', 'lavalleja', 'capurro', 'cerrito', 'marconi', 'bolivar', 'la teja', 'sayago', 'penarol', 'prado'],
+  8: ['las piedras', 'progreso', 'la paz'],
+  9: ['cumbres de carrasco', 'rincon de carrasco', 'joaquin suarez', 'barros blancos', 'casarino', 'toledo', 'suarez', 'pando'],
+  10: ['ciudad de la costa', 'colinas de carrasco', 'colinas de solymar', 'medanos de solymar', 'montes de solymar', 'san jose de carrasco', 'lomas de carrasco', 'barra de carrasco', 'parque de solymar', 'lomas de solymar', 'paso de carrasco', 'pinares de solymar', 'villa aeroparque', 'empalme nicolich', 'parque miramar', 'parque carrasco', 'la tahona', 'el dorado', 'el bosque', 'el pinar', 'shangrila', 'lagomar', 'solymar'],
+  11: ['canelones ciudad', 'canelones capital'],
 }
 
 function normalizarTexto(texto: string): string {
@@ -54,10 +54,18 @@ function normalizarTexto(texto: string): string {
 function detectarZona(direccion: string): number | null {
   if (!direccion) return null
   const dir = normalizarTexto(direccion)
+
+  // Ordenar de mayor a menor longitud: keywords mas especificos ganan sobre los mas cortos
+  const allKeywords: Array<[string, number]> = []
   for (const [zona, keywords] of Object.entries(ZONAS_KEYWORDS)) {
     for (const kw of keywords) {
-      if (dir.includes(normalizarTexto(kw))) return parseInt(zona)
+      allKeywords.push([normalizarTexto(kw), parseInt(zona)])
     }
+  }
+  allKeywords.sort((a, b) => b[0].length - a[0].length)
+
+  for (const [kw, zona] of allKeywords) {
+    if (dir.includes(kw)) return zona
   }
   return null
 }

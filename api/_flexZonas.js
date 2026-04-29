@@ -27,38 +27,38 @@ const COSTOS = {
 // Basado en el mapa de zonas Flex de Montevideo
 // =====================
 const ZONAS_KEYWORDS = {
-  // Zona 1 — Oeste (Pajas Blancas, Santiago Vázquez, Paso de la Arena)
-  1: ['pajas blancas', 'santiago vazquez', 'santiago vázquez', 'paso de la arena', 'ciudad del plata'],
+  // Zona 1 — Cerro, Casabó, Pajas Blancas, Santiago Vázquez, Nuevo París, etc.
+  1: ['villa del cerro', 'punta espinillo', 'santiago vazquez', 'tres ombues', 'paso de la arena', 'pajas blancas', 'nuevo paris', 'la paloma', 'victoria', 'casabo', 'cerro'],
 
-  // Zona 2 — Centro-Oeste (La Paz, Colón, Lezica)
-  2: ['la paz', 'colon', 'colón', 'lezica', 'abayuba', 'jardines del hipodromo', 'jardines del hipódromo'],
+  // Zona 2 — Colón, Lezica, Melilla, Abayubá
+  2: ['cuchilla pereira', 'conciliacion', 'abayuba', 'melilla', 'lezica', 'colon'],
 
-  // Zona 3 — Centro (Toledo, Manga, Piedras Blancas)
-  3: ['toledo', 'manga', 'piedras blancas', 'flor de maronas', 'maronas', 'ituzaingo', 'ituzaingó'],
+  // Zona 3 — Manga, Toledo Chico, Villa García
+  3: ['toledo chico', 'villa garcia', 'manga'],
 
-  // Zona 4 — Centro-Este (Barros Blancos sur, Pueblo Nuevo)
-  4: ['barros blancos', 'pueblo nuevo', 'bolivar', 'bolívar', 'las canteras'],
+  // Zona 4 — Bañados de Carrasco, Bella Italia, Chacarita, Punta Rieles
+  4: ['banados de carrasco', 'bella italia', 'chacarita', 'punta rieles'],
 
-  // Zona 5 — Sur-Centro (Pocitos, Buceo, Malvín, Punta Carretas)
-  5: ['pocitos', 'buceo', 'malvin', 'malvín', 'punta carretas', 'parque rodo', 'parque rodó', 'palermo', 'cordon', 'cordón', 'tres cruces', 'villa española', 'villa espanola', 'unión', 'union'],
+  // Zona 5 — Buceo, Carrasco, Malvín, Punta Gorda, Maroñas, Unión, etc.
+  5: ['flor de maronas', 'carrasco norte', 'malvin norte', 'puerto buceo', 'pocitos nuevo', 'playa verde', 'las canteras', 'punta gorda', 'maronas', 'carrasco', 'buceo', 'malvin', 'union'],
 
-  // Zona 6 — Sur + barrios interiores (Punta Gorda, Carrasco, Shangrilá, Reducto)
-  6: ['punta gorda', 'carrasco', 'shangrila', 'shangrilá', 'neptunia', 'el pinar', 'reducto'],
+  // Zona 6 — Centro, Pocitos, Cordón, Palermo, Jacinto Vera, Reducto, etc.
+  6: ['ciudad vieja', 'parque batlle', 'villa biarritz', 'villa dolores', 'la blanqueada', 'punta carretas', 'la comercial', 'parque rodo', 'barrio sur', 'villa munoz', 'tres cruces', 'jacinto vera', 'larranaga', 'figurita', 'reducto', 'palermo', 'aguada', 'pocitos', 'cordon', 'centro', 'goes'],
 
-  // Zona 7 — Centro (Ciudad Vieja, Centro, Goes, La Comercial, Aguada)
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'nuevo parís', 'cerro', 'la teja', 'paso molino', 'peñarol', 'penarol'],
+  // Zona 7 — Belvedere, Peñarol, Sayago, Casavalle, Prado, Villa Española, etc.
+  7: ['cementerio del norte', 'paso de las duranas', 'jardines hipodromo', 'piedras blancas', 'villa espanola', 'brazo oriental', 'bella vista', 'arroyo seco', 'aires puros', 'castro perez', 'castellanos', 'paso molino', 'las acacias', 'ituzaingo', 'atahualpa', 'casavalle', 'belvedere', 'lavalleja', 'capurro', 'cerrito', 'marconi', 'bolivar', 'la teja', 'sayago', 'penarol', 'prado'],
 
-  // Zona 8 — Norte (Progreso, Las Piedras, La Paz dpto Canelones)
-  8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico', 'canelones'],
+  // Zona 8 — La Paz, Las Piedras, Progreso
+  8: ['las piedras', 'progreso', 'la paz'],
 
-  // Zona 9 — Este (Pando, Toledo Este, Barros Blancos norte)
-  9: ['pando', 'toledo este', 'lagomar', 'solymar', 'la floresta'],
+  // Zona 9 — Pando, Barros Blancos, Toledo, Cumbres de Carrasco, etc.
+  9: ['cumbres de carrasco', 'rincon de carrasco', 'joaquin suarez', 'barros blancos', 'casarino', 'toledo', 'suarez', 'pando'],
 
-  // Zona 10 — Ciudad de la Costa
-  10: ['ciudad de la costa', 'atlantida', 'atlántida', 'parque del plata', 'salinas', 'la floresta', 'costa'],
+  // Zona 10 — Ciudad de la Costa, Solymar, Shangrilá, El Pinar, Lagomar, etc.
+  10: ['ciudad de la costa', 'colinas de carrasco', 'colinas de solymar', 'medanos de solymar', 'montes de solymar', 'san jose de carrasco', 'lomas de carrasco', 'barra de carrasco', 'parque de solymar', 'lomas de solymar', 'paso de carrasco', 'pinares de solymar', 'villa aeroparque', 'empalme nicolich', 'parque miramar', 'parque carrasco', 'la tahona', 'el dorado', 'el bosque', 'el pinar', 'shangrila', 'lagomar', 'solymar'],
 
   // Zona 11 — Canelones (ciudad)
-  11: ['canelones ciudad', 'canelones capital', '14 de julio'],
+  11: ['canelones ciudad', 'canelones capital'],
 };
 
 /**
@@ -70,17 +70,20 @@ function detectarZona(direccion) {
   if (!direccion) return null;
   const dir = direccion.toLowerCase()
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // quitar tildes para comparación
-    .toLowerCase();
+    .replace(/[̀-ͯ]/g, '');
 
-  // Buscar coincidencia por keywords de cada zona
+  // Ordenar de mayor a menor longitud: keywords mas especificos ganan sobre los mas cortos
+  const allKeywords = [];
   for (const [zona, keywords] of Object.entries(ZONAS_KEYWORDS)) {
     for (const kw of keywords) {
-      const kwNorm = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      if (dir.includes(kwNorm)) {
-        return parseInt(zona);
-      }
+      const kwNorm = kw.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      allKeywords.push([kwNorm, parseInt(zona)]);
     }
+  }
+  allKeywords.sort((a, b) => b[0].length - a[0].length);
+
+  for (const [kw, zona] of allKeywords) {
+    if (dir.includes(kw)) return zona;
   }
   return null;
 }

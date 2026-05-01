@@ -427,6 +427,8 @@
           <option value="all">Todo el tiempo</option>
         </select>
         <button class="btn btn-ghost btn-sm" onclick="toggleComparador()" id="btn-comparar">⚖️ Comparar períodos</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportReportePDF()">📥 PDF</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportReporteCSV()">📊 CSV</button>
       </div>
     </div>
     <div id="panel-comparador" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:14px 28px;gap:16px;flex-wrap:wrap;align-items:center" class="topbar">
@@ -2276,6 +2278,254 @@ function exportVentasPDF() {
 
   const tab2 = ventasTabFilter === 'all' ? 'all' : ventasTabFilter;
   doc.save(`ventas_${tab2}_${fechaHoy}.pdf`);
+}
+
+function exportReportePDF() {
+  const dias = document.getElementById('reporte-periodo').value;
+  const now = new Date();
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => {
+    const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias);
+  });
+  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => {
+    const d = new Date(e.creado || '2000-01-01'); return (now - d) / (1000*60*60*24) <= parseInt(dias);
+  });
+  if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
+
+  const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
+  const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
+  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
+  const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
+  const ticketPromedio = ventasFiltradas.length > 0 ? totalIngresos / ventasFiltradas.length : 0;
+  const unidadesVendidas = ventasFiltradas.reduce((a,v) => a + v.cantidad, 0);
+
+  const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
+  const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
+  const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
+  const meliIng = ventasMeli.reduce((a,v)=>a+v.total,0);
+  const mosIng = ventasMostrador.reduce((a,v)=>a+v.total,0);
+  const shopIng = ventasShopify.reduce((a,v)=>a+v.total,0);
+
+  const prodVentas = {};
+  ventasFiltradas.forEach(v => {
+    if (!prodVentas[v.sku]) { const p = db.productos.find(x => x.sku === v.sku); prodVentas[v.sku] = { nombre: v.producto, total: 0, cant: 0, costo: p ? p.costo : 0 }; }
+    prodVentas[v.sku].total += v.total; prodVentas[v.sku].cant += v.cantidad;
+  });
+  const prodArr = Object.values(prodVentas);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const BG_HEAD = [17,17,17], BG_ROW = [28,28,38], TEXT_W = [245,245,245];
+  const GREEN = [34,197,94], YELLOW = [245,158,11], RED = [239,68,68];
+  const periodoLabel = dias === 'all' ? 'Todo el tiempo' : `Últimos ${dias} días`;
+  const fechaHoy = new Date().toISOString().slice(0,10);
+  const f2 = n => '$' + n.toLocaleString('es-AR', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+  // Header
+  doc.setFillColor(...BG_HEAD); doc.rect(0,0,297,22,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(...TEXT_W);
+  doc.text('MARTINEZ MOTOS — Reporte de Métricas', 14, 10);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8);
+  doc.text(`Período: ${periodoLabel}   ·   Generado: ${fechaHoy}`, 14, 17);
+
+  let y = 28;
+
+  // KPI cards (2 rows × 4)
+  doc.setFillColor(...BG_HEAD); doc.rect(0, y-5, 297, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...TEXT_W);
+  doc.text('RESUMEN EJECUTIVO', 14, y); y += 5;
+
+  const kpis = [
+    ['Ventas realizadas', ventasFiltradas.length],
+    ['Unidades vendidas', unidadesVendidas],
+    ['Ingresos totales', f2(totalIngresos)],
+    ['Ticket promedio', f2(ticketPromedio)],
+    ['Comisiones MELI', f2(totalComisiones)],
+    ['Costo de productos', f2(costoProductos)],
+    ['Ganancia estimada', f2(ganancia)],
+    ['Margen neto', margenPct + '%'],
+  ];
+  const cardW = (297-28)/4;
+  kpis.forEach(([label, val], i) => {
+    const row = Math.floor(i/4), col = i%4;
+    const cx = 14 + col*cardW, cy = y + row*18;
+    doc.setFillColor(...BG_ROW); doc.rect(cx, cy, cardW-2, 14, 'F');
+    doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(148,163,184);
+    doc.text(label, cx+2, cy+5);
+    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...TEXT_W);
+    doc.text(String(val), cx+2, cy+11);
+  });
+  y += 40;
+
+  // Canales
+  const canalRows = [
+    ['MELI', ventasMeli.length, f2(meliIng), totalIngresos > 0 ? ((meliIng/totalIngresos)*100).toFixed(1)+'%' : '0%'],
+    ['Mostrador', ventasMostrador.length, f2(mosIng), totalIngresos > 0 ? ((mosIng/totalIngresos)*100).toFixed(1)+'%' : '0%'],
+    ['Shopify', ventasShopify.length, f2(shopIng), totalIngresos > 0 ? ((shopIng/totalIngresos)*100).toFixed(1)+'%' : '0%'],
+  ].filter(r => parseInt(r[1]) > 0);
+
+  doc.autoTable({
+    startY: y,
+    head: [['Canal','Ventas','Ingresos','% del total']],
+    body: canalRows,
+    margin: { left:14, right:14 }, tableWidth: 110,
+    styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+    headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' }, theme: 'grid'
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Top productos con márgenes
+  const prodMargen = prodArr.map(d => {
+    const costoT = d.costo * d.cant;
+    const ganP = d.total - costoT;
+    const mg = d.total > 0 ? ((ganP/d.total)*100).toFixed(1) : '0.0';
+    return [d.nombre, d.cant, f2(d.total), f2(costoT), f2(ganP), mg+'%', f2(d.cant > 0 ? d.total/d.cant : 0)];
+  }).sort((a,b) => parseFloat(b[4].replace(/[$.,]/g,'')) - parseFloat(a[4].replace(/[$.,]/g,'')));
+
+  doc.autoTable({
+    startY: y,
+    head: [['Producto','Uds.','Ingresos','Costo prod.','Ganancia','Margen %','Ticket prom.']],
+    body: prodMargen,
+    margin: { left:14, right:14 },
+    styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+    headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' },
+    theme: 'grid',
+    didParseCell: d => {
+      if (d.section === 'body' && d.column.index === 5) {
+        const val = parseFloat(d.cell.raw);
+        d.cell.styles.textColor = val >= 40 ? GREEN : val >= 20 ? YELLOW : RED;
+        d.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Métricas clave
+  const topUds = [...prodArr].sort((a,b) => b.cant - a.cant)[0];
+  const topGan = [...prodArr].map(d => ({ ...d, gan: d.total - d.costo*d.cant })).sort((a,b) => b.gan - a.gan)[0];
+  const mejorCanal = [{ label:'MELI', ing:meliIng, v:ventasMeli.length }, { label:'Mostrador', ing:mosIng, v:ventasMostrador.length }, { label:'Shopify', ing:shopIng, v:ventasShopify.length }].sort((a,b) => b.ing - a.ing)[0];
+  const ventasPorDia = {};
+  ventasFiltradas.forEach(v => { ventasPorDia[v.fecha] = (ventasPorDia[v.fecha]||0)+1; });
+  const topDia = Object.entries(ventasPorDia).sort((a,b) => b[1]-a[1])[0];
+  const porCliente = {};
+  ventasFiltradas.forEach(v => { const k = v.cliente||v.comprador; if (!k) return; if (!porCliente[k]) porCliente[k]={total:0,count:0}; porCliente[k].total+=v.total; porCliente[k].count++; });
+  const topCli = Object.entries(porCliente).sort((a,b) => b[1].total - a[1].total)[0];
+  const tasaEnvios = ventasFiltradas.length > 0 ? ((ventasFiltradas.filter(v=>v.generaEnvio).length/ventasFiltradas.length)*100).toFixed(0)+'%' : '0%';
+
+  const destacados = [];
+  if (topUds) destacados.push(['Producto más vendido', topUds.nombre, topUds.cant+' uds']);
+  if (topGan && topGan.gan > 0) destacados.push(['Mayor ganancia bruta', topGan.nombre, f2(topGan.gan)]);
+  if (mejorCanal && mejorCanal.ing > 0) destacados.push(['Mejor canal', mejorCanal.label, `${mejorCanal.v} ventas · ${f2(mejorCanal.ing)}`]);
+  if (topDia) destacados.push(['Día pico', topDia[0], topDia[1]+' ventas']);
+  if (topCli) destacados.push(['Top cliente', topCli[0], `${topCli[1].count} compras · ${f2(topCli[1].total)}`]);
+  destacados.push(['Tasa de envíos', 'Ventas que generaron envío', tasaEnvios]);
+
+  doc.autoTable({
+    startY: y,
+    head: [['Métrica clave','Detalle','Valor']],
+    body: destacados,
+    margin: { left:14, right:14 },
+    styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:3 },
+    headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' }, theme: 'grid'
+  });
+
+  // Página 2: comparación de períodos (si está activa)
+  const panelComp = document.getElementById('panel-comparador');
+  if (panelComp && panelComp.style.display !== 'none') {
+    const aDesde = document.getElementById('comp-a-desde').value;
+    const aHasta = document.getElementById('comp-a-hasta').value;
+    const bDesde = document.getElementById('comp-b-desde').value;
+    const bHasta = document.getElementById('comp-b-hasta').value;
+    if (aDesde && aHasta && bDesde && bHasta) {
+      doc.addPage();
+      doc.setFillColor(...BG_HEAD); doc.rect(0,0,297,14,'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...TEXT_W);
+      const labelA = aDesde.slice(5)+' → '+aHasta.slice(5);
+      const labelB = bDesde.slice(5)+' → '+bHasta.slice(5);
+      doc.text(`COMPARACIÓN DE PERÍODOS   A: ${labelA}  vs  B: ${labelB}`, 14, 9);
+      const pA = filtrarPeriodo(aDesde, aHasta), pB = filtrarPeriodo(bDesde, bHasta);
+      const mA = calcularMetricas(pA.ventas, pA.envios), mB = calcularMetricas(pB.ventas, pB.envios);
+      const fmtC = (val, tipo) => tipo === 'money' ? f2(val) : tipo === 'pct' ? val+'%' : String(val);
+      const compMetricas = [
+        { nombre:'Ingresos', a:mA.ingresos, b:mB.ingresos, tipo:'money', mejor:'mayor' },
+        { nombre:'Ventas', a:mA.ventas, b:mB.ventas, tipo:'num', mejor:'mayor' },
+        { nombre:'Unidades vendidas', a:mA.unidades, b:mB.unidades, tipo:'num', mejor:'mayor' },
+        { nombre:'Ticket promedio', a:mA.ticket, b:mB.ticket, tipo:'money', mejor:'mayor' },
+        { nombre:'Comisiones MELI', a:mA.comisiones, b:mB.comisiones, tipo:'money', mejor:'menor' },
+        { nombre:'Costo de productos', a:mA.costoProductos, b:mB.costoProductos, tipo:'money', mejor:'menor' },
+        { nombre:'Costo de envíos', a:mA.costoEnvios, b:mB.costoEnvios, tipo:'money', mejor:'menor' },
+        { nombre:'Ganancia estimada', a:mA.ganancia, b:mB.ganancia, tipo:'money', mejor:'mayor' },
+        { nombre:'Margen neto', a:mA.margen, b:mB.margen, tipo:'pct', mejor:'mayor' },
+      ];
+      const compBody = compMetricas.map(m => {
+        const diff = m.a - m.b;
+        const diffPct = m.b !== 0 ? ((diff/Math.abs(m.b))*100).toFixed(1) : (m.a !== 0 ? '100.0' : '0.0');
+        const abs = m.tipo === 'money' ? f2(Math.abs(diff)) : m.tipo === 'pct' ? Math.abs(diff).toFixed(1)+'%' : Math.abs(diff);
+        const flecha = diff > 0 ? '↑' : diff < 0 ? '↓' : '—';
+        const pct = diff === 0 ? '' : (diff > 0 ? '+' : '-')+Math.abs(diffPct)+'%';
+        return [m.nombre, fmtC(m.a,m.tipo), fmtC(m.b,m.tipo), flecha+' '+abs, pct];
+      });
+      doc.autoTable({
+        startY: 18,
+        head: [[`Métrica`, `Período A (${labelA})`, `Período B (${labelB})`, 'Diferencia', 'Variación']],
+        body: compBody,
+        margin: { left:14, right:14 },
+        styles: { font:'helvetica', fontSize:8, textColor:TEXT_W, fillColor:BG_ROW, cellPadding:4 },
+        headStyles: { fillColor:BG_HEAD, textColor:TEXT_W, fontStyle:'bold' },
+        theme: 'grid',
+        didParseCell: d => {
+          if (d.section === 'body' && d.column.index === 3) {
+            const raw = String(d.cell.raw);
+            const esMenos = d.row.index < 7 ? raw.startsWith('↓') : raw.startsWith('↑');
+            d.cell.styles.textColor = raw === '— 0' || raw === '—  ' ? [148,163,184] : (esMenos ? RED : GREEN);
+            d.cell.styles.fontStyle = 'bold';
+          }
+        }
+      });
+    }
+  }
+
+  doc.save(`reporte_metricas_${fechaHoy}.pdf`);
+}
+
+function exportReporteCSV() {
+  const dias = document.getElementById('reporte-periodo').value;
+  const now = new Date();
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => {
+    const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias);
+  });
+  if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
+
+  const totalIngresos = ventasFiltradas.reduce((a,v) => a+v.total, 0);
+  const totalComisiones = ventasFiltradas.reduce((a,v) => a+(v.comision||0), 0);
+  const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x=>x.sku===v.sku); return a+(p?p.costo*v.cantidad:0); }, 0);
+  const dias2 = document.getElementById('reporte-periodo').value;
+  const periodoLabel = dias2 === 'all' ? 'Todo el tiempo' : `Últimos ${dias2} dias`;
+
+  const prodVentas = {};
+  ventasFiltradas.forEach(v => {
+    if (!prodVentas[v.sku]) { const p = db.productos.find(x=>x.sku===v.sku); prodVentas[v.sku] = { sku:v.sku, nombre:v.producto, total:0, cant:0, costo:p?p.costo:0 }; }
+    prodVentas[v.sku].total += v.total; prodVentas[v.sku].cant += v.cantidad;
+  });
+
+  const rows = Object.values(prodVentas).map(d => {
+    const costoT = d.costo * d.cant;
+    const ganP = d.total - costoT;
+    const mg = d.total > 0 ? ((ganP/d.total)*100).toFixed(2) : '0.00';
+    const ticket = d.cant > 0 ? (d.total/d.cant).toFixed(2) : '0.00';
+    return [d.sku, d.nombre, d.cant, d.total.toFixed(2), costoT.toFixed(2), ganP.toFixed(2), mg, ticket];
+  }).sort((a,b) => parseFloat(b[5]) - parseFloat(a[5]));
+
+  const headers = ['SKU','Producto','Unidades','Ingresos','Costo productos','Ganancia bruta','Margen %','Ticket promedio'];
+  const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `reporte_margenes_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function loadImport(e) {

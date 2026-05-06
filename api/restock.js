@@ -26,7 +26,8 @@ module.exports = async (req, res) => {
     // ── 1. All products ──────────────────────────────────────────────────────
     const { data: productos, error: prodErr } = await supabase
       .from('productos')
-      .select('sku, nombre, categoria, stock_dep');
+      .select('sku, nombre, categoria, stock_dep, tipo')
+      .neq('tipo', 'usado');
     if (prodErr) throw prodErr;
 
     // ── 2. Sales velocity: last 30 days, ALL channels, exclude cancelled ─────

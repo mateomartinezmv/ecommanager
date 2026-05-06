@@ -188,6 +188,7 @@
     <div class="nav-item" onclick="goPage('stock')"><span class="icon">📦</span><span>Stock</span></div>
     <div class="nav-section">Ventas</div>
     <div class="nav-item" onclick="goPage('ventas')"><span class="icon">🛒</span><span>Ventas</span></div>
+    <div class="nav-item" onclick="goPage('devoluciones')"><span class="icon">↩️</span><span>Devoluciones</span></div>
     <div class="nav-item" onclick="goPage('envios')"><span class="icon">🚚</span><span>Envíos</span></div>
     <div class="nav-item" onclick="goPage('transportistas')"><span class="icon">💳</span><span>Transportistas</span></div>
     <div class="nav-item" onclick="goPage('clientes')"><span class="icon">👥</span><span>Clientes</span></div>
@@ -299,6 +300,26 @@
           <tbody id="ventas-tbody"></tbody>
         </table>
         <div id="ventas-empty" class="empty-state" style="display:none"><div class="empty-icon">🛒</div><p>No hay ventas registradas aún.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEVOLUCIONES -->
+  <div id="page-devoluciones" class="page">
+    <div class="topbar">
+      <div class="page-title">↩️ Devoluciones</div>
+    </div>
+    <div class="content">
+      <div class="tabs">
+        <button class="tab active" onclick="switchDevolucionesTab('pendiente')" id="tab-dev-pendiente">⏳ Pendientes</button>
+        <button class="tab" onclick="switchDevolucionesTab('recibida')" id="tab-dev-recibida">✅ Recibidas</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID Devolución</th><th>Venta</th><th>Producto</th><th>Cantidad</th><th>Notas</th><th>Fecha</th><th>Acciones</th></tr></thead>
+          <tbody id="devoluciones-tbody"></tbody>
+        </table>
+        <div id="devoluciones-empty" class="empty-state" style="display:none"><div class="empty-icon">↩️</div><p>No hay devoluciones en este estado.</p></div>
       </div>
     </div>
   </div>
@@ -904,6 +925,25 @@
   </div>
 </div>
 
+<!-- MODAL: CREAR DEVOLUCIÓN -->
+<div class="modal-overlay" id="modal-devolucion">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">↩️ Registrar devolución</div>
+    <input type="hidden" id="dev-venta-id">
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group"><label class="form-label">Producto</label><input type="text" id="dev-producto" disabled style="opacity:0.6"></div>
+      <div class="form-group"><label class="form-label">SKU</label><input type="text" id="dev-sku" disabled style="opacity:0.6"></div>
+      <div class="form-group"><label class="form-label">Cantidad a devolver</label><input type="number" id="dev-cantidad" min="1" value="1"></div>
+      <div class="form-group"><label class="form-label">Notas (opcional)</label><input type="text" id="dev-notas" placeholder="ej: producto defectuoso, mediación MELI..."></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ El stock se restaurará solo cuando confirmes que recibiste físicamente el producto.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-devolucion')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveDevolucion()">Registrar devolución pendiente</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: DETALLE CLIENTE -->
 <div class="modal-overlay" id="modal-detalle-cliente">
   <div class="modal" style="max-width:720px">
@@ -922,10 +962,11 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [] };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [] };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let enviosTabFilter = 'all';
+let devolucionesTabFilter = 'pendiente';
 let editingProductoSKU = null;
 let pendingEnvioVentaId = null;
 
@@ -954,6 +995,8 @@ async function loadAll() {
     db.clientes  = clientes.map(normCliente);
     const importaciones = await api('GET', '/importaciones').catch(() => []);
     db.importaciones = importaciones;
+    const devoluciones = await api('GET', '/devoluciones').catch(() => []);
+    db.devoluciones = devoluciones.map(normDevolucion);
   } catch(e) {
     console.error('Error cargando datos:', e);
     alert('⚠️ Error conectando con la base de datos: ' + e.message);
@@ -971,6 +1014,9 @@ function normCliente(c) {
 }
 function normEnvio(e) {
   return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
+}
+function normDevolucion(d) {
+  return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
 }
 
 // MELI callback banners
@@ -1005,6 +1051,7 @@ function goPage(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'stock') renderStock();
   if (page === 'ventas') renderVentas();
+  if (page === 'devoluciones') renderDevoluciones();
   if (page === 'envios') renderEnvios();
   if (page === 'reportes') renderReportes();
   if (page === 'transportistas') renderTransportistas();
@@ -1566,6 +1613,7 @@ function renderVentas() {
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>
@@ -1999,6 +2047,88 @@ async function importarDesdeMELI() {
     alert(`✅ ${result.mensaje}\n\nTotal: ${result.total}\nImportados: ${result.importados}\nOmitidos: ${result.omitidos}`);
   } catch(e) { alert('❌ Error importando desde MELI: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = '🟡 Importar desde MELI'; }
+}
+
+// =====================
+// DEVOLUCIONES
+// =====================
+function openCrearDevolucion(ventaId) {
+  const v = db.ventas.find(x => x.id === ventaId);
+  if (!v) return;
+  document.getElementById('dev-venta-id').value = v.id;
+  document.getElementById('dev-producto').value = v.producto;
+  document.getElementById('dev-sku').value = v.sku;
+  document.getElementById('dev-cantidad').value = v.cantidad;
+  document.getElementById('dev-notas').value = '';
+  openModal('modal-devolucion');
+}
+
+async function saveDevolucion() {
+  const ventaId = document.getElementById('dev-venta-id').value;
+  const sku = document.getElementById('dev-sku').value;
+  const producto = document.getElementById('dev-producto').value;
+  const cantidad = parseInt(document.getElementById('dev-cantidad').value) || 1;
+  const notas = document.getElementById('dev-notas').value.trim();
+  try {
+    await api('POST', '/devoluciones', { ventaId, sku, producto, cantidad, notas });
+    await loadAll();
+    closeModal('modal-devolucion');
+    goPage('devoluciones');
+  } catch(e) { alert('❌ Error registrando devolución: ' + e.message); }
+}
+
+async function confirmarDevolucion(id) {
+  const d = db.devoluciones.find(x => x.id === id);
+  if (!d) return;
+  if (!confirm(`¿Confirmás que recibiste fisicamente "${d.producto}" (x${d.cantidad})?\n\nEsto sumará ${d.cantidad} unidad(es) al stock.`)) return;
+  try {
+    const result = await api('PUT', `/devoluciones?id=${id}`);
+    await loadAll();
+    renderDevoluciones();
+    renderStock();
+    alert(`✅ Stock restaurado. Nuevo stock de "${d.producto}": ${result.nuevoStock}`);
+  } catch(e) { alert('❌ Error confirmando devolución: ' + e.message); }
+}
+
+async function deleteDevolucion(id) {
+  if (!confirm('¿Eliminar esta devolución? No se modificará el stock.')) return;
+  try {
+    await api('DELETE', `/devoluciones?id=${id}`);
+    await loadAll();
+    renderDevoluciones();
+  } catch(e) { alert('❌ Error eliminando devolución: ' + e.message); }
+}
+
+function switchDevolucionesTab(tab) {
+  devolucionesTabFilter = tab;
+  document.getElementById('tab-dev-pendiente').classList.toggle('active', tab === 'pendiente');
+  document.getElementById('tab-dev-recibida').classList.toggle('active', tab === 'recibida');
+  renderDevoluciones();
+}
+
+function renderDevoluciones() {
+  const lista = db.devoluciones.filter(d => d.estado === devolucionesTabFilter);
+  const tbody = document.getElementById('devoluciones-tbody');
+  const empty = document.getElementById('devoluciones-empty');
+  if (!lista.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  tbody.innerHTML = lista.map(d => {
+    const fecha = (d.estado === 'recibida' ? d.recibidaAt : d.creado || '').slice(0, 10);
+    const acciones = d.estado === 'pendiente'
+      ? `<button class="btn btn-primary btn-sm" onclick="confirmarDevolucion('${d.id}')">✅ Recibí el producto</button>
+         <button class="btn btn-danger btn-sm" onclick="deleteDevolucion('${d.id}')" style="margin-left:4px">🗑️</button>`
+      : `<span style="color:var(--green);font-size:12px">Recibida ${fecha}</span>
+         <button class="btn btn-danger btn-sm" onclick="deleteDevolucion('${d.id}')" style="margin-left:8px">🗑️</button>`;
+    return `<tr>
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${d.id}</span></td>
+      <td><span style="font-size:11px;color:var(--text-muted)">${d.ventaId || '—'}</span></td>
+      <td>${d.producto}<br><span class="badge badge-gray" style="font-size:10px">${d.sku}</span></td>
+      <td>${d.cantidad}</td>
+      <td>${d.notas || '—'}</td>
+      <td>${(d.creado || '').slice(0, 10)}</td>
+      <td>${acciones}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function syncStock() {

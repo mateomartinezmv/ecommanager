@@ -274,6 +274,7 @@
       <div class="topbar-actions">
         <button class="btn btn-yellow" onclick="openModal('modal-venta-meli')">🟡 Venta MELI</button>
         <button class="btn btn-primary" onclick="vmosOpenModal()">🏪 Venta Mostrador</button>
+        <button class="btn btn-ghost" onclick="recalcularComisiones()" id="btn-recalcular-com" title="Recalcula comisión y envío MELI en todas las ventas existentes">🔁 Recalcular comisiones</button>
       </div>
     </div>
     <div style="padding:12px 28px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
@@ -2129,6 +2130,21 @@ function renderDevoluciones() {
       <td>${acciones}</td>
     </tr>`;
   }).join('');
+}
+
+async function recalcularComisiones() {
+  const btn = document.getElementById('btn-recalcular-com');
+  if (!confirm('¿Recalcular comisiones y costos de envío MELI en todas las ventas existentes?\n\nEsto puede tardar varios segundos. El proceso es seguro y reversible.')) return;
+  btn.disabled = true; btn.textContent = '⏳ Recalculando...';
+  try {
+    const result = await api('POST', '/meli/recalcular-comisiones');
+    await loadAll(); renderVentas();
+    const fallos = result.fallos?.length
+      ? `\n\n⚠️ Fallos (${result.fallos.length}):\n${result.fallos.map(f => `${f.id || f.orden}: ${f.error}`).join('\n')}`
+      : '';
+    alert(`✅ Recalculo completado\n\nActualizadas: ${result.actualizadas}\nSin cambio: ${result.sin_cambio}\nErrores: ${result.errores}${fallos}`);
+  } catch(e) { alert('❌ Error recalculando comisiones: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '🔁 Recalcular comisiones'; }
 }
 
 async function syncStock() {

@@ -239,6 +239,7 @@
           <input type="text" id="stock-search" placeholder="Buscar producto..." oninput="renderStock()">
         </div>
         <button class="btn btn-yellow" onclick="importarDesdeMELI()" id="btn-importar-meli">🟡 Importar desde MELI</button>
+        <button class="btn btn-ghost" onclick="syncMeliStock()" id="btn-sync-meli">🔵 Sincronizar MELI</button>
         <button class="btn btn-ghost" onclick="syncShopifyStock()" id="btn-sync-shopify">🛍️ Sincronizar Shopify</button>
         <button class="btn btn-ghost" onclick="descargarTemplateCSV()">📄 Plantilla CSV</button>
         <button class="btn btn-ghost" onclick="document.getElementById('csv-file-input').click()">⬆ Importar CSV</button>
@@ -1999,6 +2000,30 @@ async function importarDesdeMELI() {
     alert(`✅ ${result.mensaje}\n\nTotal: ${result.total}\nImportados: ${result.importados}\nOmitidos: ${result.omitidos}`);
   } catch(e) { alert('❌ Error importando desde MELI: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = '🟡 Importar desde MELI'; }
+}
+
+async function syncMeliStock() {
+  const btn = document.getElementById('btn-sync-meli');
+  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  try {
+    const result = await api('POST', '/meli/sync-stock');
+    await loadAll(); renderStock();
+    const fallos = result.fallos?.length ? `\n\n⚠️ Fallos (${result.fallos.length}):\n${result.fallos.map(f => `${f.sku}: ${f.error}`).join('\n')}` : '';
+    alert(`✅ Stock sincronizado con MELI\n\nSincronizados: ${result.sincronizados}\nErrores: ${result.errores}${fallos}`);
+  } catch(e) { alert('❌ Error sincronizando con MELI: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '🔵 Sincronizar MELI'; }
+}
+
+async function syncShopifyStock() {
+  const btn = document.getElementById('btn-sync-shopify');
+  btn.disabled = true; btn.textContent = '⏳ Sincronizando...';
+  try {
+    const result = await api('POST', '/shopify/sync-stock');
+    await loadAll(); renderStock();
+    const fallos = result.fallos?.length ? `\n\n⚠️ Fallos (${result.fallos.length}):\n${result.fallos.map(f => `${f.sku}: ${f.error}`).join('\n')}` : '';
+    alert(`✅ Stock sincronizado con Shopify\n\nSincronizados: ${result.sincronizados}\nErrores: ${result.errores}${fallos}`);
+  } catch(e) { alert('❌ Error sincronizando con Shopify: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = '🛍️ Sincronizar Shopify'; }
 }
 
 function exportData() {

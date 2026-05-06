@@ -107,13 +107,20 @@ async function handleOrder(resource) {
       });
       const shipData = await shipRes.json();
       logisticType = shipData?.logistic_type || '';
-      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
+      // cost = cargo al vendedor; list_cost = precio al comprador (no usamos list_cost)
+      costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0;
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
         direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
       }
     } catch (_) {}
   }
+
+  // Para Mercado Envíos no-Flex, MELI descuenta el envío del cobro al vendedor.
+  // Lo capturamos también desde el pago aprobado como fuente secundaria.
+  const envioMeliSeller = Math.abs(
+    (order.payments || []).find(p => p.status === 'approved')?.shipping_cost || 0
+  ) || (costoEnvioReal > 0 && !FLEX_TYPES.includes(logisticType) ? costoEnvioReal : 0);
 
   const esFlex = FLEX_TYPES.includes(logisticType);
   let transportista, costoEnvioFinal;
@@ -123,15 +130,8 @@ async function handleOrder(resource) {
     costoEnvioFinal = flexInfo?.costoRecomendado ?? costoEnvioReal ?? 0;
   } else {
     transportista = 'mercado_envios';
-    costoEnvioFinal = 0;
+    costoEnvioFinal = 0; // Para ME el costo va sumado a comision, no a envios.costo
   }
-
-  const feeDetails = order.fee_details || [];
-  const totalFee = feeDetails
-    .filter(f => f.type === 'mercadopago_fee' || f.type === 'ml_fee')
-    .reduce((s, f) => s + Math.abs(f.amount || 0), 0);
-  const hasFeeDetails = totalFee > 0;
-  const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
 
   for (const item of order.order_items) {
     const meliItemId = item.item.id;
@@ -167,9 +167,23 @@ async function handleOrder(resource) {
       producto = p2;
     }
 
-    const comisionItem = hasFeeDetails
+    // sale_fee es la fuente más confiable de comisión por item.
+    // Si es 0 fallback a fee_details proporcional.
+    const saleFee = Math.abs(item.sale_fee || 0);
+    const feeDetails = order.fee_details || [];
+    const totalFee = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+    const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+    const feeProportional = totalFee > 0
       ? Math.round((totalFee * (item.unit_price * cantidad) / orderTotalCalc) * 100) / 100
-      : Math.abs(item.sale_fee || 0);
+      : 0;
+    const mlFee = saleFee > 0 ? saleFee : feeProportional;
+
+    // Para envíos no-Flex: MELI descuenta el costo del envío del cobro al vendedor,
+    // lo sumamos a comision para que ingresoNeto = total - comision sea correcto.
+    const itemShippingShare = !esFlex && order.order_items.length > 0
+      ? Math.round((envioMeliSeller * (item.unit_price * cantidad) / orderTotalCalc) * 100) / 100
+      : 0;
+    const comisionItem = Math.round((mlFee + itemShippingShare) * 100) / 100;
 
     const ventaId = `V_MELI_${order.id}_${meliItemId}`;
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();

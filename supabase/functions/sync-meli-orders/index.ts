@@ -180,7 +180,8 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       })
       const shipData = await shipRes.json()
       logisticType = shipData?.logistic_type || ''
-      costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0
+      // cost = cargo al vendedor; list_cost = precio al comprador (no usamos list_cost)
+      costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address
         direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`
@@ -213,15 +214,16 @@ async function procesarOrden(order: any, token: string, log: string[]) {
   const transportisteFinal = esFlex ? (flexInfo?.recomendada || 'gestionpost') : 'mercado_envios'
   const costoEnvio = esFlex ? (flexInfo?.costo ?? costoEnvioReal ?? 0) : 0
 
-  // Comisión desde fee_details
+  // Para ME no-Flex: costo de envío que MELI descuenta del cobro al vendedor
+  const envioMeliSeller = !esFlex
+    ? Math.abs((order.payments || []).find((p: any) => p.status === 'approved')?.shipping_cost || 0) || costoEnvioReal
+    : 0
+
   const feeDetails = order.fee_details || []
-  const totalFee = feeDetails
-    .filter((f: any) => f.type === 'mercadopago_fee' || f.type === 'ml_fee')
-    .reduce((s: number, f: any) => s + Math.abs(f.amount || 0), 0)
-  const hasFeeDetails = totalFee > 0
+  const totalFeeDetails = feeDetails.reduce((s: number, f: any) => s + Math.abs(f.amount || 0), 0)
   const orderTotalCalc = (order.order_items || []).reduce((s: number, i: any) => s + (i.unit_price * i.quantity), 0) || 1
 
-  log.push(`📬 Tipo envío: ${transportisteFinal} | comisión total: $${totalFee}`)
+  log.push(`📬 Tipo envío: ${transportisteFinal} | envio MELI vendedor: $${envioMeliSeller}`)
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -277,12 +279,20 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       nombreFinal = producto.nombre
     }
 
-    // Comisión por item
-    const comisionItem = hasFeeDetails
-      ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
-      : Math.abs(item.sale_fee || 0)
+    // sale_fee es la fuente más confiable; fallback a fee_details proporcional
+    const saleFee = Math.abs(item.sale_fee || 0)
+    const feeProportional = totalFeeDetails > 0
+      ? Math.round((totalFeeDetails * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
+      : 0
+    const mlFee = saleFee > 0 ? saleFee : feeProportional
 
-    log.push(`💰 Comisión: $${comisionItem} | Envío: ${transportisteFinal}`)
+    // Sumar parte proporcional del envío MELI al vendedor
+    const itemShippingShare = !esFlex && order.order_items.length > 0
+      ? Math.round((envioMeliSeller * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
+      : 0
+    const comisionItem = Math.round((mlFee + itemShippingShare) * 100) / 100
+
+    log.push(`💰 Comisión ML: $${mlFee} | Envío vendedor: $${itemShippingShare} | Total: $${comisionItem}`)
 
     // Registrar venta
     await supabase.from('ventas').insert({

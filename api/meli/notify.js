@@ -127,14 +127,25 @@ async function handleOrder(resource) {
     costoEnvioFinal = 0;
   }
 
-  // ── Cálculo de deduciones MELI ──────────────────────────────────────────────
-  // Método primario: net_received_amount = lo que MELI acredita al vendedor tras
-  // descontar comisión + envío + cualquier cargo. Es la fuente más exacta.
-  // Método fallback: sale_fee (comisión) + costoEnvioReal (envío al vendedor).
-  const approvedPayment = (order.payments || []).find(p => p.status === 'approved');
-  const netReceived = approvedPayment?.net_received_amount || 0;
+  // ── Cálculo de deducciones MELI ─────────────────────────────────────────────
+  // net_received_amount NO viene en /orders/{id}.payments — hay que fetchear
+  // /payments/{id} por separado para obtener el dato completo.
   const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
-  // totalDeductionOrder es válido si MELI ya liquidó el pago (netReceived > 0)
+  const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
+  let netReceived = 0;
+  if (paymentId) {
+    try {
+      const payRes = await fetch(`https://api.mercadolibre.com/payments/${paymentId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const payData = await payRes.json();
+      netReceived = payData.net_received_amount || 0;
+      if (!netReceived && payData.marketplace_fee) {
+        netReceived = grossTotal - Math.abs(payData.marketplace_fee);
+      }
+      console.log(`💳 payment ${paymentId}: net_received=${payData.net_received_amount} marketplace_fee=${payData.marketplace_fee}`);
+    } catch (_) {}
+  }
   const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
     ? Math.round((grossTotal - netReceived) * 100) / 100
     : null;

@@ -41,10 +41,9 @@ module.exports = async (req, res) => {
       const order = await orderRes.json();
       if (order.error) { errores.push({ orden: ordenId, error: order.message }); continue; }
 
-      // Fetch shipment for shipping cost
+      // Fetch shipment para logistic_type (Flex vs ME)
       const shippingId = order.shipping?.id;
       let logisticType = '';
-      let costoEnvioReal = 0;
       if (shippingId) {
         try {
           const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
@@ -52,18 +51,32 @@ module.exports = async (req, res) => {
           });
           const shipData = await shipRes.json();
           logisticType = shipData?.logistic_type || '';
-          costoEnvioReal = shipData?.shipping_option?.cost
-            ?? shipData?.shipping_option?.list_cost
-            ?? shipData?.base_cost ?? 0;
         } catch (_) {}
       }
 
       const esFlex = FLEX_TYPES.includes(logisticType);
-
-      // Método primario: net_received_amount = lo que MELI acredita al vendedor
-      const approvedPayment = (order.payments || []).find(p => p.status === 'approved');
-      const netReceived = approvedPayment?.net_received_amount || 0;
       const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+
+      // Método primario: fetchear /payments/{id} directamente para obtener
+      // net_received_amount completo (el campo NO viene en /orders/{id})
+      const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
+      let netReceived = 0;
+      if (paymentId) {
+        try {
+          const payRes = await fetch(`https://api.mercadolibre.com/payments/${paymentId}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const payData = await payRes.json();
+          netReceived = payData.net_received_amount || 0;
+          // marketplace_fee como alternativa si net_received no viene
+          if (!netReceived && payData.marketplace_fee) {
+            // marketplace_fee es el total cobrado por MELI (comisión + envío)
+            netReceived = grossTotal - Math.abs(payData.marketplace_fee);
+          }
+          console.log(`  💳 payment ${paymentId}: net_received=${payData.net_received_amount} marketplace_fee=${payData.marketplace_fee}`);
+        } catch (_) {}
+      }
+
       const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
         ? Math.round((grossTotal - netReceived) * 100) / 100
         : null;
@@ -78,21 +91,11 @@ module.exports = async (req, res) => {
 
         let nuevaComision;
         if (totalDeductionOrder !== null) {
-          // Método primario: proporcional al gross (cubre comisión + envío exactamente)
+          // Método primario: proporcional al gross — captura comisión + envío exactos
           nuevaComision = Math.round((totalDeductionOrder * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100;
         } else {
-          // Fallback: sale_fee + envío desde shipments API
-          const saleFee = Math.abs(orderItem.sale_fee || 0);
-          const feeDetails = order.fee_details || [];
-          const totalFeeDetails = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
-          const feeProportional = totalFeeDetails > 0
-            ? Math.round((totalFeeDetails * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
-            : 0;
-          const mlFee = saleFee > 0 ? saleFee : feeProportional;
-          const shippingShare = !esFlex
-            ? Math.round((costoEnvioReal * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
-            : 0;
-          nuevaComision = Math.round((mlFee + shippingShare) * 100) / 100;
+          // Fallback: solo sale_fee (al menos la comisión queda correcta)
+          nuevaComision = Math.abs(orderItem.sale_fee || 0);
         }
 
         if (Math.abs(nuevaComision - (ventaMatch.comision || 0)) < 0.01) {

@@ -1610,7 +1610,7 @@ function renderVentas() {
       <td>${canalBadge(v.canal)}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
       <td>${v.cantidad}</td>
-      <td>${fmt(v.total)}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}</td>
+      <td>${fmt(v.total)}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.costoEnvioMeli)} envío</span>` : ''}</td>
       <td>
         <select class="badge" onchange="cambiarEstadoVenta('${v.id}',this.value)" style="background:transparent;border:none;cursor:pointer;font-size:11px;padding:2px 6px">
           ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${v.estado===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}

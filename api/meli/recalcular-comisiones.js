@@ -17,7 +17,7 @@ module.exports = async (req, res) => {
   // Get all MELI ventas that have an order ID
   const { data: ventas, error } = await supabase
     .from('ventas')
-    .select('id, orden_meli, sku, cantidad, precio_unit, comision')
+    .select('id, orden_meli, sku, cantidad, precio_unit, comision, costo_envio_meli')
     .eq('canal', 'meli')
     .not('orden_meli', 'is', null);
   if (error) return res.status(500).json({ error: error.message });
@@ -44,6 +44,7 @@ module.exports = async (req, res) => {
       // Fetch shipment para logistic_type (Flex vs ME)
       const shippingId = order.shipping?.id;
       let logisticType = '';
+      let costoEnvioReal = 0;
       if (shippingId) {
         try {
           const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
@@ -51,6 +52,7 @@ module.exports = async (req, res) => {
           });
           const shipData = await shipRes.json();
           logisticType = shipData?.logistic_type || '';
+          costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0;
         } catch (_) {}
       }
 
@@ -98,14 +100,21 @@ module.exports = async (req, res) => {
           nuevaComision = Math.abs(orderItem.sale_fee || 0);
         }
 
-        if (Math.abs(nuevaComision - (ventaMatch.comision || 0)) < 0.01) {
+        const nuevoCostoEnvio = !esFlex
+          ? Math.round((costoEnvioReal * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
+          : 0;
+
+        const comisionSinCambio = Math.abs(nuevaComision - (ventaMatch.comision || 0)) < 0.01;
+        const envioSinCambio    = Math.abs(nuevoCostoEnvio - (ventaMatch.costo_envio_meli || 0)) < 0.01;
+
+        if (comisionSinCambio && envioSinCambio) {
           resultados.push({ id: ventaMatch.id, sin_cambio: true, comision: nuevaComision });
           continue;
         }
 
         const { error: updErr } = await supabase
           .from('ventas')
-          .update({ comision: nuevaComision })
+          .update({ comision: nuevaComision, costo_envio_meli: nuevoCostoEnvio })
           .eq('id', ventaMatch.id);
 
         if (updErr) {
@@ -116,6 +125,7 @@ module.exports = async (req, res) => {
             anterior: ventaMatch.comision,
             nueva: nuevaComision,
             diff: Math.round((nuevaComision - (ventaMatch.comision || 0)) * 100) / 100,
+            costoEnvio: nuevoCostoEnvio,
           });
         }
       }

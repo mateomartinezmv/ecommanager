@@ -215,6 +215,9 @@ async function handleOrder(resource) {
         stock_shopify: nuevoStockDep,
         updated_at: new Date().toISOString(),
       }).eq('sku', producto.sku);
+      const costoEnvioMeliItem = !esFlex
+        ? Math.round((costoEnvioReal * (item.unit_price * cantidad) / grossTotal) * 100) / 100
+        : 0;
       const { error: ventaErr } = await supabase.from('ventas').insert({
         id: ventaId,
         canal: 'meli',
@@ -226,6 +229,7 @@ async function handleOrder(resource) {
         cantidad,
         precio_unit: item.unit_price,
         comision: comisionItem,
+        costo_envio_meli: costoEnvioMeliItem,
         total: item.unit_price * cantidad,
         estado: 'pagada',
         genera_envio: !!shippingId,

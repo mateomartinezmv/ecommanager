@@ -96,6 +96,7 @@ module.exports = async (req, res) => {
         cantidad: v.cantidad,
         precio_unit: v.precioUnit,
         comision: v.comision || 0,
+        costo_envio_meli: v.costoEnvioMeli || 0,
         total: v.total,
         estado: v.estado,
         metodo_pago: v.metodoPago || null,

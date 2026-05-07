@@ -679,6 +679,7 @@
       <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1"></div>
       <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01"></div>
       <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01"></div>
+      <div class="form-group" id="ev-envio-meli-wrap" style="display:none"><label class="form-label">Costo envío MELI</label><input type="number" id="ev-costo-envio-meli" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Método de pago</label>
         <select id="ev-metodo">
           <option value="">—</option>
@@ -1008,7 +1009,7 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -1364,6 +1365,9 @@ function abrirEdicionVenta(id) {
   document.getElementById('ev-comision').value = v.comision || 0;
   document.getElementById('ev-metodo').value = v.metodoPago || '';
   document.getElementById('ev-notas').value = v.notas || '';
+  const esMeli = v.canal === 'meli';
+  document.getElementById('ev-envio-meli-wrap').style.display = esMeli ? '' : 'none';
+  document.getElementById('ev-costo-envio-meli').value = esMeli ? (v.costoEnvioMeli || 0) : 0;
   openModal('modal-editar-venta');
 }
 
@@ -1374,6 +1378,7 @@ async function guardarEdicionVenta() {
   const cantidad = parseInt(document.getElementById('ev-cantidad').value) || 1;
   const precioUnit = parseFloat(document.getElementById('ev-precio').value) || 0;
   const comision = parseFloat(document.getElementById('ev-comision').value) || 0;
+  const costoEnvioMeli = v.canal === 'meli' ? (parseFloat(document.getElementById('ev-costo-envio-meli').value) || 0) : 0;
   const updates = {
     fecha: document.getElementById('ev-fecha').value,
     estado: document.getElementById('ev-estado').value,
@@ -1382,6 +1387,7 @@ async function guardarEdicionVenta() {
     cantidad,
     precioUnit,
     comision,
+    costoEnvioMeli,
     total: precioUnit * cantidad,
     metodoPago: document.getElementById('ev-metodo').value || null,
     notas: document.getElementById('ev-notas').value.trim(),

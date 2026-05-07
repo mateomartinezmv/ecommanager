@@ -59,13 +59,14 @@ module.exports = async (req, res) => {
       }
 
       const esFlex = FLEX_TYPES.includes(logisticType);
-      const envioMeliSeller = !esFlex
-        ? Math.abs((order.payments || []).find(p => p.status === 'approved')?.shipping_cost || 0) || costoEnvioReal
-        : 0;
 
-      const feeDetails = order.fee_details || [];
-      const totalFeeDetails = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
-      const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+      // Método primario: net_received_amount = lo que MELI acredita al vendedor
+      const approvedPayment = (order.payments || []).find(p => p.status === 'approved');
+      const netReceived = approvedPayment?.net_received_amount || 0;
+      const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+      const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
+        ? Math.round((grossTotal - netReceived) * 100) / 100
+        : null;
 
       for (const orderItem of (order.order_items || [])) {
         const meliItemId = orderItem.item?.id;
@@ -75,16 +76,24 @@ module.exports = async (req, res) => {
         const ventaMatch = items.find(v => v.id === `V_MELI_${ordenId}_${meliItemId}`);
         if (!ventaMatch) continue;
 
-        const saleFee = Math.abs(orderItem.sale_fee || 0);
-        const feeProportional = totalFeeDetails > 0
-          ? Math.round((totalFeeDetails * (orderItem.unit_price * orderItem.quantity) / orderTotalCalc) * 100) / 100
-          : 0;
-        const mlFee = saleFee > 0 ? saleFee : feeProportional;
-
-        const itemShippingShare = !esFlex && (order.order_items || []).length > 0
-          ? Math.round((envioMeliSeller * (orderItem.unit_price * orderItem.quantity) / orderTotalCalc) * 100) / 100
-          : 0;
-        const nuevaComision = Math.round((mlFee + itemShippingShare) * 100) / 100;
+        let nuevaComision;
+        if (totalDeductionOrder !== null) {
+          // Método primario: proporcional al gross (cubre comisión + envío exactamente)
+          nuevaComision = Math.round((totalDeductionOrder * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100;
+        } else {
+          // Fallback: sale_fee + envío desde shipments API
+          const saleFee = Math.abs(orderItem.sale_fee || 0);
+          const feeDetails = order.fee_details || [];
+          const totalFeeDetails = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+          const feeProportional = totalFeeDetails > 0
+            ? Math.round((totalFeeDetails * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
+            : 0;
+          const mlFee = saleFee > 0 ? saleFee : feeProportional;
+          const shippingShare = !esFlex
+            ? Math.round((costoEnvioReal * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
+            : 0;
+          nuevaComision = Math.round((mlFee + shippingShare) * 100) / 100;
+        }
 
         if (Math.abs(nuevaComision - (ventaMatch.comision || 0)) < 0.01) {
           resultados.push({ id: ventaMatch.id, sin_cambio: true, comision: nuevaComision });

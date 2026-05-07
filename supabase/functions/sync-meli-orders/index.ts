@@ -214,16 +214,17 @@ async function procesarOrden(order: any, token: string, log: string[]) {
   const transportisteFinal = esFlex ? (flexInfo?.recomendada || 'gestionpost') : 'mercado_envios'
   const costoEnvio = esFlex ? (flexInfo?.costo ?? costoEnvioReal ?? 0) : 0
 
-  // Para ME no-Flex: costo de envío que MELI descuenta del cobro al vendedor
-  const envioMeliSeller = !esFlex
-    ? Math.abs((order.payments || []).find((p: any) => p.status === 'approved')?.shipping_cost || 0) || costoEnvioReal
-    : 0
+  // ── Cálculo de deducciones MELI ─────────────────────────────────────────────
+  // Método primario: net_received_amount = lo que MELI acredita al vendedor tras
+  // descontar comisión + envío + cualquier cargo. Es la fuente más exacta.
+  const approvedPayment = (order.payments || []).find((p: any) => p.status === 'approved')
+  const netReceived = approvedPayment?.net_received_amount || 0
+  const grossTotal = (order.order_items || []).reduce((s: number, i: any) => s + (i.unit_price * i.quantity), 0) || 1
+  const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
+    ? Math.round((grossTotal - netReceived) * 100) / 100
+    : null
 
-  const feeDetails = order.fee_details || []
-  const totalFeeDetails = feeDetails.reduce((s: number, f: any) => s + Math.abs(f.amount || 0), 0)
-  const orderTotalCalc = (order.order_items || []).reduce((s: number, i: any) => s + (i.unit_price * i.quantity), 0) || 1
-
-  log.push(`📬 Tipo envío: ${transportisteFinal} | envio MELI vendedor: $${envioMeliSeller}`)
+  log.push(`📬 Tipo envío: ${transportisteFinal} | gross=$${grossTotal} net=$${netReceived} deducción=${totalDeductionOrder}`)
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -279,20 +280,26 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       nombreFinal = producto.nombre
     }
 
-    // sale_fee es la fuente más confiable; fallback a fee_details proporcional
-    const saleFee = Math.abs(item.sale_fee || 0)
-    const feeProportional = totalFeeDetails > 0
-      ? Math.round((totalFeeDetails * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
-      : 0
-    const mlFee = saleFee > 0 ? saleFee : feeProportional
+    let comisionItem: number
+    if (totalDeductionOrder !== null) {
+      // Método primario: proporcional al gross (cubre comisión + envío exactamente)
+      comisionItem = Math.round((totalDeductionOrder * (precioUnit * cantidad) / grossTotal) * 100) / 100
+    } else {
+      // Fallback: sale_fee + estimación de envío
+      const saleFee = Math.abs(item.sale_fee || 0)
+      const feeDetails = order.fee_details || []
+      const totalFeeDetails = feeDetails.reduce((s: number, f: any) => s + Math.abs(f.amount || 0), 0)
+      const feeProportional = totalFeeDetails > 0
+        ? Math.round((totalFeeDetails * (precioUnit * cantidad) / grossTotal) * 100) / 100
+        : 0
+      const mlFee = saleFee > 0 ? saleFee : feeProportional
+      const shippingShare = !esFlex
+        ? Math.round((costoEnvioReal * (precioUnit * cantidad) / grossTotal) * 100) / 100
+        : 0
+      comisionItem = Math.round((mlFee + shippingShare) * 100) / 100
+    }
 
-    // Sumar parte proporcional del envío MELI al vendedor
-    const itemShippingShare = !esFlex && order.order_items.length > 0
-      ? Math.round((envioMeliSeller * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
-      : 0
-    const comisionItem = Math.round((mlFee + itemShippingShare) * 100) / 100
-
-    log.push(`💰 Comisión ML: $${mlFee} | Envío vendedor: $${itemShippingShare} | Total: $${comisionItem}`)
+    log.push(`💰 Comisión final: $${comisionItem} (método: ${totalDeductionOrder !== null ? 'net_received' : 'fallback'})`)
 
     // Registrar venta
     await supabase.from('ventas').insert({

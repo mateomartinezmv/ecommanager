@@ -116,12 +116,6 @@ async function handleOrder(resource) {
     } catch (_) {}
   }
 
-  // Para Mercado Envíos no-Flex, MELI descuenta el envío del cobro al vendedor.
-  // Lo capturamos también desde el pago aprobado como fuente secundaria.
-  const envioMeliSeller = Math.abs(
-    (order.payments || []).find(p => p.status === 'approved')?.shipping_cost || 0
-  ) || (costoEnvioReal > 0 && !FLEX_TYPES.includes(logisticType) ? costoEnvioReal : 0);
-
   const esFlex = FLEX_TYPES.includes(logisticType);
   let transportista, costoEnvioFinal;
   if (esFlex) {
@@ -130,8 +124,21 @@ async function handleOrder(resource) {
     costoEnvioFinal = flexInfo?.costoRecomendado ?? costoEnvioReal ?? 0;
   } else {
     transportista = 'mercado_envios';
-    costoEnvioFinal = 0; // Para ME el costo va sumado a comision, no a envios.costo
+    costoEnvioFinal = 0;
   }
+
+  // ── Cálculo de deduciones MELI ──────────────────────────────────────────────
+  // Método primario: net_received_amount = lo que MELI acredita al vendedor tras
+  // descontar comisión + envío + cualquier cargo. Es la fuente más exacta.
+  // Método fallback: sale_fee (comisión) + costoEnvioReal (envío al vendedor).
+  const approvedPayment = (order.payments || []).find(p => p.status === 'approved');
+  const netReceived = approvedPayment?.net_received_amount || 0;
+  const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+  // totalDeductionOrder es válido si MELI ya liquidó el pago (netReceived > 0)
+  const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
+    ? Math.round((grossTotal - netReceived) * 100) / 100
+    : null;
+  console.log(`💰 gross=$${grossTotal} netReceived=$${netReceived} totalDeduction=${totalDeductionOrder}`);
 
   for (const item of order.order_items) {
     const meliItemId = item.item.id;
@@ -167,23 +174,24 @@ async function handleOrder(resource) {
       producto = p2;
     }
 
-    // sale_fee es la fuente más confiable de comisión por item.
-    // Si es 0 fallback a fee_details proporcional.
-    const saleFee = Math.abs(item.sale_fee || 0);
-    const feeDetails = order.fee_details || [];
-    const totalFee = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
-    const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
-    const feeProportional = totalFee > 0
-      ? Math.round((totalFee * (item.unit_price * cantidad) / orderTotalCalc) * 100) / 100
-      : 0;
-    const mlFee = saleFee > 0 ? saleFee : feeProportional;
-
-    // Para envíos no-Flex: MELI descuenta el costo del envío del cobro al vendedor,
-    // lo sumamos a comision para que ingresoNeto = total - comision sea correcto.
-    const itemShippingShare = !esFlex && order.order_items.length > 0
-      ? Math.round((envioMeliSeller * (item.unit_price * cantidad) / orderTotalCalc) * 100) / 100
-      : 0;
-    const comisionItem = Math.round((mlFee + itemShippingShare) * 100) / 100;
+    let comisionItem;
+    if (totalDeductionOrder !== null) {
+      // Método primario: proporcional al gross de la orden (cubre comisión + envío)
+      comisionItem = Math.round((totalDeductionOrder * (item.unit_price * cantidad) / grossTotal) * 100) / 100;
+    } else {
+      // Fallback: sale_fee + estimación de envío desde shipments API
+      const saleFee = Math.abs(item.sale_fee || 0);
+      const feeDetails = order.fee_details || [];
+      const totalFeeDetails = feeDetails.reduce((s, f) => s + Math.abs(f.amount || 0), 0);
+      const feeProportional = totalFeeDetails > 0
+        ? Math.round((totalFeeDetails * (item.unit_price * cantidad) / grossTotal) * 100) / 100
+        : 0;
+      const mlFee = saleFee > 0 ? saleFee : feeProportional;
+      const shippingShare = !esFlex
+        ? Math.round((costoEnvioReal * (item.unit_price * cantidad) / grossTotal) * 100) / 100
+        : 0;
+      comisionItem = Math.round((mlFee + shippingShare) * 100) / 100;
+    }
 
     const ventaId = `V_MELI_${order.id}_${meliItemId}`;
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();

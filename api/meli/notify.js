@@ -107,8 +107,9 @@ async function handleOrder(resource) {
       });
       const shipData = await shipRes.json();
       logisticType = shipData?.logistic_type || '';
-      // cost = cargo al vendedor; list_cost = precio al comprador (no usamos list_cost)
-      costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0;
+      const opt = shipData?.shipping_option || {};
+      console.log(`  🚚 shipment ${shippingId}: logistic_type=${logisticType} opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} opt.other_costs=${opt.other_costs} base_cost=${shipData?.base_cost}`);
+      costoEnvioReal = opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0;
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
         direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;

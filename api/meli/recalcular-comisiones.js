@@ -52,7 +52,9 @@ module.exports = async (req, res) => {
           });
           const shipData = await shipRes.json();
           logisticType = shipData?.logistic_type || '';
-          costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0;
+          const opt = shipData?.shipping_option || {};
+          console.log(`  🚚 shipment ${shippingId} [${ordenId}]: logistic_type=${logisticType} | opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} opt.other_costs=${opt.other_costs} base_cost=${shipData?.base_cost} | cost_components=${JSON.stringify(shipData?.cost_components)}`);
+          costoEnvioReal = opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0;
         } catch (_) {}
       }
 

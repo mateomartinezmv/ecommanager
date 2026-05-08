@@ -1,6 +1,6 @@
 // api/meli/recalcular-comisiones.js
-// POST /api/meli/recalcular-comisiones
-// Re-fetches each unique MELI order and corrects comision (ml fee + seller shipping cost).
+// POST /api/meli/recalcular-comisiones           → recalcula TODAS las ventas MELI
+// POST /api/meli/recalcular-comisiones?id=XXX    → recalcula solo la venta con ese id
 // Safe to run multiple times — only updates ventas with canal='meli'.
 
 const { getMeliToken } = require('../_meliToken');
@@ -13,14 +13,20 @@ module.exports = async (req, res) => {
 
   const token = await getMeliToken();
   const supabase = getSupabase();
+  const ventaId = req.query.id || null;
 
-  // Get all MELI ventas that have an order ID
-  const { data: ventas, error } = await supabase
+  // Get ventas to process (all MELI, or just one if ventaId provided)
+  let query = supabase
     .from('ventas')
     .select('id, orden_meli, sku, cantidad, precio_unit, comision, costo_envio_meli')
     .eq('canal', 'meli')
     .not('orden_meli', 'is', null);
+  if (ventaId) query = query.eq('id', ventaId);
+
+  const { data: ventas, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
+  if (ventaId && (!ventas || ventas.length === 0))
+    return res.status(404).json({ error: 'Venta no encontrada' });
 
   // Group by orden_meli to avoid duplicate API calls
   const byOrder = {};

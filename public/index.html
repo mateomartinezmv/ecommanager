@@ -1619,6 +1619,7 @@ function renderVentas() {
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>
+        ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="recalcularComisionVenta('${v.id}', this)" title="Recalcular comisión y envío MELI">🔁</button>` : ''}
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
@@ -2136,6 +2137,26 @@ function renderDevoluciones() {
       <td>${acciones}</td>
     </tr>`;
   }).join('');
+}
+
+async function recalcularComisionVenta(ventaId, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const result = await api('POST', `/meli/recalcular-comisiones?id=${ventaId}`);
+    await loadAll(); renderVentas();
+    if (result.actualizadas > 0) {
+      const d = result.detalle?.[0];
+      btn.textContent = '✅';
+      setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 2000);
+    } else {
+      btn.textContent = '—';
+      setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 1500);
+    }
+  } catch(e) {
+    alert('❌ Error: ' + e.message);
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 async function recalcularComisiones() {

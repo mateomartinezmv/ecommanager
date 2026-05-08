@@ -108,8 +108,11 @@ async function handleOrder(resource) {
       const shipData = await shipRes.json();
       logisticType = shipData?.logistic_type || '';
       const opt = shipData?.shipping_option || {};
-      console.log(`  🚚 shipment ${shippingId}: logistic_type=${logisticType} opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} opt.other_costs=${opt.other_costs} base_cost=${shipData?.base_cost}`);
-      costoEnvioReal = opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0;
+      console.log(`  🚚 shipment ${shippingId}: logistic_type=${logisticType} opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} base_cost=${shipData?.base_cost}`);
+      // cost===0 → retiro/gratis (el vendedor paga $0), no pasar a list_cost
+      // cost===null/undefined → dato no disponible aún, usar list_cost (valor real de billing)
+      // cost>0 → valor parcial, list_cost tiene el monto completo de billing
+      costoEnvioReal = opt.cost === 0 ? 0 : (opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0);
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
         direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
@@ -199,10 +202,8 @@ async function handleOrder(resource) {
         ? Math.round((totalFeeDetails * (item.unit_price * cantidad) / grossTotal) * 100) / 100
         : 0;
       const mlFee = saleFee > 0 ? saleFee : feeProportional;
-      const shippingShare = !esFlex
-        ? Math.round((costoEnvioReal * (item.unit_price * cantidad) / grossTotal) * 100) / 100
-        : 0;
-      comisionItem = Math.round((mlFee + shippingShare) * 100) / 100;
+      // Comisión = solo el cargo de MELI por la venta (NO incluye envío)
+      comisionItem = Math.round(mlFee * 100) / 100;
     }
 
     const ventaId = `V_MELI_${order.id}_${meliItemId}`;

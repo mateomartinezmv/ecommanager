@@ -53,8 +53,9 @@ module.exports = async (req, res) => {
           const shipData = await shipRes.json();
           logisticType = shipData?.logistic_type || '';
           const opt = shipData?.shipping_option || {};
-          console.log(`  🚚 shipment ${shippingId} [${ordenId}]: logistic_type=${logisticType} | opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} opt.other_costs=${opt.other_costs} base_cost=${shipData?.base_cost} | cost_components=${JSON.stringify(shipData?.cost_components)}`);
-          costoEnvioReal = opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0;
+          console.log(`  🚚 shipment ${shippingId} [${ordenId}]: logistic_type=${logisticType} | opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} base_cost=${shipData?.base_cost}`);
+          // cost===0 → retiro/gratis ($0 al vendedor); null/undefined → usar list_cost (billing real)
+          costoEnvioReal = opt.cost === 0 ? 0 : (opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0);
         } catch (_) {}
       }
 

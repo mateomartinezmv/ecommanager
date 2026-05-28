@@ -26,8 +26,21 @@ module.exports = async (req, res) => {
   const supabase = getSupabase();
 
   try {
+    // ── comandos ─────────────────────────────────────────────
+    if (texto === 'comandos') {
+      await sendTelegram(chatId,
+        `🏍️ <b>Martinez Motos Bot — Comandos</b>\n\n` +
+        `📦 <b>stock</b> — productos con stock bajo\n` +
+        `📊 <b>ventas hoy</b> — resumen del día\n` +
+        `📅 <b>ventas mes</b> — resumen del mes\n` +
+        `🚚 <b>envios</b> — envíos pendientes\n` +
+        `💰 <b>ganancia</b> — ganancia estimada del mes\n` +
+        `🤖 <b>recomendaciones</b> — análisis IA de tu negocio`
+      );
+    }
+
     // ── stock ────────────────────────────────────────────────
-    if (texto.includes('stock')) {
+    else if (texto.includes('stock')) {
       const { data: productos } = await supabase
         .from('productos')
         .select('*')

@@ -15,7 +15,6 @@ module.exports = async (req, res) => {
   const supabase = getSupabase();
   const ventaId = req.query.id || null;
 
-  // Get ventas to process (all MELI, or just one if ventaId provided)
   let query = supabase
     .from('ventas')
     .select('id, orden_meli, sku, cantidad, precio_unit, comision, costo_envio_meli')
@@ -28,7 +27,6 @@ module.exports = async (req, res) => {
   if (ventaId && (!ventas || ventas.length === 0))
     return res.status(404).json({ error: 'Venta no encontrada' });
 
-  // Group by orden_meli to avoid duplicate API calls
   const byOrder = {};
   for (const v of ventas) {
     if (!byOrder[v.orden_meli]) byOrder[v.orden_meli] = [];
@@ -40,17 +38,16 @@ module.exports = async (req, res) => {
 
   for (const [ordenId, items] of Object.entries(byOrder)) {
     try {
-      // Fetch order from MELI
       const orderRes = await fetch(`https://api.mercadolibre.com/orders/${ordenId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const order = await orderRes.json();
       if (order.error) { errores.push({ orden: ordenId, error: order.message }); continue; }
 
-      // Fetch shipment para logistic_type (Flex vs ME)
       const shippingId = order.shipping?.id;
       let logisticType = '';
       let costoEnvioReal = 0;
+
       if (shippingId) {
         try {
           const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
@@ -59,17 +56,31 @@ module.exports = async (req, res) => {
           const shipData = await shipRes.json();
           logisticType = shipData?.logistic_type || '';
           const opt = shipData?.shipping_option || {};
+
           console.log(`  🚚 shipment ${shippingId} [${ordenId}]: logistic_type=${logisticType} | opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} base_cost=${shipData?.base_cost}`);
-          // cost===0 → retiro/gratis ($0 al vendedor); null/undefined → usar list_cost (billing real)
-          costoEnvioReal = opt.cost === 0 ? 0 : (opt.list_cost ?? opt.cost ?? shipData?.base_cost ?? 0);
+
+          // ── Lógica de costo de envío ─────────────────────────────────────
+          // net_amount: lo que MELI descuenta al vendedor por el envío.
+          // Si net_amount existe y es 0 → el comprador pagó el envío → costo vendedor = $0
+          // Si net_amount > 0 → lo paga el vendedor → usar ese valor
+          // Fallback: list_cost (precio de lista del envío) solo si net_amount no está disponible
+          const netAmount = opt.net_amount ?? opt.cost;
+          if (netAmount !== null && netAmount !== undefined) {
+            // net_amount = 0 → comprador paga → tu costo = 0
+            costoEnvioReal = netAmount === 0 ? 0 : netAmount;
+          } else if (opt.list_cost !== null && opt.list_cost !== undefined) {
+            // list_cost = 0 → envío gratis para el vendedor también
+            costoEnvioReal = opt.list_cost === 0 ? 0 : opt.list_cost;
+          } else {
+            costoEnvioReal = shipData?.base_cost ?? 0;
+          }
+          // ────────────────────────────────────────────────────────────────
         } catch (_) {}
       }
 
       const esFlex = FLEX_TYPES.includes(logisticType);
       const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
 
-      // Método primario: fetchear /payments/{id} directamente para obtener
-      // net_received_amount completo (el campo NO viene en /orders/{id})
       const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
       let netReceived = 0;
       if (paymentId) {
@@ -79,9 +90,7 @@ module.exports = async (req, res) => {
           });
           const payData = await payRes.json();
           netReceived = payData.net_received_amount || 0;
-          // marketplace_fee como alternativa si net_received no viene
           if (!netReceived && payData.marketplace_fee) {
-            // marketplace_fee es el total cobrado por MELI (comisión + envío)
             netReceived = grossTotal - Math.abs(payData.marketplace_fee);
           }
           console.log(`  💳 payment ${paymentId}: net_received=${payData.net_received_amount} marketplace_fee=${payData.marketplace_fee}`);
@@ -96,19 +105,18 @@ module.exports = async (req, res) => {
         const meliItemId = orderItem.item?.id;
         if (!meliItemId) continue;
 
-        // Find matching venta (by orden_meli + meli_id suffix in id)
         const ventaMatch = items.find(v => v.id === `V_MELI_${ordenId}_${meliItemId}`);
         if (!ventaMatch) continue;
 
         let nuevaComision;
         if (totalDeductionOrder !== null) {
-          // Método primario: proporcional al gross — captura comisión + envío exactos
           nuevaComision = Math.round((totalDeductionOrder * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100;
         } else {
-          // Fallback: solo sale_fee (al menos la comisión queda correcta)
           nuevaComision = Math.abs(orderItem.sale_fee || 0);
         }
 
+        // Si el costo de envío ya está incluido en la deducción total (net_received),
+        // no sumarlo de nuevo al costo de envío separado
         const nuevoCostoEnvio = !esFlex
           ? Math.round((costoEnvioReal * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
           : 0;
@@ -144,7 +152,7 @@ module.exports = async (req, res) => {
   }
 
   const actualizadas = resultados.filter(r => !r.sin_cambio);
-  const sinCambio   = resultados.filter(r => r.sin_cambio);
+  const sinCambio    = resultados.filter(r => r.sin_cambio);
 
   console.log(`✅ Recalculo comisiones: ${actualizadas.length} actualizadas, ${sinCambio.length} sin cambio, ${errores.length} errores`);
 

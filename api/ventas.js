@@ -164,7 +164,7 @@ module.exports = async (req, res) => {
       }
 
       // 6. Registrar en ventas_canceladas
-      await supabase.from('ventas_canceladas').insert({
+      const { error: cancelErr } = await supabase.from('ventas_canceladas').insert({
         venta_id: venta.id,
         canal: venta.canal,
         fecha_venta: venta.fecha,
@@ -177,7 +177,8 @@ module.exports = async (req, res) => {
         precio_unit: venta.precio_unit,
         total: venta.total,
         tenia_envio: !!envioAsociado,
-      }).catch(err => console.warn('No se pudo registrar en ventas_canceladas:', err.message));
+      });
+      if (cancelErr) console.warn('No se pudo registrar en ventas_canceladas:', cancelErr.message);
 
       // 7. Eliminar la venta
       const { error } = await supabase.from('ventas').delete().eq('id', id);

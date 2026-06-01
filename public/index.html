@@ -471,6 +471,7 @@
       <div class="tabs">
         <button class="tab active" onclick="switchReportesTab('resumen')">📈 Resumen</button>
         <button class="tab" onclick="switchReportesTab('comisiones')">📊 Comisiones MELI</button>
+        <button class="tab" onclick="switchReportesTab('canceladas')">❌ Canceladas</button>
       </div>
       <!-- Panel Resumen -->
       <div id="panel-resumen">
@@ -521,6 +522,35 @@
           </div>
         </div>
       </div>
+
+      <!-- Panel Canceladas -->
+      <div id="panel-canceladas" style="display:none">
+        <div class="cards-grid" id="canceladas-stats"></div>
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">📋 Historial de ventas canceladas</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha cancelación</th>
+                <th>Canal</th>
+                <th>Producto</th>
+                <th>Cantidad</th>
+                <th>Total</th>
+                <th>Comprador</th>
+                <th>Tenía envío</th>
+              </tr>
+            </thead>
+            <tbody id="canceladas-tbody"></tbody>
+          </table>
+          <div id="canceladas-empty" class="empty-state" style="display:none">
+            <div class="empty-icon">✅</div>
+            <p>No hay ventas canceladas en el período.</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -1401,8 +1431,16 @@ async function guardarEdicionVenta() {
 }
 
 async function deleteVenta(id) {
-  if (!confirm('¿Eliminar esta venta? El stock NO se restaurará automáticamente.')) return;
-  try { await api('DELETE', `/ventas?id=${id}`); await loadAll(); renderVentas(); }
+  if (!confirm('¿Cancelar esta venta?\n\nEsto va a:\n✅ Restaurar el stock automáticamente\n🗑️ Eliminar el envío asociado (si hay)\n📋 Registrarla como venta cancelada en Reportes')) return;
+  try {
+    const result = await api('DELETE', `/ventas?id=${id}`);
+    await loadAll();
+    renderVentas();
+    const msgs = [];
+    if (result.stockRestaurado) msgs.push('✅ Stock restaurado');
+    if (result.envioEliminado) msgs.push('🚚 Envío eliminado');
+    if (msgs.length) alert(msgs.join('\n'));
+  }
   catch(e) { alert('Error eliminando venta: ' + e.message); }
 }
 
@@ -1903,11 +1941,13 @@ function onReportePeriodoChange() {
 
 function switchReportesTab(tab) {
   document.querySelectorAll('#page-reportes .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['resumen','comisiones'][i] === tab);
+    t.classList.toggle('active', ['resumen','comisiones','canceladas'][i] === tab);
   });
   document.getElementById('panel-resumen').style.display = tab === 'resumen' ? '' : 'none';
   document.getElementById('panel-comisiones').style.display = tab === 'comisiones' ? '' : 'none';
+  document.getElementById('panel-canceladas').style.display = tab === 'canceladas' ? '' : 'none';
   if (tab === 'comisiones') renderComisiones();
+  else if (tab === 'canceladas') renderCanceladas();
   else renderReportes();
 }
 
@@ -3336,6 +3376,58 @@ function renderImportaciones() {
       <td style="color:var(--text-muted);font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.notas || '—'}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteImportacion(${i.id})">Eliminar</button></td>
     </tr>`).join('');
+}
+
+// =====================
+// RENDER: CANCELADAS
+// =====================
+async function renderCanceladas() {
+  const dias = document.getElementById('reporte-periodo').value;
+  try {
+    const canceladas = await api('GET', '/ventas?canceladas=1');
+    const now = new Date();
+    const filtradas = dias === 'all' ? canceladas : canceladas.filter(c => {
+      const d = new Date(c.cancelada_at);
+      return (now - d) / (1000*60*60*24) <= parseInt(dias);
+    });
+
+    const totalCanceladas = filtradas.length;
+    const totalMonto = filtradas.reduce((a, c) => a + (c.total || 0), 0);
+    const conEnvio = filtradas.filter(c => c.tenia_envio).length;
+    const canalesCancelados = filtradas.reduce((acc, c) => { acc[c.canal] = (acc[c.canal] || 0) + 1; return acc; }, {});
+
+    document.getElementById('canceladas-stats').innerHTML = `
+      <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-value">${totalCanceladas}</div><div class="stat-label">Ventas canceladas</div></div>
+      <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalMonto)}</div><div class="stat-label">Monto total cancelado</div></div>
+      <div class="stat-card blue"><div class="stat-icon">🚚</div><div class="stat-value">${conEnvio}</div><div class="stat-label">Tenían envío asociado</div></div>
+      <div class="stat-card purple"><div class="stat-icon">🟡</div><div class="stat-value">${canalesCancelados['meli'] || 0}</div><div class="stat-label">Canceladas en MELI</div></div>
+    `;
+
+    const tbody = document.getElementById('canceladas-tbody');
+    const empty = document.getElementById('canceladas-empty');
+
+    if (!filtradas.length) {
+      tbody.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+
+    tbody.innerHTML = filtradas.map(c => `
+      <tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${(c.cancelada_at || '').slice(0,10)}</td>
+        <td>${canalBadge(c.canal)}</td>
+        <td>${c.producto || '—'}<br><span class="badge badge-gray" style="font-size:10px">${c.sku || ''}</span></td>
+        <td style="text-align:center">${c.cantidad}</td>
+        <td style="color:var(--red);font-weight:600">${fmt(c.total)}</td>
+        <td>${c.comprador || '—'}</td>
+        <td style="text-align:center">${c.tenia_envio ? '🚚 Sí' : '—'}</td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    console.error('Error cargando canceladas:', e);
+    document.getElementById('canceladas-stats').innerHTML = `<div style="color:var(--red);padding:20px">Error: ${e.message}</div>`;
+  }
 }
 
 async function init() {

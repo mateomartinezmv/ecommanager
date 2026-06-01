@@ -19,10 +19,17 @@
     "api/shopify/productos.js": { "maxDuration": 10 },
     "api/shopify/buscar-sku.js": { "maxDuration": 10 },
     "api/devoluciones.js": { "maxDuration": 10 },
-    "api/meli/recalcular-comisiones.js": { "maxDuration": 60 }
+    "api/meli/recalcular-comisiones.js": { "maxDuration": 60 },
+    "api/cron/resumen-diario.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/public/$1" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/resumen-diario",
+      "schedule": "0 23 * * *"
+    }
   ]
 }

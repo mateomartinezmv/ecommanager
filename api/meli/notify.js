@@ -45,11 +45,34 @@ async function handleOrder(resource) {
   const supabase = getSupabase();
 
   const orderId = resource.replace('/orders/', '').split('/')[0];
-  const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+
+  // Intentar endpoint directo primero
+  let orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
     headers: { 'Authorization': `Bearer ${token}` },
   });
-  const order = await orderRes.json();
-  if (order.error) throw new Error(order.message);
+  let order = await orderRes.json();
+
+  // Fallback para órdenes de Mercado Shops (no accesibles por endpoint directo)
+  if (order.error) {
+    console.log(`⚠️ Orden ${orderId} no encontrada directo, intentando search (Shops)...`);
+    const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const me = await meRes.json();
+    const searchRes = await fetch(
+      `https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`,
+      { headers: { 'Authorization': `Bearer ${token}` } }
+    );
+    const search = await searchRes.json();
+    if (search.results && search.results.length > 0) {
+      order = search.results.find(o => String(o.id) === String(orderId));
+    }
+    if (!order || order.error) {
+      console.log(`❌ Orden ${orderId} no encontrada en ningún endpoint`);
+      return;
+    }
+    console.log(`✅ Orden ${orderId} encontrada via search (Shops)`);
+  }
 
   if (order.status !== 'paid') return;
 

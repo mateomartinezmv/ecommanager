@@ -31,6 +31,8 @@ module.exports = async (req, res) => {
       await handleFeedback(resource);
     } else if (topic === 'items') {
       await handleItem(resource);
+    } else if (topic === 'shipments') {
+      await handleShipment(resource);
     }
   } catch (err) {
     console.error('Error procesando notificación MELI:', err.message);
@@ -181,5 +183,55 @@ async function handleItem(resource) {
     `❓ <b>Motivo:</b> ${motivo}\n` +
     `📊 <b>Stock depósito:</b> ${producto?.stock_dep ?? '—'} uds\n\n` +
     `Entrá al CRM para reactivarla cuando tengas stock.`
+  );
+}
+
+// ── ENVÍOS (shipments) ───────────────────────────────────────
+async function handleShipment(resource) {
+  const token = await getMeliToken();
+  const supabase = getSupabase();
+
+  const shipmentId = resource.split('/').pop();
+  const res = await fetch(`https://api.mercadolibre.com/shipments/${shipmentId}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  const shipment = await res.json();
+  if (shipment.error) {
+    console.log('Shipment no disponible:', shipment.message);
+    return;
+  }
+
+  // Solo procesar cuando se entrega
+  if (shipment.status !== 'delivered') return;
+
+  const orderId = String(shipment.order_id);
+
+  // Buscar el envío en el CRM por orden_meli
+  const { data: envio } = await supabase
+    .from('envios')
+    .select('*')
+    .eq('orden', orderId)
+    .single();
+
+  // Marcar como entregado en el CRM si existe y no está ya entregado
+  if (envio && envio.estado !== 'entregado') {
+    await supabase.from('envios')
+      .update({ estado: 'entregado' })
+      .eq('id', envio.id);
+    console.log(`✅ Envío marcado como entregado: orden ${orderId}`);
+  }
+
+  // Notificar a Telegram siempre
+  const comprador = envio?.comprador || shipment.receiver?.receiver_name || '—';
+  const producto = envio?.producto || '—';
+  const crmActualizado = envio ? '✅ CRM actualizado automáticamente.' : '⚠️ No se encontró el envío en el CRM.';
+
+  await sendTelegram(
+    `✅ <b>Envío entregado</b>\n\n` +
+    `👤 <b>Comprador:</b> ${comprador}\n` +
+    `📦 <b>Producto:</b> ${producto}\n` +
+    `🔖 <b>Orden:</b> ${orderId}\n` +
+    `🚚 <b>Tracking:</b> ${envio?.tracking || shipmentId}\n\n` +
+    crmActualizado
   );
 }

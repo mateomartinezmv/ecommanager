@@ -7,6 +7,8 @@ const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
+// Tipos donde el envío lo paga el COMPRADOR → costo para el vendedor = $0
+const COMPRADOR_PAGA_ENVIO = ['xd_drop_off', 'xd_drop_off_I', 'drop_off'];
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -57,28 +59,44 @@ module.exports = async (req, res) => {
           logisticType = shipData?.logistic_type || '';
           const opt = shipData?.shipping_option || {};
 
-          console.log(`  🚚 shipment ${shippingId} [${ordenId}]: logistic_type=${logisticType} | opt.cost=${opt.cost} opt.list_cost=${opt.list_cost} base_cost=${shipData?.base_cost}`);
+          // Log completo para debug
+          const debugInfo = {
+            logistic_type: logisticType,
+            opt_cost: opt.cost,
+            opt_list_cost: opt.list_cost,
+            opt_net_amount: opt.net_amount,
+            base_cost: shipData?.base_cost,
+            receiver_shipping_cost: shipData?.receiver_shipping_cost,
+            base_cost_full: shipData?.base_cost,
+            shipping_mode: shipData?.mode,
+            all_opt_keys: Object.keys(opt),
+          };
+          console.log(`  🚚 shipment ${shippingId} [${ordenId}]:`, JSON.stringify(debugInfo));
 
           // ── Lógica de costo de envío ─────────────────────────────────────
-          // net_amount: lo que MELI descuenta al vendedor por el envío.
-          // Si net_amount existe y es 0 → el comprador pagó el envío → costo vendedor = $0
-          // Si net_amount > 0 → lo paga el vendedor → usar ese valor
-          // Fallback: list_cost (precio de lista del envío) solo si net_amount no está disponible
-          const netAmount = opt.net_amount ?? opt.cost;
-          if (netAmount !== null && netAmount !== undefined) {
-            // net_amount = 0 → comprador paga → tu costo = 0
-            costoEnvioReal = netAmount === 0 ? 0 : netAmount;
-          } else if (opt.list_cost !== null && opt.list_cost !== undefined) {
-            // list_cost = 0 → envío gratis para el vendedor también
-            costoEnvioReal = opt.list_cost === 0 ? 0 : opt.list_cost;
+          // receiver_shipping_cost: lo que paga el COMPRADOR (no nos afecta)
+          // base_cost: lo que paga el VENDEDOR (nos afecta)
+          // Si base_cost = 0 → vendedor no paga nada → costo = $0
+          if (shipData?.base_cost !== null && shipData?.base_cost !== undefined) {
+            costoEnvioReal = shipData.base_cost;
           } else {
-            costoEnvioReal = shipData?.base_cost ?? 0;
+            const netAmount = opt.net_amount ?? opt.cost;
+            if (netAmount !== null && netAmount !== undefined) {
+              costoEnvioReal = netAmount;
+            } else {
+              costoEnvioReal = 0;
+            }
           }
           // ────────────────────────────────────────────────────────────────
         } catch (_) {}
       }
 
       const esFlex = FLEX_TYPES.includes(logisticType);
+      // Si el logistic_type indica que el comprador paga el envío → costo vendedor = $0
+      if (COMPRADOR_PAGA_ENVIO.includes(logisticType)) {
+        costoEnvioReal = 0;
+        console.log(`  📦 [${ordenId}] logistic_type=${logisticType} → comprador paga envío → costo vendedor $0`);
+      }
       const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
 
       const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;

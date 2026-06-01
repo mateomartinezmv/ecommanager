@@ -24,14 +24,30 @@ module.exports = async (req, res) => {
 
   for (const orderId of orden_ids) {
     try {
-      const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+      // Intentar endpoint directo
+      let orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      const order = await orderRes.json();
+      let order = await orderRes.json();
 
+      // Fallback para Mercado Shops
       if (order.error) {
-        resultados.push({ orden: orderId, status: 'error', msg: order.message });
-        continue;
+        const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const me = await meRes.json();
+        const searchRes = await fetch(
+          `https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`,
+          { headers: { 'Authorization': `Bearer ${token}` } }
+        );
+        const search = await searchRes.json();
+        if (search.results?.length > 0) {
+          order = search.results.find(o => String(o.id) === String(orderId));
+        }
+        if (!order || order.error) {
+          resultados.push({ orden: orderId, status: 'error', msg: 'Order do not exists (marketplace + shops)' });
+          continue;
+        }
       }
 
       // Procesar cada ítem de la orden

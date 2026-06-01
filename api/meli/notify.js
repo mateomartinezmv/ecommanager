@@ -33,6 +33,8 @@ module.exports = async (req, res) => {
       await handleItem(resource);
     } else if (topic === 'shipments') {
       await handleShipment(resource);
+    } else if (topic === 'questions') {
+      await handleQuestion(resource);
     }
   } catch (err) {
     console.error('Error procesando notificación MELI:', err.message);
@@ -256,5 +258,60 @@ async function handleShipment(resource) {
     `🔖 <b>Orden:</b> ${orderId}\n` +
     `🚚 <b>Tracking:</b> ${envio?.tracking || shipmentId}\n\n` +
     crmActualizado
+  );
+}
+
+// ── PREGUNTAS ────────────────────────────────────────────────
+async function handleQuestion(resource) {
+  const token = await getMeliToken();
+  const supabase = getSupabase();
+
+  const questionId = resource.split('/').pop();
+  const res = await fetch(`https://api.mercadolibre.com/questions/${questionId}`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  const q = await res.json();
+  if (q.error) {
+    console.log('Pregunta no disponible:', q.message);
+    return;
+  }
+
+  // Solo notificar preguntas sin responder
+  if (q.status !== 'UNANSWERED') return;
+
+  // Buscar el producto
+  const itemRes = await fetch(`https://api.mercadolibre.com/items/${q.item_id}?attributes=title`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  const item = await itemRes.json();
+  const titulo = item.title || q.item_id;
+
+  // Guardar pregunta pendiente en bot_estado para poder responder desde Telegram
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  await supabase.from('bot_estado').upsert({
+    chat_id: chatId + '_pregunta',
+    accion_pendiente: {
+      tipo: 'responder_pregunta',
+      question_id: q.id,
+      item_id: q.item_id,
+      item_titulo: titulo,
+      pregunta: q.text,
+      comprador: q.from?.nickname || '—',
+    },
+    updated_at: new Date().toISOString(),
+  });
+
+  await sendTelegram(
+    `❓ <b>Nueva pregunta en MELI</b>
+
+` +
+    `📦 <b>Producto:</b> ${titulo}
+` +
+    `👤 <b>Comprador:</b> ${q.from?.nickname || '—'}
+` +
+    `💬 <b>Pregunta:</b> ${q.text}
+
+` +
+    `Respondé <b>responder</b> para que Claude te sugiera una respuesta.`
   );
 }

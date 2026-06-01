@@ -276,6 +276,34 @@ async function ejecutarReposicion(supabase) {
   return `🔍 <b>Productos a reponer (${bajos.length})</b>\n\n${lineas}`;
 }
 
+// ── RESPONDER PREGUNTA MELI ─────────────────────────────────
+async function ejecutarResponderPregunta(accion) {
+  const { getMeliToken } = require('../_meliToken');
+  const token = await getMeliToken();
+
+  const res = await fetch(`https://api.mercadolibre.com/answers`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      question_id: accion.question_id,
+      text: accion.respuesta,
+    }),
+  });
+  const data = await res.json();
+
+  if (data.error || data.status === 'ERROR') {
+    return `❌ Error publicando respuesta: ${data.message || JSON.stringify(data)}`;
+  }
+
+  return `✅ <b>Respuesta publicada en MELI</b>
+
+📦 ${accion.item_titulo}
+💬 ${accion.respuesta}`;
+}
+
 // ── HANDLER PRINCIPAL ────────────────────────────────────────
 
 module.exports = async (req, res) => {
@@ -292,6 +320,72 @@ module.exports = async (req, res) => {
   const supabase = getSupabase();
 
   try {
+    // ── Responder pregunta MELI ─────────────────────────────
+    if (textoLower === 'responder') {
+      const { data: estadoPregunta } = await supabase
+        .from('bot_estado')
+        .select('accion_pendiente')
+        .eq('chat_id', chatId + '_pregunta')
+        .single();
+
+      const pregData = estadoPregunta?.accion_pendiente;
+      if (!pregData || pregData.tipo !== 'responder_pregunta') {
+        await sendTelegram(chatId, '⚠️ No hay ninguna pregunta pendiente de responder.');
+        return res.status(200).json({ ok: true });
+      }
+
+      await sendTelegram(chatId, '🤖 <b>Generando respuesta...</b> Un momento.');
+
+      const prompt = `Sos el asistente de Martinez Motos, una tienda de accesorios para motos en Uruguay.
+
+Un comprador de Mercado Libre hizo esta pregunta sobre el producto "${pregData.item_titulo}":
+
+"${pregData.pregunta}"
+
+Escribí una respuesta corta, amigable y en español rioplatense (voseo). Máximo 3 oraciones. Si la pregunta es sobre disponibilidad, precio o envío, respondé positivamente indicando que tienen stock y envían a todo Uruguay. Si es una pregunta técnica específica que no podés responder con certeza, sugerí que se contacten por mensaje privado.`;
+
+      const iaRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 300,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      const iaData = await iaRes.json();
+      const respuestaSugerida = iaData.content?.[0]?.text || 'No se pudo generar una respuesta.';
+
+      // Guardar respuesta sugerida como acción pendiente de confirmación
+      await supabase.from('bot_estado').upsert({
+        chat_id: chatId,
+        accion_pendiente: {
+          tipo: 'publicar_respuesta_meli',
+          question_id: pregData.question_id,
+          item_titulo: pregData.item_titulo,
+          pregunta: pregData.pregunta,
+          respuesta: respuestaSugerida,
+        },
+        updated_at: new Date().toISOString(),
+      });
+
+      await sendTelegram(chatId,
+        `💬 <b>Pregunta:</b> ${pregData.pregunta}
+
+` +
+        `🤖 <b>Respuesta sugerida:</b>
+${respuestaSugerida}
+
+` +
+        `Respondé <b>si</b> para publicarla en MELI o <b>no</b> para cancelar.`
+      );
+      return res.status(200).json({ ok: true });
+    }
+
     // ── Confirmación pendiente ───────────────────────────────
     if (textoLower === 'si' || textoLower === 'sí' || textoLower === 'confirmar') {
       const accion = await getPendiente(supabase, chatId);
@@ -304,6 +398,7 @@ module.exports = async (req, res) => {
       else if (accion.tipo === 'devolucion') resultado = await ejecutarDevolucion(supabase, accion);
       else if (accion.tipo === 'nuevo_producto') resultado = await ejecutarNuevoProducto(supabase, accion);
       else if (accion.tipo === 'reposicion') resultado = await ejecutarReposicion(supabase);
+      else if (accion.tipo === 'publicar_respuesta_meli') resultado = await ejecutarResponderPregunta(accion);
       else resultado = '❌ Acción no reconocida.';
 
       await sendTelegram(chatId, resultado);

@@ -1543,15 +1543,13 @@ async function deleteEnvio(id) {
 // =====================
 function renderDashboard() {
   const now = new Date();
-  const ventasMes = db.ventas.filter(v => {
-    const d = new Date(v.fecha);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  });
+  const mesActual = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const ventasMes = db.ventas.filter(v => v.fecha?.startsWith(mesActual));
   const ingresosMes = ventasMes.reduce((a,v) => a + v.total, 0);
   const enviosPendientes = db.envios.filter(e => e.estado === 'pendiente' || e.estado === 'en_camino').length;
   const costoEnviosMes = db.envios.filter(e => {
-    const d = new Date(e.creado);
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    const fecha = (e.creado || e.fechaDespacho || e.fecha_despacho || '').slice(0, 7);
+    return fecha === mesActual;
   }).reduce((a,e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
 
   document.getElementById('dash-stats').innerHTML = `
@@ -1745,8 +1743,9 @@ function renderEnvios() {
 function renderReportes() {
   const dias = document.getElementById('reporte-periodo').value;
   const now = new Date();
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => { const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias); });
-  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => { const d = new Date(e.creado); return (now - d) / (1000*60*60*24) <= parseInt(dias); });
+  const cutoff = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoff);
+  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => (e.creado || '').slice(0, 10) >= cutoff);
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
@@ -1954,10 +1953,8 @@ function switchReportesTab(tab) {
 function renderComisiones() {
   const dias = document.getElementById('reporte-periodo').value;
   const now = new Date();
-  const ventasMeli = (dias === 'all' ? db.ventas : db.ventas.filter(v => {
-    const d = new Date(v.fecha);
-    return (now - d) / (1000*60*60*24) <= parseInt(dias);
-  })).filter(v => v.canal === 'meli');
+  const cutoffCom = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
+  const ventasMeli = (dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffCom)).filter(v => v.canal === 'meli');
 
   const meliIds = new Set(ventasMeli.map(v => v.id));
   const enviosMeli = db.envios.filter(e => meliIds.has(e.ventaId));
@@ -2527,12 +2524,9 @@ function exportVentasPDF() {
 function exportReportePDF() {
   const dias = document.getElementById('reporte-periodo').value;
   const now = new Date();
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => {
-    const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias);
-  });
-  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => {
-    const d = new Date(e.creado || '2000-01-01'); return (now - d) / (1000*60*60*24) <= parseInt(dias);
-  });
+  const cutoffPDF = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffPDF);
+  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => (e.creado || '').slice(0, 10) >= cutoffPDF);
   if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
@@ -2736,9 +2730,8 @@ function exportReportePDF() {
 function exportReporteCSV() {
   const dias = document.getElementById('reporte-periodo').value;
   const now = new Date();
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => {
-    const d = new Date(v.fecha); return (now - d) / (1000*60*60*24) <= parseInt(dias);
-  });
+  const cutoffCSV = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
+  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffCSV);
   if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a+v.total, 0);
@@ -2899,7 +2892,7 @@ function setMesActualVsAnterior() {
   const bDesde = new Date(y, m - 1, 1);
   const bHasta = new Date(y, m, 0);
 
-  const fmt = d => d.toISOString().slice(0, 10);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   document.getElementById('comp-a-desde').value = fmt(aDesde);
   document.getElementById('comp-a-hasta').value = fmt(aHasta);
   document.getElementById('comp-b-desde').value = fmt(bDesde);
@@ -2909,12 +2902,12 @@ function setMesActualVsAnterior() {
 }
 
 function filtrarPeriodo(desde, hasta) {
-  const d0 = new Date(desde);
-  const d1 = new Date(hasta);
-  d1.setHours(23, 59, 59);
   return {
-    ventas: db.ventas.filter(v => { const d = new Date(v.fecha); return d >= d0 && d <= d1; }),
-    envios: db.envios.filter(e => { const d = new Date(e.creado || e.fecha_despacho || e.fechaDespacho || '2000-01-01'); return d >= d0 && d <= d1; }),
+    ventas: db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta),
+    envios: db.envios.filter(e => {
+      const f = (e.creado || e.fecha_despacho || e.fechaDespacho || '').slice(0, 10);
+      return f >= desde && f <= hasta;
+    }),
   };
 }
 

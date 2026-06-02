@@ -8,7 +8,7 @@
     "api/transportistas.js": { "maxDuration": 10 },
     "api/meli/auth.js": { "maxDuration": 10 },
     "api/meli/callback.js": { "maxDuration": 10 },
-    "api/meli/notify.js": { "maxDuration": 10 },
+    "api/meli/notify.js": { "maxDuration": 30 },
     "api/meli/importar.js": { "maxDuration": 30 },
     "api/meli/reprocesar.js": { "maxDuration": 30 },
     "api/meli/actualizar-envios.js": { "maxDuration": 60 },

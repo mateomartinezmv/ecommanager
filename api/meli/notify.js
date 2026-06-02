@@ -49,25 +49,36 @@ async function handleOrder(resource) {
   const orderId = resource.replace('/orders/', '').split('/')[0];
 
   // Intentar endpoint directo primero
-  let orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  let order = await orderRes.json();
+  let order;
+  try {
+    const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    order = await orderRes.json();
+  } catch (fetchErr) {
+    console.error(`❌ fetch orden ${orderId} fallido:`, fetchErr.message, fetchErr.cause?.message || '');
+    return;
+  }
 
   // Fallback para órdenes de Mercado Shops (no accesibles por endpoint directo)
   if (order.error) {
     console.log(`⚠️ Orden ${orderId} no encontrada directo, intentando search (Shops)...`);
-    const meRes = await fetch('https://api.mercadolibre.com/users/me', {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    const me = await meRes.json();
-    const searchRes = await fetch(
-      `https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`,
-      { headers: { 'Authorization': `Bearer ${token}` } }
-    );
-    const search = await searchRes.json();
-    if (search.results && search.results.length > 0) {
-      order = search.results.find(o => String(o.id) === String(orderId));
+    try {
+      const meRes = await fetch('https://api.mercadolibre.com/users/me', {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const me = await meRes.json();
+      const searchRes = await fetch(
+        `https://api.mercadolibre.com/orders/search?seller=${me.id}&q=${orderId}`,
+        { headers: { 'Authorization': `Bearer ${token}` } }
+      );
+      const search = await searchRes.json();
+      if (search.results && search.results.length > 0) {
+        order = search.results.find(o => String(o.id) === String(orderId));
+      }
+    } catch (fetchErr) {
+      console.error(`❌ fetch fallback orden ${orderId} fallido:`, fetchErr.message, fetchErr.cause?.message || '');
+      return;
     }
     if (!order || order.error) {
       console.log(`❌ Orden ${orderId} no encontrada en ningún endpoint`);

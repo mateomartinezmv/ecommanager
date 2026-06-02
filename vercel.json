@@ -21,7 +21,9 @@
     "api/devoluciones.js": { "maxDuration": 10 },
     "api/meli/recalcular-comisiones.js": { "maxDuration": 60 },
     "api/meli/reprocesar-ordenes.js": { "maxDuration": 60 },
-    "api/cron/resumen-diario.js": { "maxDuration": 30 }
+    "api/cron/resumen-diario.js": { "maxDuration": 30 },
+    "api/telegram/setup.js": { "maxDuration": 15 },
+    "api/telegram/webhook.js": { "maxDuration": 30 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },

@@ -5,15 +5,28 @@ const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
 // ── Telegram helper ──────────────────────────────────────────
+// Escapa caracteres especiales de HTML para nombres de productos/compradores
+function esc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 async function sendTelegram(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) return;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-  }).catch(err => console.error('Telegram error:', err.message));
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`Telegram HTTP ${res.status}:`, body.slice(0, 200));
+    }
+  } catch (err) {
+    console.error('Telegram error:', err.message, err.cause?.message || '');
+  }
 }
 // ─────────────────────────────────────────────────────────────
 
@@ -143,10 +156,10 @@ async function handleOrder(resource) {
     const stockAlerta = nuevoStockDep <= producto.alerta_min;
     await sendTelegram(
       `🛒 <b>Nueva venta en MELI</b>\n\n` +
-      `📦 <b>Producto:</b> ${producto.nombre}\n` +
+      `📦 <b>Producto:</b> ${esc(producto.nombre)}\n` +
       `🔢 <b>Cantidad:</b> ${cantidad}\n` +
-      `💰 <b>Total:</b> $${total}\n` +
-      `👤 <b>Comprador:</b> ${order.buyer?.nickname || '—'}\n` +
+      `💰 <b>Total:</b> $${esc(total)}\n` +
+      `👤 <b>Comprador:</b> ${esc(order.buyer?.nickname || '—')}\n` +
       `🔖 <b>Orden:</b> ${order.id}\n` +
       `📊 <b>Stock depósito:</b> ${nuevoStockDep} uds` +
       (stockAlerta ? '\n⚠️ <b>¡Stock bajo! Revisá el inventario.</b>' : '') +
@@ -160,14 +173,14 @@ async function handleFeedback(resource) {
   const token = await getMeliToken();
 
   const feedbackId = resource.split('/').pop();
-  const res = await fetch(`https://api.mercadolibre.com/feedback/${feedbackId}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  const feedback = await res.json();
-  if (feedback.error) {
-    console.log('Feedback no disponible:', feedback.message);
-    return;
-  }
+  let feedback;
+  try {
+    const res = await fetch(`https://api.mercadolibre.com/feedback/${feedbackId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    feedback = await res.json();
+  } catch (e) { console.error('fetch feedback fallido:', e.message); return; }
+  if (feedback.error) { console.log('Feedback no disponible:', feedback.message); return; }
 
   // Solo notificar calificaciones recibidas (de compradores)
   if (feedback.role !== 'seller') return;
@@ -175,12 +188,12 @@ async function handleFeedback(resource) {
   const rating = feedback.rating;
   const emoji = rating === 'positive' ? '⭐' : rating === 'negative' ? '😡' : '😐';
   const label = rating === 'positive' ? 'Positiva' : rating === 'negative' ? 'Negativa' : 'Neutral';
-  const comentario = feedback.message ? `\n💬 <b>Comentario:</b> "${feedback.message}"` : '';
+  const comentario = feedback.message ? `\n💬 <b>Comentario:</b> "${esc(feedback.message)}"` : '';
 
   await sendTelegram(
     `${emoji} <b>Nueva calificación en MELI</b>\n\n` +
     `📊 <b>Tipo:</b> ${label}\n` +
-    `👤 <b>Comprador:</b> ${feedback.from?.nickname || '—'}` +
+    `👤 <b>Comprador:</b> ${esc(feedback.from?.nickname || '—')}` +
     comentario
   );
 }
@@ -191,14 +204,14 @@ async function handleItem(resource) {
   const supabase = getSupabase();
 
   const itemId = resource.split('/').pop();
-  const res = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  const item = await res.json();
-  if (item.error) {
-    console.log('Item no disponible:', item.message);
-    return;
-  }
+  let item;
+  try {
+    const res = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    item = await res.json();
+  } catch (e) { console.error('fetch item fallido:', e.message); return; }
+  if (item.error) { console.log('Item no disponible:', item.message); return; }
 
   // Solo notificar si se pausó
   if (item.status !== 'paused') return;
@@ -214,8 +227,8 @@ async function handleItem(resource) {
 
   await sendTelegram(
     `🔄 <b>Publicación pausada en MELI</b>\n\n` +
-    `📦 <b>Producto:</b> ${nombre}\n` +
-    `🔖 <b>ID MELI:</b> ${itemId}\n` +
+    `📦 <b>Producto:</b> ${esc(nombre)}\n` +
+    `🔖 <b>ID MELI:</b> ${esc(itemId)}\n` +
     `❓ <b>Motivo:</b> ${motivo}\n` +
     `📊 <b>Stock depósito:</b> ${producto?.stock_dep ?? '—'} uds\n\n` +
     `Entrá al CRM para reactivarla cuando tengas stock.`
@@ -228,10 +241,13 @@ async function handleShipment(resource) {
   const supabase = getSupabase();
 
   const shipmentId = resource.split('/').pop();
-  const res = await fetch(`https://api.mercadolibre.com/shipments/${shipmentId}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  const shipment = await res.json();
+  let shipment;
+  try {
+    const res = await fetch(`https://api.mercadolibre.com/shipments/${shipmentId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    shipment = await res.json();
+  } catch (e) { console.error('fetch shipment fallido:', e.message); return; }
   if (shipment.error) {
     console.log('Shipment no disponible:', shipment.message);
     return;
@@ -264,10 +280,10 @@ async function handleShipment(resource) {
 
   await sendTelegram(
     `✅ <b>Envío entregado</b>\n\n` +
-    `👤 <b>Comprador:</b> ${comprador}\n` +
-    `📦 <b>Producto:</b> ${producto}\n` +
+    `👤 <b>Comprador:</b> ${esc(comprador)}\n` +
+    `📦 <b>Producto:</b> ${esc(producto)}\n` +
     `🔖 <b>Orden:</b> ${orderId}\n` +
-    `🚚 <b>Tracking:</b> ${envio?.tracking || shipmentId}\n\n` +
+    `🚚 <b>Tracking:</b> ${esc(envio?.tracking || shipmentId)}\n\n` +
     crmActualizado
   );
 }
@@ -278,24 +294,27 @@ async function handleQuestion(resource) {
   const supabase = getSupabase();
 
   const questionId = resource.split('/').pop();
-  const res = await fetch(`https://api.mercadolibre.com/questions/${questionId}`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  const q = await res.json();
-  if (q.error) {
-    console.log('Pregunta no disponible:', q.message);
-    return;
-  }
+  let q;
+  try {
+    const res = await fetch(`https://api.mercadolibre.com/questions/${questionId}`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    q = await res.json();
+  } catch (e) { console.error('fetch question fallido:', e.message); return; }
+  if (q.error) { console.log('Pregunta no disponible:', q.message); return; }
 
   // Solo notificar preguntas sin responder
   if (q.status !== 'UNANSWERED') return;
 
   // Buscar el producto
-  const itemRes = await fetch(`https://api.mercadolibre.com/items/${q.item_id}?attributes=title`, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-  const item = await itemRes.json();
-  const titulo = item.title || q.item_id;
+  let titulo = q.item_id;
+  try {
+    const itemRes = await fetch(`https://api.mercadolibre.com/items/${q.item_id}?attributes=title`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const item = await itemRes.json();
+    titulo = item.title || q.item_id;
+  } catch (e) { /* título queda como item_id */ }
 
   // Guardar pregunta pendiente en bot_estado para poder responder desde Telegram
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -313,16 +332,10 @@ async function handleQuestion(resource) {
   });
 
   await sendTelegram(
-    `❓ <b>Nueva pregunta en MELI</b>
-
-` +
-    `📦 <b>Producto:</b> ${titulo}
-` +
-    `👤 <b>Comprador:</b> ${q.from?.nickname || '—'}
-` +
-    `💬 <b>Pregunta:</b> ${q.text}
-
-` +
+    `❓ <b>Nueva pregunta en MELI</b>\n\n` +
+    `📦 <b>Producto:</b> ${esc(titulo)}\n` +
+    `👤 <b>Comprador:</b> ${esc(q.from?.nickname || '—')}\n` +
+    `💬 <b>Pregunta:</b> ${esc(q.text)}\n\n` +
     `Respondé <b>responder</b> para que Claude te sugiera una respuesta.`
   );
 }

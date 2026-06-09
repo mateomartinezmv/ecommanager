@@ -2081,7 +2081,8 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
     }
 
     if (!data.ok) {
-      showMsg('var(--red)', '❌ Error al consultar MELI Ads', data.error || 'Error desconocido');
+      const detalle = data.detalle ? '\n\n' + JSON.stringify(data.detalle, null, 2) : '';
+      showMsg('var(--red)', '❌ Error al consultar MELI Ads', (data.error || 'Error desconocido') + detalle);
       return;
     }
 

@@ -27,22 +27,31 @@ module.exports = async (req, res) => {
     }
 
     const supabase = getSupabase();
+    const headers = { Authorization: `Bearer ${token}` };
 
     // 1. Obtener usuario
-    const meRes = await fetch('https://api.mercadolibre.com/users/me', {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const meRes = await fetch('https://api.mercadolibre.com/users/me', { headers });
     const me = await meRes.json();
     if (!me.id) return res.json({ ok: false, error: 'No se pudo obtener el usuario MELI' });
 
     const userId = me.id;
 
-    // 2. Obtener campañas
-    const campaignsRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers/${userId}/campaigns?limit=50`,
-      { headers: { Authorization: `Bearer ${token}` } }
+    // 2. Resolver advertiser_id buscando por user_id (puede diferir del user_id)
+    let advertiserId = userId;
+    const advertiserSearchRes = await fetch(
+      `https://api.mercadolibre.com/advertising/advertisers?user_id=${userId}`,
+      { headers }
     );
+    const advertiserSearchData = await advertiserSearchRes.json();
+    if (advertiserSearchRes.ok && advertiserSearchData.results?.length > 0) {
+      advertiserId = advertiserSearchData.results[0].id;
+    }
 
+    // 3. Obtener campañas
+    const campaignsRes = await fetch(
+      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns?limit=50`,
+      { headers }
+    );
     const campaignsData = await campaignsRes.json();
 
     if (!campaignsRes.ok) {
@@ -51,14 +60,21 @@ module.exports = async (req, res) => {
         return res.json({
           ok: false,
           sin_acceso: true,
-          mensaje: `La app no tiene acceso a la API de Advertising (HTTP ${status}). Habilitá el scope en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.`,
-          detalle: campaignsData
+          mensaje: `La app no tiene acceso a la API de Advertising (HTTP ${status}). Habilitá el scope en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.`
         });
       }
+      // Devolver diagnóstico completo para cualquier otro error
       return res.json({
         ok: false,
         error: `Error ${status} consultando campañas de MELI Ads`,
-        detalle: campaignsData
+        detalle: {
+          user_id: userId,
+          advertiser_id_usado: advertiserId,
+          advertiser_search_status: advertiserSearchRes.status,
+          advertiser_search_response: advertiserSearchData,
+          campaigns_status: status,
+          campaigns_response: campaignsData
+        }
       });
     }
 
@@ -68,13 +84,11 @@ module.exports = async (req, res) => {
       return res.json({
         ok: false,
         sin_campanas: true,
-        mensaje: `MELI no devolvió campañas. Respuesta: ${JSON.stringify(campaignsData)}`,
-        por_campana: [],
-        periodo: { desde: dateFrom, hasta: dateTo }
+        mensaje: `La API respondió OK pero no devolvió campañas. Respuesta: ${JSON.stringify(campaignsData)}`
       });
     }
 
-    // 3. Obtener métricas diarias por campaña y guardar en Supabase
+    // 4. Obtener métricas diarias por campaña y guardar en Supabase
     let totalSpend = 0;
     let totalClicks = 0;
     let totalImpressions = 0;
@@ -85,8 +99,8 @@ module.exports = async (req, res) => {
       const campaignName = campaign.name || campaign.title || campaignId;
 
       const metricsRes = await fetch(
-        `https://api.mercadolibre.com/advertising/advertisers/${userId}/campaigns/${campaignId}/metrics/daily?date_from=${dateFrom}&date_to=${dateTo}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${campaignId}/metrics/daily?date_from=${dateFrom}&date_to=${dateTo}`,
+        { headers }
       );
 
       if (!metricsRes.ok) continue;
@@ -112,16 +126,7 @@ module.exports = async (req, res) => {
         campImpressions += impressions;
 
         await supabase.from('meli_ads_gastos').upsert(
-          {
-            fecha,
-            campaign_id: campaignId,
-            campaign_name: campaignName,
-            spend,
-            clicks,
-            impressions,
-            currency,
-            fetched_at: new Date().toISOString()
-          },
+          { fecha, campaign_id: campaignId, campaign_name: campaignName, spend, clicks, impressions, currency, fetched_at: new Date().toISOString() },
           { onConflict: 'fecha,campaign_id' }
         );
       }
@@ -129,14 +134,7 @@ module.exports = async (req, res) => {
       totalSpend += campSpend;
       totalClicks += campClicks;
       totalImpressions += campImpressions;
-
-      porCampana.push({
-        campaign_id: campaignId,
-        campaign_name: campaignName,
-        spend: campSpend,
-        clicks: campClicks,
-        impressions: campImpressions
-      });
+      porCampana.push({ campaign_id: campaignId, campaign_name: campaignName, spend: campSpend, clicks: campClicks, impressions: campImpressions });
     }
 
     return res.json({

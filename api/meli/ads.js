@@ -100,11 +100,15 @@ module.exports = async (req, res) => {
 
     return res.json({
       ok: false,
-      debug: true,
-      path_campaigns_exitoso: exitoso,
-      campaigns_raw: campaignsData,
-      primer_campaign: primerCampaign,
-      metrics_probes: metricsProbes
+      error: 'DEBUG — ver detalle',
+      detalle: {
+        path_campaigns_exitoso: exitoso,
+        campaigns_count: campaigns.length,
+        primer_campaign: primerCampaign,
+        metrics_probes: Object.fromEntries(
+          Object.entries(metricsProbes).map(([k, v]) => [k, { status: v.status, body: JSON.stringify(v.body).slice(0, 400) }])
+        )
+      }
     });
 
   } catch (err) {

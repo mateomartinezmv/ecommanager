@@ -43,24 +43,32 @@ module.exports = async (req, res) => {
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    if (campaignsRes.status === 403) {
+    const campaignsData = await campaignsRes.json();
+
+    if (!campaignsRes.ok) {
+      const status = campaignsRes.status;
+      if (status === 401 || status === 403) {
+        return res.json({
+          ok: false,
+          sin_acceso: true,
+          mensaje: `La app no tiene acceso a la API de Advertising (HTTP ${status}). Habilitá el scope en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.`,
+          detalle: campaignsData
+        });
+      }
       return res.json({
         ok: false,
-        sin_acceso: true,
-        mensaje: 'La app no tiene el scope de advertising habilitado. Habilitalo en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.'
+        error: `Error ${status} consultando campañas de MELI Ads`,
+        detalle: campaignsData
       });
     }
 
-    const campaignsData = await campaignsRes.json();
     const campaigns = campaignsData.results || campaignsData.data || [];
 
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
       return res.json({
-        ok: true,
-        total_spend: 0,
-        clicks: 0,
-        impressions: 0,
+        ok: false,
         sin_campanas: true,
+        mensaje: `MELI no devolvió campañas. Respuesta: ${JSON.stringify(campaignsData)}`,
         por_campana: [],
         periodo: { desde: dateFrom, hasta: dateTo }
       });

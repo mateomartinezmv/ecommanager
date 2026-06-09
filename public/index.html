@@ -2051,27 +2051,43 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
   const btn = document.getElementById('btn-actualizar-ads');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Actualizando...'; }
 
+  const showMsg = (color, titulo, cuerpo) => {
+    const container = document.getElementById('reporte-ads');
+    if (!container) return;
+    container.innerHTML = `
+      <div class="table-wrap" style="margin-bottom:0">
+        <div style="padding:20px">
+          <div style="color:${color};font-weight:600;margin-bottom:8px">${titulo}</div>
+          <div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap">${cuerpo}</div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:14px"
+            onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+            🔄 Reintentar
+          </button>
+        </div>
+      </div>`;
+  };
+
   try {
     const data = await fetch(`/api/meli/ads?desde=${desde}&hasta=${hasta}`).then(r => r.json());
 
     if (data.sin_acceso) {
-      const container = document.getElementById('reporte-ads');
-      if (container) container.innerHTML = `
-        <div class="table-wrap" style="margin-bottom:0">
-          <div style="padding:20px">
-            <div style="color:var(--yellow);font-weight:600;margin-bottom:8px">⚠️ Scope de Advertising no habilitado</div>
-            <div style="font-size:13px;color:var(--text-muted)">${data.mensaje}</div>
-          </div>
-        </div>`;
+      showMsg('var(--yellow)', '⚠️ Sin acceso a la API de Advertising', data.mensaje);
       return;
     }
 
-    if (!data.ok) throw new Error(data.error || 'Error desconocido');
+    if (data.sin_campanas) {
+      showMsg('var(--text-muted)', 'ℹ️ API accesible pero sin campañas encontradas', data.mensaje);
+      return;
+    }
+
+    if (!data.ok) {
+      showMsg('var(--red)', '❌ Error al consultar MELI Ads', data.error || 'Error desconocido');
+      return;
+    }
 
     renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios);
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar desde MELI'; }
-    alert('Error al actualizar ads: ' + err.message);
+    showMsg('var(--red)', '❌ Error de red', err.message);
   }
 }
 

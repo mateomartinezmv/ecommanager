@@ -47,12 +47,13 @@ module.exports = async (req, res) => {
       advertiserId = advertiserSearchData.advertisers[0].advertiser_id;
     }
 
-    // 3. Probar múltiples paths de campañas para encontrar el correcto
+    // 3. Probar paths de campañas con la estructura marketplace/advertising
+    const siteId = advertiserSearchData.advertisers?.[0]?.site_id || 'MLU';
     const candidatos = [
-      `/advertising/advertisers/${advertiserId}/campaigns?product_id=PADS&limit=50`,
-      `/advertising/advertisers/${advertiserId}/campaigns`,
-      `/advertising/campaigns?advertiser_id=${advertiserId}&product_id=PADS`,
-      `/advertising/advertisers/${advertiserId}`,
+      `/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`,
+      `/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns`,
+      `/marketplace/advertising/${siteId}/product_ads/campaigns?advertiser_id=${advertiserId}`,
+      `/marketplace/advertising/${advertiserId}/product_ads/campaigns`,
     ];
     const probes = {};
     for (const path of candidatos) {

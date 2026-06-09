@@ -43,8 +43,8 @@ module.exports = async (req, res) => {
       { headers }
     );
     const advertiserSearchData = await advertiserSearchRes.json();
-    if (advertiserSearchRes.ok && advertiserSearchData.results?.length > 0) {
-      advertiserId = advertiserSearchData.results[0].id;
+    if (advertiserSearchRes.ok && advertiserSearchData.advertisers?.length > 0) {
+      advertiserId = advertiserSearchData.advertisers[0].advertiser_id;
     }
 
     // 3. Obtener campañas

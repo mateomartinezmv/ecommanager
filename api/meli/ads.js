@@ -1,6 +1,7 @@
 // api/meli/ads.js
 // GET /api/meli/ads?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
-// Consulta campañas y métricas de MELI Ads y las cachea en Supabase.
+// Llama a campaigns/search con date_from+date_to; MELI devuelve métricas
+// (cost, clicks, prints) agregadas por período en la misma respuesta.
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
@@ -34,81 +35,102 @@ module.exports = async (req, res) => {
     const me = await meRes.json();
     if (!me.id) return res.json({ ok: false, error: 'No se pudo obtener el usuario MELI' });
 
-    const userId = me.id;
-
-    // 2. Resolver advertiser_id (requiere product_id=PADS en todos los calls de advertising)
-    let advertiserId = userId;
-    const advertiserSearchRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers?user_id=${userId}&product_id=PADS`,
+    // 2. Resolver advertiser_id y site_id
+    const advertiserRes = await fetch(
+      `https://api.mercadolibre.com/advertising/advertisers?user_id=${me.id}&product_id=PADS`,
       { headers }
     );
-    const advertiserSearchData = await advertiserSearchRes.json();
-    if (advertiserSearchRes.ok && advertiserSearchData.advertisers?.length > 0) {
-      advertiserId = advertiserSearchData.advertisers[0].advertiser_id;
+    const advertiserData = await advertiserRes.json();
+
+    if (!advertiserRes.ok || !advertiserData.advertisers?.length) {
+      return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.' });
     }
 
-    // 3. Probar paths de campañas con la estructura marketplace/advertising
-    const siteId = advertiserSearchData.advertisers?.[0]?.site_id || 'MLU';
-    const candidatos = [
-      `/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`,
-      `/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns`,
-      `/marketplace/advertising/${siteId}/product_ads/campaigns?advertiser_id=${advertiserId}`,
-      `/marketplace/advertising/${advertiserId}/product_ads/campaigns`,
-    ];
-    const probes = {};
-    for (const path of candidatos) {
-      const r = await fetch(`https://api.mercadolibre.com${path}`, { headers });
-      probes[path] = { status: r.status, body: await r.json().catch(() => ({})) };
+    const { advertiser_id: advertiserId, site_id: siteId } = advertiserData.advertisers[0];
+
+    // 3. Obtener campañas CON métricas del período en un solo call
+    // MELI devuelve cost, clicks, prints cuando se pasan date_from y date_to
+    const campaignsRes = await fetch(
+      `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search?date_from=${dateFrom}&date_to=${dateTo}`,
+      { headers }
+    );
+    const campaignsData = await campaignsRes.json();
+
+    if (!campaignsRes.ok) {
+      const status = campaignsRes.status;
+      if (status === 401 || status === 403) {
+        return res.json({
+          ok: false,
+          sin_acceso: true,
+          mensaje: `Sin acceso a la API de Advertising (HTTP ${status}). Habilitá el scope en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.`
+        });
+      }
+      return res.json({ ok: false, error: `Error ${status} consultando campañas`, detalle: campaignsData });
     }
-    const exitoso = candidatos.find(p => probes[p].status === 200);
-    if (!exitoso) {
-      return res.json({
-        ok: false,
-        error: 'Ningún path de campañas devolvió 200',
-        detalle: probes
-      });
-    }
-    const campaignsData = probes[exitoso].body;
 
     const campaigns = campaignsData.results || campaignsData.data || campaignsData.campaigns || [];
 
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
+      return res.json({ ok: false, sin_campanas: true, mensaje: 'La API respondió OK pero no devolvió campañas.' });
+    }
+
+    // 4. Extraer métricas (cost/clicks/prints) y guardar en Supabase
+    // Las métricas pueden estar anidadas en campaign.metrics o al nivel del campaign
+    let totalSpend = 0;
+    let totalClicks = 0;
+    let totalImpressions = 0;
+    const porCampana = [];
+
+    for (const campaign of campaigns) {
+      const campaignId = String(campaign.id || campaign.campaign_id);
+      const campaignName = campaign.name || campaign.campaign_name || campaignId;
+      const m = campaign.metrics || campaign;
+
+      const spend = parseFloat(m.cost || m.spend || m.investment || 0);
+      const clicks = parseInt(m.clicks || 0, 10);
+      const impressions = parseInt(m.prints || m.impressions || 0, 10);
+
+      totalSpend += spend;
+      totalClicks += clicks;
+      totalImpressions += impressions;
+      porCampana.push({ campaign_id: campaignId, campaign_name: campaignName, spend, clicks, impressions });
+
+      // Upsert con fecha=dateTo (agregado por período, un registro por campaña)
+      await supabase.from('meli_ads_gastos').upsert(
+        {
+          fecha: dateTo,
+          campaign_id: campaignId,
+          campaign_name: campaignName,
+          spend,
+          clicks,
+          impressions,
+          currency: me.currency_id || 'UYU',
+          fetched_at: new Date().toISOString()
+        },
+        { onConflict: 'fecha,campaign_id' }
+      );
+    }
+
+    // Si spend = 0 puede ser que la API no incluyó métricas — devolver debug del primer campaign
+    if (totalSpend === 0 && campaigns.length > 0) {
       return res.json({
         ok: false,
-        sin_campanas: true,
-        mensaje: `La API respondió OK pero no devolvió campañas. Respuesta: ${JSON.stringify(campaignsData)}`
+        error: 'Campañas encontradas pero spend = $0. Ver detalle.',
+        detalle: {
+          campaigns_count: campaigns.length,
+          primer_campaign_raw: campaigns[0],
+          fecha_usada: `${dateFrom} → ${dateTo}`
+        }
       });
     }
 
-    // Base del path de advertising encontrado (sin /campaigns ni /search)
-    const adsBase = `https://api.mercadolibre.com${exitoso.replace(/\/campaigns.*$/, '')}`;
-
-    // 4. DEBUG: intentar métricas del primer campaign y devolver todo para diagnóstico
-    const primerCampaign = campaigns[0];
-    const primerCampaignId = String(primerCampaign.id || primerCampaign.campaign_id || '');
-    const metricsCandidatos = [
-      `${adsBase}/campaigns/${primerCampaignId}/metrics/daily?date_from=${dateFrom}&date_to=${dateTo}`,
-      `${adsBase}/campaigns/${primerCampaignId}/metrics?date_from=${dateFrom}&date_to=${dateTo}`,
-      `${adsBase}/reports/daily?campaign_id=${primerCampaignId}&date_from=${dateFrom}&date_to=${dateTo}`,
-      `${adsBase}/reports?campaign_id=${primerCampaignId}&date_from=${dateFrom}&date_to=${dateTo}`,
-    ];
-    const metricsProbes = {};
-    for (const url of metricsCandidatos) {
-      const r = await fetch(url, { headers });
-      metricsProbes[url] = { status: r.status, body: await r.json().catch(() => ({})) };
-    }
-
     return res.json({
-      ok: false,
-      error: 'DEBUG — ver detalle',
-      detalle: {
-        path_campaigns_exitoso: exitoso,
-        campaigns_count: campaigns.length,
-        primer_campaign: primerCampaign,
-        metrics_probes: Object.fromEntries(
-          Object.entries(metricsProbes).map(([k, v]) => [k, { status: v.status, body: JSON.stringify(v.body).slice(0, 400) }])
-        )
-      }
+      ok: true,
+      total_spend: totalSpend,
+      clicks: totalClicks,
+      impressions: totalImpressions,
+      por_campana: porCampana,
+      periodo: { desde: dateFrom, hasta: dateTo }
     });
 
   } catch (err) {

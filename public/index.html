@@ -252,6 +252,7 @@
         <button class="tab active" onclick="switchStockTab('all')">Todos</button>
         <button class="tab" onclick="switchStockTab('nuevo')">🆕 Nuevos</button>
         <button class="tab" onclick="switchStockTab('usado')">🔄 Usados</button>
+        <button class="tab" onclick="switchStockTab('disc')">⛔ Discontinuados</button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -476,6 +477,7 @@
       <!-- Panel Resumen -->
       <div id="panel-resumen">
         <div class="cards-grid" id="reporte-stats"></div>
+        <div id="reporte-ads" style="margin-bottom:20px"></div>
         <div id="reporte-highlights" style="margin-bottom:20px"></div>
         <div class="two-col">
           <div class="table-wrap">
@@ -1036,7 +1038,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -1558,7 +1560,9 @@ function renderDashboard() {
     <div class="stat-card yellow"><div class="stat-icon">🛒</div><div class="stat-value">${ventasMes.length}</div><div class="stat-label">Ventas este mes</div></div>
     <div class="stat-card purple"><div class="stat-icon">🚚</div><div class="stat-value">${enviosPendientes}</div><div class="stat-label">Envíos en curso</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(costoEnviosMes)}</div><div class="stat-label">Costo envíos este mes</div></div>
+    <div class="stat-card red" id="dash-ads-card"><div class="stat-icon">📢</div><div class="stat-value" id="dash-ads-value">...</div><div class="stat-label">Gasto en Ads (mes)</div></div>
   `;
+  loadDashAds();
 
   const lowStock = db.productos.filter(p => p.stockDep <= p.alertaMin).slice(0,8);
   document.getElementById('dash-low-stock').innerHTML = lowStock.length === 0
@@ -1578,31 +1582,53 @@ function renderStock() {
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
   const filtered = db.productos.filter(p => {
     const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q);
+    if (stockTabFilter === 'disc') return matchQ && p.discontinuado;
     const matchTipo = stockTabFilter === 'all' || (p.tipo || 'nuevo') === stockTabFilter;
-    return matchQ && matchTipo;
+    return matchQ && matchTipo && !p.discontinuado;
   });
   document.getElementById('stock-count').textContent = `${filtered.length} productos`;
   if (filtered.length === 0) { document.getElementById('stock-tbody').innerHTML = ''; document.getElementById('stock-empty').style.display = 'block'; return; }
   document.getElementById('stock-empty').style.display = 'none';
   document.getElementById('stock-tbody').innerHTML = filtered.map(p => {
     const alerta = p.stockDep <= 0 ? 'stock-low' : p.stockDep <= p.alertaMin ? 'stock-med' : 'stock-ok';
-    return `<tr>
+    const discBtn = p.discontinuado
+      ? `<button class="btn btn-ghost btn-sm" title="Reactivar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, false)">♻️</button>`
+      : `<button class="btn btn-ghost btn-sm" title="Discontinuar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, true)">⛔</button>`;
+    return `<tr${p.discontinuado ? ' style="opacity:0.55"' : ''}>
       <td><span class="badge badge-gray">${p.sku}</span></td>
-      <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}</td>
+      <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado ? ' <span class="badge badge-red" style="font-size:10px">Discontinuado</span>' : ''}</td>
       <td>${p.categoria ? `<span class="badge badge-blue">${p.categoria}</span>` : '—'}</td>
       <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
       <td class="${alerta}">${p.stockDep}</td>
       <td>${p.stockMeli}</td>
       <td>${p.shopifyId ? p.stockShopify : '—'}</td>
       <td>${fmt(p.precio)}</td>
-      <td>${p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
+      <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
       <td>
         <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
         <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
+        ${discBtn}
         <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
       </td>
     </tr>`;
   }).join('');
+}
+
+async function toggleDiscontinuado(sku, value) {
+  const p = db.productos.find(x => x.sku === sku);
+  if (!p) return;
+  try {
+    await api('PUT', `/productos?sku=${encodeURIComponent(sku)}`, {
+      ...p,
+      stockDep: p.stockDep, stockMeli: p.stockMeli, stockShopify: p.stockShopify,
+      alertaMin: p.alertaMin, meliId: p.meliId, shopifyId: p.shopifyId,
+      discontinuado: value,
+    });
+    p.discontinuado = value;
+    renderStock();
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
 }
 
 // =====================
@@ -1611,7 +1637,7 @@ function renderStock() {
 function switchStockTab(tab) {
   stockTabFilter = tab;
   document.querySelectorAll('#page-stock .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['all','nuevo','usado'][i] === tab);
+    t.classList.toggle('active', ['all','nuevo','usado','disc'][i] === tab);
   });
   renderStock();
 }
@@ -1772,6 +1798,7 @@ function renderReportes() {
     <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia estimada</div></div>
     <div class="${parseFloat(margenPct) >= 30 ? 'stat-card green' : parseFloat(margenPct) >= 15 ? 'stat-card yellow' : 'stat-card red'}"><div class="stat-icon">%</div><div class="stat-value">${margenPct}%</div><div class="stat-label">Margen neto</div></div>
   `;
+  renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios);
 
   const meliIngresos = ventasMeli.reduce((a,v) => a+v.total,0);
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
@@ -1928,6 +1955,123 @@ function renderReportes() {
       </div>`;
   } else if (hlDiv) {
     hlDiv.innerHTML = '';
+  }
+}
+
+// =====================
+// ADS: HELPERS
+// =====================
+async function fetchAdsData(desde, hasta) {
+  const res = await fetch(`/api/meli/ads?desde=${desde}&hasta=${hasta}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function loadDashAds() {
+  try {
+    const data = await fetch('/api/meli/ads-historico?dias=30').then(r => r.json());
+    const el = document.getElementById('dash-ads-value');
+    if (!el) return;
+    if (data.ok === false || !data.total_spend) {
+      el.textContent = '$0';
+      const label = el.closest('.stat-card').querySelector('.stat-label');
+      if (label) label.innerHTML = 'Gasto en Ads <span style="font-size:10px;font-weight:400">· Sin datos</span>';
+    } else {
+      el.textContent = fmt(data.total_spend);
+    }
+  } catch {
+    const el = document.getElementById('dash-ads-value');
+    if (el) el.textContent = '$0';
+  }
+}
+
+async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios) {
+  const container = document.getElementById('reporte-ads');
+  if (!container) return;
+  container.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Cargando datos de Ads...</div>';
+
+  try {
+    const diasNum = dias === 'all' ? 365 : parseInt(dias, 10);
+    const data = await fetch(`/api/meli/ads-historico?dias=${diasNum}`).then(r => r.json());
+
+    const adsSpend = data.total_spend || 0;
+    const gananciaConAds = ganancia - adsSpend;
+    const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
+
+    const now = new Date();
+    const hasta = now.toISOString().slice(0, 10);
+    const desde = dias === 'all'
+      ? '2020-01-01'
+      : new Date(now - parseInt(dias, 10) * 86400000).toISOString().slice(0, 10);
+
+    const adsHtml = adsSpend > 0
+      ? `<div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
+         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${data.dias_con_datos || 0} días con datos registrados</div>
+         ${data.por_dia && data.por_dia.length > 0
+           ? `<div style="font-size:12px;color:var(--text-muted)">${data.por_dia.slice(-5).map(d => `<span style="margin-right:12px">${d.fecha}: ${fmt(d.spend)}</span>`).join('')}</div>`
+           : ''}`
+      : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Sin datos de Ads para el período.<br>Hacé clic en "Actualizar desde MELI" para traer los datos.</div>`;
+
+    container.innerHTML = `
+      <div class="two-col" style="margin-bottom:0">
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">📢 Gasto en Mercado Ads</span>
+            <button class="btn btn-ghost btn-sm" id="btn-actualizar-ads"
+              onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+              🔄 Actualizar desde MELI
+            </button>
+          </div>
+          <div style="padding:20px">${adsHtml}</div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><span class="table-title">📊 Ganancia neta (con ads)</span></div>
+          <div style="padding:20px">
+            <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:12px;color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:2">
+              Ingresos: <strong>${fmt(totalIngresos)}</strong><br>
+              − Comisiones MELI: ${fmt(totalComisiones)}<br>
+              − Costo productos: ${fmt(costoProductos)}<br>
+              − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              − Gasto en Ads: ${fmt(adsSpend)}<br>
+              <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
+                = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
+                <span style="color:var(--text-muted)"> · ${margenConAds}% margen real</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+  } catch (err) {
+    container.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:13px">Error cargando datos de Ads: ${err.message}</div>`;
+  }
+}
+
+async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios) {
+  const btn = document.getElementById('btn-actualizar-ads');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Actualizando...'; }
+
+  try {
+    const data = await fetch(`/api/meli/ads?desde=${desde}&hasta=${hasta}`).then(r => r.json());
+
+    if (data.sin_acceso) {
+      const container = document.getElementById('reporte-ads');
+      if (container) container.innerHTML = `
+        <div class="table-wrap" style="margin-bottom:0">
+          <div style="padding:20px">
+            <div style="color:var(--yellow);font-weight:600;margin-bottom:8px">⚠️ Scope de Advertising no habilitado</div>
+            <div style="font-size:13px;color:var(--text-muted)">${data.mensaje}</div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (!data.ok) throw new Error(data.error || 'Error desconocido');
+
+    renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios);
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar desde MELI'; }
+    alert('Error al actualizar ads: ' + err.message);
   }
 }
 

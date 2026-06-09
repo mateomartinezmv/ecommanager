@@ -5,7 +5,6 @@ const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
 // ── Telegram helper ──────────────────────────────────────────
-// Escapa caracteres especiales de HTML para nombres de productos/compradores
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -31,8 +30,7 @@ async function sendTelegram(text) {
 // ─────────────────────────────────────────────────────────────
 
 module.exports = async (req, res) => {
-  res.status(200).json({ ok: true });
-  if (req.method !== 'POST') return;
+  if (req.method !== 'POST') return res.status(200).json({ ok: true });
 
   const { topic, resource } = req.body || {};
   console.log('MELI notify:', topic, resource);
@@ -52,6 +50,8 @@ module.exports = async (req, res) => {
   } catch (err) {
     console.error('Error procesando notificación MELI:', err.message);
   }
+
+  return res.status(200).json({ ok: true });
 };
 
 // ── ÓRDENES ──────────────────────────────────────────────────
@@ -61,7 +61,6 @@ async function handleOrder(resource) {
 
   const orderId = resource.replace('/orders/', '').split('/')[0];
 
-  // Intentar endpoint directo primero
   let order;
   try {
     const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orderId}`, {
@@ -117,6 +116,16 @@ async function handleOrder(resource) {
       continue;
     }
 
+    // Verificar duplicado ANTES de tocar el stock para que reintentos de MELI no descuenten doble
+    const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
+    const { data: ventaExistente } = await supabase
+      .from('ventas').select('id').eq('id', ventaId).single();
+
+    if (ventaExistente) {
+      console.log(`ℹ️ Venta ya existente: orden ${order.id} — omitiendo`);
+      continue;
+    }
+
     const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
     const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
 
@@ -126,45 +135,22 @@ async function handleOrder(resource) {
       updated_at: new Date().toISOString(),
     }).eq('sku', producto.sku);
 
-    const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
-    const { data: ventaExistente } = await supabase
-      .from('ventas').select('id').eq('id', ventaId).single();
-
-    if (!ventaExistente) {
-      await supabase.from('ventas').insert({
-        id: ventaId,
-        canal: 'meli',
-        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli: String(order.id),
-        comprador: order.buyer?.nickname || '',
-        sku: producto.sku,
-        producto: producto.nombre,
-        cantidad,
-        precio_unit: item.unit_price,
-        comision: 0,
-        total: item.unit_price * cantidad,
-        estado: 'pagada',
-        genera_envio: true,
-      });
-      console.log(`✅ Venta MELI registrada: orden ${order.id}`);
-    } else {
-      console.log(`ℹ️ Venta ya existente: orden ${order.id} — solo notificando`);
-    }
-
-    // Telegram — siempre notifica
-    const total = (item.unit_price * cantidad).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    const stockAlerta = nuevoStockDep <= producto.alerta_min;
-    await sendTelegram(
-      `🛒 <b>Nueva venta en MELI</b>\n\n` +
-      `📦 <b>Producto:</b> ${esc(producto.nombre)}\n` +
-      `🔢 <b>Cantidad:</b> ${cantidad}\n` +
-      `💰 <b>Total:</b> $${esc(total)}\n` +
-      `👤 <b>Comprador:</b> ${esc(order.buyer?.nickname || '—')}\n` +
-      `🔖 <b>Orden:</b> ${order.id}\n` +
-      `📊 <b>Stock depósito:</b> ${nuevoStockDep} uds` +
-      (stockAlerta ? '\n⚠️ <b>¡Stock bajo! Revisá el inventario.</b>' : '') +
-      (nuevoStockDep === 0 ? '\n🔴 <b>¡SIN STOCK! Producto agotado.</b>' : '')
-    );
+    await supabase.from('ventas').insert({
+      id: ventaId,
+      canal: 'meli',
+      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      orden_meli: String(order.id),
+      comprador: order.buyer?.nickname || '',
+      sku: producto.sku,
+      producto: producto.nombre,
+      cantidad,
+      precio_unit: item.unit_price,
+      comision: 0,
+      total: item.unit_price * cantidad,
+      estado: 'pagada',
+      genera_envio: true,
+    });
+    console.log(`✅ Venta MELI registrada: orden ${order.id}`);
   }
 }
 
@@ -182,7 +168,6 @@ async function handleFeedback(resource) {
   } catch (e) { console.error('fetch feedback fallido:', e.message); return; }
   if (feedback.error) { console.log('Feedback no disponible:', feedback.message); return; }
 
-  // Solo notificar calificaciones recibidas (de compradores)
   if (feedback.role !== 'seller') return;
 
   const rating = feedback.rating;
@@ -213,10 +198,8 @@ async function handleItem(resource) {
   } catch (e) { console.error('fetch item fallido:', e.message); return; }
   if (item.error) { console.log('Item no disponible:', item.message); return; }
 
-  // Solo notificar si se pausó
   if (item.status !== 'paused') return;
 
-  // Buscar el producto en Supabase para dar más contexto
   const { data: producto } = await supabase
     .from('productos').select('nombre, stock_dep, stock_meli').eq('meli_id', itemId).single();
 
@@ -253,19 +236,16 @@ async function handleShipment(resource) {
     return;
   }
 
-  // Solo procesar cuando se entrega
   if (shipment.status !== 'delivered') return;
 
   const orderId = String(shipment.order_id);
 
-  // Buscar el envío en el CRM por orden_meli
   const { data: envio } = await supabase
     .from('envios')
     .select('*')
     .eq('orden', orderId)
     .single();
 
-  // Marcar como entregado en el CRM si existe y no está ya entregado
   if (envio && envio.estado !== 'entregado') {
     await supabase.from('envios')
       .update({ estado: 'entregado' })
@@ -273,7 +253,6 @@ async function handleShipment(resource) {
     console.log(`✅ Envío marcado como entregado: orden ${orderId}`);
   }
 
-  // Notificar a Telegram siempre
   const comprador = envio?.comprador || shipment.receiver?.receiver_name || '—';
   const producto = envio?.producto || '—';
   const crmActualizado = envio ? '✅ CRM actualizado automáticamente.' : '⚠️ No se encontró el envío en el CRM.';
@@ -303,10 +282,8 @@ async function handleQuestion(resource) {
   } catch (e) { console.error('fetch question fallido:', e.message); return; }
   if (q.error) { console.log('Pregunta no disponible:', q.message); return; }
 
-  // Solo notificar preguntas sin responder
   if (q.status !== 'UNANSWERED') return;
 
-  // Buscar el producto
   let titulo = q.item_id;
   try {
     const itemRes = await fetch(`https://api.mercadolibre.com/items/${q.item_id}?attributes=title`, {
@@ -316,7 +293,6 @@ async function handleQuestion(resource) {
     titulo = item.title || q.item_id;
   } catch (e) { /* título queda como item_id */ }
 
-  // Guardar pregunta pendiente en bot_estado para poder responder desde Telegram
   const chatId = process.env.TELEGRAM_CHAT_ID;
   await supabase.from('bot_estado').upsert({
     chat_id: chatId + '_pregunta',

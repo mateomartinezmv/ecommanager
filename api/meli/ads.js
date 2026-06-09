@@ -47,36 +47,27 @@ module.exports = async (req, res) => {
       advertiserId = advertiserSearchData.advertisers[0].advertiser_id;
     }
 
-    // 3. Obtener campañas
-    const campaignsRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns?product_id=PADS&limit=50`,
-      { headers }
-    );
-    const campaignsData = await campaignsRes.json();
-
-    if (!campaignsRes.ok) {
-      const status = campaignsRes.status;
-      if (status === 401 || status === 403) {
-        return res.json({
-          ok: false,
-          sin_acceso: true,
-          mensaje: `La app no tiene acceso a la API de Advertising (HTTP ${status}). Habilitá el scope en developers.mercadolibre.com.uy → tu app → Scopes → Advertising.`
-        });
-      }
-      // Devolver diagnóstico completo para cualquier otro error
+    // 3. Probar múltiples paths de campañas para encontrar el correcto
+    const candidatos = [
+      `/advertising/advertisers/${advertiserId}/campaigns?product_id=PADS&limit=50`,
+      `/advertising/advertisers/${advertiserId}/campaigns`,
+      `/advertising/campaigns?advertiser_id=${advertiserId}&product_id=PADS`,
+      `/advertising/advertisers/${advertiserId}`,
+    ];
+    const probes = {};
+    for (const path of candidatos) {
+      const r = await fetch(`https://api.mercadolibre.com${path}`, { headers });
+      probes[path] = { status: r.status, body: await r.json().catch(() => ({})) };
+    }
+    const exitoso = candidatos.find(p => probes[p].status === 200);
+    if (!exitoso) {
       return res.json({
         ok: false,
-        error: `Error ${status} consultando campañas de MELI Ads`,
-        detalle: {
-          user_id: userId,
-          advertiser_id_usado: advertiserId,
-          advertiser_search_status: advertiserSearchRes.status,
-          advertiser_search_response: advertiserSearchData,
-          campaigns_status: status,
-          campaigns_response: campaignsData
-        }
+        error: 'Ningún path de campañas devolvió 200',
+        detalle: probes
       });
     }
+    const campaignsData = probes[exitoso].body;
 
     const campaigns = campaignsData.results || campaignsData.data || [];
 

@@ -70,7 +70,7 @@ module.exports = async (req, res) => {
     }
     const campaignsData = probes[exitoso].body;
 
-    const campaigns = campaignsData.results || campaignsData.data || [];
+    const campaigns = campaignsData.results || campaignsData.data || campaignsData.campaigns || [];
 
     if (!Array.isArray(campaigns) || campaigns.length === 0) {
       return res.json({
@@ -80,62 +80,31 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 4. Obtener métricas diarias por campaña y guardar en Supabase
-    let totalSpend = 0;
-    let totalClicks = 0;
-    let totalImpressions = 0;
-    const porCampana = [];
+    // Base del path de advertising encontrado (sin /campaigns ni /search)
+    const adsBase = `https://api.mercadolibre.com${exitoso.replace(/\/campaigns.*$/, '')}`;
 
-    for (const campaign of campaigns) {
-      const campaignId = String(campaign.id);
-      const campaignName = campaign.name || campaign.title || campaignId;
-
-      const metricsRes = await fetch(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${campaignId}/metrics/daily?product_id=PADS&date_from=${dateFrom}&date_to=${dateTo}`,
-        { headers }
-      );
-
-      if (!metricsRes.ok) continue;
-
-      const metricsData = await metricsRes.json();
-      const days = metricsData.results || metricsData.data || [];
-
-      let campSpend = 0;
-      let campClicks = 0;
-      let campImpressions = 0;
-
-      for (const day of days) {
-        const fecha = day.date || day.fecha;
-        if (!fecha) continue;
-
-        const spend = parseFloat(day.spend || day.cost || day.investment || 0);
-        const clicks = parseInt(day.clicks || 0, 10);
-        const impressions = parseInt(day.impressions || day.prints || 0, 10);
-        const currency = day.currency || me.currency_id || 'UYU';
-
-        campSpend += spend;
-        campClicks += clicks;
-        campImpressions += impressions;
-
-        await supabase.from('meli_ads_gastos').upsert(
-          { fecha, campaign_id: campaignId, campaign_name: campaignName, spend, clicks, impressions, currency, fetched_at: new Date().toISOString() },
-          { onConflict: 'fecha,campaign_id' }
-        );
-      }
-
-      totalSpend += campSpend;
-      totalClicks += campClicks;
-      totalImpressions += campImpressions;
-      porCampana.push({ campaign_id: campaignId, campaign_name: campaignName, spend: campSpend, clicks: campClicks, impressions: campImpressions });
+    // 4. DEBUG: intentar métricas del primer campaign y devolver todo para diagnóstico
+    const primerCampaign = campaigns[0];
+    const primerCampaignId = String(primerCampaign.id || primerCampaign.campaign_id || '');
+    const metricsCandidatos = [
+      `${adsBase}/campaigns/${primerCampaignId}/metrics/daily?date_from=${dateFrom}&date_to=${dateTo}`,
+      `${adsBase}/campaigns/${primerCampaignId}/metrics?date_from=${dateFrom}&date_to=${dateTo}`,
+      `${adsBase}/reports/daily?campaign_id=${primerCampaignId}&date_from=${dateFrom}&date_to=${dateTo}`,
+      `${adsBase}/reports?campaign_id=${primerCampaignId}&date_from=${dateFrom}&date_to=${dateTo}`,
+    ];
+    const metricsProbes = {};
+    for (const url of metricsCandidatos) {
+      const r = await fetch(url, { headers });
+      metricsProbes[url] = { status: r.status, body: await r.json().catch(() => ({})) };
     }
 
     return res.json({
-      ok: true,
-      total_spend: totalSpend,
-      clicks: totalClicks,
-      impressions: totalImpressions,
-      por_campana: porCampana,
-      periodo: { desde: dateFrom, hasta: dateTo }
+      ok: false,
+      debug: true,
+      path_campaigns_exitoso: exitoso,
+      campaigns_raw: campaignsData,
+      primer_campaign: primerCampaign,
+      metrics_probes: metricsProbes
     });
 
   } catch (err) {

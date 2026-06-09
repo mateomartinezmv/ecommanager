@@ -36,10 +36,10 @@ module.exports = async (req, res) => {
 
     const userId = me.id;
 
-    // 2. Resolver advertiser_id buscando por user_id (puede diferir del user_id)
+    // 2. Resolver advertiser_id (requiere product_id=PADS en todos los calls de advertising)
     let advertiserId = userId;
     const advertiserSearchRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers?user_id=${userId}`,
+      `https://api.mercadolibre.com/advertising/advertisers?user_id=${userId}&product_id=PADS`,
       { headers }
     );
     const advertiserSearchData = await advertiserSearchRes.json();
@@ -49,7 +49,7 @@ module.exports = async (req, res) => {
 
     // 3. Obtener campañas
     const campaignsRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns?limit=50`,
+      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns?product_id=PADS&limit=50`,
       { headers }
     );
     const campaignsData = await campaignsRes.json();
@@ -99,7 +99,7 @@ module.exports = async (req, res) => {
       const campaignName = campaign.name || campaign.title || campaignId;
 
       const metricsRes = await fetch(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${campaignId}/metrics/daily?date_from=${dateFrom}&date_to=${dateTo}`,
+        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${campaignId}/metrics/daily?product_id=PADS&date_from=${dateFrom}&date_to=${dateTo}`,
         { headers }
       );
 

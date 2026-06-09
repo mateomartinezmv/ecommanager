@@ -111,16 +111,32 @@ module.exports = async (req, res) => {
       );
     }
 
-    // Si spend = 0 puede ser que la API no incluyó métricas — devolver debug del primer campaign
+    // Si spend = 0, las métricas no vienen en campaigns/search — probar endpoints alternativos
     if (totalSpend === 0 && campaigns.length > 0) {
+      const base = `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads`;
+      const cid = String(campaigns[0].id || campaigns[0].campaign_id);
+      const dq = `date_from=${dateFrom}&date_to=${dateTo}`;
+      const metricsAlts = {};
+
+      const altUrls = [
+        { key: 'GET campaign single', url: `${base}/campaigns/${cid}?${dq}`, method: 'GET' },
+        { key: 'GET summary', url: `${base}/summary?${dq}`, method: 'GET' },
+        { key: 'GET items', url: `${base}/items?campaign_id=${cid}&${dq}`, method: 'GET' },
+        { key: 'GET campaigns search + include_metrics', url: `${base}/campaigns/search?${dq}&include=metrics`, method: 'GET' },
+        { key: 'POST campaigns search with body', url: `${base}/campaigns/search`, method: 'POST', body: JSON.stringify({ date_from: dateFrom, date_to: dateTo }) },
+      ];
+
+      for (const alt of altUrls) {
+        const opts = { method: alt.method, headers: { ...headers, 'Content-Type': 'application/json' } };
+        if (alt.body) opts.body = alt.body;
+        const r = await fetch(alt.url, opts);
+        metricsAlts[alt.key] = { status: r.status, body: JSON.stringify(await r.json().catch(() => ({}))).slice(0, 500) };
+      }
+
       return res.json({
         ok: false,
-        error: 'Campañas encontradas pero spend = $0. Ver detalle.',
-        detalle: {
-          campaigns_count: campaigns.length,
-          primer_campaign_raw: campaigns[0],
-          fecha_usada: `${dateFrom} → ${dateTo}`
-        }
+        error: 'campaigns/search no incluye métricas. Ver alternativas.',
+        detalle: metricsAlts
       });
     }
 

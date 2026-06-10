@@ -1,8 +1,12 @@
 // api/meli/ads.js
 // GET /api/meli/ads?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+// Llama a /advertising/advertisers/{id}/product_ads/items con metrics_summary=true
+// Los campos correctos son: metrics.cost, metrics.clicks, metrics.prints
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+
+const METRICS_FIELDS = 'clicks,prints,cost,cpc,acos,cvr,roas,ctr';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,104 +30,101 @@ module.exports = async (req, res) => {
     }
 
     const supabase = getSupabase();
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
+    const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
     // 1. Obtener usuario
     const meRes = await fetch('https://api.mercadolibre.com/users/me', { headers });
     const me = await meRes.json();
     if (!me.id) return res.json({ ok: false, error: 'No se pudo obtener el usuario MELI' });
-    const userId = me.id;
 
     // 2. Resolver advertiser_id y site_id
-    const advertiserRes = await fetch(
-      `https://api.mercadolibre.com/advertising/advertisers?user_id=${userId}&product_id=PADS`,
+    const advRes = await fetch(
+      `https://api.mercadolibre.com/advertising/advertisers?user_id=${me.id}&product_id=PADS`,
       { headers }
     );
-    const advertiserData = await advertiserRes.json();
-    if (!advertiserRes.ok || !advertiserData.advertisers?.length) {
+    const advData = await advRes.json();
+    if (!advRes.ok || !advData.advertisers?.length) {
       return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.' });
     }
-    const { advertiser_id: advertiserId, site_id: siteId } = advertiserData.advertisers[0];
+    const { advertiser_id: advertiserId } = advData.advertisers[0];
 
-    // 3. Obtener listado de campañas (para tener sus IDs)
-    const campaignsRes = await fetch(
-      `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`,
-      { headers }
-    );
-    const campaignsData = await campaignsRes.json();
-    const campaigns = campaignsData.results || campaignsData.data || campaignsData.campaigns || [];
-    const campaignIds = campaigns.map(c => String(c.id || c.campaign_id)).filter(Boolean).join(',');
+    // 3. Obtener items con métricas del período — paginado hasta agotar resultados
+    const base = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
+    const allItems = [];
+    let offset = 0;
+    const limit = 100;
 
-    // 4. Probar el endpoint correcto de items/métricas
-    // Base correcta: /advertising/advertisers/{id}/product_ads/items (sin marketplace prefix)
-    // También intentamos con el prefix marketplace por si acaso
-    const baseCorrect = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
-    const baseMarket = `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/items`;
+    while (true) {
+      const url = `${base}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&metrics=${METRICS_FIELDS}&limit=${limit}&offset=${offset}`;
+      const r = await fetch(url, { headers });
+      const body = await r.json();
 
-    // La API requiere pasar explícitamente qué métricas querés
-    const metricsParam = 'metrics=clicks,prints,cost,cpc,acos,cvr,roas,ctr';
+      if (!r.ok) {
+        return res.json({
+          ok: false,
+          error: `Error ${r.status} al obtener items de MELI Ads`,
+          detalle: body
+        });
+      }
 
-    const probes = [
-      // metrics_summary con lista explícita de métricas
-      { key: 'summary_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&${metricsParam}&limit=50` },
-      // aggregation_type=item + métricas explícitas
-      { key: 'agg_item_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=item&${metricsParam}&limit=50` },
-      // aggregation_type=daily + métricas explícitas
-      { key: 'agg_daily_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=daily&${metricsParam}&limit=50` },
-      // filters[] con métricas explícitas
-      { key: 'filters_summary', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&metrics_summary=true&${metricsParam}&limit=50` },
-      // Con campaign_ids en filtro
-      { key: 'campaigns_summary', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&filters[campaign_ids]=${campaignIds}&metrics_summary=true&${metricsParam}&limit=50` },
-      // Sólo métricas sin metrics_summary (ver si devuelve métricas inline por item)
-      { key: 'inline_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&${metricsParam}&limit=50` },
-    ];
-
-    const probeResults = {};
-    let bestProbe = null;
-
-    for (const p of probes) {
-      const r = await fetch(p.url, { headers });
-      let body;
-      try { body = await r.json(); } catch { body = {}; }
       const rows = body.results || body.data || body.items || [];
-      const sample = Array.isArray(rows) ? rows[0] : null;
-      const m = sample ? (sample.metrics || {}) : {};
-      const hasMetrics = !!(m.cost || m.spend || m.clicks || m.prints || m.impressions);
-      probeResults[p.key] = {
-        status: r.status,
-        count: Array.isArray(rows) ? rows.length : 0,
-        has_metrics: hasMetrics,
-        sample_keys: sample ? Object.keys(sample) : [],
-        metrics: m,
-        error: r.status !== 200 ? JSON.stringify(body).slice(0, 300) : undefined,
-      };
-      // Primer probe con datos Y métricas no vacías
-      if (r.status === 200 && Array.isArray(rows) && rows.length > 0 && hasMetrics && !bestProbe) {
-        bestProbe = { rows, key: p.key };
+      allItems.push(...rows);
+
+      const total = body.paging?.total ?? rows.length;
+      if (allItems.length >= total || rows.length < limit) break;
+      offset += limit;
+    }
+
+    if (allItems.length === 0) {
+      return res.json({ ok: true, total_spend: 0, clicks: 0, impressions: 0, por_campana: [], items_procesados: 0, periodo: { desde: dateFrom, hasta: dateTo } });
+    }
+
+    // 4. Agregar por campaña y guardar en Supabase
+    const porCampana = {};
+    for (const item of allItems) {
+      const cid = String(item.campaign_id || 'unknown');
+      const m = item.metrics || {};
+      const spend = parseFloat(m.cost || 0);
+      const clicks = parseInt(m.clicks || 0, 10);
+      const impressions = parseInt(m.prints || 0, 10);
+
+      if (!porCampana[cid]) {
+        porCampana[cid] = { campaign_id: cid, campaign_name: cid, spend: 0, clicks: 0, impressions: 0 };
       }
+      porCampana[cid].spend += spend;
+      porCampana[cid].clicks += clicks;
+      porCampana[cid].impressions += impressions;
     }
 
-    // Si algún probe tiene métricas, procesar
-    if (bestProbe) {
-      return await processItemsAndSave(bestProbe.rows, dateFrom, dateTo, siteId, advertiserId, supabase, me, res, bestProbe.key);
+    const currency = me.currency_id || 'UYU';
+    for (const c of Object.values(porCampana)) {
+      await supabase.from('meli_ads_gastos').upsert(
+        {
+          fecha: dateTo,
+          campaign_id: c.campaign_id,
+          campaign_name: c.campaign_name,
+          spend: c.spend,
+          clicks: c.clicks,
+          impressions: c.impressions,
+          currency,
+          fetched_at: new Date().toISOString(),
+        },
+        { onConflict: 'fecha,campaign_id' }
+      );
     }
 
-    // Todos los probes devuelven métricas vacías — devolver diagnóstico completo
+    const totalSpend = Object.values(porCampana).reduce((s, c) => s + c.spend, 0);
+    const totalClicks = Object.values(porCampana).reduce((s, c) => s + c.clicks, 0);
+    const totalImpressions = Object.values(porCampana).reduce((s, c) => s + c.impressions, 0);
+
     return res.json({
-      ok: false,
-      error: 'Todos los probes devuelven metrics={} vacío. Ver detalle.',
-      detalle: {
-        user_id: userId,
-        advertiser_id: advertiserId,
-        site_id: siteId,
-        campaign_ids: campaignIds,
-        date_from: dateFrom,
-        date_to: dateTo,
-        probes: probeResults,
-      }
+      ok: true,
+      total_spend: totalSpend,
+      clicks: totalClicks,
+      impressions: totalImpressions,
+      items_procesados: allItems.length,
+      por_campana: Object.values(porCampana),
+      periodo: { desde: dateFrom, hasta: dateTo },
     });
 
   } catch (err) {
@@ -131,59 +132,3 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 };
-
-async function processItemsAndSave(rows, dateFrom, dateTo, siteId, advertiserId, supabase, me, res, probeKey) {
-  // Los items pueden tener métricas inline o anidadas bajo .metrics
-  let totalSpend = 0;
-  let totalClicks = 0;
-  let totalImpressions = 0;
-
-  // Agrupar por campaña
-  const porCampana = {};
-  for (const item of rows) {
-    const cid = String(item.campaign_id || item.id || 'unknown');
-    const m = item.metrics || item;
-    const spend = parseFloat(m.cost || m.spend || m.investment || 0);
-    const clicks = parseInt(m.clicks || 0, 10);
-    const impressions = parseInt(m.prints || m.impressions || 0, 10);
-
-    if (!porCampana[cid]) {
-      porCampana[cid] = { campaign_id: cid, campaign_name: item.campaign_name || cid, spend: 0, clicks: 0, impressions: 0 };
-    }
-    porCampana[cid].spend += spend;
-    porCampana[cid].clicks += clicks;
-    porCampana[cid].impressions += impressions;
-    totalSpend += spend;
-    totalClicks += clicks;
-    totalImpressions += impressions;
-  }
-
-  // Upsert en Supabase
-  for (const c of Object.values(porCampana)) {
-    await supabase.from('meli_ads_gastos').upsert(
-      {
-        fecha: dateTo,
-        campaign_id: c.campaign_id,
-        campaign_name: c.campaign_name,
-        spend: c.spend,
-        clicks: c.clicks,
-        impressions: c.impressions,
-        currency: me.currency_id || 'UYU',
-        fetched_at: new Date().toISOString(),
-      },
-      { onConflict: 'fecha,campaign_id' }
-    );
-  }
-
-  return res.json({
-    ok: true,
-    total_spend: totalSpend,
-    clicks: totalClicks,
-    impressions: totalImpressions,
-    items_procesados: rows.length,
-    por_campana: Object.values(porCampana),
-    periodo: { desde: dateFrom, hasta: dateTo },
-    probe_exitoso: probeKey,
-    sample_item: rows[0] || null,
-  });
-}

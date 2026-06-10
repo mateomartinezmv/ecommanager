@@ -6,7 +6,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 
-const METRICS_FIELDS = 'clicks,prints,cost,cpc,acos,cvr,roas,ctr';
+const METRICS_FIELDS = 'clicks,prints,cost,cpc,acos,cvr,roas,ctr,direct_amount,indirect_amount,total_amount';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -88,12 +88,20 @@ module.exports = async (req, res) => {
       const clicks = parseInt(m.clicks || 0, 10);
       const impressions = parseInt(m.prints || 0, 10);
 
+      const facturacion = parseFloat(m.total_amount || 0);
+
       if (!porCampana[cid]) {
-        porCampana[cid] = { campaign_id: cid, campaign_name: cid, spend: 0, clicks: 0, impressions: 0 };
+        porCampana[cid] = { campaign_id: cid, campaign_name: cid, spend: 0, clicks: 0, impressions: 0, facturacion: 0 };
       }
       porCampana[cid].spend += spend;
       porCampana[cid].clicks += clicks;
       porCampana[cid].impressions += impressions;
+      porCampana[cid].facturacion += facturacion;
+    }
+
+    // ROAS por campaña = facturación / gasto
+    for (const c of Object.values(porCampana)) {
+      c.roas = c.spend > 0 ? parseFloat((c.facturacion / c.spend).toFixed(2)) : 0;
     }
 
     const currency = me.currency_id || 'UYU';
@@ -106,6 +114,8 @@ module.exports = async (req, res) => {
           spend: c.spend,
           clicks: c.clicks,
           impressions: c.impressions,
+          roas: c.roas,
+          facturacion: c.facturacion,
           currency,
           fetched_at: new Date().toISOString(),
         },
@@ -116,10 +126,14 @@ module.exports = async (req, res) => {
     const totalSpend = Object.values(porCampana).reduce((s, c) => s + c.spend, 0);
     const totalClicks = Object.values(porCampana).reduce((s, c) => s + c.clicks, 0);
     const totalImpressions = Object.values(porCampana).reduce((s, c) => s + c.impressions, 0);
+    const totalFact = Object.values(porCampana).reduce((s, c) => s + c.facturacion, 0);
+    const roasTotal = totalSpend > 0 ? parseFloat((totalFact / totalSpend).toFixed(2)) : 0;
 
     return res.json({
       ok: true,
       total_spend: totalSpend,
+      total_facturacion: totalFact,
+      roas: roasTotal,
       clicks: totalClicks,
       impressions: totalImpressions,
       items_procesados: allItems.length,

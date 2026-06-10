@@ -1979,6 +1979,13 @@ async function loadDashAds() {
       if (label) label.innerHTML = 'Gasto en Ads <span style="font-size:10px;font-weight:400">· Sin datos</span>';
     } else {
       el.textContent = fmt(data.total_spend);
+      const card = el.closest('.stat-card');
+      const label = card?.querySelector('.stat-label');
+      if (label) {
+        const roasStr = data.roas ? ` · ROAS ${data.roas}x` : '';
+        const factStr = data.total_facturacion ? ` · Fact. ${fmt(data.total_facturacion)}` : '';
+        label.innerHTML = `Gasto en Ads (mes)<br><span style="font-size:10px;font-weight:400;opacity:.8">${roasStr}${factStr}</span>`;
+      }
     }
   } catch {
     const el = document.getElementById('dash-ads-value');
@@ -2087,15 +2094,13 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
 
     // Usar datos live directamente — tienen el período exacto consultado
     const adsSpend = data.total_spend || 0;
+    const adsFact = data.total_facturacion || 0;
+    const adsRoas = data.roas || 0;
     const gananciaConAds = ganancia - adsSpend;
     const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
-    const periodoLabel = data.periodo
-      ? `${data.periodo.desde} → ${data.periodo.hasta}`
-      : desde + ' → ' + hasta;
-    const porCampanaHtml = data.por_campana && data.por_campana.filter(c => c.spend > 0).length > 0
-      ? data.por_campana.filter(c => c.spend > 0)
-          .map(c => `<span style="margin-right:14px">${c.campaign_id}: ${fmt(c.spend)}</span>`).join('')
-      : '';
+    const periodoLabel = data.periodo ? `${data.periodo.desde} → ${data.periodo.hasta}` : `${desde} → ${hasta}`;
+    const porCampanaHtml = (data.por_campana || []).filter(c => c.spend > 0)
+      .map(c => `<span style="margin-right:14px">${c.campaign_id}: ${fmt(c.spend)}${c.roas ? ` (ROAS ${c.roas}x)` : ''}</span>`).join('');
 
     const container = document.getElementById('reporte-ads');
     if (container) container.innerHTML = `
@@ -2109,8 +2114,21 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
             </button>
           </div>
           <div style="padding:20px">
-            <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Período: ${periodoLabel}</div>
+            <div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:12px">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">GASTO</div>
+                <div class="stat-value" style="font-size:26px;font-weight:700">${fmt(adsSpend)}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">FACTURACIÓN POR ADS</div>
+                <div class="stat-value" style="font-size:26px;font-weight:700">${fmt(adsFact)}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">ROAS</div>
+                <div class="stat-value" style="font-size:26px;font-weight:700;color:var(--green)">${adsRoas}x</div>
+              </div>
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">Período: ${periodoLabel}</div>
             ${porCampanaHtml ? `<div style="font-size:12px;color:var(--text-muted)">${porCampanaHtml}</div>` : ''}
           </div>
         </div>

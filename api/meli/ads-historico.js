@@ -33,7 +33,7 @@ module.exports = async (req, res) => {
 
     const { data, error } = await supabase
       .from('meli_ads_gastos')
-      .select('fecha, spend, clicks, impressions')
+      .select('fecha, spend, clicks, impressions, roas, facturacion')
       .gte('fecha', fechaDesde)
       .lte('fecha', fechaHasta)
       .order('fecha', { ascending: true });
@@ -42,24 +42,29 @@ module.exports = async (req, res) => {
 
     const rows = data || [];
 
-    // Agrupar por día sumando todas las campañas
+    // Agrupar por fecha sumando todas las campañas del período
     const porDiaMap = {};
     for (const row of rows) {
       if (!porDiaMap[row.fecha]) {
-        porDiaMap[row.fecha] = { fecha: row.fecha, spend: 0, clicks: 0, impressions: 0 };
+        porDiaMap[row.fecha] = { fecha: row.fecha, spend: 0, clicks: 0, impressions: 0, facturacion: 0 };
       }
       porDiaMap[row.fecha].spend += parseFloat(row.spend || 0);
       porDiaMap[row.fecha].clicks += parseInt(row.clicks || 0, 10);
       porDiaMap[row.fecha].impressions += parseInt(row.impressions || 0, 10);
+      porDiaMap[row.fecha].facturacion += parseFloat(row.facturacion || 0);
     }
 
     const porDia = Object.values(porDiaMap).sort((a, b) => a.fecha.localeCompare(b.fecha));
     const total_spend = porDia.reduce((a, d) => a + d.spend, 0);
     const total_clicks = porDia.reduce((a, d) => a + d.clicks, 0);
     const total_impressions = porDia.reduce((a, d) => a + d.impressions, 0);
+    const total_facturacion = porDia.reduce((a, d) => a + d.facturacion, 0);
+    const roas = total_spend > 0 ? parseFloat((total_facturacion / total_spend).toFixed(2)) : 0;
 
     return res.json({
       total_spend,
+      total_facturacion,
+      roas,
       clicks: total_clicks,
       impressions: total_impressions,
       dias_con_datos: porDia.length,

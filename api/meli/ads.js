@@ -63,20 +63,22 @@ module.exports = async (req, res) => {
     const baseCorrect = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
     const baseMarket = `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/items`;
 
-    // Variantes para encontrar cuál devuelve métricas no vacías
+    // La API requiere pasar explícitamente qué métricas querés
+    const metricsParam = 'metrics=clicks,prints,cost,cpc,acos,cvr,roas,ctr';
+
     const probes = [
-      // Parámetros de fecha simples — sabemos que funciona, pero metrics={} vacío
-      { key: 'simple', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&limit=50` },
-      // Con metrics_summary=true
-      { key: 'metrics_summary', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&limit=50` },
-      // Sintaxis filters[] para fecha
-      { key: 'filters_date', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&limit=50` },
-      // filters[] + metrics_summary
-      { key: 'filters_metrics', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&metrics_summary=true&limit=50` },
-      // filters[] + campaign_ids + metrics_summary
-      { key: 'filters_campaigns', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&filters[campaign_ids]=${campaignIds}&metrics_summary=true&limit=50` },
-      // aggregation_type=daily
-      { key: 'daily_agg', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=daily&metrics_summary=true&limit=50` },
+      // metrics_summary con lista explícita de métricas
+      { key: 'summary_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&${metricsParam}&limit=50` },
+      // aggregation_type=item + métricas explícitas
+      { key: 'agg_item_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=item&${metricsParam}&limit=50` },
+      // aggregation_type=daily + métricas explícitas
+      { key: 'agg_daily_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=daily&${metricsParam}&limit=50` },
+      // filters[] con métricas explícitas
+      { key: 'filters_summary', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&metrics_summary=true&${metricsParam}&limit=50` },
+      // Con campaign_ids en filtro
+      { key: 'campaigns_summary', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&filters[campaign_ids]=${campaignIds}&metrics_summary=true&${metricsParam}&limit=50` },
+      // Sólo métricas sin metrics_summary (ver si devuelve métricas inline por item)
+      { key: 'inline_metrics', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&${metricsParam}&limit=50` },
     ];
 
     const probeResults = {};

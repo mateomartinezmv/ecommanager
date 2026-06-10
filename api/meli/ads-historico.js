@@ -11,8 +11,22 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const dias = parseInt(req.query.dias || '30', 10);
-  const cutoff = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+  // ?mes=YYYY-MM → filtra por ese mes (un registro por campaña con el total del mes)
+  // ?dias=N      → rolling window de N días (legado, para compatibilidad)
+  const mes = req.query.mes; // e.g. "2026-06"
+  const now = new Date();
+
+  let fechaDesde, fechaHasta;
+  if (mes) {
+    fechaDesde = `${mes}-01`;
+    const [anio, numMes] = mes.split('-').map(Number);
+    const ultimoDia = new Date(anio, numMes, 0).getDate();
+    fechaHasta = `${mes}-${String(ultimoDia).padStart(2, '0')}`;
+  } else {
+    const dias = parseInt(req.query.dias || '30', 10);
+    fechaDesde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+    fechaHasta = now.toISOString().slice(0, 10);
+  }
 
   try {
     const supabase = getSupabase();
@@ -20,7 +34,8 @@ module.exports = async (req, res) => {
     const { data, error } = await supabase
       .from('meli_ads_gastos')
       .select('fecha, spend, clicks, impressions')
-      .gte('fecha', cutoff)
+      .gte('fecha', fechaDesde)
+      .lte('fecha', fechaHasta)
       .order('fecha', { ascending: true });
 
     if (error) throw error;

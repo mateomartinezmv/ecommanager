@@ -100,7 +100,7 @@ module.exports = async (req, res) => {
     for (const c of Object.values(porCampana)) {
       await supabase.from('meli_ads_gastos').upsert(
         {
-          fecha: dateTo,
+          fecha: dateFrom,
           campaign_id: c.campaign_id,
           campaign_name: c.campaign_name,
           spend: c.spend,

@@ -1969,7 +1969,8 @@ async function fetchAdsData(desde, hasta) {
 
 async function loadDashAds() {
   try {
-    const data = await fetch('/api/meli/ads-historico?dias=30').then(r => r.json());
+    const mesActual = new Date().toISOString().slice(0, 7); // "2026-06"
+    const data = await fetch(`/api/meli/ads-historico?mes=${mesActual}`).then(r => r.json());
     const el = document.getElementById('dash-ads-value');
     if (!el) return;
     if (data.ok === false || !data.total_spend) {
@@ -1991,8 +1992,9 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
   container.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Cargando datos de Ads...</div>';
 
   try {
-    const diasNum = dias === 'all' ? 365 : parseInt(dias, 10);
-    const data = await fetch(`/api/meli/ads-historico?dias=${diasNum}`).then(r => r.json());
+    // Ads se almacena agrupado por mes (fecha=primer_dia_mes). Mostrar el mes de "hasta".
+    const mesRef = new Date().toISOString().slice(0, 7);
+    const data = await fetch(`/api/meli/ads-historico?mes=${mesRef}`).then(r => r.json());
 
     const adsSpend = data.total_spend || 0;
     const gananciaConAds = ganancia - adsSpend;

@@ -2008,10 +2008,7 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
 
     const adsHtml = adsSpend > 0
       ? `<div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
-         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${data.dias_con_datos || 0} días con datos registrados</div>
-         ${data.por_dia && data.por_dia.length > 0
-           ? `<div style="font-size:12px;color:var(--text-muted)">${data.por_dia.slice(-5).map(d => `<span style="margin-right:12px">${d.fecha}: ${fmt(d.spend)}</span>`).join('')}</div>`
-           : ''}`
+         <div style="font-size:12px;color:var(--text-muted)">Gasto del mes actual · Actualizá para ver período exacto</div>`
       : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Sin datos de Ads para el período.<br>Hacé clic en "Actualizar desde MELI" para traer los datos.</div>`;
 
     container.innerHTML = `
@@ -2088,7 +2085,54 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
       return;
     }
 
-    renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios);
+    // Usar datos live directamente — tienen el período exacto consultado
+    const adsSpend = data.total_spend || 0;
+    const gananciaConAds = ganancia - adsSpend;
+    const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
+    const periodoLabel = data.periodo
+      ? `${data.periodo.desde} → ${data.periodo.hasta}`
+      : desde + ' → ' + hasta;
+    const porCampanaHtml = data.por_campana && data.por_campana.filter(c => c.spend > 0).length > 0
+      ? data.por_campana.filter(c => c.spend > 0)
+          .map(c => `<span style="margin-right:14px">${c.campaign_id}: ${fmt(c.spend)}</span>`).join('')
+      : '';
+
+    const container = document.getElementById('reporte-ads');
+    if (container) container.innerHTML = `
+      <div class="two-col" style="margin-bottom:0">
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">📢 Gasto en Mercado Ads</span>
+            <button class="btn btn-ghost btn-sm" id="btn-actualizar-ads"
+              onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+              🔄 Actualizar desde MELI
+            </button>
+          </div>
+          <div style="padding:20px">
+            <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Período: ${periodoLabel}</div>
+            ${porCampanaHtml ? `<div style="font-size:12px;color:var(--text-muted)">${porCampanaHtml}</div>` : ''}
+          </div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><span class="table-title">📊 Ganancia neta (con ads)</span></div>
+          <div style="padding:20px">
+            <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:12px;color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:2">
+              Ingresos: <strong>${fmt(totalIngresos)}</strong><br>
+              − Comisiones MELI: ${fmt(totalComisiones)}<br>
+              − Costo productos: ${fmt(costoProductos)}<br>
+              − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              − Gasto en Ads: ${fmt(adsSpend)}<br>
+              <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
+                = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
+                <span style="color:var(--text-muted)"> · ${margenConAds}% margen real</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
   } catch (err) {
     showMsg('var(--red)', '❌ Error de red', err.message);
   }

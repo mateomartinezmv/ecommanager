@@ -171,5 +171,6 @@ async function processItemsAndSave(rows, dateFrom, dateTo, siteId, advertiserId,
     por_campana: Object.values(porCampana),
     periodo: { desde: dateFrom, hasta: dateTo },
     probe_exitoso: probeKey,
+    sample_item: rows[0] || null,
   });
 }

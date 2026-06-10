@@ -63,45 +63,56 @@ module.exports = async (req, res) => {
     const baseCorrect = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
     const baseMarket = `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/items`;
 
+    // Variantes para encontrar cuál devuelve métricas no vacías
     const probes = [
-      // Endpoint correcto según documentación, parámetros simples
-      { key: 'correct_simple', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&limit=50` },
-      // Endpoint correcto con filtros entre corchetes (sintaxis oficial MELI filters)
-      { key: 'correct_filters', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&limit=50` },
-      // Con campaign_ids en filtros
-      { key: 'correct_filters_campaigns', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&filters[campaign_ids]=${campaignIds}&limit=50` },
-      // Con aggregation_type=daily
-      { key: 'correct_daily', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=daily&limit=50` },
-      // Sin parámetros de fecha (ver qué devuelve)
-      { key: 'correct_no_dates', url: `${baseCorrect}?limit=10` },
-      // Marketplace prefix con filtros en corchetes
-      { key: 'market_filters', url: `${baseMarket}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&limit=50` },
+      // Parámetros de fecha simples — sabemos que funciona, pero metrics={} vacío
+      { key: 'simple', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&limit=50` },
+      // Con metrics_summary=true
+      { key: 'metrics_summary', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&limit=50` },
+      // Sintaxis filters[] para fecha
+      { key: 'filters_date', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&limit=50` },
+      // filters[] + metrics_summary
+      { key: 'filters_metrics', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&metrics_summary=true&limit=50` },
+      // filters[] + campaign_ids + metrics_summary
+      { key: 'filters_campaigns', url: `${baseCorrect}?filters[date_from]=${dateFrom}&filters[date_to]=${dateTo}&filters[campaign_ids]=${campaignIds}&metrics_summary=true&limit=50` },
+      // aggregation_type=daily
+      { key: 'daily_agg', url: `${baseCorrect}?date_from=${dateFrom}&date_to=${dateTo}&aggregation_type=daily&metrics_summary=true&limit=50` },
     ];
 
-    const results = {};
+    const probeResults = {};
+    let bestProbe = null;
+
     for (const p of probes) {
       const r = await fetch(p.url, { headers });
       let body;
       try { body = await r.json(); } catch { body = {}; }
-      results[p.key] = {
+      const rows = body.results || body.data || body.items || [];
+      const sample = Array.isArray(rows) ? rows[0] : null;
+      const m = sample ? (sample.metrics || {}) : {};
+      const hasMetrics = !!(m.cost || m.spend || m.clicks || m.prints || m.impressions);
+      probeResults[p.key] = {
         status: r.status,
-        // Para 200 devolver primeros 800 chars; para errores devolver el body completo (suele ser corto)
-        body: r.status === 200 ? JSON.stringify(body).slice(0, 800) : JSON.stringify(body).slice(0, 400),
+        count: Array.isArray(rows) ? rows.length : 0,
+        has_metrics: hasMetrics,
+        sample_keys: sample ? Object.keys(sample) : [],
+        metrics: m,
+        error: r.status !== 200 ? JSON.stringify(body).slice(0, 300) : undefined,
       };
-      // Si encontramos respuesta exitosa con datos, procesar y salir
-      if (r.status === 200) {
-        const rows = body.results || body.data || body.items || [];
-        if (Array.isArray(rows) && rows.length > 0) {
-          // Procesar métricas y guardar en Supabase
-          return await processItemsAndSave(rows, dateFrom, dateTo, siteId, advertiserId, supabase, me, res, p.key);
-        }
+      // Primer probe con datos Y métricas no vacías
+      if (r.status === 200 && Array.isArray(rows) && rows.length > 0 && hasMetrics && !bestProbe) {
+        bestProbe = { rows, key: p.key };
       }
     }
 
-    // Ningún probe funcionó — devolver diagnóstico completo
+    // Si algún probe tiene métricas, procesar
+    if (bestProbe) {
+      return await processItemsAndSave(bestProbe.rows, dateFrom, dateTo, siteId, advertiserId, supabase, me, res, bestProbe.key);
+    }
+
+    // Todos los probes devuelven métricas vacías — devolver diagnóstico completo
     return res.json({
       ok: false,
-      error: 'No se pudo obtener métricas de items. Ver detalle de probes.',
+      error: 'Todos los probes devuelven metrics={} vacío. Ver detalle.',
       detalle: {
         user_id: userId,
         advertiser_id: advertiserId,
@@ -109,7 +120,7 @@ module.exports = async (req, res) => {
         campaign_ids: campaignIds,
         date_from: dateFrom,
         date_to: dateTo,
-        probes: results,
+        probes: probeResults,
       }
     });
 

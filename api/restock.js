@@ -2,7 +2,8 @@
 // GET /api/restock
 //
 // Returns restock calendar data for every product:
-//   - daily_velocity  = total units sold across ALL channels in last 30 days / 30
+//   - daily_velocity  = units sold / active selling days (first→last sale in window)
+//                       This corrects for stockouts: days with no stock don't dilute the average.
 //   - days_coverage   = current stock / daily_velocity
 //   - restock_date    = today + days_coverage − 75  (last day to place order before stockout)
 //   - stockout_date   = today + days_coverage
@@ -27,36 +28,58 @@ module.exports = async (req, res) => {
     const { data: productos, error: prodErr } = await supabase
       .from('productos')
       .select('sku, nombre, categoria, stock_dep, tipo')
-      .neq('tipo', 'usado');
+      .neq('tipo', 'usado')
+      .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
 
-    // ── 2. Sales velocity: last 30 days, ALL channels, exclude cancelled ─────
+    // ── 2. Sales velocity: last 90 days, ALL channels, exclude cancelled ─────
+    // 90-day window instead of 30 so products that ran out of stock 30-90 days
+    // ago still have sales data and show a real velocity instead of "Sin ventas".
     const today = new Date();
     const since = new Date(today);
-    since.setDate(since.getDate() - 30);
+    since.setDate(since.getDate() - 90);
     const sinceStr = since.toISOString().slice(0, 10);
 
     const { data: ventas, error: ventasErr } = await supabase
       .from('ventas')
-      .select('sku, cantidad')
+      .select('sku, cantidad, fecha')
       .gte('fecha', sinceStr)
       .neq('estado', 'cancelada');
     if (ventasErr) throw ventasErr;
 
-    // Aggregate units sold by SKU (all channels combined)
-    const soldBySku = {};
+    // Aggregate units sold and track first/last sale date per SKU
+    const soldBySku      = {};
+    const firstDateBySku = {};
+    const lastDateBySku  = {};
+
     for (const v of ventas) {
       soldBySku[v.sku] = (soldBySku[v.sku] || 0) + v.cantidad;
+      if (!firstDateBySku[v.sku] || v.fecha < firstDateBySku[v.sku]) firstDateBySku[v.sku] = v.fecha;
+      if (!lastDateBySku[v.sku]  || v.fecha > lastDateBySku[v.sku])  lastDateBySku[v.sku]  = v.fecha;
     }
 
-    // ── 3. Pending imports: SKUs already covered by an active order ──────────
-    const { data: pendingItems } = await supabase
-      .from('import_items')
-      .select('sku, imports!inner(status)')
-      .neq('imports.status', 'arrived')
-      .neq('imports.status', 'cancelled');
+    // ── 3. Importaciones activas (ordered / in_transit) ──────────────────────
+    const { data: importaciones } = await supabase
+      .from('importaciones')
+      .select('id, llegada, estado, items')
+      .not('estado', 'in', '("arrived","cancelled","llegada","recibido","en_deposito")');
 
-    const pendingSkus = new Set((pendingItems || []).map(i => i.sku));
+    // Build map: sku → [{ qty, llegada, estado, import_id }]
+    const transitBySku = {};
+    for (const imp of (importaciones || [])) {
+      for (const item of (imp.items || [])) {
+        if (!item.sku) continue;
+        if (!transitBySku[item.sku]) transitBySku[item.sku] = [];
+        transitBySku[item.sku].push({
+          qty:       item.qty || 0,
+          llegada:   imp.llegada || null,
+          estado:    imp.estado,
+          import_id: imp.id,
+        });
+      }
+    }
+
+    const pendingSkus = new Set(Object.keys(transitBySku));
 
     // ── 4. Calculate restock metrics per product ─────────────────────────────
     const todayStr  = today.toISOString().slice(0, 10);
@@ -65,9 +88,20 @@ module.exports = async (req, res) => {
     const results = [];
 
     for (const p of productos) {
-      const totalSold30d  = soldBySku[p.sku] || 0;
-      const dailyVelocity = totalSold30d / 30;
-      const stock         = p.stock_dep || 0;
+      const totalSold = soldBySku[p.sku] || 0;
+      const stock     = p.stock_dep || 0;
+
+      // Active selling period: first sale → last sale within the 90-day window.
+      // Velocity = units sold ÷ active days (not total window days).
+      // This way stockout days — when nothing sold because there was no stock —
+      // don't drag the daily rate down.
+      let activeDays = 90;
+      if (totalSold > 0) {
+        const diffMs = new Date(lastDateBySku[p.sku]) - new Date(firstDateBySku[p.sku]);
+        activeDays   = Math.max(1, Math.round(diffMs / 86400000) + 1);
+      }
+
+      const dailyVelocity = totalSold > 0 ? totalSold / activeDays : 0;
 
       let daysCoverage  = null;
       let restockDate   = null;
@@ -87,17 +121,30 @@ module.exports = async (req, res) => {
       // Only include products that have had sales activity OR are at zero stock
       if (dailyVelocity === 0 && stock > 0) continue;
 
+      const transito      = transitBySku[p.sku] || [];
+      const already_ordered = transito.length > 0;
+      const qty_en_transito = transito.reduce((a, t) => a + t.qty, 0);
+      // Earliest expected arrival among active orders
+      const proxima_llegada = transito
+        .map(t => t.llegada)
+        .filter(Boolean)
+        .sort()[0] || null;
+
       results.push({
         sku:             p.sku,
         nombre:          p.nombre,
         categoria:       p.categoria || '',
         stock:           stock,
-        total_sold_30d:  totalSold30d,
+        total_sold:      totalSold,
+        active_days:     totalSold > 0 ? activeDays : null,
         daily_velocity:  Math.round(dailyVelocity * 100) / 100,
         days_coverage:   daysCoverage !== null ? Math.round(daysCoverage) : null,
         restock_date:    restockDate,
         stockout_date:   stockoutDate,
-        already_ordered: pendingSkus.has(p.sku),
+        already_ordered,
+        en_transito:     transito,       // full detail array
+        qty_en_transito,
+        proxima_llegada,
         today:           todayStr,
       });
     }

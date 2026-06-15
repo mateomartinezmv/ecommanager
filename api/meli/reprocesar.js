@@ -3,35 +3,11 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
-const ZONAS_KEYWORDS = {
-  1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],
-  2: ['la paz', 'colon', 'lezica', 'abayuba', 'jardines del hipodromo'],
-  3: ['toledo', 'manga', 'piedras blancas', 'flor de maronas', 'maronas', 'ituzaingo'],
-  4: ['barros blancos', 'pueblo nuevo', 'bolivar', 'las canteras'],
-  5: ['pocitos', 'buceo', 'malvin', 'punta carretas', 'parque rodo', 'palermo', 'cordon', 'tres cruces', 'villa espanola', 'union'],
-  6: ['punta gorda', 'carrasco', 'shangrila', 'neptunia', 'el pinar'],
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'reducto', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'cerro', 'la teja', 'paso molino', 'penarol'],
-  8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico'],
-  9: ['pando', 'toledo este', 'lagomar', 'solymar', 'la floresta'],
-  10: ['ciudad de la costa', 'atlantida', 'parque del plata', 'salinas', 'costa'],
-  11: ['canelones ciudad', 'canelones capital', '14 de julio'],
-};
-const COSTOS_GESTIONPOST = { 1:169,2:169,3:169,4:169,5:169,6:169,7:139,8:200,9:200,10:200,11:200 };
+const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
-function normalizarTexto(t) {
-  return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-function detectarZona(dir) {
-  if (!dir) return null;
-  const d = normalizarTexto(dir);
-  for (const [zona, kws] of Object.entries(ZONAS_KEYWORDS)) {
-    for (const kw of kws) { if (d.includes(normalizarTexto(kw))) return parseInt(zona); }
-  }
-  return null;
-}
 function calcularComision(precioUnit, cantidad, costoEnvio = 0) {
-  // Comisión = 15% del precio + costo de envío que cobra MELI
   const base = Math.round(precioUnit * cantidad * 0.15 * 100) / 100;
   return Math.round((base + costoEnvio) * 100) / 100;
 }
@@ -86,28 +62,40 @@ module.exports = async (req, res) => {
     log.push(`Orden estado: ${order.status}, items: ${order.order_items?.length}`);
     if (order.status !== 'paid') return res.json({ ok: false, log, error: `Orden no pagada (estado: ${order.status})` });
 
-    // Obtener shipment para determinar tipo de envío, dirección y costo real
+    // Obtener shipment con datos estructurados
     const shippingId = order.shipping?.id;
     let logisticType = '';
     let direccion = null;
-    let costoEnvioReal = 0;
+    let neighborhood = null;
+    let zonaEnvio = null;
+    let shipDataRef = null;
+
     if (shippingId) {
       try {
         const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers: { 'Authorization': `Bearer ${token}` } });
-        const shipData = await shipRes.json();
-        logisticType = shipData?.logistic_type || '';
-        costoEnvioReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0;
-        if (shipData?.receiver_address) {
-          const addr = shipData.receiver_address;
-          direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
+        shipDataRef = await shipRes.json();
+        logisticType = shipDataRef?.logistic_type || '';
+        neighborhood = shipDataRef?.receiver_address?.neighborhood?.name || null;
+        if (shipDataRef?.receiver_address) {
+          const addr = shipDataRef.receiver_address;
+          direccion = [addr.street_name, addr.street_number, neighborhood, addr.city?.name, addr.state?.name].filter(Boolean).join(', ');
         }
       } catch(_) {}
     }
-    log.push(`📍 Dirección: ${direccion || 'no disponible'}`);
+    log.push(`📍 Barrio: "${neighborhood || '—'}" | Dirección: ${direccion || 'no disponible'}`);
 
-    const esFlex = logisticType === 'fulfillment' || logisticType === 'self_service';
-    const tipoEnvio = esFlex ? 'gestionpost' : 'mercado_envios';
-    log.push(`📬 Tipo de envío: ${tipoEnvio} (logistic_type: "${logisticType}")`);
+    const esFlex = FLEX_TYPES.includes(logisticType);
+    log.push(`📬 Tipo de envío: ${esFlex ? 'flex/EnviosUy' : 'mercado_envios'} (logistic_type: "${logisticType}")`);
+
+    // Detectar zona Flex usando datos estructurados de MELI (barrio primero)
+    if (esFlex && shipDataRef) {
+      zonaEnvio = detectarZonaDesdeShipData(shipDataRef);
+      if (!zonaEnvio && direccion) zonaEnvio = detectarZona(direccion);
+    }
+    log.push(`🗺️ Zona: ${zonaEnvio ?? 'no detectada'}`);
+
+    const costoEnvioFinal = esFlex ? (zonaEnvio ? (COSTOS_ENVIOSUY[zonaEnvio] ?? 0) : 0) : 0;
+    const tipoEnvio = esFlex ? 'enviosuy' : 'mercado_envios';
 
     // Comisión desde fee_details
     const feeDetails = order.fee_details || [];
@@ -137,12 +125,10 @@ module.exports = async (req, res) => {
       await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockDep, stock_shopify: nuevoStockDep, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
       log.push(`✅ Stock: ${nuevoStockDep}`);
 
-      // Para Flex: costo real del envío (lo pagás vos). Para ME: $0 (ya incluido en comisión)
-      const costoEnvioFinal = esFlex ? costoEnvioReal : 0;
       const comisionItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
         : Math.abs(item.sale_fee || 0);
-      log.push(`💰 Comisión: $${comisionItem} (${tipoEnvio})`);
+      log.push(`💰 Comisión: $${comisionItem} | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);
 
       const { error: ventaErr } = await supabase.from('ventas').insert({
         id: ventaId, canal: 'meli',
@@ -165,12 +151,12 @@ module.exports = async (req, res) => {
             comprador: order.buyer?.nickname || '', producto: producto.nombre,
             transportista: tipoEnvio,
             tracking: null, fecha_despacho: null, estado: 'pendiente',
-            direccion: direccion || null, costo: costoEnvioFinal,
+            direccion: direccion || null, costo: costoEnvioFinal, zona: zonaEnvio,
           });
-          log.push(`✅ Envío: ${tipoEnvio} $${costoEnvioFinal}`);
+          log.push(`✅ Envío creado: ${tipoEnvio} | zona ${zonaEnvio ?? '?'} | $${costoEnvioFinal}`);
         }
       }
-      resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision: comisionItem, tipoEnvio });
+      resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision: comisionItem, tipoEnvio, zona: zonaEnvio, costo: costoEnvioFinal });
     }
 
     return res.json({ ok: true, log, resultados });

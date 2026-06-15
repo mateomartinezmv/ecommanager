@@ -1,9 +1,10 @@
 // api/transportistas.js
-// GET  /api/transportistas → deuda por transportista + historial de pagos
+// GET  /api/transportistas → deuda por transportista + historial de pagos + envíos pendientes
 // POST /api/transportistas → registrar pago
 // DELETE /api/transportistas?id=XX → eliminar pago
 
 const { getSupabase } = require('./_supabase');
+const { detectarZona } = require('./_flexZonas');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,15 +16,16 @@ module.exports = async (req, res) => {
 
   try {
     if (req.method === 'GET') {
-      // Obtener envíos no pagados con costo > 0
+      // Obtener envíos no pagados con costo > 0 o colecta
       const { data: envios, error: enviosErr } = await supabase
         .from('envios')
-        .select('transportista, costo, colecta, estado, pagado')
+        .select('id, orden, comprador, producto, transportista, costo, colecta, zona, fecha_despacho, estado, direccion, created_at')
         .eq('pagado', false)
-        .gt('costo', 0);
+        .or('costo.gt.0,colecta.eq.true')
+        .order('created_at', { ascending: false });
       if (enviosErr) throw enviosErr;
 
-      // Calcular deuda por transportista (costo + colecta si aplica)
+      // Calcular deuda por transportista
       const deudas = {};
       for (const e of envios || []) {
         const t = e.transportista || 'otro';
@@ -31,6 +33,15 @@ module.exports = async (req, res) => {
         if (!deudas[t]) deudas[t] = 0;
         deudas[t] += costoReal;
       }
+
+      // Enriquecer con zona si no está en DB (detectar desde dirección como fallback)
+      const enviosConZona = (envios || []).map(e => {
+        let zona = e.zona;
+        if (!zona && e.direccion) {
+          zona = detectarZona(e.direccion);
+        }
+        return { ...e, zona };
+      });
 
       // Obtener historial de pagos
       const { data: pagos, error: pagosErr } = await supabase
@@ -40,7 +51,7 @@ module.exports = async (req, res) => {
         .limit(50);
       if (pagosErr) throw pagosErr;
 
-      return res.json({ deudas, pagos: pagos || [] });
+      return res.json({ deudas, pagos: pagos || [], envios: enviosConZona });
     }
 
     if (req.method === 'POST') {
@@ -49,7 +60,6 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: 'Faltan transportista y monto' });
       }
 
-      // Registrar el pago
       const id = 'PAG-' + Date.now();
       const { data: pago, error: pagoErr } = await supabase
         .from('pagos_transportistas')
@@ -58,7 +68,6 @@ module.exports = async (req, res) => {
       if (pagoErr) throw pagoErr;
 
       // Marcar envíos de ese transportista como pagados (de más antiguo a más nuevo)
-      // hasta cubrir el monto pagado
       const { data: enviosPendientes } = await supabase
         .from('envios')
         .select('id, costo, colecta')

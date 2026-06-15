@@ -22,12 +22,6 @@ const COSTOS_ENVIOSUY: Record<number, number | null> = {
   11: null, // No realizan envíos
 }
 
-const COSTOS_GESTIONPOST: Record<number, number> = {
-  1: 169, 2: 169, 3: 169, 4: 169, 5: 169, 6: 169,
-  7: 139,
-  8: 200, 9: 200, 10: 200, 11: 200,
-}
-const RETIRO_GESTIONPOST = 75
 
 // Palabras clave por zona para detectar desde la dirección
 const ZONAS_KEYWORDS: Record<number, string[]> = {
@@ -73,51 +67,21 @@ function detectarZona(direccion: string): number | null {
 // =====================
 // SELECCIÓN POR HORARIO (MONTEVIDEO)
 // =====================
-function getTimeMVD(fecha: string | Date): { hora: number; minuto: number; weekday: string } {
-  const date = fecha instanceof Date ? fecha : new Date(fecha)
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Montevideo',
-    hour: '2-digit',
-    minute: '2-digit',
-    weekday: 'short',
-    hour12: false,
-  }).formatToParts(date)
-  const map: Record<string, string> = {}
-  for (const p of parts) map[p.type] = p.value
-  return {
-    hora: parseInt(map.hour),
-    minuto: parseInt(map.minute || '0'),
-    weekday: map.weekday,
+// Detecta zona desde datos del shipment de MELI priorizando campos estructurados:
+// 1. route.name (si MELI provee zona directamente, ej: "Zona 5")
+// 2. neighborhood.name (barrio estructurado — no especulación de dirección)
+// 3. Dirección completa como fallback
+function detectarZonaDesdeShipData(neighborhood: string | null, routeName: string | null, direccion: string | null): number | null {
+  if (routeName) {
+    const m = routeName.match(/zona\s*(\d+)/i) || routeName.match(/^z(\d+)$/i)
+    if (m) return parseInt(m[1])
   }
-}
-
-function seleccionarTransportista(zona: number, fecha: string | Date): 'enviosuy' | 'gestionpost' {
-  if (zona === 11) return 'gestionpost'
-  const { hora, minuto, weekday } = getTimeMVD(fecha)
-  const hm = hora * 60 + minuto
-  if (weekday === 'Sun') return 'enviosuy'
-  if (weekday === 'Sat') {
-    if (hm < 12 * 60) return 'enviosuy'
-    if (hm < 13 * 60) return 'gestionpost'
-    return 'enviosuy'
+  if (neighborhood) {
+    const z = detectarZona(neighborhood)
+    if (z) return z
   }
-  // Lun-Vie
-  if (hm < 15 * 60) return 'enviosuy'
-  if (hm < 16 * 60) return 'gestionpost'
-  return 'enviosuy'
-}
-
-function calcularCostoFlex(direccion: string, fecha: string | Date): { zona: number, recomendada: string, costo: number, enviosuy: number | null, gestionpost: number } | null {
-  const zona = detectarZona(direccion)
-  if (!zona) return null
-
-  const costoEnviosUy = COSTOS_ENVIOSUY[zona] ?? null
-  const costoGestionPost = (COSTOS_GESTIONPOST[zona] ?? 200) + RETIRO_GESTIONPOST
-
-  const recomendada = seleccionarTransportista(zona, fecha)
-  const costo = recomendada === 'enviosuy' ? (costoEnviosUy ?? costoGestionPost) : costoGestionPost
-
-  return { zona, recomendada, costo, enviosuy: costoEnviosUy, gestionpost: costoGestionPost }
+  if (direccion) return detectarZona(direccion)
+  return null
 }
 
 
@@ -229,10 +193,12 @@ async function getOrder(orderId: string, token: string): Promise<any> {
 // =====================
 // OBTENER DATOS DE ENVÍO (dirección + logistic_type + costo real)
 // =====================
-async function getDatosEnvio(orderId: string, shipmentId: string | null, token: string): Promise<{ direccion: string | null, logisticType: string, costoReal: number }> {
+async function getDatosEnvio(orderId: string, shipmentId: string | null, token: string): Promise<{ direccion: string | null, logisticType: string, costoReal: number, neighborhood: string | null, routeName: string | null }> {
   let direccion: string | null = null
   let logisticType = ''
   let costoReal = 0
+  let neighborhood: string | null = null
+  let routeName: string | null = null
   try {
     const url = shipmentId
       ? `https://api.mercadolibre.com/shipments/${shipmentId}`
@@ -241,26 +207,15 @@ async function getDatosEnvio(orderId: string, shipmentId: string | null, token: 
     const shipData = await shipRes.json()
     logisticType = shipData?.logistic_type || shipData?.type || ''
     costoReal = shipData?.shipping_option?.list_cost || shipData?.base_cost || 0
+    neighborhood = shipData?.receiver_address?.neighborhood?.name || null
+    routeName = shipData?.route?.name || null
     if (shipData?.receiver_address) {
       const addr = shipData.receiver_address
-      direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name, addr.state?.name].filter(Boolean).join(', ')
+      direccion = [addr.street_name, addr.street_number, neighborhood, addr.city?.name, addr.state?.name].filter(Boolean).join(', ')
     }
-    const FLEX_TYPES = ['self_service', 'self_service_flex']
-    if (FLEX_TYPES.includes(logisticType)) {
-      console.log('FLEX_SHIPDATA_DEBUG:', JSON.stringify({
-        id: shipData?.id,
-        logistic_type: shipData?.logistic_type,
-        service_id: shipData?.service_id,
-        substatus: shipData?.substatus,
-        tags: shipData?.tags,
-        shipping_option: shipData?.shipping_option,
-        neighborhood: shipData?.receiver_address?.neighborhood,
-        receiver_types: shipData?.receiver_address?.types,
-        route: shipData?.route,
-      }))
-    }
+    console.log('FLEX_ENVIO_DEBUG:', JSON.stringify({ logisticType, neighborhood, routeName, direccion }))
   } catch (_) {}
-  return { direccion, logisticType, costoReal }
+  return { direccion, logisticType, costoReal, neighborhood, routeName }
 }
 
 // Mantener compatibilidad
@@ -289,19 +244,18 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
   // Obtener datos de envío
   log.push('Obteniendo datos de envío...')
   const shipmentId = order.shipping?.id ? String(order.shipping.id) : null
-  const { direccion, logisticType: shipLogisticType, costoReal } = await getDatosEnvio(orderId, shipmentId, token)
-  log.push(`📍 Dirección: ${direccion || 'no disponible'}`)
+  const { direccion, logisticType: shipLogisticType, costoReal, neighborhood, routeName } = await getDatosEnvio(orderId, shipmentId, token)
+  log.push(`📍 Barrio: "${neighborhood || '—'}" | Dirección: ${direccion || 'no disponible'}`)
 
   const FLEX_TYPES = ['self_service', 'self_service_flex']
   const esFlex = FLEX_TYPES.includes(shipLogisticType)
-  log.push(`📬 Tipo de envío: ${esFlex ? 'flex' : 'mercado_envios'} (logistic_type: ${shipLogisticType || 'n/a'}) | Costo real: $${costoReal}`)
+  log.push(`📬 Tipo de envío: ${esFlex ? 'flex/EnviosUy' : 'mercado_envios'} (logistic_type: ${shipLogisticType || 'n/a'})`)
 
-  let flexInfo = null
-  if (esFlex && direccion) {
-    flexInfo = calcularCostoFlex(direccion, order.date_created || new Date().toISOString())
-    if (flexInfo) {
-      log.push(`🗺️ Zona detectada: ${flexInfo.zona} | ${flexInfo.recomendada} | Costo Flex: $${flexInfo.costo}`)
-    }
+  // Detectar zona Flex usando datos estructurados de MELI (barrio primero, no especulación)
+  let zonaFlex: number | null = null
+  if (esFlex) {
+    zonaFlex = detectarZonaDesdeShipData(neighborhood, routeName, direccion)
+    log.push(`🗺️ Zona: ${zonaFlex ?? 'no detectada'} | barrio: "${neighborhood || '—'}" | ruta: "${routeName || '—'}"`)
   }
 
   const resultados = []
@@ -359,9 +313,9 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     const ventaId = `V_MELI_${order.id}_${meliItemId}`
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
 
-    // Calcular costo y transportista del envío (necesario también para la comisión de la venta)
-    const transportista = esFlex ? (flexInfo?.recomendada || 'gestionpost') : 'mercado_envios'
-    const costoEnvio = esFlex ? (flexInfo?.costo ?? costoReal ?? 0) : 0
+    // Todo Flex va por EnviosUy con costo de tabla por zona
+    const transportista = esFlex ? 'enviosuy' : 'mercado_envios'
+    const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0
 
     if (ventaExistente) {
       log.push(`ℹ️ Venta ${ventaId} ya existe`)
@@ -401,12 +355,13 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
         estado: 'pendiente',
         direccion: direccion || null,
         costo: costoEnvio,
+        zona: zonaFlex,
       })
 
       if (envioErr) {
         log.push(`⚠️ Error creando envío: ${envioErr.message}`)
       } else {
-        log.push(`✅ Envío creado: zona ${flexInfo?.zona || '?'} | ${transportista} | $${costoEnvio}`)
+        log.push(`✅ Envío creado: zona ${zonaFlex ?? '?'} | ${transportista} | $${costoEnvio}`)
       }
     } else {
       log.push(`ℹ️ Envío ${envioId} ya existe`)

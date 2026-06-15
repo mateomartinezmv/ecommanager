@@ -14,59 +14,7 @@ const { getSupabase } = require('../_supabase');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
-const COSTOS_ENVIOSUY = { 1:190, 2:190, 3:190, 4:190, 5:180, 6:160, 7:180, 8:240, 9:240, 10:200, 11:null };
-
-const ZONAS_KEYWORDS = {
-  1: ['pajas blancas', 'santiago vazquez', 'paso de la arena', 'ciudad del plata'],
-  2: ['la paz', 'colon', 'lezica', 'abayuba', 'jardines del hipodromo'],
-  3: ['toledo', 'manga', 'piedras blancas', 'flor de maronas', 'maronas', 'ituzaingo'],
-  4: ['barros blancos', 'pueblo nuevo', 'bolivar', 'las canteras'],
-  5: ['pocitos', 'buceo', 'malvin', 'punta carretas', 'parque rodo', 'palermo', 'cordon', 'tres cruces', 'villa espanola', 'union'],
-  6: ['punta gorda', 'carrasco', 'shangrila', 'neptunia', 'el pinar'],
-  7: ['ciudad vieja', 'centro', 'goes', 'la comercial', 'aguada', 'reducto', 'belvedere', 'la blanqueada', 'figurita', 'jacinto vera', 'sayago', 'nuevo paris', 'cerro', 'la teja', 'paso molino', 'penarol'],
-  8: ['progreso', 'las piedras', 'sauce', 'empalme olmos', 'juanico'],
-  9: ['pando', 'toledo este', 'lagomar', 'solymar', 'la floresta'],
-  10: ['ciudad de la costa', 'atlantida', 'parque del plata', 'salinas', 'costa'],
-  11: ['canelones ciudad', 'canelones capital', '14 de julio'],
-};
-const COSTOS_GESTIONPOST = { 1:169,2:169,3:169,4:169,5:169,6:169,7:139,8:200,9:200,10:200,11:200 };
-const RETIRO_GESTIONPOST = 75;
-
-function normalizarTexto(t) {
-  return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-function detectarZona(dir) {
-  if (!dir) return null;
-  const d = normalizarTexto(dir);
-  for (const [zona, kws] of Object.entries(ZONAS_KEYWORDS)) {
-    for (const kw of kws) { if (d.includes(normalizarTexto(kw))) return parseInt(zona); }
-  }
-  return null;
-}
-function getTimeMVD(fecha) {
-  const date = fecha instanceof Date ? fecha : new Date(fecha);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Montevideo',
-    hour: '2-digit', minute: '2-digit', weekday: 'short', hour12: false,
-  }).formatToParts(date);
-  const map = {};
-  for (const p of parts) map[p.type] = p.value;
-  return { hora: parseInt(map.hour), minuto: parseInt(map.minute || '0'), weekday: map.weekday };
-}
-function seleccionarTransportista(zona, fecha) {
-  if (zona === 11) return 'gestionpost';
-  const { hora, minuto, weekday } = getTimeMVD(fecha);
-  const hm = hora * 60 + minuto;
-  if (weekday === 'Sun') return 'enviosuy';
-  if (weekday === 'Sat') {
-    if (hm < 12 * 60) return 'enviosuy';
-    if (hm < 13 * 60) return 'gestionpost';
-    return 'enviosuy';
-  }
-  if (hm < 15 * 60) return 'enviosuy';
-  if (hm < 16 * 60) return 'gestionpost';
-  return 'enviosuy';
-}
+const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -129,28 +77,22 @@ module.exports = async (req, res) => {
         const logisticType = shipData?.logistic_type || '';
         const esFlex = FLEX_TYPES.includes(logisticType);
 
-        // Recalcular dirección si falta
+        // Recalcular dirección incluyendo barrio (campo estructurado de MELI)
         let direccion = envio.direccion;
         if (!direccion && shipData?.receiver_address) {
           const addr = shipData.receiver_address;
-          direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`;
+          const neighborhood = addr.neighborhood?.name || '';
+          direccion = [addr.street_name, addr.street_number, neighborhood, addr.city?.name, addr.state?.name].filter(Boolean).join(', ');
         }
 
         let transportistaCorrecto, costoCorrecto, zona;
         if (esFlex) {
-          zona = detectarZona(direccion);
-          const orderFecha = order.date_created || new Date().toISOString();
-          if (zona) {
-            transportistaCorrecto = seleccionarTransportista(zona, orderFecha);
-            if (transportistaCorrecto === 'enviosuy') {
-              costoCorrecto = COSTOS_ENVIOSUY[zona] ?? (shipData?.base_cost || 0);
-            } else {
-              costoCorrecto = (COSTOS_GESTIONPOST[zona] || 200) + RETIRO_GESTIONPOST;
-            }
-          } else {
-            transportistaCorrecto = 'gestionpost';
-            costoCorrecto = shipData?.base_cost || 0;
-          }
+          // Usar datos estructurados de MELI para detección de zona
+          zona = detectarZonaDesdeShipData(shipData);
+          // Fallback a dirección si no se detectó por datos del shipment
+          if (!zona && direccion) zona = detectarZona(direccion);
+          transportistaCorrecto = 'enviosuy';
+          costoCorrecto = zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0;
         } else {
           transportistaCorrecto = 'mercado_envios';
           costoCorrecto = 0;
@@ -167,7 +109,7 @@ module.exports = async (req, res) => {
         log.push(`${dryRun ? '[DRY]' : '🔄'} ${envio.id}: ${envio.transportista} → ${transportistaCorrecto} | logistic="${logisticType}" | zona ${zona || 'N/D'} | costo $${costoCorrecto}`);
 
         if (!dryRun) {
-          const update = { transportista: transportistaCorrecto, costo: costoCorrecto };
+          const update = { transportista: transportistaCorrecto, costo: costoCorrecto, zona: zona || null };
           if (hayCambioDir) update.direccion = direccion;
           await supabase.from('envios').update(update).eq('id', envio.id);
         }

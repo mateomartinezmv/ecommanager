@@ -197,6 +197,7 @@
     <a class="nav-item" href="/reposicion.html" style="text-decoration:none"><span class="icon">📅</span><span>Reposición</span></a>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
+    <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -376,6 +377,43 @@
     </div>
     <div class="content">
       <div class="cards-grid" id="transportistas-deudas"></div>
+
+      <!-- Desglose de envíos pendientes de pago -->
+      <div class="table-wrap" style="margin-bottom:24px">
+        <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span class="table-title">📦 Desglose de envíos pendientes</span>
+          <select id="desglose-filtro" onchange="filtrarDesglose()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+            <option value="">Todos los transportistas</option>
+            <option value="enviosuy">EnviosUy</option>
+            <option value="gestionpost">GestionPost</option>
+            <option value="ues">UES</option>
+            <option value="mercado_envios">MELI Envíos</option>
+          </select>
+        </div>
+        <div id="desglose-seleccion-bar" style="display:none;background:var(--accent);color:#fff;padding:12px 20px;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <span id="desglose-seleccion-info" style="font-weight:600;font-size:14px"></span>
+          <button onclick="pagarSeleccionados()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Registrar pago de seleccionados →</button>
+        </div>
+        <table id="desglose-table">
+          <thead>
+            <tr>
+              <th style="width:32px"><input type="checkbox" id="desglose-check-all" onchange="toggleAllDesglose(this)" title="Seleccionar todos"></th>
+              <th>Zona</th>
+              <th>Costo</th>
+              <th>Comprador</th>
+              <th>Orden</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="desglose-tbody"></tbody>
+        </table>
+        <div id="desglose-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">📦</div>
+          <p>No hay envíos pendientes de pago.</p>
+        </div>
+      </div>
+
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">📋 Historial de pagos</span>
@@ -448,11 +486,20 @@
           <option value="30" selected>Últimos 30 días</option>
           <option value="90">Últimos 90 días</option>
           <option value="all">Todo el tiempo</option>
+          <option value="custom">Personalizado...</option>
         </select>
         <button class="btn btn-ghost btn-sm" onclick="toggleComparador()" id="btn-comparar">⚖️ Comparar períodos</button>
         <button class="btn btn-ghost btn-sm" onclick="exportReportePDF()">📥 PDF</button>
         <button class="btn btn-ghost btn-sm" onclick="exportReporteCSV()">📊 CSV</button>
       </div>
+    </div>
+    <div id="panel-fecha-custom" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 28px;gap:12px;align-items:center;flex-wrap:wrap" class="topbar">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim)">📅 Rango personalizado</span>
+      <input type="date" id="reporte-desde" style="width:150px;padding:7px 10px" onchange="onCustomRangeChange()">
+      <span style="color:var(--text-muted)">→</span>
+      <input type="date" id="reporte-hasta" style="width:150px;padding:7px 10px" onchange="onCustomRangeChange()">
+      <button class="btn btn-ghost btn-sm" onclick="setCustomRangeMesActual()">Este mes</button>
+      <button class="btn btn-ghost btn-sm" onclick="setCustomRangeSemanaActual()">Esta semana</button>
     </div>
     <div id="panel-comparador" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:14px 28px;gap:16px;flex-wrap:wrap;align-items:center" class="topbar">
       <span style="font-size:13px;font-weight:600;color:var(--text-dim)">Período A</span>
@@ -554,6 +601,14 @@
       </div>
 
     </div>
+  </div>
+
+  <!-- INFORMACIÓN -->
+  <div id="page-informacion" class="page">
+    <div class="topbar">
+      <div class="page-title">💡 Información del negocio</div>
+    </div>
+    <div class="content" id="content-informacion"></div>
   </div>
 
   <!-- PAGE: IMPORTACIONES -->
@@ -992,6 +1047,29 @@
   </div>
 </div>
 
+<!-- MODAL: COSTO FIJO -->
+<div class="modal-overlay" id="modal-costo-fijo">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title" id="modal-costo-fijo-title">+ Agregar costo fijo</div>
+    <input type="hidden" id="cf-idx">
+    <div class="form-grid">
+      <div class="form-group form-full"><label class="form-label">Concepto *</label><input type="text" id="cf-concepto" placeholder="ej: Shopify, Hosting, Contador..."></div>
+      <div class="form-group"><label class="form-label">Monto *</label><input type="number" id="cf-monto" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Moneda</label>
+        <select id="cf-moneda">
+          <option value="UYU">UYU</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><input type="text" id="cf-notas" placeholder="Descripción opcional..."></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-costo-fijo')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveCostoFijo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // =====================
 // DATA LAYER
@@ -1075,6 +1153,181 @@ if (urlParams.get('meli') === 'error') {
 }
 
 // =====================
+// COSTOS FIJOS
+// =====================
+function getCostosFijosDefault() {
+  return [
+    { concepto: 'Claude Pro (Anthropic)', monto: 20, moneda: 'USD', notas: 'IA / asistente del negocio' },
+    { concepto: 'Vercel Pro', monto: 20, moneda: 'USD', notas: 'Hosting del CRM (EcomManager)' },
+    { concepto: 'Shopify', monto: 25, moneda: 'USD', notas: 'Tienda online martínezmotos.com' },
+    { concepto: 'MercadoLibre Mi Página', monto: 400, moneda: 'UYU', notas: 'Suscripción tienda MELI' },
+    { concepto: 'MONTO IVA MÍNIMO DGI', monto: 1478, moneda: 'UYU', notas: 'Pago reducido 25%' },
+    { concepto: 'Aportes al BPS (Seguridad Social)', monto: 2375.5, moneda: 'UYU', notas: 'Pago reducido 25%' },
+    { concepto: 'Facturación Electrónica (gesta.uy)', monto: 370.18, moneda: 'UYU', notas: 'Plan Básico' },
+  ];
+}
+
+function getCostosFijos() {
+  try {
+    const raw = localStorage.getItem('ecom_costos_fijos');
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return getCostosFijosDefault();
+}
+
+function getCotizacionUSD() {
+  return parseFloat(localStorage.getItem('ecom_cotizacion_usd') || '42');
+}
+
+function getCostosFijosEnUYU() {
+  const cotiz = getCotizacionUSD();
+  return getCostosFijos().reduce((sum, c) => sum + (c.moneda === 'USD' ? c.monto * cotiz : c.monto), 0);
+}
+
+function renderInformacion() {
+  const container = document.getElementById('content-informacion');
+  const costos = getCostosFijos();
+  const cotiz = getCotizacionUSD();
+
+  const totalUSD = costos.filter(c => c.moneda === 'USD').reduce((s, c) => s + c.monto, 0);
+  const totalUYU = costos.filter(c => c.moneda === 'UYU').reduce((s, c) => s + c.monto, 0);
+  const totalEnUYU = totalUYU + totalUSD * cotiz;
+
+  const mesActual = new Date().toLocaleDateString('es-UY', { month: 'long', year: 'numeric' });
+
+  const filas = costos.map((c, i) => `
+    <tr>
+      <td>${c.concepto}</td>
+      <td><strong>$${c.monto.toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+      <td><span style="color:${c.moneda === 'USD' ? 'var(--green)' : 'var(--accent)'};font-weight:600">${c.moneda}</span></td>
+      <td style="color:var(--text-muted);font-size:12px">${c.notas || '—'}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="openModalCostoFijo(${i})">Editar</button>
+        <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteCostoFijo(${i})">✕</button>
+      </td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div style="margin-bottom:24px">
+      <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px">💸 Costos Fijos Mensuales</h2>
+      <p style="font-size:12px;color:var(--text-muted)">Última actualización: ${mesActual} · Se descuentan automáticamente en el cálculo de ganancia en Reportes.</p>
+    </div>
+
+    <div class="cards-grid" style="margin-bottom:24px">
+      <div class="stat-card green">
+        <div class="stat-icon">💵</div>
+        <div class="stat-value">~$${totalUSD}</div>
+        <div class="stat-label">Total mensual USD</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-icon">💰</div>
+        <div class="stat-value">${fmt(totalUYU)}</div>
+        <div class="stat-label">Total mensual UYU</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon">📉</div>
+        <div class="stat-value">${fmt(totalEnUYU)}</div>
+        <div class="stat-label">Total todo en UYU (cotiz. $${cotiz}/USD)</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-icon">📅</div>
+        <div class="stat-value">${fmt(totalEnUYU / 365)}</div>
+        <div class="stat-label">Costo fijo diario</div>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:24px">
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">📋 Costos del mes</span>
+          <button class="btn btn-primary btn-sm" onclick="openModalCostoFijo()">+ Agregar</button>
+        </div>
+        <table>
+          <thead><tr><th>Concepto</th><th>Monto</th><th>Moneda</th><th>Notas</th><th>Acciones</th></tr></thead>
+          <tbody>${filas}</tbody>
+          <tfoot>
+            <tr style="background:var(--surface2)">
+              <td colspan="2" style="font-weight:600;color:var(--text)">Total USD</td>
+              <td colspan="3" style="font-weight:700;color:var(--green)">~$${totalUSD}</td>
+            </tr>
+            <tr style="background:var(--surface2)">
+              <td colspan="2" style="font-weight:600;color:var(--text)">Total UYU</td>
+              <td colspan="3" style="font-weight:700;color:var(--accent)">$${totalUYU.toLocaleString('es-UY', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">💱 Cotización del dólar</span></div>
+        <div style="padding:24px">
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:20px;line-height:1.6">
+            Se usa para convertir costos en USD a UYU al calcular la ganancia neta en Reportes.<br>
+            Actualizá cuando cambie el tipo de cambio.
+          </p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span style="font-size:14px;color:var(--text-dim)">1 USD =</span>
+            <input type="number" id="input-cotizacion" value="${cotiz}" step="0.5" min="1"
+              style="width:120px;padding:10px 14px;font-size:20px;font-weight:700;font-family:'JetBrains Mono',monospace;text-align:center;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+            <span style="font-size:14px;color:var(--text-dim)">UYU</span>
+            <button class="btn btn-primary btn-sm" onclick="saveCotizacion()">Guardar</button>
+          </div>
+          <div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:var(--radius);font-size:12px;color:var(--text-muted)">
+            Con cotización $${cotiz}: los $${totalUSD} USD = <strong style="color:var(--text)">${fmt(totalUSD * cotiz)}</strong> UYU<br>
+            Total fijos/mes = <strong style="color:var(--red)">${fmt(totalEnUYU)}</strong> UYU
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function openModalCostoFijo(idx) {
+  const costos = getCostosFijos();
+  const editing = idx !== undefined && idx !== null;
+  const c = editing ? costos[idx] : { concepto: '', monto: '', moneda: 'UYU', notas: '' };
+  document.getElementById('modal-costo-fijo-title').textContent = editing ? 'Editar costo fijo' : '+ Agregar costo fijo';
+  document.getElementById('cf-idx').value = editing ? idx : '';
+  document.getElementById('cf-concepto').value = c.concepto;
+  document.getElementById('cf-monto').value = c.monto;
+  document.getElementById('cf-moneda').value = c.moneda;
+  document.getElementById('cf-notas').value = c.notas;
+  openModal('modal-costo-fijo');
+}
+
+function deleteCostoFijo(idx) {
+  if (!confirm('¿Eliminar este costo fijo?')) return;
+  const costos = getCostosFijos();
+  costos.splice(idx, 1);
+  localStorage.setItem('ecom_costos_fijos', JSON.stringify(costos));
+  renderInformacion();
+}
+
+function saveCostoFijo() {
+  const idxRaw = document.getElementById('cf-idx').value;
+  const c = {
+    concepto: document.getElementById('cf-concepto').value.trim(),
+    monto: parseFloat(document.getElementById('cf-monto').value) || 0,
+    moneda: document.getElementById('cf-moneda').value,
+    notas: document.getElementById('cf-notas').value.trim(),
+  };
+  if (!c.concepto) return alert('El concepto es obligatorio.');
+  const costos = getCostosFijos();
+  if (idxRaw !== '') costos[parseInt(idxRaw)] = c;
+  else costos.push(c);
+  localStorage.setItem('ecom_costos_fijos', JSON.stringify(costos));
+  closeModal('modal-costo-fijo');
+  renderInformacion();
+}
+
+function saveCotizacion() {
+  const val = parseFloat(document.getElementById('input-cotizacion').value);
+  if (!val || val <= 0) return alert('Ingresá una cotización válida.');
+  localStorage.setItem('ecom_cotizacion_usd', val.toString());
+  renderInformacion();
+}
+
+// =====================
 // NAVIGATION
 // =====================
 function goPage(page) {
@@ -1090,6 +1343,7 @@ function goPage(page) {
   if (page === 'reportes') renderReportes();
   if (page === 'transportistas') renderTransportistas();
   if (page === 'clientes') renderClientes();
+  if (page === 'informacion') renderInformacion();
 }
 
 // =====================
@@ -1767,11 +2021,13 @@ function renderEnvios() {
 // RENDER: REPORTES
 // =====================
 function renderReportes() {
-  const dias = document.getElementById('reporte-periodo').value;
-  const now = new Date();
-  const cutoff = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoff);
-  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => (e.creado || '').slice(0, 10) >= cutoff);
+  const { desde, hasta, diasNum, val } = getReporteFiltro();
+  const ventasFiltradas = desde === null
+    ? db.ventas
+    : db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta);
+  const enviosFiltrados = desde === null
+    ? db.envios
+    : db.envios.filter(e => { const d = (e.creado || '').slice(0, 10); return d >= desde && d <= hasta; });
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
@@ -1781,10 +2037,14 @@ function renderReportes() {
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
   const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
   const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
-  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
+  const costosFijosMensuales = getCostosFijosEnUYU();
+  const factorPeriodo = val === 'all' ? 1 : (diasNum / 30);
+  const costosFijosAjustados = parseFloat((costosFijosMensuales * factorPeriodo).toFixed(2));
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costosFijosAjustados;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
   const ticketPromedio = ventasFiltradas.length > 0 ? totalIngresos / ventasFiltradas.length : 0;
   const unidadesVendidas = ventasFiltradas.reduce((a,v) => a + v.cantidad, 0);
+  const periodoLabel = val === 'all' ? 'todo el tiempo' : val === 'custom' ? `${desde} → ${hasta}` : `${diasNum} días`;
 
   document.getElementById('reporte-stats').innerHTML = `
     <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(totalIngresos)}</div><div class="stat-label">Ingresos totales</div></div>
@@ -1795,10 +2055,11 @@ function renderReportes() {
     <div class="stat-card yellow"><div class="stat-icon">🏭</div><div class="stat-value">${fmt(costoProductos)}</div><div class="stat-label">Costo de productos</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
     <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(totalEnviosSinPagar)}</div><div class="stat-label">Envíos a pagar</div></div>
-    <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia estimada</div></div>
-    <div class="${parseFloat(margenPct) >= 30 ? 'stat-card green' : parseFloat(margenPct) >= 15 ? 'stat-card yellow' : 'stat-card red'}"><div class="stat-icon">%</div><div class="stat-value">${margenPct}%</div><div class="stat-label">Margen neto</div></div>
+    <div class="stat-card red"><div class="stat-icon">🏢</div><div class="stat-value">${fmt(costosFijosAjustados)}</div><div class="stat-label">Costos fijos (${periodoLabel})</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia neta estimada</div></div>
+    <div class="${parseFloat(margenPct) >= 30 ? 'stat-card green' : parseFloat(margenPct) >= 15 ? 'stat-card yellow' : 'stat-card red'}"><div class="stat-icon">%</div><div class="stat-value">${margenPct}%</div><div class="stat-label">Margen neto real</div></div>
   `;
-  renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios);
+  renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios, costosFijosAjustados);
 
   const meliIngresos = ventasMeli.reduce((a,v) => a+v.total,0);
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
@@ -1993,13 +2254,12 @@ async function loadDashAds() {
   }
 }
 
-async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios) {
+async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios, costosFijosAjustados) {
   const container = document.getElementById('reporte-ads');
   if (!container) return;
   container.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Cargando datos de Ads...</div>';
 
   try {
-    // Ads se almacena agrupado por mes (fecha=primer_dia_mes). Mostrar el mes de "hasta".
     const mesRef = new Date().toISOString().slice(0, 7);
     const data = await fetch(`/api/meli/ads-historico?mes=${mesRef}`).then(r => r.json());
 
@@ -2007,11 +2267,7 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
     const gananciaConAds = ganancia - adsSpend;
     const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
 
-    const now = new Date();
-    const hasta = now.toISOString().slice(0, 10);
-    const desde = dias === 'all'
-      ? '2020-01-01'
-      : new Date(now - parseInt(dias, 10) * 86400000).toISOString().slice(0, 10);
+    const desdeParam = desde || '2020-01-01';
 
     const adsHtml = adsSpend > 0
       ? `<div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
@@ -2024,14 +2280,14 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
           <div class="table-header">
             <span class="table-title">📢 Gasto en Mercado Ads</span>
             <button class="btn btn-ghost btn-sm" id="btn-actualizar-ads"
-              onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+              onclick="actualizarAdsDesdesMELI('${desdeParam}','${hasta}','${val}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios},${costosFijosAjustados})">
               🔄 Actualizar desde MELI
             </button>
           </div>
           <div style="padding:20px">${adsHtml}</div>
         </div>
         <div class="table-wrap">
-          <div class="table-header"><span class="table-title">📊 Ganancia neta (con ads)</span></div>
+          <div class="table-header"><span class="table-title">📊 Ganancia neta real (con ads)</span></div>
           <div style="padding:20px">
             <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:12px;color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</div>
             <div style="font-size:12px;color:var(--text-muted);line-height:2">
@@ -2039,6 +2295,7 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
               − Comisiones MELI: ${fmt(totalComisiones)}<br>
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               − Gasto en Ads: ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
                 = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
@@ -2053,7 +2310,8 @@ async function renderAdsReporte(dias, ganancia, totalIngresos, totalComisiones, 
   }
 }
 
-async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios) {
+async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngresos, totalComisiones, costoProductos, totalCostoEnvios, costosFijosAjustados) {
+  costosFijosAjustados = costosFijosAjustados || 0;
   const btn = document.getElementById('btn-actualizar-ads');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Actualizando...'; }
 
@@ -2066,7 +2324,7 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
           <div style="color:${color};font-weight:600;margin-bottom:8px">${titulo}</div>
           <div style="font-size:13px;color:var(--text-muted);white-space:pre-wrap">${cuerpo}</div>
           <button class="btn btn-ghost btn-sm" style="margin-top:14px"
-            onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+            onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios},${costosFijosAjustados})">
             🔄 Reintentar
           </button>
         </div>
@@ -2092,7 +2350,6 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
       return;
     }
 
-    // Usar datos live directamente — tienen el período exacto consultado
     const adsSpend = data.total_spend || 0;
     const adsFact = data.total_facturacion || 0;
     const adsRoas = data.roas || 0;
@@ -2109,7 +2366,7 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
           <div class="table-header">
             <span class="table-title">📢 Gasto en Mercado Ads</span>
             <button class="btn btn-ghost btn-sm" id="btn-actualizar-ads"
-              onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios})">
+              onclick="actualizarAdsDesdesMELI('${desde}','${hasta}','${dias}',${ganancia},${totalIngresos},${totalComisiones},${costoProductos},${totalCostoEnvios},${costosFijosAjustados})">
               🔄 Actualizar desde MELI
             </button>
           </div>
@@ -2133,7 +2390,7 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
           </div>
         </div>
         <div class="table-wrap">
-          <div class="table-header"><span class="table-title">📊 Ganancia neta (con ads)</span></div>
+          <div class="table-header"><span class="table-title">📊 Ganancia neta real (con ads)</span></div>
           <div style="padding:20px">
             <div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:12px;color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</div>
             <div style="font-size:12px;color:var(--text-muted);line-height:2">
@@ -2141,6 +2398,7 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
               − Comisiones MELI: ${fmt(totalComisiones)}<br>
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               − Gasto en Ads: ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
                 = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
@@ -2156,10 +2414,62 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
   }
 }
 
+function getReporteFiltro() {
+  const val = document.getElementById('reporte-periodo').value;
+  const now = new Date();
+  const hoy = now.toISOString().slice(0, 10);
+  if (val === 'custom') {
+    const desde = document.getElementById('reporte-desde').value || '2020-01-01';
+    const hasta = document.getElementById('reporte-hasta').value || hoy;
+    const diasNum = Math.max(1, Math.round((new Date(hasta) - new Date(desde)) / 86400000));
+    return { desde, hasta, diasNum, val };
+  }
+  if (val === 'all') return { desde: null, hasta: hoy, diasNum: null, val };
+  const diasNum = parseInt(val);
+  const desde = new Date(now - diasNum * 86400000).toISOString().slice(0, 10);
+  return { desde, hasta: hoy, diasNum, val };
+}
+
+function onCustomRangeChange() {
+  const { desde, hasta } = getReporteFiltro();
+  if (desde && hasta && desde <= hasta) {
+    const active = document.querySelector('#page-reportes .tab.active');
+    const tab = active ? active.getAttribute('onclick').match(/'(\w+)'/)[1] : 'resumen';
+    if (tab === 'comisiones') renderComisiones();
+    else if (tab === 'canceladas') renderCanceladas();
+    else renderReportes();
+  }
+}
+
+function setCustomRangeMesActual() {
+  const now = new Date();
+  const desde = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+  const hasta = now.toISOString().slice(0, 10);
+  document.getElementById('reporte-desde').value = desde;
+  document.getElementById('reporte-hasta').value = hasta;
+  onCustomRangeChange();
+}
+
+function setCustomRangeSemanaActual() {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  const diffToMonday = (dayOfWeek === 0 ? -6 : 1 - dayOfWeek);
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diffToMonday);
+  document.getElementById('reporte-desde').value = monday.toISOString().slice(0, 10);
+  document.getElementById('reporte-hasta').value = now.toISOString().slice(0, 10);
+  onCustomRangeChange();
+}
+
 function onReportePeriodoChange() {
+  const val = document.getElementById('reporte-periodo').value;
+  const panel = document.getElementById('panel-fecha-custom');
+  if (panel) panel.style.display = val === 'custom' ? '' : 'none';
+  if (val === 'custom') return;
   const active = document.querySelector('#page-reportes .tab.active');
   const tab = active ? active.getAttribute('onclick').match(/'(\w+)'/)[1] : 'resumen';
   if (tab === 'comisiones') renderComisiones();
+  else if (tab === 'canceladas') renderCanceladas();
   else renderReportes();
 }
 
@@ -2176,10 +2486,11 @@ function switchReportesTab(tab) {
 }
 
 function renderComisiones() {
-  const dias = document.getElementById('reporte-periodo').value;
-  const now = new Date();
-  const cutoffCom = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
-  const ventasMeli = (dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffCom)).filter(v => v.canal === 'meli');
+  const { desde, hasta } = getReporteFiltro();
+  const ventasMeli = (desde === null
+    ? db.ventas
+    : db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta)
+  ).filter(v => v.canal === 'meli');
 
   const meliIds = new Set(ventasMeli.map(v => v.id));
   const enviosMeli = db.envios.filter(e => meliIds.has(e.ventaId));
@@ -2747,11 +3058,9 @@ function exportVentasPDF() {
 }
 
 function exportReportePDF() {
-  const dias = document.getElementById('reporte-periodo').value;
-  const now = new Date();
-  const cutoffPDF = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffPDF);
-  const enviosFiltrados = dias === 'all' ? db.envios : db.envios.filter(e => (e.creado || '').slice(0, 10) >= cutoffPDF);
+  const { desde, hasta } = getReporteFiltro();
+  const ventasFiltradas = desde === null ? db.ventas : db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta);
+  const enviosFiltrados = desde === null ? db.envios : db.envios.filter(e => { const d = (e.creado || '').slice(0, 10); return d >= desde && d <= hasta; });
   if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
@@ -2953,10 +3262,8 @@ function exportReportePDF() {
 }
 
 function exportReporteCSV() {
-  const dias = document.getElementById('reporte-periodo').value;
-  const now = new Date();
-  const cutoffCSV = dias === 'all' ? null : new Date(now - parseInt(dias) * 86400000).toISOString().slice(0, 10);
-  const ventasFiltradas = dias === 'all' ? db.ventas : db.ventas.filter(v => v.fecha >= cutoffCSV);
+  const { desde, hasta } = getReporteFiltro();
+  const ventasFiltradas = desde === null ? db.ventas : db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta);
   if (!ventasFiltradas.length) { alert('No hay datos en el período seleccionado.'); return; }
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a+v.total, 0);
@@ -3016,13 +3323,15 @@ const NOMBRES_TRANSPORTISTAS = {
   mercado_envios: 'MELI Envíos', otro: 'Otro'
 };
 
+let _desgloseEnvios = [];
+
 async function renderTransportistas() {
   try {
     const data = await api('GET', '/transportistas');
 
+    // Deudas cards
     const deudas = data.deudas || {};
     const transportistasConDeuda = Object.entries(deudas).filter(([,v]) => v > 0);
-
     if (transportistasConDeuda.length === 0) {
       document.getElementById('transportistas-deudas').innerHTML =
         '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--text-muted)">✅ Sin deudas pendientes con transportistas</div>';
@@ -3039,14 +3348,13 @@ async function renderTransportistas() {
       `).join('');
     }
 
+    // Desglose de envíos pendientes
+    _desgloseEnvios = data.envios || [];
+    filtrarDesglose();
+
+    // Historial de pagos
     const pagos = data.pagos || [];
-    if (pagos.length === 0) {
-      document.getElementById('transportistas-pagos-tbody').innerHTML = '';
-      document.getElementById('transportistas-empty').style.display = 'block';
-      return;
-    }
-    document.getElementById('transportistas-empty').style.display = 'none';
-    document.getElementById('transportistas-pagos-tbody').innerHTML = pagos.map(p => `
+    document.getElementById('transportistas-pagos-tbody').innerHTML = pagos.length === 0 ? '' : pagos.map(p => `
       <tr>
         <td>${p.fecha}</td>
         <td><span class="badge badge-blue">${NOMBRES_TRANSPORTISTAS[p.transportista] || p.transportista}</span></td>
@@ -3055,11 +3363,77 @@ async function renderTransportistas() {
         <td><button class="btn btn-danger btn-sm" data-id="${p.id}" onclick="eliminarPagoTransportista(this.dataset.id)">🗑️</button></td>
       </tr>
     `).join('');
+    document.getElementById('transportistas-empty').style.display = pagos.length === 0 ? 'block' : 'none';
 
   } catch(e) {
     console.error('Error cargando transportistas:', e);
     document.getElementById('transportistas-deudas').innerHTML = '<div style="color:var(--red);padding:20px">Error cargando datos: ' + e.message + '</div>';
   }
+}
+
+function filtrarDesglose() {
+  const filtro = document.getElementById('desglose-filtro')?.value || '';
+  const envios = filtro ? _desgloseEnvios.filter(e => e.transportista === filtro) : _desgloseEnvios;
+  renderDesglose(envios);
+}
+
+function renderDesglose(envios) {
+  const tbody = document.getElementById('desglose-tbody');
+  const empty = document.getElementById('desglose-empty');
+  const table = document.getElementById('desglose-table');
+  if (!envios.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    table.style.display = 'none';
+    document.getElementById('desglose-seleccion-bar').style.display = 'none';
+    document.getElementById('desglose-check-all').checked = false;
+    return;
+  }
+  empty.style.display = 'none';
+  table.style.display = '';
+  const estadoColors = { pendiente: 'var(--yellow)', en_camino: 'var(--accent)', entregado: 'var(--green)', problema: 'var(--red)' };
+  tbody.innerHTML = envios.map(e => {
+    const costoTotal = (e.costo || 0) + (e.colecta ? 75 : 0);
+    const zonaLabel = e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '<span style="color:var(--text-muted)">—</span>';
+    const fecha = e.fecha_despacho || (e.created_at || '').slice(0, 10) || '—';
+    return `
+      <tr>
+        <td><input type="checkbox" class="desglose-check" data-id="${e.id}" data-costo="${costoTotal}" data-transportista="${e.transportista || 'enviosuy'}" onchange="actualizarSeleccionBar()"></td>
+        <td>${zonaLabel}</td>
+        <td><span style="color:var(--yellow);font-weight:600">${fmt(costoTotal)}</span></td>
+        <td style="font-size:13px">${e.comprador || '—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || (e.id || '').slice(-8)}</td>
+        <td style="font-size:12px;color:var(--text-muted)">${fecha}</td>
+        <td style="font-size:12px"><span style="color:${estadoColors[e.estado] || 'var(--text-muted)'}">●</span> ${e.estado || '—'}</td>
+      </tr>`;
+  }).join('');
+  actualizarSeleccionBar();
+}
+
+function toggleAllDesglose(masterCb) {
+  document.querySelectorAll('.desglose-check').forEach(cb => { cb.checked = masterCb.checked; });
+  actualizarSeleccionBar();
+}
+
+function actualizarSeleccionBar() {
+  const checks = [...document.querySelectorAll('.desglose-check:checked')];
+  const bar = document.getElementById('desglose-seleccion-bar');
+  const info = document.getElementById('desglose-seleccion-info');
+  if (!checks.length) { bar.style.display = 'none'; return; }
+  const total = checks.reduce((s, cb) => s + parseFloat(cb.dataset.costo || 0), 0);
+  info.textContent = `${checks.length} envío${checks.length > 1 ? 's' : ''} seleccionado${checks.length > 1 ? 's' : ''} — Total: ${fmt(total)}`;
+  bar.style.display = 'flex';
+}
+
+function pagarSeleccionados() {
+  const checks = [...document.querySelectorAll('.desglose-check:checked')];
+  if (!checks.length) return;
+  const total = checks.reduce((s, cb) => s + parseFloat(cb.dataset.costo || 0), 0);
+  const transportistaDetectado = checks[0]?.dataset.transportista || 'enviosuy';
+  document.getElementById('pag-transportista').value = transportistaDetectado;
+  document.getElementById('pag-monto').value = total.toFixed(2);
+  document.getElementById('pag-fecha').value = new Date().toISOString().slice(0, 10);
+  openModal('modal-pago-transportista');
 }
 
 async function registrarPagoTransportista() {
@@ -3600,13 +3974,12 @@ function renderImportaciones() {
 // RENDER: CANCELADAS
 // =====================
 async function renderCanceladas() {
-  const dias = document.getElementById('reporte-periodo').value;
+  const { desde, hasta } = getReporteFiltro();
   try {
     const canceladas = await api('GET', '/ventas?canceladas=1');
-    const now = new Date();
-    const filtradas = dias === 'all' ? canceladas : canceladas.filter(c => {
-      const d = new Date(c.cancelada_at);
-      return (now - d) / (1000*60*60*24) <= parseInt(dias);
+    const filtradas = desde === null ? canceladas : canceladas.filter(c => {
+      const d = (c.cancelada_at || '').slice(0, 10);
+      return d >= desde && d <= hasta;
     });
 
     const totalCanceladas = filtradas.length;

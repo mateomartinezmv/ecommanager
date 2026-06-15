@@ -1818,7 +1818,7 @@ function renderDashboard() {
   `;
   loadDashAds();
 
-  const lowStock = db.productos.filter(p => p.stockDep <= p.alertaMin).slice(0,8);
+  const lowStock = db.productos.filter(p => p.stockDep <= p.alertaMin && !p.discontinuado).slice(0,8);
   document.getElementById('dash-low-stock').innerHTML = lowStock.length === 0
     ? '<div class="empty-state"><div class="empty-icon">✅</div><p>No hay productos con stock crítico</p></div>'
     : `<table><tbody>${lowStock.map(p => `<tr><td><span class="badge badge-gray">${p.sku}</span></td><td>${p.nombre}</td><td class="${p.stockDep === 0 ? 'stock-low' : 'stock-med'}">${p.stockDep} uds</td><td><button class="btn btn-ghost btn-sm" onclick="openAjuste('${p.sku}')">Ajustar</button></td></tr>`).join('')}</tbody></table>`;

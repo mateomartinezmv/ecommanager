@@ -12,7 +12,7 @@ const MELI_CLIENT_SECRET = Deno.env.get('MELI_CLIENT_SECRET')!
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 // =====================
-// TABLA DE COSTOS FLEX
+// TABLA DE COSTOS FLEX (EnviosUy — único transportista Flex)
 // =====================
 const COSTOS_ENVIOSUY: Record<number, number | null> = {
   1: 190, 2: 190, 3: 190, 4: 190,
@@ -22,12 +22,6 @@ const COSTOS_ENVIOSUY: Record<number, number | null> = {
   10: 200,
   11: null,
 }
-const COSTOS_GESTIONPOST: Record<number, number> = {
-  1: 169, 2: 169, 3: 169, 4: 169, 5: 169, 6: 169,
-  7: 139,
-  8: 200, 9: 200, 10: 200, 11: 200,
-}
-const RETIRO_GESTIONPOST = 75
 
 const ZONAS_KEYWORDS: Record<number, string[]> = {
   1: ['villa del cerro', 'punta espinillo', 'santiago vazquez', 'tres ombues', 'paso de la arena', 'pajas blancas', 'nuevo paris', 'la paloma', 'victoria', 'casabo', 'cerro'],
@@ -66,51 +60,19 @@ function detectarZona(direccion: string): number | null {
   return null
 }
 
-// =====================
-// SELECCIÓN POR HORARIO (MONTEVIDEO)
-// =====================
-function getTimeMVD(fecha: string | Date): { hora: number; minuto: number; weekday: string } {
-  const date = fecha instanceof Date ? fecha : new Date(fecha)
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Montevideo',
-    hour: '2-digit',
-    minute: '2-digit',
-    weekday: 'short',
-    hour12: false,
-  }).formatToParts(date)
-  const map: Record<string, string> = {}
-  for (const p of parts) map[p.type] = p.value
-  return {
-    hora: parseInt(map.hour),
-    minuto: parseInt(map.minute || '0'),
-    weekday: map.weekday,
+// Detecta zona usando datos estructurados del shipment de MELI.
+// Prioridad: route.name → neighborhood.name → dirección completa
+function detectarZonaDesdeShipData(neighborhood: string | null, routeName: string | null, direccion: string | null): number | null {
+  if (routeName) {
+    const m = routeName.match(/zona\s*(\d+)/i) || routeName.match(/^z(\d+)$/i)
+    if (m) return parseInt(m[1])
   }
-}
-
-function seleccionarTransportista(zona: number, fecha: string | Date): 'enviosuy' | 'gestionpost' {
-  if (zona === 11) return 'gestionpost'
-  const { hora, minuto, weekday } = getTimeMVD(fecha)
-  const hm = hora * 60 + minuto
-  if (weekday === 'Sun') return 'enviosuy'
-  if (weekday === 'Sat') {
-    if (hm < 12 * 60) return 'enviosuy'
-    if (hm < 13 * 60) return 'gestionpost'
-    return 'enviosuy'
+  if (neighborhood) {
+    const z = detectarZona(neighborhood)
+    if (z) return z
   }
-  // Lun-Vie
-  if (hm < 15 * 60) return 'enviosuy'
-  if (hm < 16 * 60) return 'gestionpost'
-  return 'enviosuy'
-}
-
-function calcularCostoFlex(direccion: string, fecha: string | Date) {
-  const zona = detectarZona(direccion)
-  if (!zona) return null
-  const costoEnviosUy = COSTOS_ENVIOSUY[zona] ?? null
-  const costoGestionPost = (COSTOS_GESTIONPOST[zona] ?? 200) + RETIRO_GESTIONPOST
-  const recomendada = seleccionarTransportista(zona, fecha)
-  const costo = recomendada === 'enviosuy' ? (costoEnviosUy ?? costoGestionPost) : costoGestionPost
-  return { zona, recomendada, costo }
+  if (direccion) return detectarZona(direccion)
+  return null
 }
 
 
@@ -171,6 +133,8 @@ async function procesarOrden(order: any, token: string, log: string[]) {
   const shippingId = order.shipping?.id
   let logisticType = ''
   let direccion: string | null = null
+  let neighborhood: string | null = null
+  let routeName: string | null = null
   let costoEnvioReal = 0
 
   if (shippingId) {
@@ -180,39 +144,41 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       })
       const shipData = await shipRes.json()
       logisticType = shipData?.logistic_type || ''
-      // cost = cargo al vendedor; list_cost = precio al comprador (no usamos list_cost)
       costoEnvioReal = shipData?.shipping_option?.cost ?? shipData?.shipping_option?.list_cost ?? shipData?.base_cost ?? 0
+      neighborhood = shipData?.receiver_address?.neighborhood?.name || null
+      routeName = shipData?.route?.name || null
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address
-        direccion = `${addr.street_name} ${addr.street_number}, ${addr.city?.name}, ${addr.state?.name}`
+        direccion = [addr.street_name, addr.street_number, neighborhood, addr.city?.name, addr.state?.name]
+          .filter(Boolean).join(', ')
       }
-      const FLEX_TYPES_LOG = ['self_service', 'self_service_flex']
-      if (FLEX_TYPES_LOG.includes(logisticType)) {
-        console.log('FLEX_SHIPDATA_DEBUG:', JSON.stringify({
-          id: shipData?.id,
-          logistic_type: shipData?.logistic_type,
-          service_id: shipData?.service_id,
-          substatus: shipData?.substatus,
-          tags: shipData?.tags,
-          shipping_option: shipData?.shipping_option,
-          neighborhood: shipData?.receiver_address?.neighborhood,
-          receiver_types: shipData?.receiver_address?.types,
-          route: shipData?.route,
-        }))
-      }
-    } catch (_) {
-      // Fallback: mercado_envios, costo 0
-    }
+      // Log de diagnóstico para TODOS los tipos — permite ver qué logistic_type llega
+      console.log('SHIPDATA_DEBUG:', JSON.stringify({
+        orden: order.id,
+        logistic_type: logisticType,
+        service_id: shipData?.service_id,
+        tags: shipData?.tags,
+        neighborhood,
+        routeName,
+        direccion,
+      }))
+    } catch (_) {}
   }
 
-  log.push(`🔍 shipment logistic_type: ${logisticType || 'n/a'} (shipping_id: ${shippingId || 'n/a'})`)
+  log.push(`🔍 logistic_type: "${logisticType || 'n/a'}" | barrio: "${neighborhood || '—'}" | shipping_id: ${shippingId || 'n/a'}`)
 
   const FLEX_TYPES = ['self_service', 'self_service_flex']
   const esFlex = FLEX_TYPES.includes(logisticType)
-  const flexFecha = order.date_created || new Date().toISOString()
-  const flexInfo = esFlex && direccion ? calcularCostoFlex(direccion, flexFecha) : null
-  const transportisteFinal = esFlex ? (flexInfo?.recomendada || 'gestionpost') : 'mercado_envios'
-  const costoEnvio = esFlex ? (flexInfo?.costo ?? costoEnvioReal ?? 0) : 0
+
+  let zonaFlex: number | null = null
+  if (esFlex) {
+    zonaFlex = detectarZonaDesdeShipData(neighborhood, routeName, direccion)
+  }
+
+  const transportisteFinal = esFlex ? 'enviosuy' : 'mercado_envios'
+  const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0
+
+  log.push(`📬 Tipo: ${transportisteFinal} | zona: ${zonaFlex ?? 'no detectada'} | costo: $${costoEnvio}`)
 
   // ── Cálculo de deducciones MELI ─────────────────────────────────────────────
   // Método primario: net_received_amount = lo que MELI acredita al vendedor tras
@@ -224,7 +190,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
     ? Math.round((grossTotal - netReceived) * 100) / 100
     : null
 
-  log.push(`📬 Tipo envío: ${transportisteFinal} | gross=$${grossTotal} net=$${netReceived} deducción=${totalDeductionOrder}`)
+  log.push(`💳 gross=$${grossTotal} net=$${netReceived} deducción=${totalDeductionOrder}`)
 
   for (const item of order.order_items || []) {
     const meliItemId = item.item?.id
@@ -328,6 +294,7 @@ async function procesarOrden(order: any, token: string, log: string[]) {
           tracking: null, fecha_despacho: null, estado: 'pendiente',
           direccion: direccion || null,
           costo: costoEnvio,
+          zona: zonaFlex,
         })
         log.push(`✅ Envío creado: ${transportisteFinal} $${costoEnvio}`)
       }

@@ -62,10 +62,11 @@ module.exports = async (req, res) => {
       if (!id) return res.status(400).json({ error: 'Falta ?id=' });
       const b = req.body || {};
       const fields = {};
-      if (b.estado   !== undefined) fields.estado   = b.estado;
-      if (b.notas    !== undefined) fields.notas    = b.notas?.trim() || null;
-      if (b.llegada  !== undefined) fields.llegada  = b.llegada || null;
+      if (b.estado          !== undefined) fields.estado          = b.estado;
+      if (b.notas           !== undefined) fields.notas           = b.notas?.trim() || null;
+      if (b.llegada         !== undefined) fields.llegada         = b.llegada || null;
       if (b.saldo_pendiente !== undefined) fields.saldo_pendiente = b.saldo_pendiente === true;
+      if (b.items           !== undefined) fields.items           = Array.isArray(b.items) ? b.items : [];
 
       const { data, error } = await supabase.from('importaciones')
         .update(fields).eq('id', id).select().single();

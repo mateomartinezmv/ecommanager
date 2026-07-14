@@ -39,6 +39,7 @@ module.exports = async (req, res) => {
         meli_id: p.meliId || null,
         shopify_id: p.shopifyId || null,
         notas: p.notas,
+        discontinuado: p.discontinuado || false,
       }).select().single();
       if (error) throw error;
       return res.json(data);
@@ -70,6 +71,7 @@ module.exports = async (req, res) => {
         meli_id: p.meliId || null,
         shopify_id: p.shopifyId || null,
         notas: p.notas,
+        discontinuado: p.discontinuado !== undefined ? p.discontinuado : false,
       }).eq('sku', sku).select().single();
       if (error) throw error;
 

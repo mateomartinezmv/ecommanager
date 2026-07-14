@@ -312,6 +312,63 @@
   </div>
 </div>
 
+<!-- ── EDITAR IMPORTACIÓN MODAL ──────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal">
+    <div class="modal-title">✏️ Editar Importación</div>
+    <input type="hidden" id="edit-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Fecha de orden</label>
+        <input type="date" id="edit-order-date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Llegada estimada</label>
+        <input type="date" id="edit-est-arrival">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select id="edit-status">
+          <option value="ordered">📦 Ordenado</option>
+          <option value="in_transit">✈️ En tránsito</option>
+          <option value="en_aduana">🏛️ En aduana</option>
+        </select>
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Notas</label>
+        <textarea id="edit-notes" placeholder="Proveedor, detalles…"></textarea>
+      </div>
+    </div>
+
+    <!-- Ítems editables -->
+    <div style="margin-top:20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:600">Artículos</span>
+        <button class="btn btn-ghost btn-sm" onclick="addEditLineItem()">+ Agregar ítem</button>
+      </div>
+      <div class="items-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>SKU / Nombre</th>
+              <th>Producto</th>
+              <th>Cantidad</th>
+              <th>Costo unit. (USD)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="edit-line-items-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-editar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitEdit()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 let imports  = [];
@@ -397,7 +454,8 @@ function render() {
       </td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="btn btn-ghost btn-sm" onclick="verDetalle('${imp.id}')">Ver items</button>
+          <button class="btn btn-ghost btn-sm" onclick="verDetalle('${imp.id}')">📋 Ver</button>
+          ${canArrive ? `<button class="btn btn-ghost btn-sm" onclick="openEdit('${imp.id}')">✏️ Editar</button>` : ''}
           ${canArrive ? `<button class="btn btn-green btn-sm" onclick="marcarLlegado('${imp.id}')">✅ Llegó</button>` : ''}
           <button class="btn btn-danger btn-sm" onclick="eliminar('${imp.id}')">🗑</button>
         </div>
@@ -647,6 +705,104 @@ async function toggleSaldo(id, nuevoEstado) {
     if (idx !== -1) imports[idx] = { ...imports[idx], saldo_pendiente: updated.saldo_pendiente };
     render();
   } catch(e) { alert('Error actualizando saldo: ' + e.message); }
+}
+
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+function openEdit(id) {
+  const imp = imports.find(i => i.id === id);
+  if (!imp) return;
+
+  document.getElementById('edit-id').value           = id;
+  document.getElementById('edit-order-date').value   = imp.fecha || '';
+  document.getElementById('edit-est-arrival').value  = imp.llegada || '';
+  document.getElementById('edit-status').value       = imp.estado || imp.status || 'ordered';
+  document.getElementById('edit-notes').value        = imp.notas || '';
+
+  // Populate items
+  const tbody = document.getElementById('edit-line-items-body');
+  tbody.innerHTML = '';
+  const items = imp.items || [];
+  items.forEach(it => addEditLineItem(it.sku, it.nombre, it.qty, it.costo));
+  if (!items.length) addEditLineItem();
+
+  document.getElementById('modal-editar').classList.add('open');
+}
+
+function addEditLineItem(sku = '', nombre = '', qty = '', costo = '') {
+  const tbody = document.getElementById('edit-line-items-body');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>
+      <div class="sku-wrap">
+        <input type="text" placeholder="SKU o nombre..." class="li-sku" value="${sku}"
+               oninput="buscarProdEdit(this)"
+               onblur="cerrarDd(this,200)"
+               onkeydown="if(event.key==='Escape')cerrarDd(this,0)">
+        <div class="sku-dd"></div>
+      </div>
+    </td>
+    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${nombre}"></td>
+    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" value="${qty}"></td>
+    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" value="${costo}"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function buscarProdEdit(input) {
+  const q = input.value.trim().toLowerCase();
+  const dd = input.parentElement.querySelector('.sku-dd');
+  if (!q || !productos.length) { dd.style.display = 'none'; return; }
+  const res = productos.filter(p =>
+    (p.sku || '').toLowerCase().includes(q) ||
+    (p.nombre || '').toLowerCase().includes(q)
+  ).slice(0, 8);
+  if (!res.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = res.map(p =>
+    `<div class="sku-dd-item" onmousedown="pickProdEdit(this,'${p.sku.replace(/'/g,"\\'")}','${(p.nombre||'').replace(/'/g,"\\'")}')">
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--accent);font-size:11px">${p.sku}</span>
+      <span style="margin-left:8px">${p.nombre}</span>
+    </div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function pickProdEdit(item, sku, nombre) {
+  const wrap = item.closest('.sku-wrap');
+  wrap.querySelector('input').value = sku;
+  wrap.querySelector('.sku-dd').style.display = 'none';
+  const tr = wrap.closest('tr');
+  tr.querySelector('.li-name').value = nombre;
+}
+
+async function submitEdit() {
+  const id = document.getElementById('edit-id').value;
+  const llegada = document.getElementById('edit-est-arrival').value;
+  const estado  = document.getElementById('edit-status').value;
+  const notas   = document.getElementById('edit-notes').value.trim();
+  const fecha   = document.getElementById('edit-order-date').value;
+
+  const rows = Array.from(document.querySelectorAll('#edit-line-items-body tr'));
+  const items = rows.map(tr => ({
+    sku:    tr.querySelector('.li-sku').value.trim(),
+    nombre: tr.querySelector('.li-name').value.trim(),
+    qty:    parseInt(tr.querySelector('.li-qty').value) || 0,
+    costo:  parseFloat(tr.querySelector('.li-cost').value) || 0,
+  })).filter(i => (i.sku || i.nombre) && i.qty > 0);
+
+  try {
+    const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
+      llegada: llegada || null,
+      estado,
+      notas:   notas || null,
+      items,
+    });
+    const idx = imports.findIndex(i => i.id === id);
+    if (idx !== -1) imports[idx] = { ...imports[idx], ...updated };
+    render();
+    closeModal('modal-editar');
+  } catch(e) {
+    alert('Error guardando: ' + e.message);
+  }
 }
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────

@@ -38,7 +38,7 @@ module.exports = async (req, res) => {
 
     for (const batch of batches) {
       const idsParam = batch.join(',');
-      const itemsRes = await fetch(`https://api.mercadolibre.com/items?ids=${idsParam}&attributes=id,title,price,available_quantity,category_id,status,thumbnail`, {
+      const itemsRes = await fetch(`https://api.mercadolibre.com/items?ids=${idsParam}&attributes=id,title,price,available_quantity,category_id,status,thumbnail,date_created`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const items = await itemsRes.json();
@@ -94,6 +94,7 @@ module.exports = async (req, res) => {
           precio: item.price,
           alerta_min: 3,
           meli_id: item.id,
+          fecha_publicacion: item.date_created ? item.date_created.slice(0, 10) : null,
           notas: `Importado desde MELI`,
         });
 

@@ -34,7 +34,7 @@ module.exports = async (req, res) => {
     // ── 1. All products ──────────────────────────────────────────────────────
     const { data: productos, error: prodErr } = await supabase
       .from('productos')
-      .select('sku, nombre, categoria, stock_dep, tipo')
+      .select('sku, nombre, categoria, stock_dep, tipo, fecha_publicacion')
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
@@ -129,10 +129,20 @@ module.exports = async (req, res) => {
       // Velocity = units sold ÷ active days (not total window days).
       // This way stockout days — when nothing sold because there was no stock —
       // don't drag the daily rate down.
+      // With very few sales (e.g. a single sale), first==last collapses this to
+      // 1 day, which wildly overstates velocity for a product that's simply been
+      // listed a long time with low demand. Floor it with days since the listing
+      // was first published (capped at the 90-day sales window, since that's all
+      // the sales data we have) whenever that's known and larger.
       let activeDays = 90;
       if (totalSold > 0) {
         const diffMs = new Date(lastDateBySku[p.sku]) - new Date(firstDateBySku[p.sku]);
         activeDays   = Math.max(1, Math.round(diffMs / 86400000) + 1);
+
+        if (p.fecha_publicacion) {
+          const daysSincePublicacion = Math.round((today - new Date(p.fecha_publicacion)) / 86400000) + 1;
+          activeDays = Math.max(activeDays, Math.min(90, daysSincePublicacion));
+        }
       }
 
       const dailyVelocity = totalSold > 0 ? totalSold / activeDays : 0;

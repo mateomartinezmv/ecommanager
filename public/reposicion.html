@@ -80,6 +80,11 @@
   .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; border: none; background: none; font-family: 'Space Grotesk', sans-serif; }
   .tab.active { background: var(--surface2); color: var(--text); }
 
+  /* ── Transit pill ── */
+  .transit-pill { display:inline-flex; align-items:center; gap:5px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:6px; padding:3px 8px; font-size:11px; color:var(--green); font-weight:600; }
+  .transit-pill.ordered { background:rgba(79,142,247,0.1); border-color:rgba(79,142,247,0.25); color:var(--accent); }
+  .transit-pill + .transit-pill { margin-top:3px; }
+
   /* ── List view ── */
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
@@ -162,6 +167,7 @@
   <div class="topbar">
     <div class="page-title">📅 Calendario de Reposición</div>
     <div class="topbar-actions">
+      <span id="lead-time-info" style="font-size:12px;color:var(--text-muted)"></span>
       <button class="btn btn-ghost btn-sm" onclick="reload()">↻ Actualizar</button>
     </div>
   </div>
@@ -169,10 +175,11 @@
   <div class="content">
     <!-- Legend -->
     <div class="legend" style="margin-bottom:20px">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Ordenar ya (restock_date)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Quiebre de stock (stockout_date)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Ya ordenado</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Ordenar pronto (&lt;7 días)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> Sin stock / quiebre</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div> Ordenar ya / Insuficiente</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> Urgente (&lt;7 días)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> Pedido (en preparación)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> En tránsito (enviado)</div>
     </div>
 
     <!-- Filters -->
@@ -181,6 +188,13 @@
         <option value="">Todas las categorías</option>
       </select>
       <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
+    </div>
+
+    <!-- Segmento tabs -->
+    <div class="tabs" style="margin-bottom:16px">
+      <button class="tab active" id="seg-comprar"   onclick="switchSegmento('comprar')">🛒 Hay que comprar</button>
+      <button class="tab"        id="seg-transito"  onclick="switchSegmento('transito')">🚢 En tránsito / Pedido</button>
+      <button class="tab"        id="seg-todos"     onclick="switchSegmento('todos')">📋 Todos</button>
     </div>
 
     <!-- View tabs -->
@@ -227,8 +241,11 @@
 let allProducts   = [];
 let filtered      = [];
 let currentView   = 'lista';
+let currentSeg    = 'comprar';   // 'comprar' | 'transito' | 'todos'
 let calYear       = new Date().getFullYear();
-let calMonth      = new Date().getMonth(); // 0-based
+let calMonth      = new Date().getMonth();
+let leadTimePromedio = null;
+let leadTimeMuestra  = 0;
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -237,11 +254,19 @@ async function load() {
   try {
     const r = await fetch('/api/restock');
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
-    allProducts = await r.json();
+    const data = await r.json();
+    allProducts     = data.productos || [];
+    leadTimePromedio = data.lead_time_promedio ?? null;
+    leadTimeMuestra   = data.lead_time_muestra || 0;
 
-    // Populate category filter
+    document.getElementById('lead-time-info').textContent = leadTimePromedio !== null
+      ? `⏱️ Lead time: ${leadTimePromedio} días (${leadTimeMuestra > 0 ? `promedio de ${leadTimeMuestra} importaciones` : 'valor por defecto, sin datos suficientes'})`
+      : '';
+
     const cats = [...new Set(allProducts.map(p => p.categoria).filter(Boolean))].sort();
     const sel = document.getElementById('filter-cat');
+    // Reset options except the first
+    while (sel.options.length > 1) sel.remove(1);
     cats.forEach(c => {
       const o = document.createElement('option');
       o.value = c; o.textContent = c;
@@ -257,20 +282,39 @@ async function load() {
 
 function reload() { allProducts = []; load(); }
 
-// ─── Filters ──────────────────────────────────────────────────────────────────
+// ─── Filters + Segmento ───────────────────────────────────────────────────────
 function applyFilters() {
   const cat = document.getElementById('filter-cat').value;
-  filtered = cat ? allProducts.filter(p => p.categoria === cat) : [...allProducts];
+  let base = cat ? allProducts.filter(p => p.categoria === cat) : [...allProducts];
+
+  // Segmento filter
+  if (currentSeg === 'comprar')  base = base.filter(p => p.restock_status !== 'cubierto');
+  if (currentSeg === 'transito') base = base.filter(p => p.already_ordered);
+
+  filtered = base;
   document.getElementById('filtered-count').textContent =
     filtered.length ? `${filtered.length} producto${filtered.length !== 1 ? 's' : ''}` : '';
   if (currentView === 'lista') renderList();
   else renderCalendar();
 }
 
-// ─── Urgency helpers ─────────────────────────────────────────────────────────
+function switchSegmento(seg) {
+  currentSeg = seg;
+  ['comprar','transito','todos'].forEach(s =>
+    document.getElementById('seg-' + s).classList.toggle('active', s === seg)
+  );
+  applyFilters();
+}
+
+// ─── Urgency helpers ──────────────────────────────────────────────────────────
 function urgencyClass(p, todayStr) {
-  if (p.already_ordered) return 'ordered';
-  if (!p.restock_date)   return 'no-velocity';
+  if (p.restock_status === 'insuficiente') return 'insuficiente';
+  if (p.already_ordered) {
+    // Distinguish ordered (not shipped yet) vs in_transit (already shipping)
+    const hasInTransit = (p.en_transito || []).some(t => t.estado === 'in_transit');
+    return hasInTransit ? 'in-transit' : 'ordered';
+  }
+  if (!p.restock_date)             return 'no-velocity';
   if (p.stockout_date <= todayStr) return 'stocked-out';
   if (p.restock_date  <= todayStr) return 'overdue';
   const daysUntil = Math.round((new Date(p.restock_date) - new Date(todayStr)) / 86400000);
@@ -279,18 +323,27 @@ function urgencyClass(p, todayStr) {
   return 'ok';
 }
 
-function urgencyBadge(cls) {
+function urgencyBadge(p, cls) {
   const map = {
-    ordered:      ['badge-green',  '✅ Ya ordenado'],
+    'in-transit': ['badge-green',  '🚢 En tránsito'],
+    ordered:      ['badge-blue',   '📦 Pedido'],
     'stocked-out':['badge-red',    '🚨 Sin stock'],
     overdue:      ['badge-orange', '🔴 Ordenar ya'],
     urgent:       ['badge-yellow', '⚠️ Urgente'],
     soon:         ['badge-blue',   '🔵 Próximo'],
     ok:           ['badge-gray',   '✓ OK'],
     'no-velocity':['badge-gray',   '— Sin ventas'],
+    insuficiente: ['badge-orange', `🟠 Insuficiente — pedí ${p.cantidad_sugerida} más`],
   };
   const [css, label] = map[cls] || ['badge-gray', cls];
-  return `<span class="badge ${css}">${label}</span>`;
+  let html = `<span class="badge ${css}">${label}</span>`;
+  if (cls === 'insuficiente') {
+    const llegaTxt = p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—';
+    html += `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
+      ${p.qty_en_transito} en camino (llegan ~${llegaTxt}) — cobertura hasta ahí, después quedás sin stock.
+    </div>`;
+  }
+  return html;
 }
 
 function fmtDate(d) {
@@ -299,25 +352,43 @@ function fmtDate(d) {
   return `${day}/${m}/${y}`;
 }
 
+// Render the "en tránsito" pills for each product
+function transitHtml(p) {
+  if (!p.already_ordered || !p.en_transito?.length) return '—';
+  return p.en_transito.map(t => {
+    const isTransit = t.estado === 'in_transit';
+    const icon  = isTransit ? '🚢' : '📦';
+    const label = isTransit ? 'En tránsito' : 'Pedido';
+    const fecha = t.llegada ? ` · llega ${fmtDate(t.llegada)}` : '';
+    return `<div class="transit-pill${isTransit ? '' : ' ordered'}">${icon} ${t.qty} uds — ${label}${fecha}</div>`;
+  }).join('');
+}
+
 // ─── List view ────────────────────────────────────────────────────────────────
 function renderList() {
   const el = document.getElementById('list-container');
   if (!filtered.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>No hay productos con datos de ventas en los últimos 30 días.</p></div>`;
+    const msg = currentSeg === 'comprar'
+      ? '🎉 No hay productos que necesiten compra urgente.'
+      : currentSeg === 'transito'
+        ? '📭 No hay pedidos ni productos en tránsito.'
+        : 'No hay productos con datos de ventas en los últimos 30 días.';
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${msg}</p></div>`;
     return;
   }
 
   const todayStr = new Date().toISOString().slice(0,10);
 
   const rows = filtered.map(p => {
-    const cls     = urgencyClass(p, todayStr);
-    const badge   = urgencyBadge(cls);
+    const cls   = urgencyClass(p, todayStr);
+    const badge = urgencyBadge(p, cls);
 
-    // Lead-time window bar: show progress of consumed coverage vs 75-day lead time
     let barHtml = '—';
     if (p.days_coverage !== null) {
-      const totalDays   = p.days_coverage;
-      const coverPct    = totalDays > 0 ? Math.min(100, Math.max(0, ((totalDays - 75) / totalDays) * 100)) : 0;
+      const leadDays = leadTimePromedio ?? 85;
+      const coverPct = p.days_coverage > 0
+        ? Math.min(100, Math.max(0, ((p.days_coverage - leadDays) / p.days_coverage) * 100))
+        : 0;
       barHtml = `
         <div title="Ventana: ${fmtDate(p.restock_date)} → ${fmtDate(p.stockout_date)}" style="display:flex;flex-direction:column;gap:2px">
           <div class="window-bar"><div class="window-fill" style="width:${coverPct}%"></div></div>
@@ -331,9 +402,14 @@ function renderList() {
         <td>${p.nombre}</td>
         <td style="color:var(--text-muted);font-size:12px">${p.categoria || '—'}</td>
         <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
-        <td style="font-family:'JetBrains Mono',monospace">${p.daily_velocity > 0 ? p.daily_velocity.toFixed(2) + '/día' : '—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace">
+          ${p.daily_velocity > 0
+            ? `<div>${p.daily_velocity.toFixed(2)}/día</div><div style="font-size:10px;color:var(--text-muted)">${p.total_sold || 0} uds · ${p.active_days || '—'} días activos</div>`
+            : '—'}
+        </td>
         <td style="font-family:'JetBrains Mono',monospace">${p.days_coverage !== null ? p.days_coverage + ' días' : '—'}</td>
         <td>${barHtml}</td>
+        <td>${transitHtml(p)}</td>
         <td>${badge}</td>
       </tr>`;
   }).join('');
@@ -345,10 +421,11 @@ function renderList() {
           <th>SKU</th>
           <th>Producto</th>
           <th>Categoría</th>
-          <th>Stock</th>
+          <th>Stock actual</th>
           <th>Velocidad</th>
           <th>Cobertura</th>
-          <th>Ventana 75 días</th>
+          <th>Ventana (lead time)</th>
+          <th>En tránsito / Pedido</th>
           <th>Estado</th>
         </tr>
       </thead>
@@ -363,7 +440,6 @@ function renderCalendar() {
 
   const todayStr = new Date().toISOString().slice(0,10);
 
-  // Build a map: dateStr → events[]
   const events = {};
   function addEvent(dateStr, ev) {
     if (!dateStr) return;
@@ -372,26 +448,29 @@ function renderCalendar() {
   }
 
   filtered.forEach(p => {
-    if (p.already_ordered) {
-      if (p.restock_date) addEvent(p.restock_date, { type: 'ordered',  label: p.sku + ' ' + p.nombre });
-    } else {
+    // Show expected arrivals whenever there's incoming stock
+    (p.en_transito || []).forEach(t => {
+      if (t.llegada) addEvent(t.llegada, {
+        type:  t.estado === 'in_transit' ? 'in-transit' : 'ordered',
+        label: `${p.sku} +${t.qty} uds`,
+      });
+    });
+    // Show restock/stockout warnings unless coverage is actually enough
+    // (e.g. 'insuficiente': hay tránsito pero igual te quedás sin stock después)
+    if (p.restock_status !== 'cubierto') {
       if (p.restock_date)  addEvent(p.restock_date,  { type: 'restock',  label: p.sku + ' ' + p.nombre });
       if (p.stockout_date) addEvent(p.stockout_date, { type: 'stockout', label: p.sku + ' ' + p.nombre });
     }
   });
 
-  // Build grid
-  const firstDay   = new Date(calYear, calMonth, 1);
-  const lastDay    = new Date(calYear, calMonth + 1, 0);
-  // Monday = 0 offset
-  let startDow = firstDay.getDay(); // 0=Sun..6=Sat
-  startDow = startDow === 0 ? 6 : startDow - 1; // convert to Mon=0..Sun=6
+  const firstDay = new Date(calYear, calMonth, 1);
+  const lastDay  = new Date(calYear, calMonth + 1, 0);
+  let startDow = firstDay.getDay();
+  startDow = startDow === 0 ? 6 : startDow - 1;
 
   const cells = [];
-  // Leading empty cells
   for (let i = 0; i < startDow; i++) cells.push(null);
   for (let d = 1; d <= lastDay.getDate(); d++) cells.push(d);
-  // Trailing empty cells to complete last row
   while (cells.length % 7 !== 0) cells.push(null);
 
   const daysEl = document.getElementById('cal-days');
@@ -402,10 +481,14 @@ function renderCalendar() {
     const dayEvents = events[dateStr] || [];
 
     const evHtml = dayEvents.slice(0,4).map(ev => {
-      const cls = ev.type === 'restock' ? 'cal-event-restock'
-                : ev.type === 'stockout' ? 'cal-event-stockout'
-                : 'cal-event-ordered';
-      const icon = ev.type === 'restock' ? '🟠' : ev.type === 'stockout' ? '🔴' : '✅';
+      const cls  = ev.type === 'restock'    ? 'cal-event-restock'
+                 : ev.type === 'stockout'   ? 'cal-event-stockout'
+                 : ev.type === 'in-transit' ? 'cal-event-ordered'
+                 : 'cal-event-ordered';
+      const icon = ev.type === 'restock'    ? '🟠'
+                 : ev.type === 'stockout'   ? '🔴'
+                 : ev.type === 'in-transit' ? '🚢'
+                 : '📦';
       return `<div class="cal-event ${cls}" title="${ev.label}">${icon} ${ev.label}</div>`;
     }).join('');
 
@@ -423,23 +506,21 @@ function renderCalendar() {
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
 function prevMonth() {
-  if (calMonth === 0) { calMonth = 11; calYear--; }
-  else calMonth--;
+  if (calMonth === 0) { calMonth = 11; calYear--; } else calMonth--;
   renderCalendar();
 }
 function nextMonth() {
-  if (calMonth === 11) { calMonth = 0; calYear++; }
-  else calMonth++;
+  if (calMonth === 11) { calMonth = 0; calYear++; } else calMonth++;
   renderCalendar();
 }
 
 // ─── View switching ──────────────────────────────────────────────────────────
 function switchView(v) {
   currentView = v;
-  document.getElementById('view-lista').style.display       = v === 'lista'     ? 'block' : 'none';
-  document.getElementById('view-calendario').style.display  = v === 'calendario'? 'block' : 'none';
-  document.getElementById('tab-lista').classList.toggle('active',      v === 'lista');
-  document.getElementById('tab-calendario').classList.toggle('active', v === 'calendario');
+  document.getElementById('view-lista').style.display      = v === 'lista'      ? 'block' : 'none';
+  document.getElementById('view-calendario').style.display = v === 'calendario' ? 'block' : 'none';
+  document.getElementById('tab-lista').classList.toggle('active',       v === 'lista');
+  document.getElementById('tab-calendario').classList.toggle('active',  v === 'calendario');
   if (v === 'lista')      renderList();
   if (v === 'calendario') renderCalendar();
 }

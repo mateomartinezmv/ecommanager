@@ -1,18 +1,25 @@
 // api/restock.js
 // GET /api/restock
 //
-// Returns restock calendar data for every product:
-//   - daily_velocity  = units sold / active selling days (first→last sale in window)
-//                       This corrects for stockouts: days with no stock don't dilute the average.
-//   - days_coverage   = current stock / daily_velocity
-//   - restock_date    = today + days_coverage − 75  (last day to place order before stockout)
-//   - stockout_date   = today + days_coverage
-//   - already_ordered = true if the SKU appears in a non-arrived import
+// Returns { lead_time_promedio, lead_time_muestra, productos } where each product has:
+//   - daily_velocity           = units sold / active selling days (first→last sale in window)
+//                                 This corrects for stockouts: days with no stock don't dilute the average.
+//   - days_coverage            = current stock / daily_velocity
+//   - restock_date             = today + days_coverage − lead_time_promedio (last day to order before stockout)
+//   - stockout_date            = today + days_coverage
+//   - cobertura_proyectada_dias = (stock + qty_en_transito) / daily_velocity
+//   - cantidad_sugerida        = units still needed to reach cobertura_objetivo_dias
+//   - restock_status           = 'cubierto' | 'insuficiente' | 'ordenar_ya' | 'proximo'
+//   - already_ordered          = true if the SKU appears in a non-arrived import (kept for compat)
 //
 // CRITICAL: sales velocity aggregates ALL channels (meli + mostrador + shopify).
 // No channel filter is applied anywhere in this file.
 
 const { getSupabase } = require('./_supabase');
+
+const FALLBACK_LEAD_DAYS      = 85;
+const COBERTURA_SAFETY_MARGIN = 1.15; // margen de seguridad sobre el lead time promedio
+const MS_PER_DAY              = 86400 * 1000;
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -81,9 +88,36 @@ module.exports = async (req, res) => {
 
     const pendingSkus = new Set(Object.keys(transitBySku));
 
-    // ── 4. Calculate restock metrics per product ─────────────────────────────
+    // ── 4. Importaciones terminales: lead time real promedio ──────────────────
+    const { data: terminalImports, error: termErr } = await supabase
+      .from('importaciones')
+      .select('fecha, llegada')
+      .in('estado', ['recibido', 'arrived', 'en_deposito'])
+      .not('fecha', 'is', null)
+      .not('llegada', 'is', null)
+      .order('fecha', { ascending: false });
+    if (termErr) throw termErr;
+
+    const sixMonthsAgo = new Date(today);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
+
+    const last10  = (terminalImports || []).slice(0, 10); // ya viene ordenado desc por fecha
+    const last6mo = (terminalImports || []).filter(i => i.fecha >= sixMonthsAgoStr);
+    const sampleSet = last10.length >= last6mo.length ? last10 : last6mo;
+
+    const leadTimes = sampleSet
+      .map(i => Math.round((new Date(i.llegada) - new Date(i.fecha)) / MS_PER_DAY))
+      .filter(d => d > 0); // descarta filas con datos corruptos (llegada <= fecha)
+
+    const leadTimePromedio = leadTimes.length >= 3
+      ? Math.round(leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length)
+      : FALLBACK_LEAD_DAYS;
+
+    // ── 5. Calculate restock metrics per product ──────────────────────────────
     const todayStr  = today.toISOString().slice(0, 10);
-    const LEAD_DAYS = 75;
+    const LEAD_DAYS = leadTimePromedio;
+    const coberturaObjetivoDias = LEAD_DAYS * COBERTURA_SAFETY_MARGIN;
 
     const results = [];
 
@@ -130,34 +164,64 @@ module.exports = async (req, res) => {
         .filter(Boolean)
         .sort()[0] || null;
 
+      const coberturaProyectadaDias = dailyVelocity > 0
+        ? (stock + qty_en_transito) / dailyVelocity
+        : null;
+
+      const cantidadSugerida = dailyVelocity > 0
+        ? Math.max(0, Math.round((dailyVelocity * coberturaObjetivoDias) - stock - qty_en_transito))
+        : 0;
+
+      let restockStatus;
+      if (dailyVelocity === 0) {
+        restockStatus = already_ordered ? 'cubierto' : 'proximo';
+      } else if (coberturaProyectadaDias >= coberturaObjetivoDias) {
+        restockStatus = 'cubierto';
+      } else if (already_ordered) {
+        restockStatus = 'insuficiente';
+      } else {
+        const critical = stockoutDate <= todayStr || restockDate <= todayStr;
+        restockStatus = critical ? 'ordenar_ya' : 'proximo';
+      }
+
       results.push({
-        sku:             p.sku,
-        nombre:          p.nombre,
-        categoria:       p.categoria || '',
-        stock:           stock,
-        total_sold:      totalSold,
-        active_days:     totalSold > 0 ? activeDays : null,
-        daily_velocity:  Math.round(dailyVelocity * 100) / 100,
-        days_coverage:   daysCoverage !== null ? Math.round(daysCoverage) : null,
-        restock_date:    restockDate,
-        stockout_date:   stockoutDate,
+        sku:                        p.sku,
+        nombre:                     p.nombre,
+        categoria:                  p.categoria || '',
+        stock:                      stock,
+        total_sold:                 totalSold,
+        active_days:                totalSold > 0 ? activeDays : null,
+        daily_velocity:             Math.round(dailyVelocity * 100) / 100,
+        days_coverage:              daysCoverage !== null ? Math.round(daysCoverage) : null,
+        restock_date:               restockDate,
+        stockout_date:              stockoutDate,
+        cobertura_proyectada_dias:  coberturaProyectadaDias !== null ? Math.round(coberturaProyectadaDias) : null,
+        cobertura_objetivo_dias:    Math.round(coberturaObjetivoDias),
+        cantidad_sugerida:          cantidadSugerida,
+        restock_status:             restockStatus,
         already_ordered,
-        en_transito:     transito,       // full detail array
+        en_transito:                transito,       // full detail array
         qty_en_transito,
         proxima_llegada,
-        today:           todayStr,
+        today:                      todayStr,
       });
     }
 
-    // Sort: most urgent first (earliest restock_date), already-ordered last
+    // Sort: most urgent first (ordenar_ya > insuficiente > proximo > cubierto)
+    const STATUS_RANK = { ordenar_ya: 0, insuficiente: 1, proximo: 2, cubierto: 3 };
     results.sort((a, b) => {
-      if (a.already_ordered !== b.already_ordered) return a.already_ordered ? 1 : -1;
+      const rankDiff = STATUS_RANK[a.restock_status] - STATUS_RANK[b.restock_status];
+      if (rankDiff !== 0) return rankDiff;
       if (!a.restock_date) return 1;
       if (!b.restock_date) return -1;
       return a.restock_date < b.restock_date ? -1 : 1;
     });
 
-    return res.json(results);
+    return res.json({
+      lead_time_promedio: leadTimePromedio,
+      lead_time_muestra:  leadTimes.length,
+      productos:          results,
+    });
   } catch (err) {
     console.error('Error en /api/restock:', err);
     return res.status(500).json({ error: err.message });

@@ -333,9 +333,13 @@ function urgencyBadge(p, cls) {
     soon:         ['badge-blue',   '🔵 Próximo'],
     ok:           ['badge-gray',   '✓ OK'],
     'no-velocity':['badge-gray',   '— Sin ventas'],
-    insuficiente: ['badge-orange', `🟠 Insuficiente — pedí ${p.cantidad_sugerida} más`],
+    insuficiente: ['badge-orange', '🟠 Insuficiente'],
   };
-  const [css, label] = map[cls] || ['badge-gray', cls];
+  let [css, label] = map[cls] || ['badge-gray', cls];
+  const SUGGESTABLE = ['stocked-out', 'overdue', 'urgent', 'soon', 'insuficiente'];
+  if (SUGGESTABLE.includes(cls) && p.cantidad_sugerida > 0) {
+    label += ` — pedí ${p.cantidad_sugerida} más`;
+  }
   let html = `<span class="badge ${css}">${label}</span>`;
   if (cls === 'insuficiente') {
     const llegaTxt = p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—';

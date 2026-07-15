@@ -134,13 +134,20 @@ module.exports = async (req, res) => {
       // listed a long time with low demand. Floor it with days since the listing
       // was first published (capped at the 90-day sales window, since that's all
       // the sales data we have) whenever that's known and larger.
+      //
+      // That floor should stop at the last sale, not run to today, once the
+      // product is out of stock: with stock=0 there's no way it could have sold
+      // anything since then, so counting those extra no-stock days as "active"
+      // would dilute the rate and understate real demand. While stock>0 it's
+      // still a live selling opportunity, so today is the right reference point.
       let activeDays = 90;
       if (totalSold > 0) {
         const diffMs = new Date(lastDateBySku[p.sku]) - new Date(firstDateBySku[p.sku]);
         activeDays   = Math.max(1, Math.round(diffMs / 86400000) + 1);
 
         if (p.fecha_publicacion) {
-          const daysSincePublicacion = Math.round((today - new Date(p.fecha_publicacion)) / 86400000) + 1;
+          const referenceDate = stock > 0 ? today : new Date(lastDateBySku[p.sku]);
+          const daysSincePublicacion = Math.round((referenceDate - new Date(p.fecha_publicacion)) / 86400000) + 1;
           activeDays = Math.max(activeDays, Math.min(90, daysSincePublicacion));
         }
       }

@@ -5,6 +5,10 @@
 // DELETE /api/importaciones?id=XX  → eliminar
 
 const { getSupabase } = require('./_supabase');
+const { applyImportArrival } = require('./_stockSync');
+
+// Estados que representan que la mercadería ya está físicamente disponible
+const ARRIVED_STATES = ['arrived', 'recibido', 'en_deposito'];
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -61,6 +65,11 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       if (!id) return res.status(400).json({ error: 'Falta ?id=' });
       const b = req.body || {};
+
+      const { data: actual, error: actualErr } = await supabase
+        .from('importaciones').select('estado, items').eq('id', id).single();
+      if (actualErr) throw actualErr;
+
       const fields = {};
       if (b.estado          !== undefined) fields.estado          = b.estado;
       if (b.notas           !== undefined) fields.notas           = b.notas?.trim() || null;
@@ -71,6 +80,21 @@ module.exports = async (req, res) => {
       const { data, error } = await supabase.from('importaciones')
         .update(fields).eq('id', id).select().single();
       if (error) throw error;
+
+      // Si la importación acaba de pasar a un estado de "llegada", sumamos el
+      // stock de cada ítem una sola vez (idempotente: solo dispara en la transición).
+      const yaHabiaLlegado = ARRIVED_STATES.includes(actual.estado);
+      const llegaAhora     = fields.estado !== undefined && ARRIVED_STATES.includes(fields.estado);
+      if (llegaAhora && !yaHabiaLlegado) {
+        const items = fields.items !== undefined ? fields.items : (actual.items || []);
+        try {
+          data.stock_sync = await applyImportArrival(supabase, items);
+        } catch (syncErr) {
+          console.error('Error actualizando stock tras llegada de importación:', syncErr);
+          data.stock_sync = { error: syncErr.message };
+        }
+      }
+
       return res.json(data);
     }
 

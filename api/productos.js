@@ -7,6 +7,7 @@
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
+const { syncMeliStock, syncShopifyStock } = require('./_stockSync');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -84,14 +85,8 @@ module.exports = async (req, res) => {
       if (meliId && (forzarSync || stockCambio || (!anterior?.meli_id && meliId))) {
         try {
           const token = await getMeliToken();
-          const meliRes = await fetch(`https://api.mercadolibre.com/items/${meliId}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ available_quantity: stockCanon }),
-          });
-          const meliData = await meliRes.json();
-          if (meliData.error) console.warn('⚠️ MELI stock sync warning:', meliData.message);
-          else console.log(`✅ Stock MELI sincronizado: ${meliId} → ${stockCanon}`);
+          await syncMeliStock(token, meliId, stockCanon);
+          console.log(`✅ Stock MELI sincronizado: ${meliId} → ${stockCanon}`);
         } catch (meliErr) {
           console.error('❌ Error sincronizando stock MELI:', meliErr.message);
         }
@@ -100,7 +95,9 @@ module.exports = async (req, res) => {
       // Sincronizar stock Shopify si stock_dep cambió, si se enlazó un shopify_id nuevo, o se forzó
       if (shopifyId && (forzarSync || stockCambio || (!anterior?.shopify_id && shopifyId))) {
         try {
-          await syncShopifyStock(shopifyId, stockCanon);
+          const token = await getShopifyToken();
+          await syncShopifyStock(token, shopifyId, stockCanon);
+          console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${stockCanon}`);
         } catch (shopErr) {
           console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
         }
@@ -122,43 +119,3 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
-// Sincronizar stock en Shopify via Inventory API
-async function syncShopifyStock(shopifyId, cantidad) {
-  const SHOP = 'martinez-motos.myshopify.com';
-  const token = await getShopifyToken();
-
-  // shopifyId puede ser un variant_id o inventory_item_id
-  // Primero obtenemos el inventory_item_id del variant
-  const variantRes = await fetch(`https://${SHOP}/admin/api/2024-01/variants/${shopifyId}.json`, {
-    headers: { 'X-Shopify-Access-Token': token },
-  });
-  const variantData = await variantRes.json();
-  if (!variantData.variant) throw new Error('Variant no encontrado: ' + shopifyId);
-
-  const inventoryItemId = variantData.variant.inventory_item_id;
-
-  // Obtener location_id (usamos la primera ubicación)
-  const locRes = await fetch(`https://${SHOP}/admin/api/2024-01/locations.json`, {
-    headers: { 'X-Shopify-Access-Token': token },
-  });
-  const locData = await locRes.json();
-  const locationId = locData.locations?.[0]?.id;
-  if (!locationId) throw new Error('No se encontró ubicación en Shopify');
-
-  // Ajustar inventario
-  const setRes = await fetch(`https://${SHOP}/admin/api/2024-01/inventory_levels/set.json`, {
-    method: 'POST',
-    headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      location_id: locationId,
-      inventory_item_id: inventoryItemId,
-      available: cantidad,
-    }),
-  });
-  const setData = await setRes.json();
-  if (setData.errors) throw new Error(JSON.stringify(setData.errors));
-
-  console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${cantidad}`);
-  return setData;
-}

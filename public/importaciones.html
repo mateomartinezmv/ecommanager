@@ -614,7 +614,7 @@ async function submitNew() {
 
 // ─── Mark as Arrived ─────────────────────────────────────────────────────────
 async function marcarLlegado(id) {
-  if (!confirm('¿Marcar esta importación como llegada?')) return;
+  if (!confirm('¿Marcar esta importación como llegada? Esto sumará automáticamente el stock de sus artículos.')) return;
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
       estado: 'recibido',
@@ -623,6 +623,28 @@ async function marcarLlegado(id) {
     const idx = imports.findIndex(i => i.id === id);
     if (idx !== -1) imports[idx] = updated;
     render();
+
+    // Refrescar productos en memoria para reflejar el nuevo stock
+    apiFetch('GET', '/api/productos').then(p => { productos = p; }).catch(() => {});
+
+    const sync = updated.stock_sync;
+    if (sync) {
+      if (sync.error) {
+        alert('La importación se marcó como llegada, pero hubo un error actualizando el stock: ' + sync.error);
+      } else {
+        const partes = [];
+        if (sync.aplicados?.length) {
+          partes.push('Stock actualizado:\n' + sync.aplicados.map(a => `• ${a.sku}: +${a.sumado} → ${a.nuevoStock}`).join('\n'));
+        }
+        if (sync.noEncontrados?.length) {
+          partes.push('⚠️ SKU no encontrados en productos (no se sumó stock): ' + sync.noEncontrados.join(', '));
+        }
+        if (sync.errores?.length) {
+          partes.push('⚠️ Errores al sincronizar: ' + sync.errores.map(e => `${e.sku}: ${e.error}`).join(' | '));
+        }
+        if (partes.length) alert(partes.join('\n\n'));
+      }
+    }
   } catch(e) {
     alert('Error: ' + e.message);
   }

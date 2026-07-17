@@ -434,8 +434,8 @@ function render() {
   }
 
   const rows = imports.map(imp => {
-    const canArrive = imp.status !== 'arrived' && imp.status !== 'recibido' && imp.status !== 'cancelled';
     const estado = imp.status || imp.estado;
+    const canArrive = estado !== 'arrived' && estado !== 'recibido' && estado !== 'en_deposito' && estado !== 'cancelled';
     const fecha  = imp.order_date || imp.fecha;
     const llegada = imp.estimated_arrival_date || imp.llegada;
     const items  = imp.items || imp.import_items || [];

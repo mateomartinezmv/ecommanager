@@ -388,17 +388,27 @@
       <div class="table-wrap" style="margin-bottom:24px">
         <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <span class="table-title">📦 Desglose de envíos pendientes</span>
-          <select id="desglose-filtro" onchange="filtrarDesglose()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
-            <option value="">Todos los transportistas</option>
-            <option value="enviosuy">EnviosUy</option>
-            <option value="gestionpost">GestionPost</option>
-            <option value="ues">UES</option>
-            <option value="mercado_envios">MELI Envíos</option>
-          </select>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <select id="desglose-filtro" onchange="filtrarDesglose()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+              <option value="">Todos los transportistas</option>
+              <option value="enviosuy">EnviosUy</option>
+              <option value="gestionpost">GestionPost</option>
+              <option value="ues">UES</option>
+              <option value="mercado_envios">MELI Envíos</option>
+            </select>
+            <input type="month" id="desglose-mes" onchange="aplicarMesDesglose()" title="Filtrar por mes" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <input type="date" id="desglose-desde" onchange="filtrarDesglose()" title="Desde" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <span style="color:var(--text-muted);font-size:12px">→</span>
+            <input type="date" id="desglose-hasta" onchange="filtrarDesglose()" title="Hasta" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <button class="btn btn-ghost btn-sm" onclick="limpiarFiltroFechaDesglose()" title="Limpiar filtro de fecha">✕ Fecha</button>
+          </div>
         </div>
         <div id="desglose-seleccion-bar" style="display:none;background:var(--accent);color:#fff;padding:12px 20px;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
           <span id="desglose-seleccion-info" style="font-weight:600;font-size:14px"></span>
-          <button onclick="pagarSeleccionados()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Registrar pago de seleccionados →</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button onclick="pagarSeleccionados()" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">Registrar pago de seleccionados →</button>
+            <button onclick="eliminarSeleccionadosDesglose()" style="background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">🗑️ Eliminar seleccionados</button>
+          </div>
         </div>
         <table id="desglose-table">
           <thead>
@@ -3470,10 +3480,45 @@ async function renderTransportistas() {
   }
 }
 
+function fechaEnvioParaFiltro(e) {
+  return e.fecha_despacho || (e.created_at || '').slice(0, 10) || '';
+}
+
 function filtrarDesglose() {
   const filtro = document.getElementById('desglose-filtro')?.value || '';
-  const envios = filtro ? _desgloseEnvios.filter(e => e.transportista === filtro) : _desgloseEnvios;
+  const desde = document.getElementById('desglose-desde')?.value || '';
+  const hasta = document.getElementById('desglose-hasta')?.value || '';
+  let envios = filtro ? _desgloseEnvios.filter(e => e.transportista === filtro) : _desgloseEnvios;
+  if (desde) envios = envios.filter(e => fechaEnvioParaFiltro(e) >= desde);
+  if (hasta) envios = envios.filter(e => fechaEnvioParaFiltro(e) <= hasta);
   renderDesglose(envios);
+}
+
+function aplicarMesDesglose() {
+  const mes = document.getElementById('desglose-mes').value; // "YYYY-MM"
+  if (!mes) return;
+  const [y, m] = mes.split('-').map(Number);
+  document.getElementById('desglose-desde').value = `${mes}-01`;
+  document.getElementById('desglose-hasta').value = `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+  filtrarDesglose();
+}
+
+function limpiarFiltroFechaDesglose() {
+  document.getElementById('desglose-mes').value = '';
+  document.getElementById('desglose-desde').value = '';
+  document.getElementById('desglose-hasta').value = '';
+  filtrarDesglose();
+}
+
+async function eliminarSeleccionadosDesglose() {
+  const checks = [...document.querySelectorAll('.desglose-check:checked')];
+  if (!checks.length) return;
+  if (!confirm(`¿Eliminar ${checks.length} envío${checks.length > 1 ? 's' : ''} seleccionado${checks.length > 1 ? 's' : ''}? Esta acción no se puede deshacer.`)) return;
+  try {
+    await Promise.all(checks.map(cb => api('DELETE', `/envios?id=${cb.dataset.id}`)));
+    await loadAll();
+    renderTransportistas();
+  } catch(e) { alert('Error eliminando envíos: ' + e.message); }
 }
 
 function renderDesglose(envios) {
@@ -3494,7 +3539,7 @@ function renderDesglose(envios) {
   tbody.innerHTML = envios.map(e => {
     const costoTotal = (e.costo || 0) + (e.colecta ? 75 : 0);
     const zonaLabel = e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '<span style="color:var(--text-muted)">—</span>';
-    const fecha = e.fecha_despacho || (e.created_at || '').slice(0, 10) || '—';
+    const fecha = fechaEnvioParaFiltro(e) || '—';
     return `
       <tr>
         <td><input type="checkbox" class="desglose-check" data-id="${e.id}" data-costo="${costoTotal}" data-transportista="${e.transportista || 'enviosuy'}" onchange="actualizarSeleccionBar()"></td>

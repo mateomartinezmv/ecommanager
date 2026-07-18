@@ -22,11 +22,24 @@ module.exports = async (req, res) => {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const shipment = await shipRes.json();
-      const carrierRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}/carrier`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const carrier = await carrierRes.json().catch(() => null);
-      return res.json({ shippingId, shipment, carrier });
+
+      // Probar varios endpoints/campos que podrían tener el nombre del repartidor individual
+      const probe = async (url) => {
+        try {
+          const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+          const j = await r.json();
+          return { status: r.status, data: j };
+        } catch (e) { return { error: e.message }; }
+      };
+
+      const [carrier, history, trackingPublic, lead_time] = await Promise.all([
+        probe(`https://api.mercadolibre.com/shipments/${shippingId}/carrier`),
+        probe(`https://api.mercadolibre.com/shipments/${shippingId}/history`),
+        probe(`https://api.mercadolibre.com/shipments/${shippingId}/tracking`),
+        probe(`https://api.mercadolibre.com/shipments/${shippingId}/lead_time`),
+      ]);
+
+      return res.json({ shippingId, order_status: order.status, shipment, carrier, history, trackingPublic, lead_time });
     }
 
     // 1. Endpoint directo

@@ -10,6 +10,25 @@ module.exports = async (req, res) => {
     const token = await getMeliToken();
     const sellerId = 2715667241;
 
+    // 0. Shipment crudo (para inspeccionar campos de transportista/carrier)
+    if (req.query.shipment === '1') {
+      const orderRes = await fetch(`https://api.mercadolibre.com/orders/${orden_id}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const order = await orderRes.json();
+      const shippingId = order?.shipping?.id;
+      if (!shippingId) return res.json({ error: 'Orden sin shipping_id', order });
+      const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const shipment = await shipRes.json();
+      const carrierRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}/carrier`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const carrier = await carrierRes.json().catch(() => null);
+      return res.json({ shippingId, shipment, carrier });
+    }
+
     // 1. Endpoint directo
     const r1 = await fetch(`https://api.mercadolibre.com/orders/${orden_id}`, {
       headers: { 'Authorization': `Bearer ${token}` },

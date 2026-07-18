@@ -347,6 +347,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">MELI Envíos</option>
           <option value="otro">Otro</option>
@@ -414,6 +415,7 @@
               <option value="enviosuy">EnviosUy</option>
               <option value="gestionpost">GestionPost</option>
               <option value="ues">UES</option>
+              <option value="mmotos_mateo">MMOTOS MATEO</option>
               <option value="mercado_envios">MELI Envíos</option>
             </select>
             <input type="month" id="desglose-mes" onchange="aplicarMesDesglose()" title="Filtrar por mes" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
@@ -834,6 +836,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="otro">Otro</option>
@@ -893,6 +896,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">Mercado Envíos</option>
           <option value="otro">Otro</option>
@@ -951,6 +955,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">MELI Envíos</option>
           <option value="otro">Otro</option>
@@ -2126,7 +2131,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mercado_envios:'MELI Envíos', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mmotos_mateo:'MMOTOS MATEO', mercado_envios:'MELI Envíos', otro:'Otro' };
   document.getElementById('envios-tbody').innerHTML = envios.map(e => {
     const tipo = tipoEnvioDeTransportista(e.transportista);
     return `
@@ -3465,7 +3470,7 @@ function loadImport(e) {
 // TRANSPORTISTAS
 // =====================
 const NOMBRES_TRANSPORTISTAS = {
-  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES',
+  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES', mmotos_mateo: 'MMOTOS MATEO',
   mercado_envios: 'MELI Envíos', otro: 'Otro'
 };
 

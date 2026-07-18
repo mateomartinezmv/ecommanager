@@ -9,7 +9,7 @@ const { getMeliToken } = require('./_meliToken');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -98,6 +98,29 @@ module.exports = async (req, res) => {
       }
 
       return res.json({ venta, nuevoStockDep, nuevoStockMeli });
+    }
+
+    if (req.method === 'PUT') {
+      const id = req.query.id;
+      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, total, metodoPago, notas } = req.body;
+      const updateData = {};
+      if (fecha !== undefined) updateData.fecha = fecha;
+      if (estado !== undefined) updateData.estado = estado;
+      if (comprador !== undefined) updateData.comprador = comprador;
+      if (cliente !== undefined) updateData.cliente = cliente;
+      if (cantidad !== undefined) updateData.cantidad = cantidad;
+      if (precioUnit !== undefined) updateData.precio_unit = precioUnit;
+      if (comision !== undefined) updateData.comision = comision;
+      if (costoEnvioMeli !== undefined) updateData.costo_envio_meli = costoEnvioMeli;
+      if (total !== undefined) updateData.total = total;
+      if (metodoPago !== undefined) updateData.metodo_pago = metodoPago;
+      if (notas !== undefined) updateData.notas = notas;
+
+      const { data, error } = await supabase.from('ventas')
+        .update(updateData)
+        .eq('id', id).select().single();
+      if (error) throw error;
+      return res.json(data);
     }
 
     if (req.method === 'DELETE') {

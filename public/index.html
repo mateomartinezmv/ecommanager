@@ -799,7 +799,7 @@
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="env-comprador" placeholder="Nombre del comprador"></div>
       <div class="form-group"><label class="form-label">Transportista</label>
-        <select id="env-transportista">
+        <select id="env-transportista" onchange="autoCompletarCostoEnvio('env')">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
@@ -810,6 +810,22 @@
       </div>
       <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="env-tracking" placeholder="Código de seguimiento"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="env-fecha"></div>
+      <div class="form-group"><label class="form-label">Zona</label>
+        <select id="env-zona" onchange="autoCompletarCostoEnvio('env')">
+          <option value="">— Sin zona —</option>
+          <option value="1">Zona 1</option>
+          <option value="2">Zona 2</option>
+          <option value="3">Zona 3</option>
+          <option value="4">Zona 4</option>
+          <option value="5">Zona 5</option>
+          <option value="6">Zona 6</option>
+          <option value="7">Zona 7</option>
+          <option value="8">Zona 8</option>
+          <option value="9">Zona 9</option>
+          <option value="10">Zona 10</option>
+          <option value="11">Zona 11</option>
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Estado</label>
         <select id="env-estado">
@@ -818,6 +834,12 @@
           <option value="entregado">Entregado</option>
           <option value="problema">Problema</option>
         </select>
+      </div>
+      <div class="form-group"><label class="form-label">&nbsp;</label>
+        <label class="toggle-wrap" style="margin-top:6px">
+          <span class="toggle"><input type="checkbox" id="env-colecta"><span class="toggle-slider"></span></span>
+          <span style="font-size:13px">Se cobra retiro (+$75)</span>
+        </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="env-direccion" placeholder="Calle, número, ciudad"></div>
     </div>
@@ -836,7 +858,7 @@
     <div class="form-grid">
       <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="ee-comprador" placeholder="Nombre del comprador"></div>
       <div class="form-group"><label class="form-label">Transportista</label>
-        <select id="ee-transportista">
+        <select id="ee-transportista" onchange="autoCompletarCostoEnvio('ee')">
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
@@ -846,6 +868,22 @@
         </select>
       </div>
       <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="ee-tracking" placeholder="Código de seguimiento"></div>
+      <div class="form-group"><label class="form-label">Zona</label>
+        <select id="ee-zona" onchange="autoCompletarCostoEnvio('ee')">
+          <option value="">— Sin zona —</option>
+          <option value="1">Zona 1</option>
+          <option value="2">Zona 2</option>
+          <option value="3">Zona 3</option>
+          <option value="4">Zona 4</option>
+          <option value="5">Zona 5</option>
+          <option value="6">Zona 6</option>
+          <option value="7">Zona 7</option>
+          <option value="8">Zona 8</option>
+          <option value="9">Zona 9</option>
+          <option value="10">Zona 10</option>
+          <option value="11">Zona 11</option>
+        </select>
+      </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="ee-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="ee-fecha"></div>
       <div class="form-group"><label class="form-label">Estado</label>
@@ -855,6 +893,12 @@
           <option value="entregado">Entregado</option>
           <option value="problema">Problema</option>
         </select>
+      </div>
+      <div class="form-group"><label class="form-label">&nbsp;</label>
+        <label class="toggle-wrap" style="margin-top:6px">
+          <span class="toggle"><input type="checkbox" id="ee-colecta"><span class="toggle-slider"></span></span>
+          <span style="font-size:13px">Se cobra retiro (+$75)</span>
+        </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="ee-direccion" placeholder="Calle, número, ciudad"></div>
     </div>
@@ -1131,7 +1175,7 @@ function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
 }
 function normDevolucion(d) {
   return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
@@ -1722,6 +1766,20 @@ async function cambiarEstadoVenta(id, estado) {
 // =====================
 // ENVÍOS
 // =====================
+// Tabla de costos Flex por zona (EnviosUy) — para autocompletar el costo en los modales de envío
+const COSTOS_ENVIOSUY = { 1:190, 2:190, 3:190, 4:190, 5:180, 6:160, 7:180, 8:240, 9:240, 10:200, 11:null };
+
+// Autocompleta el costo del envío cuando se elige zona + transportista EnviosUy.
+// prefix: 'env' (modal crear) o 'ee' (modal editar)
+function autoCompletarCostoEnvio(prefix) {
+  const transportista = document.getElementById(`${prefix}-transportista`).value;
+  const zona = parseInt(document.getElementById(`${prefix}-zona`).value) || null;
+  if (transportista === 'enviosuy' && zona) {
+    const costo = COSTOS_ENVIOSUY[zona];
+    if (costo != null) document.getElementById(`${prefix}-costo`).value = costo;
+  }
+}
+
 async function saveEnvio() {
   const envio = {
     id: 'E' + Date.now(),
@@ -1733,6 +1791,8 @@ async function saveEnvio() {
     estado: document.getElementById('env-estado').value,
     direccion: document.getElementById('env-direccion').value.trim(),
     costo: parseFloat(document.getElementById('env-costo').value) || 0,
+    zona: parseInt(document.getElementById('env-zona').value) || null,
+    colecta: document.getElementById('env-colecta').checked,
   };
   if (pendingEnvioVentaId) {
     const v = db.ventas.find(x => x.id === pendingEnvioVentaId);
@@ -1752,6 +1812,8 @@ function openEnvioManual(ventaId) {
   document.getElementById('env-comprador').value = v ? (v.comprador || v.cliente || '') : '';
   document.getElementById('env-fecha').value = v ? v.fecha : new Date().toISOString().slice(0,10);
   document.getElementById('env-costo').value = '';
+  document.getElementById('env-zona').value = '';
+  document.getElementById('env-colecta').checked = false;
   document.getElementById('modal-envio-title').textContent = v ? `🚚 Envío — ${v.ordenMeli || v.id}` : '🚚 Nuevo Envío';
   openModal('modal-envio');
 }
@@ -1769,10 +1831,19 @@ function abrirEdicionEnvio(id) {
   document.getElementById('ee-transportista').value = e.transportista || 'otro';
   document.getElementById('ee-tracking').value = e.tracking || '';
   document.getElementById('ee-costo').value = e.costo || '';
+  document.getElementById('ee-zona').value = e.zona || '';
+  document.getElementById('ee-colecta').checked = !!e.colecta;
   document.getElementById('ee-fecha').value = e.fechaDespacho || '';
   document.getElementById('ee-estado').value = e.estado || 'pendiente';
   document.getElementById('ee-direccion').value = e.direccion || '';
   openModal('modal-editar-envio');
+}
+
+// Abre el modal correspondiente para el botón 🚚 de una venta:
+// si ya tiene un envío creado, lo edita; si no, abre el flujo de creación.
+function abrirEnvioDeVenta(ventaId, envioId) {
+  if (envioId) abrirEdicionEnvio(envioId);
+  else openEnvioManual(ventaId);
 }
 
 async function guardarEdicionEnvio() {
@@ -1781,6 +1852,8 @@ async function guardarEdicionEnvio() {
     estado: document.getElementById('ee-estado').value,
     tracking: document.getElementById('ee-tracking').value.trim(),
     costo: parseFloat(document.getElementById('ee-costo').value) || 0,
+    zona: parseInt(document.getElementById('ee-zona').value) || null,
+    colecta: document.getElementById('ee-colecta').checked,
     transportista: document.getElementById('ee-transportista').value,
     comprador: document.getElementById('ee-comprador').value.trim(),
     fechaDespacho: document.getElementById('ee-fecha').value,
@@ -1959,7 +2032,7 @@ function renderVentas() {
       </td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
-        <button class="btn btn-ghost btn-sm" onclick="openEnvioManual('${v.id}')" title="Crear envío">🚚</button>
+        <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="${enviosByVenta[v.id] ? 'Editar envío' : 'Crear envío'}">🚚</button>
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="recalcularComisionVenta('${v.id}', this)" title="Recalcular comisión y envío MELI">🔁</button>` : ''}
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>

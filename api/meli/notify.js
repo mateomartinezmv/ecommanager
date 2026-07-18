@@ -3,6 +3,9 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+
+const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
 // ── Telegram helper ──────────────────────────────────────────
 function esc(s) {
@@ -101,9 +104,46 @@ async function handleOrder(resource) {
 
   if (order.status !== 'paid') return;
 
+  // ── Datos de envío: logistic_type real → detección de Flex + zona ────────
+  const shippingId = order.shipping?.id;
+  let logisticType = '';
+  let direccion = null;
+  let zonaFlex = null;
+  if (shippingId) {
+    try {
+      const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const shipData = await shipRes.json();
+      logisticType = shipData?.logistic_type || '';
+      if (shipData?.receiver_address) {
+        const addr = shipData.receiver_address;
+        direccion = [addr.street_name, addr.street_number, addr.neighborhood?.name, addr.city?.name, addr.state?.name]
+          .filter(Boolean).join(', ');
+      }
+      if (FLEX_TYPES.includes(logisticType)) {
+        zonaFlex = detectarZonaDesdeShipData(shipData) || (direccion ? detectarZona(direccion) : null);
+      }
+    } catch (e) {
+      console.error(`❌ fetch shipment ${shippingId} fallido:`, e.message);
+    }
+  }
+  const esFlex = FLEX_TYPES.includes(logisticType);
+  const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
+  const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0;
+
+  // ── Comisión real: lo que MELI descuenta según el pago aprobado ──────────
+  const approvedPayment = (order.payments || []).find((p) => p.status === 'approved');
+  const netReceived = approvedPayment?.net_received_amount || 0;
+  const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+  const totalDeduction = (netReceived > 0 && netReceived < grossTotal)
+    ? Math.round((grossTotal - netReceived) * 100) / 100
+    : null;
+
   for (const item of order.order_items) {
     const meliItemId = item.item.id;
     const cantidad = item.quantity;
+    const precioUnit = item.unit_price;
 
     const { data: producto } = await supabase
       .from('productos')
@@ -116,41 +156,69 @@ async function handleOrder(resource) {
       continue;
     }
 
-    // Verificar duplicado ANTES de tocar el stock para que reintentos de MELI no descuenten doble
     const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
     const { data: ventaExistente } = await supabase
       .from('ventas').select('id').eq('id', ventaId).single();
 
-    if (ventaExistente) {
+    if (!ventaExistente) {
+      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
+
+      await supabase.from('productos').update({
+        stock_dep: nuevoStockDep,
+        stock_meli: nuevoStockMeli,
+        updated_at: new Date().toISOString(),
+      }).eq('sku', producto.sku);
+
+      const comisionItem = totalDeduction !== null
+        ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
+        : Math.abs(item.sale_fee || 0);
+
+      await supabase.from('ventas').insert({
+        id: ventaId,
+        canal: 'meli',
+        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        orden_meli: String(order.id),
+        comprador: order.buyer?.nickname || '',
+        sku: producto.sku,
+        producto: producto.nombre,
+        cantidad,
+        precio_unit: precioUnit,
+        comision: comisionItem,
+        total: precioUnit * cantidad,
+        estado: 'pagada',
+        genera_envio: !!shippingId,
+      });
+      console.log(`✅ Venta MELI registrada: orden ${order.id}`);
+    } else {
       console.log(`ℹ️ Venta ya existente: orden ${order.id} — omitiendo`);
-      continue;
     }
 
-    const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
-    const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
+    // Crear envío — corre siempre (idempotente), incluso si la venta ya existía,
+    // para no depender de que ambos pasos ocurran en la misma invocación del webhook.
+    if (shippingId) {
+      const envioId = 'E_MELI_' + order.id + '_' + item.item.id;
+      const { data: envioExistente } = await supabase
+        .from('envios').select('id').eq('id', envioId).single();
 
-    await supabase.from('productos').update({
-      stock_dep: nuevoStockDep,
-      stock_meli: nuevoStockMeli,
-      updated_at: new Date().toISOString(),
-    }).eq('sku', producto.sku);
-
-    await supabase.from('ventas').insert({
-      id: ventaId,
-      canal: 'meli',
-      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-      orden_meli: String(order.id),
-      comprador: order.buyer?.nickname || '',
-      sku: producto.sku,
-      producto: producto.nombre,
-      cantidad,
-      precio_unit: item.unit_price,
-      comision: 0,
-      total: item.unit_price * cantidad,
-      estado: 'pagada',
-      genera_envio: true,
-    });
-    console.log(`✅ Venta MELI registrada: orden ${order.id}`);
+      if (!envioExistente) {
+        await supabase.from('envios').insert({
+          id: envioId,
+          venta_id: ventaId,
+          orden: String(order.id),
+          comprador: order.buyer?.nickname || '',
+          producto: producto.nombre,
+          transportista,
+          tracking: null,
+          fecha_despacho: null,
+          estado: 'pendiente',
+          direccion: direccion || null,
+          costo: costoEnvio,
+          zona: zonaFlex,
+        });
+        console.log(`✅ Envío creado: orden ${order.id} — ${transportista} $${costoEnvio}`);
+      }
+    }
   }
 }
 

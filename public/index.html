@@ -287,6 +287,12 @@
       <input type="date" id="ventas-desde" onchange="renderVentas()" title="Desde" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
       <span style="color:var(--text-muted);font-size:12px">→</span>
       <input type="date" id="ventas-hasta" onchange="renderVentas()" title="Hasta" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+      <select id="ventas-tipo-envio" onchange="renderVentas()" title="Tipo de envío" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+        <option value="">Todos los envíos</option>
+        <option value="meli_envios">📦 MELI Envíos</option>
+        <option value="flex">⚡ Flex</option>
+        <option value="otros">🚚 Otros</option>
+      </select>
       <button class="btn btn-ghost btn-sm" onclick="exportVentasCSV()" title="Exportar a Excel/CSV">⬇ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="exportVentasPDF()" title="Exportar a PDF">🖨️ PDF</button>
     </div>
@@ -1902,10 +1908,25 @@ function switchVentasTab(tab) {
   renderVentas();
 }
 
+const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', otros: '🚚 Otro' };
+
+// Clasifica una venta según el transportista de su envío asociado.
+// Devuelve null si la venta no tiene envío registrado (retiro, sin datos, etc.)
+function tipoEnvioVenta(v, enviosByVenta) {
+  const e = enviosByVenta[v.id];
+  if (!e) return null;
+  if (e.transportista === 'mercado_envios') return 'meli_envios';
+  if (e.transportista === 'enviosuy') return 'flex';
+  return 'otros';
+}
+
 function renderVentas() {
   const q = (document.getElementById('ventas-search')?.value || '').toLowerCase();
   const desde = document.getElementById('ventas-desde')?.value || '';
   const hasta = document.getElementById('ventas-hasta')?.value || '';
+  const tipoEnvioFiltro = document.getElementById('ventas-tipo-envio')?.value || '';
+  const enviosByVenta = {};
+  for (const e of db.envios) { if (e.ventaId) enviosByVenta[e.ventaId] = e; }
   let ventas = [...db.ventas].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (ventasTabFilter !== 'all') ventas = ventas.filter(v => v.canal === ventasTabFilter);
   if (q) ventas = ventas.filter(v =>
@@ -1917,13 +1938,17 @@ function renderVentas() {
   );
   if (desde) ventas = ventas.filter(v => (v.fecha||'') >= desde);
   if (hasta) ventas = ventas.filter(v => (v.fecha||'') <= hasta);
+  if (tipoEnvioFiltro) ventas = ventas.filter(v => tipoEnvioVenta(v, enviosByVenta) === tipoEnvioFiltro);
   if (ventas.length === 0) { document.getElementById('ventas-tbody').innerHTML = ''; document.getElementById('ventas-empty').style.display = 'block'; return; }
   document.getElementById('ventas-empty').style.display = 'none';
-  document.getElementById('ventas-tbody').innerHTML = ventas.map(v => `
+  document.getElementById('ventas-tbody').innerHTML = ventas.map(v => {
+    const tipoEnvio = tipoEnvioVenta(v, enviosByVenta);
+    const tipoEnvioLabel = tipoEnvio ? TIPO_ENVIO_LABELS[tipoEnvio] : '';
+    return `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${v.ordenMeli || v.id.slice(-6)}</span></td>
       <td>${v.fecha}</td>
-      <td>${canalBadge(v.canal)}</td>
+      <td>${canalBadge(v.canal)}${tipoEnvioLabel ? `<br><span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
       <td>${v.cantidad}</td>
       <td>${fmt(v.total)}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.costoEnvioMeli)} envío</span>` : ''}</td>
@@ -1941,7 +1966,8 @@ function renderVentas() {
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // =====================

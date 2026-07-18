@@ -351,6 +351,26 @@
           <option value="mercado_envios">MELI Envíos</option>
           <option value="otro">Otro</option>
         </select>
+        <select id="envios-tipo" onchange="renderEnvios()" title="Tipo de envío" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+          <option value="">Todos los envíos</option>
+          <option value="meli_envios">📦 MELI Envíos</option>
+          <option value="flex">⚡ Flex</option>
+          <option value="otros">🚚 Otros</option>
+        </select>
+        <select id="envios-zona" onchange="renderEnvios()" title="Zona" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+          <option value="">Todas las zonas</option>
+          <option value="1">Zona 1</option>
+          <option value="2">Zona 2</option>
+          <option value="3">Zona 3</option>
+          <option value="4">Zona 4</option>
+          <option value="5">Zona 5</option>
+          <option value="6">Zona 6</option>
+          <option value="7">Zona 7</option>
+          <option value="8">Zona 8</option>
+          <option value="9">Zona 9</option>
+          <option value="10">Zona 10</option>
+          <option value="11">Zona 11</option>
+        </select>
         <input type="date" id="envios-desde" onchange="renderEnvios()" title="Desde" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
         <span style="color:var(--text-muted);font-size:12px">→</span>
         <input type="date" id="envios-hasta" onchange="renderEnvios()" title="Hasta" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
@@ -365,7 +385,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Costo envío</th><th>Colecta</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Zona</th><th>Costo envío</th><th>Colecta</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="envios-tbody"></tbody>
         </table>
         <div id="envios-empty" class="empty-state" style="display:none"><div class="empty-icon">🚚</div><p>No hay envíos registrados.</p></div>
@@ -420,6 +440,7 @@
               <th>Orden</th>
               <th>Fecha</th>
               <th>Estado</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody id="desglose-tbody"></tbody>
@@ -1874,6 +1895,7 @@ async function guardarEdicionEnvio() {
     await loadAll();
     closeModal('modal-editar-envio');
     renderEnvios();
+    if (document.getElementById('page-transportistas')?.classList.contains('active')) renderTransportistas();
   } catch(e) { alert('Error editando envío: ' + e.message); }
 }
 
@@ -1993,14 +2015,19 @@ function switchVentasTab(tab) {
 
 const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', otros: '🚚 Otro' };
 
+// Clasifica un transportista en uno de los 3 buckets de tipo de envío
+function tipoEnvioDeTransportista(transportista) {
+  if (transportista === 'mercado_envios') return 'meli_envios';
+  if (transportista === 'enviosuy') return 'flex';
+  return 'otros';
+}
+
 // Clasifica una venta según el transportista de su envío asociado.
 // Devuelve null si la venta no tiene envío registrado (retiro, sin datos, etc.)
 function tipoEnvioVenta(v, enviosByVenta) {
   const e = enviosByVenta[v.id];
   if (!e) return null;
-  if (e.transportista === 'mercado_envios') return 'meli_envios';
-  if (e.transportista === 'enviosuy') return 'flex';
-  return 'otros';
+  return tipoEnvioDeTransportista(e.transportista);
 }
 
 function renderVentas() {
@@ -2074,9 +2101,13 @@ async function toggleColecta(checkbox) {
   } catch(err) { console.error('Error toggling colecta:', err); }
 }
 
+const TIPO_ENVIO_ICONS = { flex: '⚡', meli_envios: '📦', otros: '🚚' };
+
 function renderEnvios() {
   const q = (document.getElementById('envios-search')?.value || '').toLowerCase();
   const tFilter = document.getElementById('envios-transportista')?.value || '';
+  const tipoFilter = document.getElementById('envios-tipo')?.value || '';
+  const zonaFilter = document.getElementById('envios-zona')?.value || '';
   const desde = document.getElementById('envios-desde')?.value || '';
   const hasta = document.getElementById('envios-hasta')?.value || '';
   let envios = [...db.envios].sort((a,b) => new Date(b.creado) - new Date(a.creado));
@@ -2088,19 +2119,24 @@ function renderEnvios() {
     (e.orden||'').toLowerCase().includes(q)
   );
   if (tFilter) envios = envios.filter(e => e.transportista === tFilter);
+  if (tipoFilter) envios = envios.filter(e => tipoEnvioDeTransportista(e.transportista) === tipoFilter);
+  if (zonaFilter) envios = envios.filter(e => String(e.zona || '') === zonaFilter);
   if (desde) envios = envios.filter(e => (e.fechaDespacho || (e.creado||'').slice(0,10)) >= desde);
   if (hasta) envios = envios.filter(e => (e.fechaDespacho || (e.creado||'').slice(0,10)) <= hasta);
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
   const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mercado_envios:'MELI Envíos', otro:'Otro' };
-  document.getElementById('envios-tbody').innerHTML = envios.map(e => `
+  document.getElementById('envios-tbody').innerHTML = envios.map(e => {
+    const tipo = tipoEnvioDeTransportista(e.transportista);
+    return `
     <tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || e.id.slice(-6)}</span></td>
       <td>${e.comprador || '—'}</td>
       <td>${e.producto || '—'}</td>
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
-      <td>${transportistas[e.transportista] || e.transportista}</td>
+      <td>${TIPO_ENVIO_ICONS[tipo]} ${transportistas[e.transportista] || e.transportista}</td>
+      <td>${e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '—'}</td>
       <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
       <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
         <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
@@ -2123,7 +2159,8 @@ function renderEnvios() {
         <button class="btn btn-danger btn-sm" onclick="deleteEnvio('${e.id}')">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // =====================
@@ -3549,6 +3586,7 @@ function renderDesglose(envios) {
         <td style="font-family:'JetBrains Mono',monospace;font-size:11px">${e.orden || (e.id || '').slice(-8)}</td>
         <td style="font-size:12px;color:var(--text-muted)">${fecha}</td>
         <td style="font-size:12px"><span style="color:${estadoColors[e.estado] || 'var(--text-muted)'}">●</span> ${e.estado || '—'}</td>
+        <td><button class="btn btn-ghost btn-sm" onclick="abrirEdicionEnvio('${e.id}')" title="Editar envío">✏️</button></td>
       </tr>`;
   }).join('');
   actualizarSeleccionBar();

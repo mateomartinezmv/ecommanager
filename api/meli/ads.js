@@ -57,9 +57,24 @@ module.exports = async (req, res) => {
     while (true) {
       const url = `${base}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&metrics=${METRICS_FIELDS}&limit=${limit}&offset=${offset}`;
       const r = await fetch(url, { headers });
-      const body = await r.json();
+      const text = await r.text();
+      let body = {};
+      if (text) {
+        try { body = JSON.parse(text); } catch { body = { raw: text }; }
+      }
 
       if (!r.ok) {
+        // MELI devuelve 404 (cuerpo vacío) en /product_ads/items y /product_ads/campaigns
+        // cuando el anunciante no tiene NINGUNA campaña activa en este momento — incluso
+        // para rangos de fechas pasadas donde sí hubo gasto. Es una limitación de la API
+        // de MELI (no filtra por status, directamente no resuelve el recurso), no de este CRM.
+        if (r.status === 404) {
+          return res.json({
+            ok: false,
+            sin_campanas: true,
+            mensaje: 'Mercado Libre no devolvió datos de campañas para este período. Esto ocurre cuando no queda ninguna campaña activa en este momento: la API de Mercado Ads solo sirve métricas (incluso históricas) si existe al menos una campaña activa. Reactivá una campaña en MELI (puede ser con presupuesto mínimo) y volvé a actualizar — el gasto de este período no se pierde, solo no es consultable mientras todo esté pausado.'
+          });
+        }
         return res.json({
           ok: false,
           error: `Error ${r.status} al obtener items de MELI Ads`,

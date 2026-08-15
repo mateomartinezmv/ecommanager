@@ -1,7 +1,7 @@
 // api/meli/ads.js
 // GET /api/meli/ads?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
-// Llama a /advertising/advertisers/{id}/product_ads/items con metrics_summary=true
-// Los campos correctos son: metrics.cost, metrics.clicks, metrics.prints
+// Llama a /marketplace/advertising/{site_id}/advertisers/{id}/product_ads/campaigns/search
+// con métricas por campaña. Los campos correctos son: metrics.cost, metrics.clicks, metrics.prints
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
@@ -31,9 +31,6 @@ module.exports = async (req, res) => {
 
     const supabase = getSupabase();
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-    // La API de Mercado Ads requiere el header api-version en TODOS los endpoints de
-    // /advertising/* — sin él, /product_ads/items y /product_ads/campaigns devuelven 404
-    // aunque haya campañas activas. /advertisers usa versión 1, el resto versión 2.
     const headersAdvertisers = { ...headers, 'Api-Version': '1' };
     const headersAds = { ...headers, 'Api-Version': '2' };
 
@@ -49,32 +46,21 @@ module.exports = async (req, res) => {
     );
     const advData = await advRes.json();
     if (!advRes.ok || !advData.advertisers?.length) {
-      return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.', debug_advData: advData });
+      return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.' });
     }
-    const { advertiser_id: advertiserId } = advData.advertisers[0];
+    const { advertiser_id: advertiserId, site_id: siteId } = advData.advertisers[0];
 
-    let debugCampaigns;
-    if (req.query.debug) {
-      const campRes = await fetch(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
-        { headers: headersAds }
-      );
-      const campText = await campRes.text();
-      let campBody = {};
-      if (campText) {
-        try { campBody = JSON.parse(campText); } catch { campBody = { raw: campText }; }
-      }
-      debugCampaigns = { status: campRes.status, body: campBody };
-    }
-
-    // 3. Obtener items con métricas del período — paginado hasta agotar resultados
-    const base = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
-    const allItems = [];
+    // 3. Obtener campañas con métricas del período — paginado hasta agotar resultados
+    // OJO: el endpoint sin el prefijo /marketplace/{site_id}/ quedó legacy y devuelve 404
+    // vacío para campañas creadas después de la migración de MELI (~jul/2026), incluso
+    // con campañas activas. Este es el endpoint vigente.
+    const base = `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`;
+    const allCampaigns = [];
     let offset = 0;
     const limit = 100;
 
     while (true) {
-      const url = `${base}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&metrics=${METRICS_FIELDS}&limit=${limit}&offset=${offset}`;
+      const url = `${base}?date_from=${dateFrom}&date_to=${dateTo}&metrics=${METRICS_FIELDS}&limit=${limit}&offset=${offset}`;
       const r = await fetch(url, { headers: headersAds });
       const text = await r.text();
       let body = {};
@@ -83,61 +69,52 @@ module.exports = async (req, res) => {
       }
 
       if (!r.ok) {
-        // MELI devuelve 404 (cuerpo vacío) en /product_ads/items y /product_ads/campaigns
-        // cuando el anunciante no tiene NINGUNA campaña activa en este momento — incluso
-        // para rangos de fechas pasadas donde sí hubo gasto. Es una limitación de la API
-        // de MELI (no filtra por status, directamente no resuelve el recurso), no de este CRM.
         if (r.status === 404) {
           return res.json({
             ok: false,
             sin_campanas: true,
-            mensaje: 'Mercado Libre no devolvió datos de campañas para este período. Esto ocurre cuando no queda ninguna campaña activa en este momento: la API de Mercado Ads solo sirve métricas (incluso históricas) si existe al menos una campaña activa. Reactivá una campaña en MELI (puede ser con presupuesto mínimo) y volvé a actualizar — el gasto de este período no se pierde, solo no es consultable mientras todo esté pausado.',
-            debug: req.query.debug ? { url, status: r.status, body, advertiserId, meliUserId: me.id, advertisers: advData.advertisers, debugCampaigns } : undefined
+            mensaje: 'Mercado Libre no devolvió datos de campañas para este período.'
           });
         }
         return res.json({
           ok: false,
-          error: `Error ${r.status} al obtener items de MELI Ads`,
-          detalle: body,
-          debug: req.query.debug ? { url, advertiserId, meliUserId: me.id } : undefined
+          error: `Error ${r.status} al obtener campañas de MELI Ads`,
+          detalle: body
         });
       }
 
-      const rows = body.results || body.data || body.items || [];
-      allItems.push(...rows);
+      const rows = body.results || [];
+      allCampaigns.push(...rows);
 
       const total = body.paging?.total ?? rows.length;
-      if (allItems.length >= total || rows.length < limit) break;
+      if (allCampaigns.length >= total || rows.length < limit) break;
       offset += limit;
     }
 
-    if (allItems.length === 0) {
+    if (allCampaigns.length === 0) {
       return res.json({ ok: true, total_spend: 0, clicks: 0, impressions: 0, por_campana: [], items_procesados: 0, periodo: { desde: dateFrom, hasta: dateTo } });
     }
 
     // 4. Agregar por campaña y guardar en Supabase
     const porCampana = {};
-    for (const item of allItems) {
-      const cid = String(item.campaign_id || 'unknown');
-      const m = item.metrics || {};
+    for (const camp of allCampaigns) {
+      const cid = String(camp.id);
+      const m = camp.metrics || {};
       const spend = parseFloat(m.cost || 0);
       const clicks = parseInt(m.clicks || 0, 10);
       const impressions = parseInt(m.prints || 0, 10);
-
       const facturacion = parseFloat(m.total_amount || 0);
 
-      if (!porCampana[cid]) {
-        porCampana[cid] = { campaign_id: cid, campaign_name: cid, spend: 0, clicks: 0, impressions: 0, facturacion: 0 };
-      }
-      porCampana[cid].spend += spend;
-      porCampana[cid].clicks += clicks;
-      porCampana[cid].impressions += impressions;
-      porCampana[cid].facturacion += facturacion;
-    }
-
-    // ROAS por campaña = facturación / gasto
-    for (const c of Object.values(porCampana)) {
-      c.roas = c.spend > 0 ? parseFloat((c.facturacion / c.spend).toFixed(2)) : 0;
+      porCampana[cid] = {
+        campaign_id: cid,
+        campaign_name: camp.name || cid,
+        status: camp.status,
+        spend,
+        clicks,
+        impressions,
+        facturacion,
+        roas: spend > 0 ? parseFloat((facturacion / spend).toFixed(2)) : 0,
+      };
     }
 
     const currency = me.currency_id || 'UYU';
@@ -172,7 +149,7 @@ module.exports = async (req, res) => {
       roas: roasTotal,
       clicks: totalClicks,
       impressions: totalImpressions,
-      items_procesados: allItems.length,
+      items_procesados: allCampaigns.length,
       por_campana: Object.values(porCampana),
       periodo: { desde: dateFrom, hasta: dateTo },
     });

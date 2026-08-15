@@ -48,6 +48,20 @@ module.exports = async (req, res) => {
     }
     const { advertiser_id: advertiserId } = advData.advertisers[0];
 
+    let debugCampaigns;
+    if (req.query.debug) {
+      const campRes = await fetch(
+        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
+        { headers }
+      );
+      const campText = await campRes.text();
+      let campBody = {};
+      if (campText) {
+        try { campBody = JSON.parse(campText); } catch { campBody = { raw: campText }; }
+      }
+      debugCampaigns = { status: campRes.status, body: campBody };
+    }
+
     // 3. Obtener items con métricas del período — paginado hasta agotar resultados
     const base = `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`;
     const allItems = [];
@@ -73,7 +87,7 @@ module.exports = async (req, res) => {
             ok: false,
             sin_campanas: true,
             mensaje: 'Mercado Libre no devolvió datos de campañas para este período. Esto ocurre cuando no queda ninguna campaña activa en este momento: la API de Mercado Ads solo sirve métricas (incluso históricas) si existe al menos una campaña activa. Reactivá una campaña en MELI (puede ser con presupuesto mínimo) y volvé a actualizar — el gasto de este período no se pierde, solo no es consultable mientras todo esté pausado.',
-            debug: req.query.debug ? { url, status: r.status, body, advertiserId, meliUserId: me.id } : undefined
+            debug: req.query.debug ? { url, status: r.status, body, advertiserId, meliUserId: me.id, advertisers: advData.advertisers, debugCampaigns } : undefined
           });
         }
         return res.json({

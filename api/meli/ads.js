@@ -44,7 +44,7 @@ module.exports = async (req, res) => {
     );
     const advData = await advRes.json();
     if (!advRes.ok || !advData.advertisers?.length) {
-      return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.' });
+      return res.json({ ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.', debug_advData: advData });
     }
     const { advertiser_id: advertiserId } = advData.advertisers[0];
 
@@ -72,13 +72,15 @@ module.exports = async (req, res) => {
           return res.json({
             ok: false,
             sin_campanas: true,
-            mensaje: 'Mercado Libre no devolvió datos de campañas para este período. Esto ocurre cuando no queda ninguna campaña activa en este momento: la API de Mercado Ads solo sirve métricas (incluso históricas) si existe al menos una campaña activa. Reactivá una campaña en MELI (puede ser con presupuesto mínimo) y volvé a actualizar — el gasto de este período no se pierde, solo no es consultable mientras todo esté pausado.'
+            mensaje: 'Mercado Libre no devolvió datos de campañas para este período. Esto ocurre cuando no queda ninguna campaña activa en este momento: la API de Mercado Ads solo sirve métricas (incluso históricas) si existe al menos una campaña activa. Reactivá una campaña en MELI (puede ser con presupuesto mínimo) y volvé a actualizar — el gasto de este período no se pierde, solo no es consultable mientras todo esté pausado.',
+            debug: req.query.debug ? { url, status: r.status, body, advertiserId, meliUserId: me.id } : undefined
           });
         }
         return res.json({
           ok: false,
           error: `Error ${r.status} al obtener items de MELI Ads`,
-          detalle: body
+          detalle: body,
+          debug: req.query.debug ? { url, advertiserId, meliUserId: me.id } : undefined
         });
       }
 

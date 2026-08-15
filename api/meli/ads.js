@@ -31,6 +31,11 @@ module.exports = async (req, res) => {
 
     const supabase = getSupabase();
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+    // La API de Mercado Ads requiere el header api-version en TODOS los endpoints de
+    // /advertising/* — sin él, /product_ads/items y /product_ads/campaigns devuelven 404
+    // aunque haya campañas activas. /advertisers usa versión 1, el resto versión 2.
+    const headersAdvertisers = { ...headers, 'Api-Version': '1' };
+    const headersAds = { ...headers, 'Api-Version': '2' };
 
     // 1. Obtener usuario
     const meRes = await fetch('https://api.mercadolibre.com/users/me', { headers });
@@ -40,7 +45,7 @@ module.exports = async (req, res) => {
     // 2. Resolver advertiser_id y site_id
     const advRes = await fetch(
       `https://api.mercadolibre.com/advertising/advertisers?user_id=${me.id}&product_id=PADS`,
-      { headers }
+      { headers: headersAdvertisers }
     );
     const advData = await advRes.json();
     if (!advRes.ok || !advData.advertisers?.length) {
@@ -52,7 +57,7 @@ module.exports = async (req, res) => {
     if (req.query.debug) {
       const campRes = await fetch(
         `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
-        { headers }
+        { headers: headersAds }
       );
       const campText = await campRes.text();
       let campBody = {};
@@ -70,7 +75,7 @@ module.exports = async (req, res) => {
 
     while (true) {
       const url = `${base}?date_from=${dateFrom}&date_to=${dateTo}&metrics_summary=true&metrics=${METRICS_FIELDS}&limit=${limit}&offset=${offset}`;
-      const r = await fetch(url, { headers });
+      const r = await fetch(url, { headers: headersAds });
       const text = await r.text();
       let body = {};
       if (text) {

@@ -162,44 +162,58 @@ module.exports = async (req, res) => {
     since.setDate(since.getDate() - 90);
     const sinceStr = since.toISOString().slice(0, 10);
 
+    // Ventana ampliada (180 días) solo para reconstruir el stock histórico: el
+    // evento que realmente vació el stock puede caer justo antes del corte de
+    // 90 días (ej. DOM01 tenía una venta 9 días antes del corte que, sin verla,
+    // hacía que la reconstrucción no llegara a 0 exacto y no detectara el hueco).
+    const since180 = new Date(today);
+    since180.setDate(since180.getDate() - 180);
+    const since180Str = since180.toISOString().slice(0, 10);
+
     const { data: ventas, error: ventasErr } = await supabase
       .from('ventas')
       .select('sku, cantidad, fecha')
-      .gte('fecha', sinceStr)
+      .gte('fecha', since180Str)
       .neq('estado', 'cancelada');
     if (ventasErr) throw ventasErr;
 
     // Aggregate units sold, track first/last sale date, and keep a per-day
-    // series per SKU (used below to measure real demand variability).
+    // series per SKU. soldBySku/first/lastDateBySku quedan acotados a los 90
+    // días reales (definen la ventana de demanda "reciente"); dailyQtyBySku
+    // guarda los 180 días completos porque lo usa la reconstrucción de stock
+    // de abajo, que necesita ver ventas anteriores al corte de 90 días.
     const soldBySku      = {};
     const firstDateBySku = {};
     const lastDateBySku  = {};
-    const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }
+    const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }, ventana de 180 días
 
     for (const v of ventas) {
+      if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
+      dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + v.cantidad;
+
+      if (v.fecha < sinceStr) continue; // fuera de la ventana de 90 días: solo aporta a la reconstrucción
       soldBySku[v.sku] = (soldBySku[v.sku] || 0) + v.cantidad;
       if (!firstDateBySku[v.sku] || v.fecha < firstDateBySku[v.sku]) firstDateBySku[v.sku] = v.fecha;
       if (!lastDateBySku[v.sku]  || v.fecha > lastDateBySku[v.sku])  lastDateBySku[v.sku]  = v.fecha;
-      if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
-      dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + v.cantidad;
     }
 
-    // ── 2b. Devoluciones confirmadas en la misma ventana: se descuentan de la
-    // demanda. Si no, una venta devuelta sigue "contando" como demanda real y
-    // sobreestima la velocidad (y por lo tanto la cantidad sugerida a pedir).
+    // ── 2b. Devoluciones confirmadas: se descuentan de la demanda (solo las de
+    // los últimos 90 días — si no, una venta devuelta sigue "contando" como
+    // demanda real y sobreestima la velocidad). returnsBySku usa la ventana de
+    // 180 días, igual que dailyQtyBySku, para la reconstrucción de stock.
     const { data: devoluciones, error: devErr } = await supabase
       .from('devoluciones')
       .select('sku, cantidad, recibida_at')
       .eq('estado', 'recibida')
-      .gte('recibida_at', sinceStr);
+      .gte('recibida_at', since180Str);
     if (devErr) throw devErr;
 
     const returnedBySku = {};
-    const returnsBySku  = {}; // sku -> [{ fecha, qty }], para reconstruir stock histórico
+    const returnsBySku  = {}; // sku -> [{ fecha, qty }], ventana de 180 días
     for (const d of (devoluciones || [])) {
-      returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + (d.cantidad || 0);
       const fecha = (d.recibida_at || '').slice(0, 10);
       if (!fecha || !d.cantidad) continue;
+      if (fecha >= sinceStr) returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + d.cantidad;
       if (!returnsBySku[d.sku]) returnsBySku[d.sku] = [];
       returnsBySku[d.sku].push({ fecha, qty: d.cantidad });
     }
@@ -212,7 +226,7 @@ module.exports = async (req, res) => {
       .select('llegada, estado, items')
       .in('estado', ['recibido', 'arrived', 'en_deposito'])
       .not('llegada', 'is', null)
-      .gte('llegada', sinceStr);
+      .gte('llegada', since180Str);
     if (arrErr) throw arrErr;
 
     const arrivalsBySku = {}; // sku -> [{ fecha, qty }]

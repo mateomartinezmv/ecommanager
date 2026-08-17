@@ -234,22 +234,34 @@ module.exports = async (req, res) => {
         spanDays     = Math.max(1, Math.round(diffMs / 86400000) + 1);
         activeDays   = spanDays;
 
-        // fecha_publicacion es la fecha real de alta en MELI/Shopify; cuando no
-        // la tenemos cargada (5 de 48 productos activos, hoy), created_at (alta
-        // en nuestro sistema) es el mejor proxy disponible — sin este fallback
-        // el piso de abajo nunca se aplicaba y esos SKUs quedaban con el bug que
-        // esto arregla: una sola venta = 1 día activo = velocidad de 1/día.
-        const publicacionRef = p.fecha_publicacion || (p.created_at ? p.created_at.slice(0, 10) : null);
-        if (publicacionRef) {
-          const referenceDate = stock > 0 ? today : new Date(lastDateBySku[p.sku]);
-          const daysSincePublicacion = Math.round((referenceDate - new Date(publicacionRef)) / 86400000) + 1;
-          activeDays = Math.max(activeDays, Math.min(90, daysSincePublicacion));
-        }
+        // El piso de fecha de publicación solo debe entrar cuando el span real
+        // (primera venta → última venta) es demasiado corto para confiar en él —
+        // NO siempre que exista fecha de publicación. Aplicarlo sin esa condición
+        // rompe justo el caso contrario: una publicación pausada por falta de
+        // stock durante meses y reactivada hace poco. Ahí el span reciente (ej.
+        // 27 días, 11 unidades) ya es una muestra sólida por sí sola, y estirarlo
+        // hasta la fecha de publicación original (de antes de la pausa) diluye
+        // una racha real con meses de silencio en los que ni siquiera se podía
+        // comprar — exactamente lo que pasaba con DFB-002 (0.41/día real
+        // reportado como 0.12/día).
+        if (spanDays < MIN_DAYS_LOW_SAMPLE) {
+          // fecha_publicacion es la fecha real de alta en MELI/Shopify; cuando no
+          // la tenemos cargada (5 de 48 productos activos, hoy), created_at (alta
+          // en nuestro sistema) es el mejor proxy disponible — sin este fallback
+          // el piso no se aplicaba y esos SKUs quedaban con: una sola venta = 1
+          // día activo = velocidad de 1/día.
+          const publicacionRef = p.fecha_publicacion || (p.created_at ? p.created_at.slice(0, 10) : null);
+          if (publicacionRef) {
+            const referenceDate = stock > 0 ? today : new Date(lastDateBySku[p.sku]);
+            const daysSincePublicacion = Math.round((referenceDate - new Date(publicacionRef)) / 86400000) + 1;
+            activeDays = Math.max(activeDays, Math.min(90, daysSincePublicacion));
+          }
 
-        // Con 1-2 ventas nada más, ni siquiera ese piso alcanza si el producto
-        // es nuevo de verdad (publicado y vendido casi el mismo día): una sola
-        // venta el día 1 no es una tasa diaria confiable, es un dato suelto.
-        if (totalSold <= 2) activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
+          // Ni siquiera ese piso alcanza si el producto es nuevo de verdad
+          // (publicado y vendido casi el mismo día): una sola venta el día 1 no
+          // es una tasa diaria confiable, es un dato suelto.
+          activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
+        }
       }
 
       const dailyVelocity = totalSold > 0 ? totalSold / activeDays : 0;

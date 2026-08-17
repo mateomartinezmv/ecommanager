@@ -372,6 +372,16 @@ function urgencyBadge(p, cls) {
   return html;
 }
 
+// Tramos donde se reconstruyó stock 0 dentro de la ventana de ventas, excluidos
+// del cálculo de velocidad (ver periodos_sin_stock en la API).
+function stockoutPeriodsHtml(p) {
+  if (!p.periodos_sin_stock || !p.periodos_sin_stock.length) return '';
+  const tramos = p.periodos_sin_stock.map(per => `${fmtDate(per.desde)}→${fmtDate(per.hasta)} (${per.dias}d)`).join(', ');
+  return `<div style="font-size:10px;color:var(--yellow);margin-top:2px" title="Excluido del cálculo de velocidad: el stock reconstruido dio 0 en este tramo">
+    🚫 sin stock ${tramos}
+  </div>`;
+}
+
 function fmtDate(d) {
   if (!d) return '—';
   const [y,m,day] = d.split('-');
@@ -430,7 +440,7 @@ function renderList() {
         <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
         <td style="font-family:'JetBrains Mono',monospace">
           ${p.daily_velocity > 0
-            ? `<div>${p.daily_velocity.toFixed(2)}/día</div><div style="font-size:10px;color:var(--text-muted)">${p.total_sold || 0} uds · ${p.active_days || '—'} días activos</div>`
+            ? `<div>${p.daily_velocity.toFixed(2)}/día</div><div style="font-size:10px;color:var(--text-muted)">${p.total_sold || 0} uds · ${p.active_days || '—'} días activos</div>${stockoutPeriodsHtml(p)}`
             : '—'}
         </td>
         <td style="font-family:'JetBrains Mono',monospace">${p.days_coverage !== null ? p.days_coverage + ' días' : '—'}</td>

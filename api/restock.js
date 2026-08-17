@@ -14,6 +14,8 @@
 //   - restock_status           = 'quiebre_confirmado' | 'ordenar_ya' | 'insuficiente' | 'proximo' | 'cubierto'
 //   - already_ordered          = true if the SKU appears in a non-arrived import (kept for compat)
 //   - gap_cierra_fecha         = si hay quiebre_confirmado, fecha en la que el próximo envío lo cierra
+//   - periodos_sin_stock       = tramos dentro de la ventana de ventas donde el stock reconstruido dio 0
+//                                 (excluidos de active_days para no diluir la velocidad real)
 //
 // CRITICAL: sales velocity aggregates ALL channels (meli + mostrador + shopify).
 // No channel filter is applied anywhere in this file.
@@ -87,6 +89,53 @@ function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, to
   return { tieneQuiebre, gapCierraFecha };
 }
 
+// Reconstruye, hacia atrás desde el stock actual, en qué tramos dentro de
+// [firstDate, lastDate] el producto tuvo stock 0 — usando ventas (restan),
+// llegadas de importaciones y devoluciones confirmadas (suman) como los únicos
+// movimientos de stock que conocemos. Solo se confía en un tramo como
+// "confirmado sin stock" cuando el nivel reconstruido da EXACTO 0: si da
+// negativo, hay un movimiento más viejo que no tenemos registrado (ej. un
+// ajuste manual de stock hecho a mano), y ese tramo se deja como estaba antes
+// en vez de arriesgar un resultado incorrecto.
+function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, firstDate, lastDate) {
+  const events = [];
+  for (const [fecha, qty] of Object.entries(dailyQtyMap)) {
+    if (qty && fecha >= firstDate && fecha <= lastDate) events.push({ fecha, delta: -qty });
+  }
+  for (const a of arrivals) {
+    if (a.qty && a.fecha >= firstDate && a.fecha <= lastDate) events.push({ fecha: a.fecha, delta: a.qty });
+  }
+  for (const r of returns) {
+    if (r.qty && r.fecha >= firstDate && r.fecha <= lastDate) events.push({ fecha: r.fecha, delta: r.qty });
+  }
+  if (!events.length) return [];
+  events.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+
+  // Nivel de stock justo DESPUÉS de cada evento, reconstruido hacia atrás
+  // desde el stock actual (deshaciendo los eventos más recientes primero).
+  let cumulative = 0;
+  const levelAfter = new Array(events.length);
+  for (let i = events.length - 1; i >= 0; i--) {
+    levelAfter[i] = currentStock - cumulative;
+    cumulative += events[i].delta;
+  }
+
+  const periods = [];
+  for (let i = 0; i < events.length - 1; i++) {
+    if (levelAfter[i] === 0) {
+      const d1 = new Date(events[i].fecha);
+      d1.setDate(d1.getDate() + 1);
+      const d2 = new Date(events[i + 1].fecha);
+      d2.setDate(d2.getDate() - 1);
+      if (d1 <= d2) {
+        const dias = Math.round((d2 - d1) / MS_PER_DAY) + 1;
+        periods.push({ desde: d1.toISOString().slice(0, 10), hasta: d2.toISOString().slice(0, 10), dias });
+      }
+    }
+  }
+  return periods;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -146,8 +195,33 @@ module.exports = async (req, res) => {
     if (devErr) throw devErr;
 
     const returnedBySku = {};
+    const returnsBySku  = {}; // sku -> [{ fecha, qty }], para reconstruir stock histórico
     for (const d of (devoluciones || [])) {
       returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + (d.cantidad || 0);
+      const fecha = (d.recibida_at || '').slice(0, 10);
+      if (!fecha || !d.cantidad) continue;
+      if (!returnsBySku[d.sku]) returnsBySku[d.sku] = [];
+      returnsBySku[d.sku].push({ fecha, qty: d.cantidad });
+    }
+
+    // ── 2c. Llegadas de importaciones ya recibidas, para reconstruir el stock
+    // histórico día a día (ver findStockoutPeriods) y detectar tramos donde el
+    // producto estuvo genuinamente sin stock, en vez de sin demanda.
+    const { data: arrivedImports, error: arrErr } = await supabase
+      .from('importaciones')
+      .select('llegada, estado, items')
+      .in('estado', ['recibido', 'arrived', 'en_deposito'])
+      .not('llegada', 'is', null)
+      .gte('llegada', sinceStr);
+    if (arrErr) throw arrErr;
+
+    const arrivalsBySku = {}; // sku -> [{ fecha, qty }]
+    for (const imp of (arrivedImports || [])) {
+      for (const item of (imp.items || [])) {
+        if (!item.sku || !item.qty) continue;
+        if (!arrivalsBySku[item.sku]) arrivalsBySku[item.sku] = [];
+        arrivalsBySku[item.sku].push({ fecha: imp.llegada, qty: item.qty });
+      }
     }
 
     // ── 3. Importaciones activas (ordered / in_transit) ──────────────────────
@@ -229,9 +303,24 @@ module.exports = async (req, res) => {
       // still a live selling opportunity, so today is the right reference point.
       let activeDays = 90;
       let spanDays   = 0;
+      let stockoutPeriods = [];
+      let diasSinStock    = 0;
       if (totalSold > 0) {
         const diffMs = new Date(lastDateBySku[p.sku]) - new Date(firstDateBySku[p.sku]);
-        spanDays     = Math.max(1, Math.round(diffMs / 86400000) + 1);
+        const rawSpanDays = Math.max(1, Math.round(diffMs / 86400000) + 1);
+
+        // Reconstruye si hubo tramos de stock 0 dentro de la ventana de ventas
+        // (ej. publicación pausada por falta de stock, reactivada después) y
+        // los excluye del denominador — si no, un producto que estuvo semanas
+        // sin poder venderse por falta de stock queda con una velocidad diluida
+        // como si esos días reflejaran demanda baja en vez de stock inexistente.
+        stockoutPeriods = findStockoutPeriods(
+          dailyQtyBySku[p.sku] || {}, arrivalsBySku[p.sku] || [], returnsBySku[p.sku] || [],
+          stock, firstDateBySku[p.sku], lastDateBySku[p.sku]
+        );
+        diasSinStock = stockoutPeriods.reduce((a, per) => a + per.dias, 0);
+
+        spanDays     = Math.max(1, rawSpanDays - diasSinStock);
         activeDays   = spanDays;
 
         // El piso de fecha de publicación solo debe entrar cuando el span real
@@ -279,7 +368,8 @@ module.exports = async (req, res) => {
         const end = new Date(lastDateBySku[p.sku]);
         while (d <= end) {
           const key = d.toISOString().slice(0, 10);
-          series.push(dayMap[key] || 0);
+          const enHuecoConfirmado = stockoutPeriods.some(per => key >= per.desde && key <= per.hasta);
+          if (!enHuecoConfirmado) series.push(dayMap[key] || 0);
           d.setDate(d.getDate() + 1);
         }
         const empirical = stdev(series);
@@ -370,6 +460,8 @@ module.exports = async (req, res) => {
         alerta_min:                 alertaMin,
         total_sold:                 totalSold,
         active_days:                totalSold > 0 ? activeDays : null,
+        dias_sin_stock_excluidos:   diasSinStock,
+        periodos_sin_stock:         stockoutPeriods,
         daily_velocity:             Math.round(dailyVelocity * 100) / 100,
         days_coverage:              daysCoverage !== null ? Math.round(daysCoverage) : null,
         restock_date:               restockDate,

@@ -246,6 +246,9 @@ let calYear       = new Date().getFullYear();
 let calMonth      = new Date().getMonth();
 let leadTimePromedio = null;
 let leadTimeMuestra  = 0;
+let leadTimeStdev    = null;
+let leadTimeMin      = null;
+let leadTimeMax      = null;
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -258,10 +261,21 @@ async function load() {
     allProducts     = data.productos || [];
     leadTimePromedio = data.lead_time_promedio ?? null;
     leadTimeMuestra   = data.lead_time_muestra || 0;
+    leadTimeStdev     = data.lead_time_stdev ?? null;
+    leadTimeMin       = data.lead_time_min ?? null;
+    leadTimeMax       = data.lead_time_max ?? null;
 
-    document.getElementById('lead-time-info').textContent = leadTimePromedio !== null
-      ? `⏱️ Lead time: ${leadTimePromedio} días (${leadTimeMuestra > 0 ? `promedio de ${leadTimeMuestra} importaciones` : 'valor por defecto, sin datos suficientes'})`
-      : '';
+    let leadTimeTxt;
+    if (leadTimePromedio === null) {
+      leadTimeTxt = '';
+    } else if (leadTimeMuestra > 0) {
+      const rango = (leadTimeMin !== null && leadTimeMax !== null) ? ` · rango ${leadTimeMin}–${leadTimeMax}d` : '';
+      const desvio = leadTimeStdev !== null ? ` · ±${leadTimeStdev}d` : '';
+      leadTimeTxt = `⏱️ Lead time: ${leadTimePromedio} días (mediana de ${leadTimeMuestra} importaciones${rango}${desvio})`;
+    } else {
+      leadTimeTxt = `⏱️ Lead time: ${leadTimePromedio} días (valor por defecto, sin datos suficientes)`;
+    }
+    document.getElementById('lead-time-info').textContent = leadTimeTxt;
 
     const cats = [...new Set(allProducts.map(p => p.categoria).filter(Boolean))].sort();
     const sel = document.getElementById('filter-cat');
@@ -308,6 +322,7 @@ function switchSegmento(seg) {
 
 // ─── Urgency helpers ──────────────────────────────────────────────────────────
 function urgencyClass(p, todayStr) {
+  if (p.restock_status === 'quiebre_confirmado') return 'quiebre-confirmado';
   if (p.restock_status === 'insuficiente') return 'insuficiente';
   if (p.already_ordered) {
     // Distinguish ordered (not shipped yet) vs in_transit (already shipping)
@@ -325,6 +340,7 @@ function urgencyClass(p, todayStr) {
 
 function urgencyBadge(p, cls) {
   const map = {
+    'quiebre-confirmado': ['badge-red', '🚨 Sin stock — pedido no llega a tiempo'],
     'in-transit': ['badge-green',  '🚢 En tránsito'],
     ordered:      ['badge-blue',   '📦 Pedido'],
     'stocked-out':['badge-red',    '🚨 Sin stock'],
@@ -336,7 +352,7 @@ function urgencyBadge(p, cls) {
     insuficiente: ['badge-orange', '🟠 Insuficiente'],
   };
   let [css, label] = map[cls] || ['badge-gray', cls];
-  const SUGGESTABLE = ['stocked-out', 'overdue', 'urgent', 'soon', 'insuficiente'];
+  const SUGGESTABLE = ['stocked-out', 'overdue', 'urgent', 'soon', 'insuficiente', 'quiebre-confirmado'];
   if (SUGGESTABLE.includes(cls) && p.cantidad_sugerida > 0) {
     label += ` — pedí ${p.cantidad_sugerida} más`;
   }
@@ -345,6 +361,12 @@ function urgencyBadge(p, cls) {
     const llegaTxt = p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—';
     html += `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
       ${p.qty_en_transito} en camino (llegan ~${llegaTxt}) — cobertura hasta ahí, después quedás sin stock.
+    </div>`;
+  }
+  if (cls === 'quiebre-confirmado') {
+    const cierraTxt = p.gap_cierra_fecha ? fmtDate(p.gap_cierra_fecha) : (p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—');
+    html += `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
+      Te quedás sin stock ahora mismo — el pedido en camino recién cubre a partir del ${cierraTxt}.
     </div>`;
   }
   return html;

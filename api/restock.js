@@ -4,6 +4,8 @@
 // Returns { lead_time_promedio, lead_time_muestra, lead_time_stdev, lead_time_min,
 //           lead_time_max, lead_time_metodo, productos } where each product has:
 //   - daily_velocity           = units sold (net of confirmed returns) / active selling days
+//                                 (días desde publicación hasta hoy, acotado a 90 días, menos
+//                                 tramos confirmados sin stock — NO solo primera venta→última venta)
 //   - days_coverage            = current stock / daily_velocity
 //   - restock_date             = today + days_coverage − lead_time_promedio (last day to order before stockout)
 //   - stockout_date            = today + days_coverage
@@ -89,24 +91,31 @@ function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, to
   return { tieneQuiebre, gapCierraFecha };
 }
 
-// Reconstruye, hacia atrás desde el stock actual, en qué tramos dentro de
-// [firstDate, lastDate] el producto tuvo stock 0 — usando ventas (restan),
-// llegadas de importaciones y devoluciones confirmadas (suman) como los únicos
-// movimientos de stock que conocemos. Solo se confía en un tramo como
-// "confirmado sin stock" cuando el nivel reconstruido da EXACTO 0: si da
-// negativo, hay un movimiento más viejo que no tenemos registrado (ej. un
-// ajuste manual de stock hecho a mano), y ese tramo se deja como estaba antes
-// en vez de arriesgar un resultado incorrecto.
-function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, firstDate, lastDate) {
+// Reconstruye, hacia atrás desde el stock actual, en qué tramos el producto
+// tuvo stock 0 — usando TODO el historial de ventas (restan), llegadas de
+// importaciones y devoluciones confirmadas (suman) como los únicos
+// movimientos de stock que conocemos, y después recorta el resultado a
+// [windowStart, windowEnd]. Es importante usar el historial completo (no solo
+// los eventos dentro de la ventana) porque el evento que confirma el tramo en
+// 0 puede caer ANTES de windowStart — ej. DFB-002 se vació el 10/03 (fuera de
+// cualquier ventana de 90 días) y no volvió a tener stock hasta el 17/07; sin
+// mirar esa venta de marzo no hay forma de confirmar que los primeros ~57 días
+// de la ventana de 90 días también estuvieron en 0.
+//
+// Solo se confía en un tramo como "confirmado sin stock" cuando el nivel
+// reconstruido da EXACTO 0: si da negativo, hay un movimiento más viejo que no
+// tenemos registrado (ej. un ajuste manual de stock hecho a mano), y ese tramo
+// se deja como estaba antes en vez de arriesgar un resultado incorrecto.
+function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windowStart, windowEnd) {
   const events = [];
   for (const [fecha, qty] of Object.entries(dailyQtyMap)) {
-    if (qty && fecha >= firstDate && fecha <= lastDate) events.push({ fecha, delta: -qty });
+    if (qty) events.push({ fecha, delta: -qty });
   }
   for (const a of arrivals) {
-    if (a.qty && a.fecha >= firstDate && a.fecha <= lastDate) events.push({ fecha: a.fecha, delta: a.qty });
+    if (a.qty && a.fecha) events.push({ fecha: a.fecha, delta: a.qty });
   }
   for (const r of returns) {
-    if (r.qty && r.fecha >= firstDate && r.fecha <= lastDate) events.push({ fecha: r.fecha, delta: r.qty });
+    if (r.qty && r.fecha) events.push({ fecha: r.fecha, delta: r.qty });
   }
   if (!events.length) return [];
   events.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
@@ -120,13 +129,17 @@ function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, first
     cumulative += events[i].delta;
   }
 
+  const winStart = new Date(windowStart);
+  const winEnd   = new Date(windowEnd);
   const periods = [];
   for (let i = 0; i < events.length - 1; i++) {
     if (levelAfter[i] === 0) {
-      const d1 = new Date(events[i].fecha);
+      let d1 = new Date(events[i].fecha);
       d1.setDate(d1.getDate() + 1);
-      const d2 = new Date(events[i + 1].fecha);
+      let d2 = new Date(events[i + 1].fecha);
       d2.setDate(d2.getDate() - 1);
+      if (d1 < winStart) d1 = winStart;
+      if (d2 > winEnd) d2 = winEnd;
       if (d1 <= d2) {
         const dias = Math.round((d2 - d1) / MS_PER_DAY) + 1;
         periods.push({ desde: d1.toISOString().slice(0, 10), hasta: d2.toISOString().slice(0, 10), dias });
@@ -162,30 +175,22 @@ module.exports = async (req, res) => {
     since.setDate(since.getDate() - 90);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    // Ventana ampliada (180 días) solo para reconstruir el stock histórico: el
-    // evento que realmente vació el stock puede caer justo antes del corte de
-    // 90 días (ej. DOM01 tenía una venta 9 días antes del corte que, sin verla,
-    // hacía que la reconstrucción no llegara a 0 exacto y no detectara el hueco).
-    const since180 = new Date(today);
-    since180.setDate(since180.getDate() - 180);
-    const since180Str = since180.toISOString().slice(0, 10);
-
     const { data: ventas, error: ventasErr } = await supabase
       .from('ventas')
       .select('sku, cantidad, fecha')
-      .gte('fecha', since180Str)
       .neq('estado', 'cancelada');
     if (ventasErr) throw ventasErr;
 
     // Aggregate units sold, track first/last sale date, and keep a per-day
     // series per SKU. soldBySku/first/lastDateBySku quedan acotados a los 90
     // días reales (definen la ventana de demanda "reciente"); dailyQtyBySku
-    // guarda los 180 días completos porque lo usa la reconstrucción de stock
-    // de abajo, que necesita ver ventas anteriores al corte de 90 días.
+    // guarda TODO el historial porque lo usa findStockoutPeriods, que necesita
+    // ver ventas anteriores al corte de 90 días para confirmar tramos en 0
+    // (ver comentario en esa función).
     const soldBySku      = {};
     const firstDateBySku = {};
     const lastDateBySku  = {};
-    const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }, ventana de 180 días
+    const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }, historial completo
 
     for (const v of ventas) {
       if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
@@ -199,17 +204,16 @@ module.exports = async (req, res) => {
 
     // ── 2b. Devoluciones confirmadas: se descuentan de la demanda (solo las de
     // los últimos 90 días — si no, una venta devuelta sigue "contando" como
-    // demanda real y sobreestima la velocidad). returnsBySku usa la ventana de
-    // 180 días, igual que dailyQtyBySku, para la reconstrucción de stock.
+    // demanda real y sobreestima la velocidad). returnsBySku guarda todo el
+    // historial, igual que dailyQtyBySku, para la reconstrucción de stock.
     const { data: devoluciones, error: devErr } = await supabase
       .from('devoluciones')
       .select('sku, cantidad, recibida_at')
-      .eq('estado', 'recibida')
-      .gte('recibida_at', since180Str);
+      .eq('estado', 'recibida');
     if (devErr) throw devErr;
 
     const returnedBySku = {};
-    const returnsBySku  = {}; // sku -> [{ fecha, qty }], ventana de 180 días
+    const returnsBySku  = {}; // sku -> [{ fecha, qty }], historial completo
     for (const d of (devoluciones || [])) {
       const fecha = (d.recibida_at || '').slice(0, 10);
       if (!fecha || !d.cantidad) continue;
@@ -225,8 +229,7 @@ module.exports = async (req, res) => {
       .from('importaciones')
       .select('llegada, estado, items')
       .in('estado', ['recibido', 'arrived', 'en_deposito'])
-      .not('llegada', 'is', null)
-      .gte('llegada', since180Str);
+      .not('llegada', 'is', null);
     if (arrErr) throw arrErr;
 
     const arrivalsBySku = {}; // sku -> [{ fecha, qty }]
@@ -300,71 +303,46 @@ module.exports = async (req, res) => {
       const stock     = p.stock_dep || 0;
       const alertaMin = p.alerta_min || 0;
 
-      // Active selling period: first sale → last sale within the 90-day window.
-      // Velocity = units sold ÷ active days (not total window days).
-      // This way stockout days — when nothing sold because there was no stock —
-      // don't drag the daily rate down.
-      // With very few sales (e.g. a single sale), first==last collapses this to
-      // 1 day, which wildly overstates velocity for a product that's simply been
-      // listed a long time with low demand. Floor it with days since the listing
-      // was first published (capped at the 90-day sales window, since that's all
-      // the sales data we have) whenever that's known and larger.
+      // Ventana de venta activa: por defecto, TODO el período en que el
+      // producto pudo haber estado a la venta dentro de los últimos 90 días —
+      // desde que se publicó (o desde que lo cargamos en el sistema, si no
+      // tenemos fecha real) hasta hoy (o hasta la última venta, si ya está sin
+      // stock). No arranca en la primera venta: un producto puede llevar
+      // semanas o meses disponible sin venderse — eso es demanda baja real, no
+      // debería excluirse del cálculo solo porque "todavía no vendió nada".
       //
-      // That floor should stop at the last sale, not run to today, once the
-      // product is out of stock: with stock=0 there's no way it could have sold
-      // anything since then, so counting those extra no-stock days as "active"
-      // would dilute the rate and understate real demand. While stock>0 it's
-      // still a live selling opportunity, so today is the right reference point.
+      // De esa ventana se restan los tramos donde el stock reconstruido
+      // (ventas + llegadas + devoluciones, ver findStockoutPeriods) da EXACTO
+      // 0 — esos sí son días en que la venta era imposible, no que faltó
+      // demanda, y diluirían la velocidad real si se contaran igual.
       let activeDays = 90;
       let spanDays   = 0;
       let stockoutPeriods = [];
       let diasSinStock    = 0;
+      let windowStart = null;
+      let windowEnd   = null;
       if (totalSold > 0) {
-        const diffMs = new Date(lastDateBySku[p.sku]) - new Date(firstDateBySku[p.sku]);
-        const rawSpanDays = Math.max(1, Math.round(diffMs / 86400000) + 1);
+        const publicacionRef = p.fecha_publicacion || (p.created_at ? p.created_at.slice(0, 10) : null);
+        windowStart = (publicacionRef && publicacionRef > sinceStr) ? publicacionRef : sinceStr;
+        windowEnd   = stock > 0 ? todayStr : lastDateBySku[p.sku];
 
-        // Reconstruye si hubo tramos de stock 0 dentro de la ventana de ventas
-        // (ej. publicación pausada por falta de stock, reactivada después) y
-        // los excluye del denominador — si no, un producto que estuvo semanas
-        // sin poder venderse por falta de stock queda con una velocidad diluida
-        // como si esos días reflejaran demanda baja en vez de stock inexistente.
+        const rawSpanDays = Math.max(1, Math.round(
+          (new Date(windowEnd) - new Date(windowStart)) / MS_PER_DAY
+        ) + 1);
+
         stockoutPeriods = findStockoutPeriods(
           dailyQtyBySku[p.sku] || {}, arrivalsBySku[p.sku] || [], returnsBySku[p.sku] || [],
-          stock, firstDateBySku[p.sku], lastDateBySku[p.sku]
+          stock, windowStart, windowEnd
         );
         diasSinStock = stockoutPeriods.reduce((a, per) => a + per.dias, 0);
 
-        spanDays     = Math.max(1, rawSpanDays - diasSinStock);
-        activeDays   = spanDays;
+        spanDays   = Math.max(1, rawSpanDays - diasSinStock);
+        activeDays = spanDays;
 
-        // El piso de fecha de publicación solo debe entrar cuando el span real
-        // (primera venta → última venta) es demasiado corto para confiar en él —
-        // NO siempre que exista fecha de publicación. Aplicarlo sin esa condición
-        // rompe justo el caso contrario: una publicación pausada por falta de
-        // stock durante meses y reactivada hace poco. Ahí el span reciente (ej.
-        // 27 días, 11 unidades) ya es una muestra sólida por sí sola, y estirarlo
-        // hasta la fecha de publicación original (de antes de la pausa) diluye
-        // una racha real con meses de silencio en los que ni siquiera se podía
-        // comprar — exactamente lo que pasaba con DFB-002 (0.41/día real
-        // reportado como 0.12/día).
-        if (spanDays < MIN_DAYS_LOW_SAMPLE) {
-          // fecha_publicacion es la fecha real de alta en MELI/Shopify; cuando no
-          // la tenemos cargada (5 de 48 productos activos, hoy), created_at (alta
-          // en nuestro sistema) es el mejor proxy disponible — sin este fallback
-          // el piso no se aplicaba y esos SKUs quedaban con: una sola venta = 1
-          // día activo = velocidad de 1/día.
-          const publicacionRef = p.fecha_publicacion || (p.created_at ? p.created_at.slice(0, 10) : null);
-          if (publicacionRef) {
-            const referenceDate = stock > 0 ? today : new Date(lastDateBySku[p.sku]);
-            const daysSincePublicacion = Math.round((referenceDate - new Date(publicacionRef)) / 86400000) + 1;
-            activeDays = Math.max(activeDays, Math.min(90, daysSincePublicacion));
-          }
-
-          // Ni siquiera ese piso alcanza si el producto es nuevo de verdad
-          // (publicado y vendido casi el mismo día): una sola venta el día 1 no
-          // es una tasa diaria confiable, es un dato suelto.
-          activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
-        }
+        // Con 1-2 ventas nada más, ni siquiera esta ventana alcanza si el
+        // producto es nuevo de verdad (publicado y vendido casi el mismo día):
+        // una sola venta el día 1 no es una tasa diaria confiable.
+        if (totalSold <= 2) activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
       }
 
       const dailyVelocity = totalSold > 0 ? totalSold / activeDays : 0;
@@ -378,8 +356,8 @@ module.exports = async (req, res) => {
       if (totalSold > 0 && spanDays >= MIN_SPAN_FOR_STDEV) {
         const dayMap = dailyQtyBySku[p.sku] || {};
         const series = [];
-        const d = new Date(firstDateBySku[p.sku]);
-        const end = new Date(lastDateBySku[p.sku]);
+        const d = new Date(windowStart);
+        const end = new Date(windowEnd);
         while (d <= end) {
           const key = d.toISOString().slice(0, 10);
           const enHuecoConfirmado = stockoutPeriods.some(per => key >= per.desde && key <= per.hasta);

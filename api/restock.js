@@ -37,6 +37,10 @@ const DEFAULT_DEMAND_CV  = 0.75; // coef. de variación asumido cuando no hay su
 const DEFAULT_LT_CV      = 0.30; // ídem para lead time, cuando hay <2 importaciones terminales con datos
 const MIN_SPAN_FOR_STDEV = 5;    // días mínimos de ventana real de ventas para confiar en el desvío empírico de demanda
 const MIN_DAYS_LOW_SAMPLE = 14;  // piso de días activos cuando hay 1-2 ventas y no alcanza con fecha de publicación
+const STOCKOUT_TOLERANCE = 1;    // tolerancia al reconstruir stock: acepta hasta -1 (un desajuste chico, ej. una
+                                  // venta de mostrador no sincronizada) como "confirmado sin stock"; valores más
+                                  // negativos indican un problema de datos más de fondo (ej. una importación vieja
+                                  // que no tenemos registrada) y no se usan — ver comentario en findStockoutPeriods
 
 function median(arr) {
   if (!arr.length) return null;
@@ -102,10 +106,16 @@ function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, to
 // mirar esa venta de marzo no hay forma de confirmar que los primeros ~57 días
 // de la ventana de 90 días también estuvieron en 0.
 //
-// Solo se confía en un tramo como "confirmado sin stock" cuando el nivel
-// reconstruido da EXACTO 0: si da negativo, hay un movimiento más viejo que no
-// tenemos registrado (ej. un ajuste manual de stock hecho a mano), y ese tramo
-// se deja como estaba antes en vez de arriesgar un resultado incorrecto.
+// Se confía en un tramo como "confirmado sin stock" cuando el nivel
+// reconstruido da 0 o -1 (STOCKOUT_TOLERANCE): un desajuste de una sola
+// unidad es esperable (una venta de mostrador no sincronizada, un ajuste
+// manual chico) y no debería bloquear una detección que en todo lo demás es
+// sólida — ej. GZTYJ-41046R da -1, pero GZTYJ-41046N (mismo import, mismo
+// lote) da 0 exacto para el mismo hueco, confirmando que es genuino.
+// Si da MÁS negativo que eso, hay un problema de datos más de fondo (ej. una
+// importación vieja que no tenemos registrada — así se comporta YTLY-30, con
+// varios tramos entre -2 y -5) y ese tramo se deja como estaba antes en vez de
+// arriesgar un resultado incorrecto.
 function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windowStart, windowEnd) {
   const events = [];
   for (const [fecha, qty] of Object.entries(dailyQtyMap)) {
@@ -133,7 +143,7 @@ function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windo
   const winEnd   = new Date(windowEnd);
   const periods = [];
   for (let i = 0; i < events.length - 1; i++) {
-    if (levelAfter[i] === 0) {
+    if (levelAfter[i] <= 0 && levelAfter[i] >= -STOCKOUT_TOLERANCE) {
       let d1 = new Date(events[i].fecha);
       d1.setDate(d1.getDate() + 1);
       let d2 = new Date(events[i + 1].fecha);

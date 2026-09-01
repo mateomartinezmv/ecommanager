@@ -1168,13 +1168,16 @@
     </div>
     <div id="verificar-ventas-tabla" class="table-wrap" style="display:none;max-height:360px;overflow:auto">
       <table>
-        <thead><tr><th>Canal</th><th>Orden</th><th>Fecha</th><th>Comprador</th><th>Producto</th><th>Cant.</th><th>Total</th></tr></thead>
+        <thead><tr>
+          <th style="width:24px"><input type="checkbox" id="verificar-check-all" onchange="toggleTodasFaltantes(this.checked)"></th>
+          <th>Canal</th><th>Orden</th><th>Fecha</th><th>Comprador</th><th>Producto</th><th>Cant.</th><th>Total</th>
+        </tr></thead>
         <tbody id="verificar-ventas-tbody"></tbody>
       </table>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-verificar-ventas')">Cerrar</button>
-      <button class="btn btn-primary" onclick="importarFaltantes()" id="btn-importar-faltantes" style="display:none">⬇️ Importar todas las faltantes</button>
+      <button class="btn btn-primary" onclick="importarFaltantes()" id="btn-importar-faltantes" style="display:none">⬇️ Importar seleccionadas</button>
     </div>
   </div>
 </div>
@@ -2961,9 +2964,14 @@ function renderVerificacionVentas(result) {
   document.getElementById('verificar-ventas-empty').style.display = hayFaltantes ? 'none' : 'block';
   document.getElementById('verificar-ventas-tabla').style.display = hayFaltantes ? '' : 'none';
   document.getElementById('btn-importar-faltantes').style.display = hayFaltantes ? '' : 'none';
+  const checkAll = document.getElementById('verificar-check-all');
+  if (checkAll) checkAll.checked = false;
 
-  document.getElementById('verificar-ventas-tbody').innerHTML = verificarFaltantes.map(f => `
+  // Sin preselección: si el usuario ya cargó alguna a mano con otro ID, no
+  // la detectamos como "ya existe" — por eso decide él cuáles importar.
+  document.getElementById('verificar-ventas-tbody').innerHTML = verificarFaltantes.map((f, i) => `
     <tr>
+      <td><input type="checkbox" class="verificar-check-item" data-idx="${i}" onchange="actualizarContadorFaltantes()"></td>
       <td>${f.canal === 'meli' ? '🟡 MELI' : '🛍️ Shopify'}</td>
       <td>${_escHtml(f.orden_numero || f.orden)}</td>
       <td>${f.fecha || '—'}</td>
@@ -2974,30 +2982,61 @@ function renderVerificacionVentas(result) {
     </tr>
   `).join('');
 
+  actualizarContadorFaltantes();
   openModal('modal-verificar-ventas');
 }
 
+function toggleTodasFaltantes(checked) {
+  document.querySelectorAll('#verificar-ventas-tbody .verificar-check-item').forEach(c => { c.checked = checked; });
+  actualizarContadorFaltantes();
+}
+
+function actualizarContadorFaltantes() {
+  const checks = [...document.querySelectorAll('#verificar-ventas-tbody .verificar-check-item')];
+  const seleccionadas = checks.filter(c => c.checked).length;
+  const btn = document.getElementById('btn-importar-faltantes');
+  btn.textContent = `⬇️ Importar seleccionadas (${seleccionadas})`;
+  btn.disabled = seleccionadas === 0;
+
+  const checkAll = document.getElementById('verificar-check-all');
+  if (checkAll) checkAll.checked = checks.length > 0 && seleccionadas === checks.length;
+}
+
 async function importarFaltantes() {
-  if (!verificarFaltantes.length) return;
-  if (!confirm(`¿Importar ${verificarFaltantes.length} venta(s) faltante(s) al CRM?\n\nSe descontará stock y se generarán los envíos correspondientes, igual que si el registro automático hubiera funcionado.`)) return;
+  const idxSeleccionados = [...document.querySelectorAll('#verificar-ventas-tbody .verificar-check-item')]
+    .filter(c => c.checked)
+    .map(c => parseInt(c.dataset.idx, 10));
+  const seleccionadas = idxSeleccionados.map(i => verificarFaltantes[i]);
+  if (!seleccionadas.length) return;
+
+  if (!confirm(`¿Importar ${seleccionadas.length} venta(s) seleccionada(s) al CRM?\n\nSe descontará stock y se generarán los envíos correspondientes, igual que si el registro automático hubiera funcionado.`)) return;
 
   const btn = document.getElementById('btn-importar-faltantes');
   btn.disabled = true; btn.textContent = '⏳ Importando...';
   try {
-    const meliOrdenes = [...new Set(verificarFaltantes.filter(f => f.canal === 'meli').map(f => f.orden))];
-    const shopifyOrdenes = [...new Set(verificarFaltantes.filter(f => f.canal === 'shopify').map(f => f.orden))];
+    const meliSel = seleccionadas.filter(f => f.canal === 'meli');
+    const shopifySel = seleccionadas.filter(f => f.canal === 'shopify');
 
     let importadas = 0, errores = 0;
 
-    if (meliOrdenes.length) {
-      const r = await api('POST', '/meli/reprocesar-ordenes', { orden_ids: meliOrdenes });
+    // Se manda venta_ids junto con orden_ids para que el backend solo
+    // registre los ítems tildados, aunque la orden tenga otros ítems sin marcar.
+    if (meliSel.length) {
+      const ordenIds = [...new Set(meliSel.map(f => f.orden))];
+      const ventaIds = meliSel.map(f => f.ventaId);
+      const r = await api('POST', '/meli/reprocesar-ordenes', { orden_ids: ordenIds, venta_ids: ventaIds });
       importadas += r.importadas || 0;
       errores += r.errores || 0;
     }
 
-    for (const ordenId of shopifyOrdenes) {
+    const shopifyPorOrden = {};
+    for (const f of shopifySel) {
+      if (!shopifyPorOrden[f.orden]) shopifyPorOrden[f.orden] = [];
+      shopifyPorOrden[f.orden].push(f.ventaId);
+    }
+    for (const [ordenId, ventaIds] of Object.entries(shopifyPorOrden)) {
       try {
-        const r = await api('GET', `/shopify/notify?orden=${ordenId}`);
+        const r = await api('GET', `/shopify/notify?orden=${ordenId}&venta_ids=${ventaIds.join(',')}`);
         importadas += (r.resultados || []).filter(x => x.estado === 'registrada').length;
       } catch(e) { errores++; }
     }
@@ -3006,9 +3045,10 @@ async function importarFaltantes() {
     closeModal('modal-verificar-ventas');
     alert(`✅ Importación completada\n\nRegistradas: ${importadas}\nErrores: ${errores}`);
   } catch(e) {
-    alert('❌ Error importando ventas faltantes: ' + e.message);
+    alert('❌ Error importando ventas seleccionadas: ' + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = '⬇️ Importar todas las faltantes';
+    btn.disabled = false;
+    actualizarContadorFaltantes();
   }
 }
 

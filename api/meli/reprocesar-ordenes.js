@@ -12,10 +12,14 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { orden_ids } = req.body;
+  const { orden_ids, venta_ids } = req.body;
   if (!orden_ids || !Array.isArray(orden_ids) || !orden_ids.length) {
     return res.status(400).json({ error: 'Falta orden_ids (array de IDs de órdenes MELI)' });
   }
+  // Filtro opcional: si viene, solo se importan los items cuyo venta_id esté
+  // en la lista (permite seleccionar ítems puntuales dentro de una orden,
+  // evitando duplicar ventas que el usuario ya cargó a mano con otro ID).
+  const filtroVentaIds = Array.isArray(venta_ids) && venta_ids.length ? new Set(venta_ids) : null;
 
   const token = await getMeliToken();
   const supabase = getSupabase();
@@ -63,6 +67,11 @@ module.exports = async (req, res) => {
           .single();
 
         const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
+
+        if (filtroVentaIds && !filtroVentaIds.has(ventaId)) {
+          resultados.push({ orden: orderId, producto: item.item.title, status: 'omitida_por_seleccion' });
+          continue;
+        }
 
         // Verificar si ya existe
         const { data: ventaExistente } = await supabase

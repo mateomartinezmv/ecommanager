@@ -8,12 +8,22 @@ const { getShopifyToken } = require('../_shopifyToken');
 
 const SHOP = 'martinez-motos.myshopify.com';
 
-async function procesarOrden(order, supabase, log) {
+async function procesarOrden(order, supabase, log, filtroVentaIds = null) {
   const resultados = [];
   for (const item of order.line_items) {
     const variantId = String(item.variant_id);
     const cantidad = item.quantity;
     if (log) log.push(`Item: variant ${variantId}, x${cantidad}, $${item.price}`);
+
+    const ventaId = `V_SHOP_${order.id}_${variantId}`;
+
+    // Filtro opcional: solo importar los ítems cuyo venta_id fue seleccionado
+    // (evita duplicar ventas que el usuario ya cargó a mano con otro ID).
+    if (filtroVentaIds && !filtroVentaIds.has(ventaId)) {
+      if (log) log.push(`⏭️ Omitida por selección: ${ventaId}`);
+      resultados.push({ variant: variantId, estado: 'omitida_por_seleccion', ventaId });
+      continue;
+    }
 
     const { data: producto } = await supabase
       .from('productos').select('*').eq('shopify_id', variantId).single();
@@ -37,7 +47,6 @@ async function procesarOrden(order, supabase, log) {
     }).eq('sku', producto.sku);
     if (log) log.push(`✅ Stock: ${nuevoStockDep}`);
 
-    const ventaId = `V_SHOP_${order.id}_${variantId}`;
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
     if (ventaExistente) {
       const msg = `ℹ️ Venta ${ventaId} ya existe`;
@@ -105,7 +114,10 @@ module.exports = async (req, res) => {
       const { order } = await orderRes.json();
       log.push(`✅ Orden #${order.order_number}, ${order.line_items.length} item(s), estado: ${order.financial_status}`);
       const supabase = getSupabase();
-      const resultados = await procesarOrden(order, supabase, log);
+      const filtroVentaIds = req.query.venta_ids
+        ? new Set(String(req.query.venta_ids).split(',').filter(Boolean))
+        : null;
+      const resultados = await procesarOrden(order, supabase, log, filtroVentaIds);
       return res.json({ ok: true, log, resultados });
     } catch (err) {
       log.push(`❌ ${err.message}`);

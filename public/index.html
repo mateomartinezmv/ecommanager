@@ -277,6 +277,7 @@
         <button class="btn btn-yellow" onclick="openModal('modal-venta-meli')">🟡 Venta MELI</button>
         <button class="btn btn-primary" onclick="vmosOpenModal()">🏪 Venta Mostrador</button>
         <button class="btn btn-ghost" onclick="recalcularComisiones()" id="btn-recalcular-com" title="Recalcula comisión y envío MELI en todas las ventas existentes">🔁 Recalcular comisiones</button>
+        <button class="btn btn-ghost" onclick="verificarVentas()" id="btn-verificar-ventas" title="Busca ventas pagadas en MELI/Shopify que hayan quedado fuera del registro automático del CRM">🔎 Verificar ventas</button>
       </div>
     </div>
     <div style="padding:12px 28px;border-bottom:1px solid var(--border);background:var(--surface);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
@@ -1152,6 +1153,28 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-costo-fijo')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveCostoFijo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VERIFICAR VENTAS FUERA DE ALCANCE AUTOMÁTICO -->
+<div class="modal-overlay" id="modal-verificar-ventas">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-title">🔎 Verificación de ventas</div>
+    <div id="verificar-ventas-resumen" style="color:var(--text-dim);font-size:13px;margin-bottom:14px"></div>
+    <div id="verificar-ventas-empty" class="empty-state" style="display:none">
+      <div class="empty-icon">✅</div>
+      <p>No se encontraron ventas fuera del alcance automático del CRM.</p>
+    </div>
+    <div id="verificar-ventas-tabla" class="table-wrap" style="display:none;max-height:360px;overflow:auto">
+      <table>
+        <thead><tr><th>Canal</th><th>Orden</th><th>Fecha</th><th>Comprador</th><th>Producto</th><th>Cant.</th><th>Total</th></tr></thead>
+        <tbody id="verificar-ventas-tbody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-verificar-ventas')">Cerrar</button>
+      <button class="btn btn-primary" onclick="importarFaltantes()" id="btn-importar-faltantes" style="display:none">⬇️ Importar todas las faltantes</button>
     </div>
   </div>
 </div>
@@ -2896,6 +2919,97 @@ async function recalcularComisiones() {
     alert(`✅ Recalculo completado\n\nActualizadas: ${result.actualizadas}\nSin cambio: ${result.sin_cambio}\nErrores: ${result.errores}${fallos}`);
   } catch(e) { alert('❌ Error recalculando comisiones: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = '🔁 Recalcular comisiones'; }
+}
+
+// =====================
+// VERIFICAR VENTAS FUERA DE ALCANCE AUTOMÁTICO
+// =====================
+let verificarFaltantes = [];
+
+function _escHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function verificarVentas() {
+  const btn = document.getElementById('btn-verificar-ventas');
+  btn.disabled = true; btn.textContent = '⏳ Verificando...';
+  try {
+    const result = await api('GET', '/ventas/verificar?dias=30');
+    renderVerificacionVentas(result);
+  } catch(e) {
+    alert('❌ Error verificando ventas: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔎 Verificar ventas';
+  }
+}
+
+function renderVerificacionVentas(result) {
+  verificarFaltantes = [...(result.meli?.faltantes || []), ...(result.shopify?.faltantes || [])];
+
+  const parte = (canal, label) => {
+    if (!result[canal]) return '';
+    const r = result[canal];
+    const err = r.ok === false ? ` — ⚠️ no se pudo revisar (${_escHtml(r.error)})` : '';
+    return `<div>${label}: ${r.revisadas} orden(es) revisada(s), ${r.faltantes.length} faltante(s)${err}</div>`;
+  };
+
+  document.getElementById('verificar-ventas-resumen').innerHTML =
+    `<div style="margin-bottom:6px">Ventana revisada: últimos ${result.dias} días.</div>` +
+    parte('meli', '🟡 MELI') + parte('shopify', '🛍️ Shopify');
+
+  const hayFaltantes = verificarFaltantes.length > 0;
+  document.getElementById('verificar-ventas-empty').style.display = hayFaltantes ? 'none' : 'block';
+  document.getElementById('verificar-ventas-tabla').style.display = hayFaltantes ? '' : 'none';
+  document.getElementById('btn-importar-faltantes').style.display = hayFaltantes ? '' : 'none';
+
+  document.getElementById('verificar-ventas-tbody').innerHTML = verificarFaltantes.map(f => `
+    <tr>
+      <td>${f.canal === 'meli' ? '🟡 MELI' : '🛍️ Shopify'}</td>
+      <td>${_escHtml(f.orden_numero || f.orden)}</td>
+      <td>${f.fecha || '—'}</td>
+      <td>${_escHtml(f.comprador || '—')}</td>
+      <td>${_escHtml(f.producto || '—')}</td>
+      <td>${f.cantidad}</td>
+      <td>${fmt(f.total)}</td>
+    </tr>
+  `).join('');
+
+  openModal('modal-verificar-ventas');
+}
+
+async function importarFaltantes() {
+  if (!verificarFaltantes.length) return;
+  if (!confirm(`¿Importar ${verificarFaltantes.length} venta(s) faltante(s) al CRM?\n\nSe descontará stock y se generarán los envíos correspondientes, igual que si el registro automático hubiera funcionado.`)) return;
+
+  const btn = document.getElementById('btn-importar-faltantes');
+  btn.disabled = true; btn.textContent = '⏳ Importando...';
+  try {
+    const meliOrdenes = [...new Set(verificarFaltantes.filter(f => f.canal === 'meli').map(f => f.orden))];
+    const shopifyOrdenes = [...new Set(verificarFaltantes.filter(f => f.canal === 'shopify').map(f => f.orden))];
+
+    let importadas = 0, errores = 0;
+
+    if (meliOrdenes.length) {
+      const r = await api('POST', '/meli/reprocesar-ordenes', { orden_ids: meliOrdenes });
+      importadas += r.importadas || 0;
+      errores += r.errores || 0;
+    }
+
+    for (const ordenId of shopifyOrdenes) {
+      try {
+        const r = await api('GET', `/shopify/notify?orden=${ordenId}`);
+        importadas += (r.resultados || []).filter(x => x.estado === 'registrada').length;
+      } catch(e) { errores++; }
+    }
+
+    await loadAll(); renderVentas();
+    closeModal('modal-verificar-ventas');
+    alert(`✅ Importación completada\n\nRegistradas: ${importadas}\nErrores: ${errores}`);
+  } catch(e) {
+    alert('❌ Error importando ventas faltantes: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇️ Importar todas las faltantes';
+  }
 }
 
 async function syncStock() {

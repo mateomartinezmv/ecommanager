@@ -870,10 +870,6 @@
         <label class="form-label">Medida / peso</label>
         <select id="env-ues-tramo" onchange="autoCompletarCostoEnvio('env')"></select>
       </div>
-      <div class="form-group form-full ues-only" id="env-ues-despacho-wrap" style="display:none">
-        <label class="form-label">Despacho de la mercadería</label>
-        <select id="env-ues-despacho" onchange="autoCompletarCostoEnvio('env')"></select>
-      </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Estado</label>
         <select id="env-estado">
@@ -886,7 +882,7 @@
       <div class="form-group"><label class="form-label">&nbsp;</label>
         <label class="toggle-wrap" style="margin-top:6px">
           <span class="toggle"><input type="checkbox" id="env-colecta"><span class="toggle-slider"></span></span>
-          <span style="font-size:13px">Se cobra retiro (+$75)</span>
+          <span style="font-size:13px" id="env-colecta-label">Se cobra retiro (+$75)</span>
         </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="env-direccion" placeholder="Calle, número, ciudad"></div>
@@ -943,10 +939,6 @@
         <label class="form-label">Medida / peso</label>
         <select id="ee-ues-tramo" onchange="autoCompletarCostoEnvio('ee')"></select>
       </div>
-      <div class="form-group form-full ues-only" id="ee-ues-despacho-wrap" style="display:none">
-        <label class="form-label">Despacho de la mercadería</label>
-        <select id="ee-ues-despacho" onchange="autoCompletarCostoEnvio('ee')"></select>
-      </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="ee-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="ee-fecha"></div>
       <div class="form-group"><label class="form-label">Estado</label>
@@ -960,7 +952,7 @@
       <div class="form-group"><label class="form-label">&nbsp;</label>
         <label class="toggle-wrap" style="margin-top:6px">
           <span class="toggle"><input type="checkbox" id="ee-colecta"><span class="toggle-slider"></span></span>
-          <span style="font-size:13px">Se cobra retiro (+$75)</span>
+          <span style="font-size:13px" id="ee-colecta-label">Se cobra retiro (+$75)</span>
         </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="ee-direccion" placeholder="Calle, número, ciudad"></div>
@@ -1251,7 +1243,7 @@ function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at, uesServicio: e.ues_servicio ?? null, uesTramoKg: e.ues_tramo_kg ?? null, uesDespacho: e.ues_despacho ?? null };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at, uesServicio: e.ues_servicio ?? null, uesTramoKg: e.ues_tramo_kg ?? null };
 }
 function normDevolucion(d) {
   return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
@@ -1884,14 +1876,11 @@ const UES_SERVICIOS = {
                    tarifas: [163, 179, 196, 217, 264, 333, 435, 969, 1848] },
 };
 
-const UES_DESPACHOS = {
-  xpres:   { label: 'Punto Xpres! — sin costo adicional', costo: 0 },
-  levante: { label: `Levante de mercadería — $${UES_LEVANTE} + IVA`, costo: UES_LEVANTE },
-};
-
 // Devuelve el desglose del costo de un envío UES, o null si el tramo no está disponible.
 // tramoKg identifica el tramo (0.2, 1, 2, 5, 10, 20, 30, 40, 50).
-function calcularTarifaUES(servicioKey, tramoKg, despachoKey) {
+// No incluye el levante de mercadería: ese se cobra con el toggle de retiro,
+// igual que la colecta del resto de los transportistas (ver costoRetiro()).
+function calcularTarifaUES(servicioKey, tramoKg) {
   const servicio = UES_SERVICIOS[servicioKey];
   const idx = UES_TRAMOS.findIndex(t => t.kg === Number(tramoKg));
   if (!servicio || idx === -1) return null;
@@ -1899,16 +1888,31 @@ function calcularTarifaUES(servicioKey, tramoKg, despachoKey) {
   if (base == null) return null;
   const iva = base * UES_IVA;
   const tasaPostal = UES_TRAMOS[idx].kg <= UES_TOPE_TASA_POSTAL ? base * UES_TASA_POSTAL : 0;
-  const levanteBase = (UES_DESPACHOS[despachoKey] || UES_DESPACHOS.xpres).costo;
-  const levante = levanteBase * (1 + UES_IVA);
-  const total = base + iva + tasaPostal + levante;
   return {
     servicio, tramo: UES_TRAMOS[idx], base,
     iva: redondear2(iva),
     tasaPostal: redondear2(tasaPostal),
-    levante: redondear2(levante),
-    total: redondear2(total),
+    total: redondear2(base + iva + tasaPostal),
   };
+}
+
+// =====================
+// RETIRO / COLECTA
+// =====================
+// Costo del retiro de mercadería según transportista. UES lo factura como
+// "levante de mercadería" ($248 + IVA, sin costo con +250 envíos mensuales);
+// el resto de los transportistas cobra $75 fijos.
+const COSTO_RETIRO_DEFAULT = 75;
+function costoRetiro(transportista) {
+  return transportista === 'ues' ? redondear2(UES_LEVANTE * (1 + UES_IVA)) : COSTO_RETIRO_DEFAULT;
+}
+// Costo del retiro efectivamente cobrado en un envío (0 si no se cobra retiro).
+function costoRetiroEnvio(e) {
+  return e && e.colecta ? costoRetiro(e.transportista) : 0;
+}
+// Costo total de un envío: tarifa + retiro, si corresponde.
+function costoTotalEnvio(e) {
+  return redondear2((e?.costo || 0) + costoRetiroEnvio(e));
 }
 
 function redondear2(n) { return Math.round(n * 100) / 100; }
@@ -1927,15 +1931,15 @@ function poblarSelectsUES(prefix) {
     }).join('');
   document.getElementById(`${prefix}-ues-tramo`).innerHTML = '<option value="">— Elegí medida / peso —</option>' +
     UES_TRAMOS.map(t => `<option value="${t.kg}">${t.peso} — ${t.medida} cm</option>`).join('');
-  document.getElementById(`${prefix}-ues-despacho`).innerHTML =
-    Object.entries(UES_DESPACHOS).map(([key, d]) => `<option value="${key}">${d.label}</option>`).join('');
 }
 
-// Muestra u oculta los campos propios de UES y el selector de zona (que es de EnviosUy).
+// Muestra u oculta los campos propios de UES y el selector de zona (que es de EnviosUy),
+// y ajusta la etiqueta del toggle de retiro al monto que cobra cada transportista.
 function toggleCamposUES(prefix) {
-  const esUES = document.getElementById(`${prefix}-transportista`).value === 'ues';
+  const transportista = document.getElementById(`${prefix}-transportista`).value;
+  const esUES = transportista === 'ues';
   poblarSelectsUES(prefix);
-  ['servicio', 'tramo', 'despacho'].forEach(campo => {
+  ['servicio', 'tramo'].forEach(campo => {
     const wrap = document.getElementById(`${prefix}-ues-${campo}-wrap`);
     if (wrap) wrap.style.display = esUES ? '' : 'none';
   });
@@ -1944,6 +1948,10 @@ function toggleCamposUES(prefix) {
   if (esUES) document.getElementById(`${prefix}-zona`).value = '';
   const desglose = document.getElementById(`${prefix}-ues-desglose`);
   if (desglose && !esUES) desglose.style.display = 'none';
+  const retiroLabel = document.getElementById(`${prefix}-colecta-label`);
+  if (retiroLabel) retiroLabel.textContent = esUES
+    ? `Se cobra levante (+${fmtUES(costoRetiro('ues'))})`
+    : `Se cobra retiro (+${fmt(COSTO_RETIRO_DEFAULT)})`;
   return esUES;
 }
 
@@ -1951,12 +1959,12 @@ function toggleCamposUES(prefix) {
 function aplicarTarifaUES(prefix) {
   const servicioKey = document.getElementById(`${prefix}-ues-servicio`).value;
   const tramoKg = document.getElementById(`${prefix}-ues-tramo`).value;
-  const despachoKey = document.getElementById(`${prefix}-ues-despacho`).value || 'xpres';
   const box = document.getElementById(`${prefix}-ues-desglose`);
   const nota = `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6">
       • Las tarifas de UES no incluyen IVA (22%) ni tasa postal (10%): ambos ya están sumados arriba.<br>
       • La tasa postal se aplica solo en envíos de hasta ${UES_TOPE_TASA_POSTAL} kg.<br>
-      • El levante de mercadería es sin costo si superás los 250 envíos mensuales.<br>
+      • El levante de mercadería (${fmtUES(costoRetiro('ues'))}, $${UES_LEVANTE} + IVA) se cobra aparte con el toggle de levante,
+        y es sin costo si superás los 250 envíos mensuales.<br>
       • El despacho en puntos Xpres! no tiene costo adicional.
     </div>`;
   if (!servicioKey || !tramoKg) {
@@ -1965,7 +1973,7 @@ function aplicarTarifaUES(prefix) {
       <div style="font-size:12px;color:var(--text-dim)">Elegí servicio y medida/peso para calcular el costo automáticamente.</div>${nota}</div>`;
     return;
   }
-  const t = calcularTarifaUES(servicioKey, tramoKg, despachoKey);
+  const t = calcularTarifaUES(servicioKey, tramoKg);
   box.style.display = '';
   if (!t) {
     const tramo = UES_TRAMOS.find(x => x.kg === Number(tramoKg));
@@ -1985,7 +1993,6 @@ function aplicarTarifaUES(prefix) {
     ${fila('Tarifa base', t.base)}
     ${fila('IVA (22%)', t.iva)}
     ${fila(`Tasa postal (10%)${t.tasaPostal === 0 ? ' — no aplica sobre 20 kg' : ''}`, t.tasaPostal)}
-    ${t.levante > 0 ? fila(`Levante de mercadería ($${UES_LEVANTE} + IVA)`, t.levante) : ''}
     ${fila('Total del envío', t.total, true)}
     ${nota}</div>`;
 }
@@ -2014,12 +2021,6 @@ function etiquetaZonaEnvio(e) {
       (tramo ? `<div style="font-size:11px;color:var(--text-muted)">${tramo.peso}</div>` : '');
   }
   return e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '—';
-}
-
-// Columna "Colecta" para envíos UES: cómo se despachó la mercadería.
-function etiquetaDespachoUES(e) {
-  if (e.uesDespacho === 'levante') return `<span style="font-size:11px;color:var(--yellow)" title="Levante de mercadería — $${UES_LEVANTE} + IVA (incluido en el costo)">🏠 Levante</span>`;
-  return '<span style="font-size:11px;color:var(--text-muted)" title="Despacho en punto Xpres! — sin costo adicional">📍 Xpres!</span>';
 }
 
 // Renderiza el tarifario completo de UES dentro del modal de consulta.
@@ -2057,9 +2058,10 @@ function renderTarifasUES() {
       <div style="font-size:12px;color:var(--text-dim);line-height:1.8">
         • Las tarifas presentadas no incluyen IVA (22%) ni tasa postal (10%).<br>
         • La tasa postal se debe incluir en envíos de hasta ${UES_TOPE_TASA_POSTAL} kilos.<br>
-        • Levante de mercadería — $${UES_LEVANTE} + IVA. Mayor a 250 envíos mensuales sin costo.<br>
+        • Levante de mercadería — $${UES_LEVANTE} + IVA (${fmtUES(costoRetiro('ues'))}). Mayor a 250 envíos mensuales sin costo.<br>
         • Despacho en puntos Xpres! sin costo adicional.<br>
-        • Al cargar un envío con transportista UES, el costo se autocompleta ya con IVA y tasa postal incluidos.
+        • Al cargar un envío con transportista UES, el costo se autocompleta ya con IVA y tasa postal incluidos.<br>
+        • El levante se cobra aparte, con el toggle de levante del envío (el mismo que el retiro de otros transportistas).
       </div>
     </div>`;
 }
@@ -2067,12 +2069,11 @@ function renderTarifasUES() {
 // Devuelve los campos UES a guardar en el envío (null si el transportista no es UES).
 function datosUESDelModal(prefix) {
   const esUES = document.getElementById(`${prefix}-transportista`).value === 'ues';
-  if (!esUES) return { uesServicio: null, uesTramoKg: null, uesDespacho: null };
+  if (!esUES) return { uesServicio: null, uesTramoKg: null };
   const tramoKg = parseFloat(document.getElementById(`${prefix}-ues-tramo`).value);
   return {
     uesServicio: document.getElementById(`${prefix}-ues-servicio`).value || null,
     uesTramoKg: Number.isFinite(tramoKg) ? tramoKg : null,
-    uesDespacho: document.getElementById(`${prefix}-ues-despacho`).value || null,
   };
 }
 
@@ -2114,7 +2115,6 @@ function openEnvioManual(ventaId) {
   poblarSelectsUES('env');
   document.getElementById('env-ues-servicio').value = '';
   document.getElementById('env-ues-tramo').value = '';
-  document.getElementById('env-ues-despacho').value = 'xpres';
   autoCompletarCostoEnvio('env');
   document.getElementById('modal-envio-title').textContent = v ? `🚚 Envío — ${v.ordenMeli || v.id}` : '🚚 Nuevo Envío';
   openModal('modal-envio');
@@ -2141,7 +2141,6 @@ function abrirEdicionEnvio(id) {
   poblarSelectsUES('ee');
   document.getElementById('ee-ues-servicio').value = e.uesServicio || '';
   document.getElementById('ee-ues-tramo').value = e.uesTramoKg != null ? String(e.uesTramoKg) : '';
-  document.getElementById('ee-ues-despacho').value = e.uesDespacho || 'xpres';
   // Muestra/oculta los campos UES sin pisar el costo ya guardado del envío.
   const costoGuardado = document.getElementById('ee-costo').value;
   autoCompletarCostoEnvio('ee');
@@ -2197,7 +2196,7 @@ function renderDashboard() {
   const costoEnviosMes = db.envios.filter(e => {
     const fecha = (e.creado || e.fechaDespacho || e.fecha_despacho || '').slice(0, 7);
     return fecha === mesActual;
-  }).reduce((a,e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
+  }).reduce((a,e) => a + costoTotalEnvio(e), 0);
 
   document.getElementById('dash-stats').innerHTML = `
     <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${db.productos.length}</div><div class="stat-label">Productos en stock</div></div>
@@ -2417,14 +2416,14 @@ function renderEnvios() {
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${TIPO_ENVIO_ICONS[tipo]} ${transportistas[e.transportista] || e.transportista}</td>
       <td>${etiquetaZonaEnvio(e)}</td>
-      <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
-      <td>${e.transportista === 'ues' ? etiquetaDespachoUES(e) : (e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
-        <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
+      <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt(costoTotalEnvio(e))}</span>` : '—'}</td>
+      <td>${['enviosuy','gestionpost','ues'].includes(e.transportista) ? `
+        <label class="toggle-wrap" title="${e.colecta ? `${e.transportista === 'ues' ? 'Levante' : 'Colecta'} incluido (+${fmtUES(costoRetiro(e.transportista))})` : `Sin ${e.transportista === 'ues' ? 'levante' : 'colecta'}`}">
           <span class="toggle">
             <input type="checkbox" ${e.colecta ? 'checked' : ''} data-id="${e.id}" onchange="toggleColecta(this)">
             <span class="toggle-slider"></span>
           </span>
-          <span style="font-size:11px;color:${e.colecta ? 'var(--yellow)' : 'var(--text-muted)'}">$75</span>
+          <span style="font-size:11px;color:${e.colecta ? 'var(--yellow)' : 'var(--text-muted)'}">${fmt(costoRetiro(e.transportista))}</span>
         </label>` : '—'}
       </td>
       <td>${e.fechaDespacho || '—'}</td>
@@ -2457,8 +2456,8 @@ function renderReportes() {
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
-  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
-  const totalEnviosSinPagar = enviosFiltrados.filter(e => !e.pagado).reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + costoTotalEnvio(e), 0);
+  const totalEnviosSinPagar = enviosFiltrados.filter(e => !e.pagado).reduce((a,e) => a + costoTotalEnvio(e), 0);
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
   const ventasMostrador = ventasFiltradas.filter(v => v.canal === 'mostrador');
   const ventasShopify = ventasFiltradas.filter(v => v.canal === 'shopify');
@@ -2923,7 +2922,7 @@ function renderComisiones() {
 
   // ── Cards
   const totalComisiones = ventasMeli.reduce((a,v) => a + (v.comision||0), 0);
-  const totalCostoEnvios = enviosMeli.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const totalCostoEnvios = enviosMeli.reduce((a,e) => a + costoTotalEnvio(e), 0);
   const totalCargos = totalComisiones + totalCostoEnvios;
   const totalIngresos = ventasMeli.reduce((a,v) => a + v.total, 0);
   const totalCostoProd = ventasMeli.reduce((a,v) => {
@@ -2946,7 +2945,7 @@ function renderComisiones() {
     const ingresos = v.total;
     const comision = v.comision || 0;
     const costoEnvio = envio ? (envio.costo || 0) : 0;
-    const colecta = envio && envio.colecta ? 75 : 0;
+    const colecta = costoRetiroEnvio(envio);
     const costoProd = p ? p.costo * v.cantidad : 0;
     const ganancia = ingresos - comision - costoEnvio - colecta - costoProd;
     const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : '0.0';
@@ -2959,7 +2958,7 @@ function renderComisiones() {
       '<td>' + fmt(ingresos) + '</td>' +
       '<td style="color:var(--yellow)">' + fmt(comision) + '</td>' +
       '<td>' + fmt(costoEnvio) + '</td>' +
-      '<td style="text-align:center">' + (envio && envio.colecta ? '✓' : '—') + '</td>' +
+      '<td style="text-align:center">' + (colecta > 0 ? fmt(colecta) : '—') + '</td>' +
       '<td style="color:var(--text-muted)">' + fmt(costoProd) + '</td>' +
       '<td style="color:' + (ganancia >= 0 ? 'var(--green)' : 'var(--red)') + ';font-weight:600">' + fmt(ganancia) + '</td>' +
       '<td><span style="color:' + mc + ';font-weight:700">' + margen + '%</span></td>' +
@@ -2967,7 +2966,7 @@ function renderComisiones() {
   }).join('');
   document.getElementById('comisiones-desglose').innerHTML = ventasOrdenadas.length === 0
     ? '<div class="empty-state"><p>Sin ventas MELI en el período</p></div>'
-    : '<table><thead><tr><th>Fecha</th><th>Producto</th><th>Qty</th><th>Precio</th><th>Ingresos</th><th>Comisión</th><th>Costo envío</th><th>Colecta $75</th><th>Costo prod.</th><th>Ganancia neta</th><th>Margen %</th></tr></thead><tbody>' + filasDesglose + '</tbody></table>';
+    : '<table><thead><tr><th>Fecha</th><th>Producto</th><th>Qty</th><th>Precio</th><th>Ingresos</th><th>Comisión</th><th>Costo envío</th><th>Colecta / Levante</th><th>Costo prod.</th><th>Ganancia neta</th><th>Margen %</th></tr></thead><tbody>' + filasDesglose + '</tbody></table>';
 
   // ── Tabla resumen por producto
   const porProd = {};
@@ -2975,7 +2974,7 @@ function renderComisiones() {
     const key = v.sku || v.producto;
     const envio = enviosMeli.find(e => e.ventaId === v.id);
     const p = db.productos.find(x => x.sku === v.sku);
-    const costoEnvio = envio ? (envio.costo || 0) + (envio.colecta ? 75 : 0) : 0;
+    const costoEnvio = costoTotalEnvio(envio);
     const costoProd = p ? p.costo * v.cantidad : 0;
     const ganancia = v.total - (v.comision||0) - costoEnvio - costoProd;
     if (!porProd[key]) porProd[key] = { nombre: v.producto, unidades: 0, ingresos: 0, comisiones: 0, costoEnvios: 0, costoProd: 0, ganancia: 0, ventas: 0 };
@@ -3491,7 +3490,7 @@ function exportReportePDF() {
 
   const totalIngresos = ventasFiltradas.reduce((a,v) => a + v.total, 0);
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
-  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
+  const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + costoTotalEnvio(e), 0);
   const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
@@ -3854,7 +3853,7 @@ function renderDesglose(envios) {
   table.style.display = '';
   const estadoColors = { pendiente: 'var(--yellow)', en_camino: 'var(--accent)', entregado: 'var(--green)', problema: 'var(--red)' };
   tbody.innerHTML = envios.map(e => {
-    const costoTotal = (e.costo || 0) + (e.colecta ? 75 : 0);
+    const costoTotal = costoTotalEnvio(e);
     const zonaLabel = e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '<span style="color:var(--text-muted)">—</span>';
     const fecha = fechaEnvioParaFiltro(e) || '—';
     return `
@@ -3975,7 +3974,7 @@ function filtrarPeriodo(desde, hasta) {
 function calcularMetricas(ventas, envios) {
   const ingresos = ventas.reduce((a, v) => a + v.total, 0);
   const comisiones = ventas.reduce((a, v) => a + (v.comision || 0), 0);
-  const costoEnvios = envios.reduce((a, e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
+  const costoEnvios = envios.reduce((a, e) => a + costoTotalEnvio(e), 0);
   const costoProductos = ventas.reduce((a, v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const ganancia = ingresos - comisiones - costoProductos - costoEnvios;
   const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : 0;

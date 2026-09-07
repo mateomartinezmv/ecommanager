@@ -37,7 +37,6 @@ module.exports = async (req, res) => {
         colecta: e.colecta || false,
         ues_servicio: e.uesServicio || null,
         ues_tramo_kg: e.uesTramoKg ?? null,
-        ues_despacho: e.uesDespacho || null,
       }).select().single();
       if (error) throw error;
       return res.json(data);
@@ -46,14 +45,13 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       const id = req.query.id;
       const { estado, tracking, costo, zona, colecta, transportista, comprador, fechaDespacho, direccion,
-              uesServicio, uesTramoKg, uesDespacho } = req.body;
+              uesServicio, uesTramoKg } = req.body;
       const updateData = { estado, tracking };
       if (costo !== undefined) updateData.costo = costo;
       if (zona !== undefined) updateData.zona = zona;
       if (colecta !== undefined) updateData.colecta = colecta;
       if (uesServicio !== undefined) updateData.ues_servicio = uesServicio;
       if (uesTramoKg !== undefined) updateData.ues_tramo_kg = uesTramoKg;
-      if (uesDespacho !== undefined) updateData.ues_despacho = uesDespacho;
       if (transportista !== undefined) updateData.transportista = transportista;
       if (comprador !== undefined) updateData.comprador = comprador;
       if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho || null;

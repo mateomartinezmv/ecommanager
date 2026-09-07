@@ -375,6 +375,7 @@
         <input type="date" id="envios-desde" onchange="renderEnvios()" title="Desde" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
         <span style="color:var(--text-muted);font-size:12px">→</span>
         <input type="date" id="envios-hasta" onchange="renderEnvios()" title="Hasta" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+        <button class="btn btn-ghost" onclick="openModal('modal-tarifas-ues')" title="Ver tarifario completo de UES">📋 Tarifas UES</button>
       </div>
     </div>
     <div class="content">
@@ -844,7 +845,7 @@
       </div>
       <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="env-tracking" placeholder="Código de seguimiento"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="env-fecha"></div>
-      <div class="form-group"><label class="form-label">Zona</label>
+      <div class="form-group" id="env-zona-wrap"><label class="form-label">Zona</label>
         <select id="env-zona" onchange="autoCompletarCostoEnvio('env')">
           <option value="">— Sin zona —</option>
           <option value="1">Zona 1</option>
@@ -859,6 +860,19 @@
           <option value="10">Zona 10</option>
           <option value="11">Zona 11</option>
         </select>
+      </div>
+      <!-- Campos UES (solo visibles con transportista = UES) -->
+      <div class="form-group ues-only" id="env-ues-servicio-wrap" style="display:none">
+        <label class="form-label">Servicio UES</label>
+        <select id="env-ues-servicio" onchange="autoCompletarCostoEnvio('env')"></select>
+      </div>
+      <div class="form-group ues-only" id="env-ues-tramo-wrap" style="display:none">
+        <label class="form-label">Medida / peso</label>
+        <select id="env-ues-tramo" onchange="autoCompletarCostoEnvio('env')"></select>
+      </div>
+      <div class="form-group form-full ues-only" id="env-ues-despacho-wrap" style="display:none">
+        <label class="form-label">Despacho de la mercadería</label>
+        <select id="env-ues-despacho" onchange="autoCompletarCostoEnvio('env')"></select>
       </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="env-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Estado</label>
@@ -876,6 +890,7 @@
         </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="env-direccion" placeholder="Calle, número, ciudad"></div>
+      <div class="form-full ues-only" id="env-ues-desglose" style="display:none"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-envio')">Cancelar</button>
@@ -903,7 +918,7 @@
         </select>
       </div>
       <div class="form-group"><label class="form-label">Número de tracking</label><input type="text" id="ee-tracking" placeholder="Código de seguimiento"></div>
-      <div class="form-group"><label class="form-label">Zona</label>
+      <div class="form-group" id="ee-zona-wrap"><label class="form-label">Zona</label>
         <select id="ee-zona" onchange="autoCompletarCostoEnvio('ee')">
           <option value="">— Sin zona —</option>
           <option value="1">Zona 1</option>
@@ -918,6 +933,19 @@
           <option value="10">Zona 10</option>
           <option value="11">Zona 11</option>
         </select>
+      </div>
+      <!-- Campos UES (solo visibles con transportista = UES) -->
+      <div class="form-group ues-only" id="ee-ues-servicio-wrap" style="display:none">
+        <label class="form-label">Servicio UES</label>
+        <select id="ee-ues-servicio" onchange="autoCompletarCostoEnvio('ee')"></select>
+      </div>
+      <div class="form-group ues-only" id="ee-ues-tramo-wrap" style="display:none">
+        <label class="form-label">Medida / peso</label>
+        <select id="ee-ues-tramo" onchange="autoCompletarCostoEnvio('ee')"></select>
+      </div>
+      <div class="form-group form-full ues-only" id="ee-ues-despacho-wrap" style="display:none">
+        <label class="form-label">Despacho de la mercadería</label>
+        <select id="ee-ues-despacho" onchange="autoCompletarCostoEnvio('ee')"></select>
       </div>
       <div class="form-group"><label class="form-label">Costo del envío</label><input type="number" id="ee-costo" placeholder="0.00" step="0.01" min="0"></div>
       <div class="form-group"><label class="form-label">Fecha despacho</label><input type="date" id="ee-fecha"></div>
@@ -936,10 +964,22 @@
         </label>
       </div>
       <div class="form-group form-full"><label class="form-label">Dirección de entrega</label><input type="text" id="ee-direccion" placeholder="Calle, número, ciudad"></div>
+      <div class="form-full ues-only" id="ee-ues-desglose" style="display:none"></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-editar-envio')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarEdicionEnvio()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: TARIFAS UES -->
+<div class="modal-overlay" id="modal-tarifas-ues">
+  <div class="modal" style="max-width:1100px;width:1100px">
+    <div class="modal-title">📋 Tarifario UES — en $U</div>
+    <div id="tarifas-ues-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="closeModal('modal-tarifas-ues')">Cerrar</button>
     </div>
   </div>
 </div>
@@ -1211,7 +1251,7 @@ function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at, uesServicio: e.ues_servicio ?? null, uesTramoKg: e.ues_tramo_kg ?? null, uesDespacho: e.ues_despacho ?? null };
 }
 function normDevolucion(d) {
   return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
@@ -1436,6 +1476,7 @@ function goPage(page) {
 // MODALS
 // =====================
 function openModal(id) {
+  if (id === 'modal-tarifas-ues') renderTarifasUES();
   if (id === 'modal-importacion') {
     document.getElementById('imp-fecha').value = new Date().toISOString().slice(0,10);
     document.getElementById('imp-llegada').value = '';
@@ -1805,15 +1846,234 @@ async function cambiarEstadoVenta(id, estado) {
 // Tabla de costos Flex por zona (EnviosUy) — para autocompletar el costo en los modales de envío
 const COSTOS_ENVIOSUY = { 1:190, 2:190, 3:190, 4:190, 5:180, 6:160, 7:180, 8:240, 9:240, 10:200, 11:null };
 
-// Autocompleta el costo del envío cuando se elige zona + transportista EnviosUy.
+// =====================
+// TARIFARIO UES
+// =====================
+// Tarifas oficiales de UES en $U. IMPORTANTE: los valores de las tablas NO incluyen
+// IVA (22%) ni tasa postal (10%); ambos se suman en calcularTarifaUES().
+const UES_IVA = 0.22;
+const UES_TASA_POSTAL = 0.10;      // se aplica solo en envíos de hasta 20 kg
+const UES_LEVANTE = 248;           // levante de mercadería, + IVA (sin costo con +250 envíos/mes)
+const UES_TOPE_TASA_POSTAL = 20;   // kg
+
+// Tramos de medida (cm) y peso (kg). El índice de cada tramo es el índice de la tarifa
+// dentro de UES_SERVICIOS[x].tarifas.
+const UES_TRAMOS = [
+  { kg: 0.2, peso: 'Hasta 0,2 kg', medida: '20 x 10 x 5' },
+  { kg: 1,   peso: 'Hasta 1 kg',   medida: '25 x 15 x 15' },
+  { kg: 2,   peso: 'Hasta 2 kg',   medida: '40 x 20 x 20' },
+  { kg: 5,   peso: 'Hasta 5 kg',   medida: '40 x 30 x 30' },
+  { kg: 10,  peso: 'Hasta 10 kg',  medida: '50 x 40 x 40' },
+  { kg: 20,  peso: 'Hasta 20 kg',  medida: '150 x 100 x 100' },
+  { kg: 30,  peso: 'Hasta 30 kg',  medida: '150 x 100 x 100' },
+  { kg: 40,  peso: 'Hasta 40 kg',  medida: '150 x 100 x 100' },
+  { kg: 50,  peso: 'Hasta 50 kg',  medida: '150 x 100 x 100' },
+];
+
+// null = tramo no disponible para ese servicio (los "-" del tarifario).
+const UES_SERVICIOS = {
+  ues24_mvd:     { nombre: 'UES24 — Envíos en 24 hs hábiles', corto: 'UES24 24hs', entrega: 'Domicilio Montevideo', grupo: 'domicilio',
+                   tarifas: [156, 193, 216, 251, 312, 416, 519, 1070, 1394] },
+  ues24_mvd_dia: { nombre: 'UES24 — Envíos en el día', corto: 'UES24 en el día', entrega: 'Domicilio Montevideo', grupo: 'domicilio',
+                   tarifas: [183, 217, 240, 274, 323, null, null, null, null] },
+  ues_interior:  { nombre: 'Interior — Envíos en 1 a 3 días hábiles', corto: 'Interior', entrega: 'Domicilio Interior', grupo: 'domicilio',
+                   tarifas: [190, 211, 235, 262, 358, 608, 608, 1422, 1848] },
+  uespu:         { nombre: 'UESPU — Entrega a pick up en 24 hs hábiles', corto: 'UESPU', entrega: 'Pick up Xpres! Montevideo', grupo: 'pickup',
+                   tarifas: [116, 126, 138, 163, 177, 211, 305, 745, 1269] },
+  intpu:         { nombre: 'INTPU — Entrega a pick up de interior en 24 hs hábiles', corto: 'INTPU', entrega: 'Pick up Xpres! Interior', grupo: 'pickup',
+                   tarifas: [163, 179, 196, 217, 264, 333, 435, 969, 1848] },
+};
+
+const UES_DESPACHOS = {
+  xpres:   { label: 'Punto Xpres! — sin costo adicional', costo: 0 },
+  levante: { label: `Levante de mercadería — $${UES_LEVANTE} + IVA`, costo: UES_LEVANTE },
+};
+
+// Devuelve el desglose del costo de un envío UES, o null si el tramo no está disponible.
+// tramoKg identifica el tramo (0.2, 1, 2, 5, 10, 20, 30, 40, 50).
+function calcularTarifaUES(servicioKey, tramoKg, despachoKey) {
+  const servicio = UES_SERVICIOS[servicioKey];
+  const idx = UES_TRAMOS.findIndex(t => t.kg === Number(tramoKg));
+  if (!servicio || idx === -1) return null;
+  const base = servicio.tarifas[idx];
+  if (base == null) return null;
+  const iva = base * UES_IVA;
+  const tasaPostal = UES_TRAMOS[idx].kg <= UES_TOPE_TASA_POSTAL ? base * UES_TASA_POSTAL : 0;
+  const levanteBase = (UES_DESPACHOS[despachoKey] || UES_DESPACHOS.xpres).costo;
+  const levante = levanteBase * (1 + UES_IVA);
+  const total = base + iva + tasaPostal + levante;
+  return {
+    servicio, tramo: UES_TRAMOS[idx], base,
+    iva: redondear2(iva),
+    tasaPostal: redondear2(tasaPostal),
+    levante: redondear2(levante),
+    total: redondear2(total),
+  };
+}
+
+function redondear2(n) { return Math.round(n * 100) / 100; }
+function fmtUES(n) { return '$' + (n || 0).toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// Llena los selects de UES de un modal (una sola vez por prefijo).
+function poblarSelectsUES(prefix) {
+  const servicioSel = document.getElementById(`${prefix}-ues-servicio`);
+  if (!servicioSel || servicioSel.options.length) return;
+  const grupos = { domicilio: '🏠 Envíos a domicilio', pickup: '📍 Entregas en pick up' };
+  servicioSel.innerHTML = '<option value="">— Elegí un servicio —</option>' +
+    Object.entries(grupos).map(([grupo, label]) => {
+      const opts = Object.entries(UES_SERVICIOS).filter(([, s]) => s.grupo === grupo)
+        .map(([key, s]) => `<option value="${key}">${s.nombre} (${s.entrega})</option>`).join('');
+      return `<optgroup label="${label}">${opts}</optgroup>`;
+    }).join('');
+  document.getElementById(`${prefix}-ues-tramo`).innerHTML = '<option value="">— Elegí medida / peso —</option>' +
+    UES_TRAMOS.map(t => `<option value="${t.kg}">${t.peso} — ${t.medida} cm</option>`).join('');
+  document.getElementById(`${prefix}-ues-despacho`).innerHTML =
+    Object.entries(UES_DESPACHOS).map(([key, d]) => `<option value="${key}">${d.label}</option>`).join('');
+}
+
+// Muestra u oculta los campos propios de UES y el selector de zona (que es de EnviosUy).
+function toggleCamposUES(prefix) {
+  const esUES = document.getElementById(`${prefix}-transportista`).value === 'ues';
+  poblarSelectsUES(prefix);
+  ['servicio', 'tramo', 'despacho'].forEach(campo => {
+    const wrap = document.getElementById(`${prefix}-ues-${campo}-wrap`);
+    if (wrap) wrap.style.display = esUES ? '' : 'none';
+  });
+  const zonaWrap = document.getElementById(`${prefix}-zona-wrap`);
+  if (zonaWrap) zonaWrap.style.display = esUES ? 'none' : '';
+  if (esUES) document.getElementById(`${prefix}-zona`).value = '';
+  const desglose = document.getElementById(`${prefix}-ues-desglose`);
+  if (desglose && !esUES) desglose.style.display = 'none';
+  return esUES;
+}
+
+// Calcula el costo UES, lo escribe en el campo "Costo del envío" y muestra el desglose.
+function aplicarTarifaUES(prefix) {
+  const servicioKey = document.getElementById(`${prefix}-ues-servicio`).value;
+  const tramoKg = document.getElementById(`${prefix}-ues-tramo`).value;
+  const despachoKey = document.getElementById(`${prefix}-ues-despacho`).value || 'xpres';
+  const box = document.getElementById(`${prefix}-ues-desglose`);
+  const nota = `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.6">
+      • Las tarifas de UES no incluyen IVA (22%) ni tasa postal (10%): ambos ya están sumados arriba.<br>
+      • La tasa postal se aplica solo en envíos de hasta ${UES_TOPE_TASA_POSTAL} kg.<br>
+      • El levante de mercadería es sin costo si superás los 250 envíos mensuales.<br>
+      • El despacho en puntos Xpres! no tiene costo adicional.
+    </div>`;
+  if (!servicioKey || !tramoKg) {
+    box.style.display = '';
+    box.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;color:var(--text-dim)">Elegí servicio y medida/peso para calcular el costo automáticamente.</div>${nota}</div>`;
+    return;
+  }
+  const t = calcularTarifaUES(servicioKey, tramoKg, despachoKey);
+  box.style.display = '';
+  if (!t) {
+    const tramo = UES_TRAMOS.find(x => x.kg === Number(tramoKg));
+    document.getElementById(`${prefix}-costo`).value = '';
+    box.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--red);border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;color:var(--red);font-weight:600">⚠️ ${UES_SERVICIOS[servicioKey].corto} no cubre el tramo "${tramo ? tramo.peso : tramoKg + ' kg'}".</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">Elegí otro servicio o cargá el costo a mano.</div>${nota}</div>`;
+    return;
+  }
+  document.getElementById(`${prefix}-costo`).value = t.total.toFixed(2);
+  const fila = (label, valor, destacado) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;${destacado ? 'font-weight:700;border-top:1px solid var(--border);margin-top:6px;padding-top:8px' : ''}">
+      <span style="font-size:12px;color:${destacado ? 'var(--text)' : 'var(--text-dim)'}">${label}</span>
+      <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:${destacado ? 'var(--yellow)' : 'var(--text)'}">${fmtUES(valor)}</span>
+    </div>`;
+  box.innerHTML = `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+    <div style="font-size:12px;font-weight:600;margin-bottom:8px">${t.servicio.corto} · ${t.servicio.entrega} · ${t.tramo.peso} (${t.tramo.medida} cm)</div>
+    ${fila('Tarifa base', t.base)}
+    ${fila('IVA (22%)', t.iva)}
+    ${fila(`Tasa postal (10%)${t.tasaPostal === 0 ? ' — no aplica sobre 20 kg' : ''}`, t.tasaPostal)}
+    ${t.levante > 0 ? fila(`Levante de mercadería ($${UES_LEVANTE} + IVA)`, t.levante) : ''}
+    ${fila('Total del envío', t.total, true)}
+    ${nota}</div>`;
+}
+
+// Autocompleta el costo del envío según transportista:
+// EnviosUy → tabla por zona; UES → tarifario por servicio + medida/peso.
 // prefix: 'env' (modal crear) o 'ee' (modal editar)
 function autoCompletarCostoEnvio(prefix) {
   const transportista = document.getElementById(`${prefix}-transportista`).value;
+  const esUES = toggleCamposUES(prefix);
+  if (esUES) { aplicarTarifaUES(prefix); return; }
   const zona = parseInt(document.getElementById(`${prefix}-zona`).value) || null;
   if (transportista === 'enviosuy' && zona) {
     const costo = COSTOS_ENVIOSUY[zona];
     if (costo != null) document.getElementById(`${prefix}-costo`).value = costo;
   }
+}
+
+// Columna "Zona" de la tabla de envíos: para UES muestra servicio + tramo en vez de zona.
+function etiquetaZonaEnvio(e) {
+  if (e.transportista === 'ues') {
+    const servicio = UES_SERVICIOS[e.uesServicio];
+    if (!servicio) return '<span style="color:var(--text-muted);font-size:12px">UES</span>';
+    const tramo = UES_TRAMOS.find(t => t.kg === Number(e.uesTramoKg));
+    return `<span style="font-weight:700;color:var(--accent);font-size:12px">${servicio.corto}</span>` +
+      (tramo ? `<div style="font-size:11px;color:var(--text-muted)">${tramo.peso}</div>` : '');
+  }
+  return e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '—';
+}
+
+// Columna "Colecta" para envíos UES: cómo se despachó la mercadería.
+function etiquetaDespachoUES(e) {
+  if (e.uesDespacho === 'levante') return `<span style="font-size:11px;color:var(--yellow)" title="Levante de mercadería — $${UES_LEVANTE} + IVA (incluido en el costo)">🏠 Levante</span>`;
+  return '<span style="font-size:11px;color:var(--text-muted)" title="Despacho en punto Xpres! — sin costo adicional">📍 Xpres!</span>';
+}
+
+// Renderiza el tarifario completo de UES dentro del modal de consulta.
+function renderTarifasUES() {
+  const th = 'padding:7px 6px;font-size:10px;font-weight:700;text-align:center;white-space:nowrap;border-bottom:1px solid var(--border)';
+  const td = 'padding:9px 6px;font-size:12px;text-align:center;font-family:\'JetBrains Mono\',monospace;border-bottom:1px solid var(--border)';
+  const tabla = (titulo, grupo) => `
+    <div style="margin-bottom:22px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:10px">${titulo}</div>
+      <div class="table-wrap" style="overflow-x:auto;margin:0">
+        <table style="min-width:100%;table-layout:fixed">
+          <thead>
+            <tr>
+              <th style="${th};text-align:left;width:170px">SERVICIO</th>
+              <th style="${th};text-align:left;width:120px">TIPO DE ENTREGA</th>
+              ${UES_TRAMOS.map(t => `<th style="${th}"><div style="color:var(--text-muted);font-weight:600;font-size:9px">${t.medida}</div>${t.peso.replace('Hasta ', '')}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.values(UES_SERVICIOS).filter(s => s.grupo === grupo).map(s => `
+              <tr>
+                <td style="${td};text-align:left;font-family:inherit;font-weight:600;line-height:1.4">${s.nombre}</td>
+                <td style="${td};text-align:left;font-family:inherit;color:var(--text-dim);font-size:11px;line-height:1.4">${s.entrega}</td>
+                ${s.tarifas.map(v => `<td style="${td}">${v == null ? '<span style="color:var(--text-muted)">—</span>' : v}</td>`).join('')}
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('tarifas-ues-body').innerHTML =
+    tabla('🏠 Tarifas de envíos a domicilio', 'domicilio') +
+    tabla('📍 Tarifas de entregas en pick ups', 'pickup') +
+    `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px">Importante</div>
+      <div style="font-size:12px;color:var(--text-dim);line-height:1.8">
+        • Las tarifas presentadas no incluyen IVA (22%) ni tasa postal (10%).<br>
+        • La tasa postal se debe incluir en envíos de hasta ${UES_TOPE_TASA_POSTAL} kilos.<br>
+        • Levante de mercadería — $${UES_LEVANTE} + IVA. Mayor a 250 envíos mensuales sin costo.<br>
+        • Despacho en puntos Xpres! sin costo adicional.<br>
+        • Al cargar un envío con transportista UES, el costo se autocompleta ya con IVA y tasa postal incluidos.
+      </div>
+    </div>`;
+}
+
+// Devuelve los campos UES a guardar en el envío (null si el transportista no es UES).
+function datosUESDelModal(prefix) {
+  const esUES = document.getElementById(`${prefix}-transportista`).value === 'ues';
+  if (!esUES) return { uesServicio: null, uesTramoKg: null, uesDespacho: null };
+  const tramoKg = parseFloat(document.getElementById(`${prefix}-ues-tramo`).value);
+  return {
+    uesServicio: document.getElementById(`${prefix}-ues-servicio`).value || null,
+    uesTramoKg: Number.isFinite(tramoKg) ? tramoKg : null,
+    uesDespacho: document.getElementById(`${prefix}-ues-despacho`).value || null,
+  };
 }
 
 async function saveEnvio() {
@@ -1829,6 +2089,7 @@ async function saveEnvio() {
     costo: parseFloat(document.getElementById('env-costo').value) || 0,
     zona: parseInt(document.getElementById('env-zona').value) || null,
     colecta: document.getElementById('env-colecta').checked,
+    ...datosUESDelModal('env'),
   };
   if (pendingEnvioVentaId) {
     const v = db.ventas.find(x => x.id === pendingEnvioVentaId);
@@ -1850,6 +2111,11 @@ function openEnvioManual(ventaId) {
   document.getElementById('env-costo').value = '';
   document.getElementById('env-zona').value = '';
   document.getElementById('env-colecta').checked = false;
+  poblarSelectsUES('env');
+  document.getElementById('env-ues-servicio').value = '';
+  document.getElementById('env-ues-tramo').value = '';
+  document.getElementById('env-ues-despacho').value = 'xpres';
+  autoCompletarCostoEnvio('env');
   document.getElementById('modal-envio-title').textContent = v ? `🚚 Envío — ${v.ordenMeli || v.id}` : '🚚 Nuevo Envío';
   openModal('modal-envio');
 }
@@ -1872,6 +2138,14 @@ function abrirEdicionEnvio(id) {
   document.getElementById('ee-fecha').value = e.fechaDespacho || '';
   document.getElementById('ee-estado').value = e.estado || 'pendiente';
   document.getElementById('ee-direccion').value = e.direccion || '';
+  poblarSelectsUES('ee');
+  document.getElementById('ee-ues-servicio').value = e.uesServicio || '';
+  document.getElementById('ee-ues-tramo').value = e.uesTramoKg != null ? String(e.uesTramoKg) : '';
+  document.getElementById('ee-ues-despacho').value = e.uesDespacho || 'xpres';
+  // Muestra/oculta los campos UES sin pisar el costo ya guardado del envío.
+  const costoGuardado = document.getElementById('ee-costo').value;
+  autoCompletarCostoEnvio('ee');
+  document.getElementById('ee-costo').value = costoGuardado;
   openModal('modal-editar-envio');
 }
 
@@ -1890,6 +2164,7 @@ async function guardarEdicionEnvio() {
     costo: parseFloat(document.getElementById('ee-costo').value) || 0,
     zona: parseInt(document.getElementById('ee-zona').value) || null,
     colecta: document.getElementById('ee-colecta').checked,
+    ...datosUESDelModal('ee'),
     transportista: document.getElementById('ee-transportista').value,
     comprador: document.getElementById('ee-comprador').value.trim(),
     fechaDespacho: document.getElementById('ee-fecha').value,
@@ -2141,9 +2416,9 @@ function renderEnvios() {
       <td>${e.producto || '—'}</td>
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${TIPO_ENVIO_ICONS[tipo]} ${transportistas[e.transportista] || e.transportista}</td>
-      <td>${e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '—'}</td>
+      <td>${etiquetaZonaEnvio(e)}</td>
       <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
-      <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
+      <td>${e.transportista === 'ues' ? etiquetaDespachoUES(e) : (e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `
         <label class="toggle-wrap" title="${e.colecta ? 'Colecta incluida (+$75)' : 'Sin colecta'}">
           <span class="toggle">
             <input type="checkbox" ${e.colecta ? 'checked' : ''} data-id="${e.id}" onchange="toggleColecta(this)">

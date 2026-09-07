@@ -1,6 +1,41 @@
 // api/envios.js
 const { getSupabase } = require('./_supabase');
 
+// Columnas del tarifario UES. Son opcionales: si la migración
+// add_ues_shipping_fields todavía no se corrió en Supabase, el guardado se
+// reintenta sin ellas en vez de romper el envío entero.
+const UES_COLUMNS = ['ues_servicio', 'ues_tramo_kg'];
+
+// Se apaga en cuanto Supabase avisa que las columnas no existen, para no
+// reintentar en cada request mientras la migración esté pendiente.
+let uesColumnsDisponibles = true;
+
+function esColumnaUESFaltante(error) {
+  const msg = (error && error.message) || '';
+  return UES_COLUMNS.some(col => msg.includes(col));
+}
+
+function sinColumnasUES(payload) {
+  const out = { ...payload };
+  UES_COLUMNS.forEach(col => delete out[col]);
+  return out;
+}
+
+// Ejecuta una escritura sobre `envios` y, si falla solo por las columnas UES,
+// la reintenta sin ellas.
+async function escribirEnvio(ejecutar, payload) {
+  const primerIntento = uesColumnsDisponibles ? payload : sinColumnasUES(payload);
+  let { data, error } = await ejecutar(primerIntento);
+  if (error && uesColumnsDisponibles && esColumnaUESFaltante(error)) {
+    console.warn('Columnas UES ausentes en la tabla envios: se guarda sin ellas. ' +
+      'Corré la migración supabase/migrations/20260907000000_add_ues_shipping_fields.sql');
+    uesColumnsDisponibles = false;
+    ({ data, error } = await ejecutar(sinColumnasUES(payload)));
+  }
+  if (error) throw error;
+  return data;
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -21,7 +56,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const e = req.body;
-      const { data, error } = await supabase.from('envios').insert({
+      const payload = {
         id: e.id,
         venta_id: e.ventaId || null,
         orden: e.orden || null,
@@ -35,10 +70,13 @@ module.exports = async (req, res) => {
         costo: e.costo || 0,
         zona: e.zona || null,
         colecta: e.colecta || false,
-        ues_servicio: e.uesServicio || null,
-        ues_tramo_kg: e.uesTramoKg ?? null,
-      }).select().single();
-      if (error) throw error;
+      };
+      // Solo se mandan si el envío es UES; el resto de los transportistas
+      // ni toca estas columnas.
+      if (e.uesServicio) payload.ues_servicio = e.uesServicio;
+      if (e.uesTramoKg != null) payload.ues_tramo_kg = e.uesTramoKg;
+      const data = await escribirEnvio(
+        p => supabase.from('envios').insert(p).select().single(), payload);
       return res.json(data);
     }
 
@@ -50,16 +88,16 @@ module.exports = async (req, res) => {
       if (costo !== undefined) updateData.costo = costo;
       if (zona !== undefined) updateData.zona = zona;
       if (colecta !== undefined) updateData.colecta = colecta;
-      if (uesServicio !== undefined) updateData.ues_servicio = uesServicio;
-      if (uesTramoKg !== undefined) updateData.ues_tramo_kg = uesTramoKg;
       if (transportista !== undefined) updateData.transportista = transportista;
       if (comprador !== undefined) updateData.comprador = comprador;
       if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho || null;
       if (direccion !== undefined) updateData.direccion = direccion;
-      const { data, error } = await supabase.from('envios')
-        .update(updateData)
-        .eq('id', id).select().single();
-      if (error) throw error;
+      // Igual que en el POST: solo se escriben cuando el envío es UES, así una
+      // edición de otro transportista nunca toca estas columnas.
+      if (uesServicio) updateData.ues_servicio = uesServicio;
+      if (uesTramoKg != null) updateData.ues_tramo_kg = uesTramoKg;
+      const data = await escribirEnvio(
+        p => supabase.from('envios').update(p).eq('id', id).select().single(), updateData);
       return res.json(data);
     }
 

@@ -2066,15 +2066,17 @@ function renderTarifasUES() {
     </div>`;
 }
 
-// Devuelve los campos UES a guardar en el envío (null si el transportista no es UES).
+// Devuelve los campos UES a guardar en el envío. Si el transportista no es UES
+// no se manda ninguno, para que esos envíos no dependan de las columnas UES.
 function datosUESDelModal(prefix) {
   const esUES = document.getElementById(`${prefix}-transportista`).value === 'ues';
-  if (!esUES) return { uesServicio: null, uesTramoKg: null };
+  if (!esUES) return {};
   const tramoKg = parseFloat(document.getElementById(`${prefix}-ues-tramo`).value);
-  return {
-    uesServicio: document.getElementById(`${prefix}-ues-servicio`).value || null,
-    uesTramoKg: Number.isFinite(tramoKg) ? tramoKg : null,
-  };
+  const datos = {};
+  const servicio = document.getElementById(`${prefix}-ues-servicio`).value;
+  if (servicio) datos.uesServicio = servicio;
+  if (Number.isFinite(tramoKg)) datos.uesTramoKg = tramoKg;
+  return datos;
 }
 
 async function saveEnvio() {

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Llena la plantilla oficial de carga masiva de Mercado Libre con los 22 SKUs
-nuevos de la PI10196.
+"""Llena la plantilla oficial de carga masiva de Mercado Libre con los SKUs
+nuevos de la PI10196 que se van a publicar.
+
+De los 22 SKUs nuevos de la importación se publican 6: los 16 extensores de
+espejo quedaron fuera por decisión del vendedor.
 
 Entrada:  la plantilla descargada del panel de ML (hojas Manillares,
           Porta Celulares, Espejos; headers en fila 3, datos desde la fila 8).
@@ -38,14 +41,6 @@ def costo_envio(precio):
 
 
 # ── Descripciones ─────────────────────────────────────────────────────────────
-ROSCA = {"F": "horario", "R": "antihorario"}
-
-
-def ext_roscas(sku):
-    _, _, a, b, _ = sku.split("-")
-    return f"{a[:-1]}mm {ROSCA[a[-1]]}", f"{b[:-1]}mm {ROSCA[b[-1]]}"
-
-
 DESC_SOPORTE = (
     "Soporte universal para celular apto para moto, con anclaje {anclaje}.\n\n"
     "- Sujeción ajustable: se adapta a celulares de 4,7 a 7 pulgadas.\n"
@@ -61,17 +56,6 @@ DESC_ESPEJO_CIR = (
     "- Cuerpo de aluminio con terminación negra.\n"
     "- Brazo y cabezal regulables para ajustar el ángulo de visión.\n"
     "- Se venden por par (izquierdo y derecho).\n\n"
-    "Producto nuevo. Garantía del vendedor: 90 días."
-)
-
-DESC_EXT = (
-    "Extensor y adaptador de rosca para espejo de moto.\n\n"
-    "- Rosca interior: {interior}.\n"
-    "- Rosca exterior: {exterior}.\n"
-    "- Permite montar espejos con rosca distinta a la del soporte original y "
-    "ganar altura para mejorar el campo de visión.\n"
-    "- Acero con terminación negra.\n"
-    "- Se vende por unidad.\n\n"
     "Producto nuevo. Garantía del vendedor: 90 días."
 )
 
@@ -122,42 +106,17 @@ PORTA_CELULARES = [
      "desc": DESC_SOPORTE.format(anclaje="a la base del espejo")},
 ]
 
-# ── Espejos (incluye los extensores, por pedido del usuario) ──────────────────
-EXTENSORES = [
-    ("EXT-ESP-8F-8F-001",   "Extensor Espejo Moto Rosca 8mm Int/Ext Horario Universal"),
-    ("EXT-ESP-8F-8R-001",   "Extensor Espejo Moto Rosca 8mm Int Hor / Ext Antihor"),
-    ("EXT-ESP-8R-8F-001",   "Extensor Espejo Moto Rosca 8mm Int Antihor / Ext Hor"),
-    ("EXT-ESP-8R-8R-001",   "Extensor Espejo Moto Rosca 8mm Int/Ext Antihorario Univ"),
-    ("EXT-ESP-8F-10F-001",  "Extensor Espejo Moto Rosca 8mm Int Hor / 10mm Ext Hor"),
-    ("EXT-ESP-8R-10F-001",  "Extensor Espejo Moto Rosca 8mm Int Antihor / 10mm Ext"),
-    ("EXT-ESP-8F-10R-001",  "Extensor Espejo Moto Rosca 8mm Int Hor / 10mm Ext Antihor"),
-    ("EXT-ESP-8R-10R-001",  "Extensor Espejo Moto Rosca 8mm Int/10mm Ext Antihorario"),
-    ("EXT-ESP-10F-10F-001", "Extensor Espejo Moto Rosca 10mm Int/Ext Horario Universal"),
-    ("EXT-ESP-10R-10F-001", "Extensor Espejo Moto Rosca 10mm Int Antihor / Ext Hor"),
-    ("EXT-ESP-10F-10R-001", "Extensor Espejo Moto Rosca 10mm Int Hor / Ext Antihor"),
-    ("EXT-ESP-10R-10R-001", "Extensor Espejo Moto Rosca 10mm Int/Ext Antihorario Univ"),
-    ("EXT-ESP-10F-8F-001",  "Extensor Espejo Moto Rosca 10mm Int Hor / 8mm Ext Hor"),
-    ("EXT-ESP-10F-8R-001",  "Extensor Espejo Moto Rosca 10mm Int Hor / 8mm Ext Antihor"),
-    ("EXT-ESP-10R-8F-001",  "Extensor Espejo Moto Rosca 10mm Int Antihor / 8mm Ext"),
-    ("EXT-ESP-10R-8R-001",  "Extensor Espejo Moto Rosca 10mm Int/8mm Ext Antihorario"),
-]
-
+# ── Espejos ───────────────────────────────────────────────────────────────────
+# Los 16 extensores de espejo (EXT-ESP-*) quedan fuera: el vendedor decidió no
+# publicarlos porque a $100 no justifican el aviso. Sus 160 unidades siguen sin
+# dar de alta en la tabla productos.
 ESPEJOS = [
     {"titulo": "Espejos de Puño Circulares Moto Universal Manillar 7/8 Negro",
      "sku": "ESP-CIR-001", "stock": 10, "precio": 1090, "desc": DESC_ESPEJO_CIR,
      "lado": "Ambos lados", "ajustable": "Sí"},
 ]
-for sku, titulo in EXTENSORES:
-    interior, exterior = ext_roscas(sku)
-    ESPEJOS.append({
-        "titulo": titulo, "sku": sku, "stock": 10, "precio": 100,
-        "desc": DESC_EXT.format(interior=interior, exterior=exterior),
-        # El sentido de la rosca es justamente lo que define el lado, y no
-        # tengo el mapeo rosca->lado de cada moto: se deja sin completar.
-        "lado": None, "ajustable": "No",
-    })
 
-assert len(MANILLARES) + len(PORTA_CELULARES) + len(ESPEJOS) == 22
+assert len(MANILLARES) + len(PORTA_CELULARES) + len(ESPEJOS) == 6
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Escritura

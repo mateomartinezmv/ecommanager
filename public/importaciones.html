@@ -228,6 +228,10 @@
           <option value="in_transit">✈️ En tránsito</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Número de PI</label>
+        <input type="text" id="new-numero-pi" placeholder="ej: PI10196">
+      </div>
       <div class="form-group form-full">
         <label class="form-label">Notas</label>
         <textarea id="new-notes" placeholder="Proveedor, detalles del pedido…"></textarea>
@@ -333,6 +337,10 @@
           <option value="in_transit">✈️ En tránsito</option>
           <option value="en_aduana">🏛️ En aduana</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Número de PI</label>
+        <input type="text" id="edit-numero-pi" placeholder="ej: PI10196">
       </div>
       <div class="form-group form-full">
         <label class="form-label">Notas</label>
@@ -444,6 +452,7 @@ function render() {
       <td>${fmtDate(fecha)}</td>
       <td>${fmtDate(llegada)}</td>
       <td>${statusBadge(estado)}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${imp.numero_pi || '—'}</td>
       <td style="text-align:center">${items.length}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)">${usd(imp.subtotal)}</td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">${usd(imp.total)}</td>
@@ -470,6 +479,7 @@ function render() {
           <th>Fecha orden</th>
           <th>Llegada est.</th>
           <th>Estado</th>
+          <th>N° PI</th>
           <th>Ítems</th>
           <th>Base sin IVA</th>
           <th>Total c/IVA (pagado)</th>
@@ -535,6 +545,7 @@ function openNew() {
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('new-order-date').value = today;
   document.getElementById('new-est-arrival').value = '';
+  document.getElementById('new-numero-pi').value = '';
   document.getElementById('new-notes').value = '';
   document.getElementById('new-status').value = 'ordered';
   document.getElementById('new-traslado').value = '0';
@@ -597,6 +608,7 @@ async function submitNew() {
       fecha,
       llegada:  document.getElementById('new-est-arrival').value || null,
       estado:   document.getElementById('new-status').value,
+      numero_pi: document.getElementById('new-numero-pi').value.trim() || null,
       notas:    document.getElementById('new-notes').value.trim() || null,
       items,
       traslado,
@@ -705,6 +717,7 @@ function verDetalle(id) {
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Fecha orden</span><div style="font-weight:600;margin-top:2px">${fmtDate(fecha)}</div></div>
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Estado</span><div style="margin-top:4px">${statusBadge(estado)}</div></div>
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Llegada estimada</span><div style="font-weight:600;margin-top:2px">${fmtDate(llegada)}</div></div>
+      ${imp.numero_pi ? `<div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Número de PI</span><div style="font-weight:600;margin-top:2px;font-family:'JetBrains Mono',monospace">${imp.numero_pi}</div></div>` : ''}
       ${imp.notas ? `<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Notas</span><div style="margin-top:2px;font-size:13px">${imp.notas}</div></div>` : ''}
     </div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">Artículos (${items.length})</div>
@@ -738,6 +751,7 @@ function openEdit(id) {
   document.getElementById('edit-order-date').value   = imp.fecha || '';
   document.getElementById('edit-est-arrival').value  = imp.llegada || '';
   document.getElementById('edit-status').value       = imp.estado || imp.status || 'ordered';
+  document.getElementById('edit-numero-pi').value    = imp.numero_pi || '';
   document.getElementById('edit-notes').value        = imp.notas || '';
 
   // Populate items
@@ -800,6 +814,7 @@ async function submitEdit() {
   const id = document.getElementById('edit-id').value;
   const llegada = document.getElementById('edit-est-arrival').value;
   const estado  = document.getElementById('edit-status').value;
+  const numeroPi = document.getElementById('edit-numero-pi').value.trim();
   const notas   = document.getElementById('edit-notes').value.trim();
   const fecha   = document.getElementById('edit-order-date').value;
 
@@ -815,6 +830,7 @@ async function submitEdit() {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
       llegada: llegada || null,
       estado,
+      numero_pi: numeroPi || null,
       notas:   notas || null,
       items,
     });

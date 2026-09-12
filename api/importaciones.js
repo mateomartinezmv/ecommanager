@@ -49,6 +49,7 @@ module.exports = async (req, res) => {
         llegada:  b.llegada || null,
         estado:   b.estado || 'en_transito',
         notas:    b.notas?.trim() || null,
+        numero_pi: b.numero_pi?.trim() || null,
         items,
         traslado,
         nacional,
@@ -73,6 +74,7 @@ module.exports = async (req, res) => {
       const fields = {};
       if (b.estado          !== undefined) fields.estado          = b.estado;
       if (b.notas           !== undefined) fields.notas           = b.notas?.trim() || null;
+      if (b.numero_pi       !== undefined) fields.numero_pi       = b.numero_pi?.trim() || null;
       if (b.llegada         !== undefined) fields.llegada         = b.llegada || null;
       if (b.saldo_pendiente !== undefined) fields.saldo_pendiente = b.saldo_pendiente === true;
       if (b.items           !== undefined) fields.items           = Array.isArray(b.items) ? b.items : [];

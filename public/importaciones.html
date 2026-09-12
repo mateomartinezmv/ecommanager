@@ -379,7 +379,17 @@ async function apiFetch(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
-  const data = await r.json();
+  const text = await r.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    // El servidor devolvió algo que no es JSON (p. ej. una página de error
+    // del hosting por timeout de la función) en vez del JSON esperado.
+    throw new Error(r.ok
+      ? 'El servidor devolvió una respuesta inválida.'
+      : `Error del servidor (${r.status}): la operación puede haber tardado demasiado. Intentá de nuevo.`);
+  }
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
 }

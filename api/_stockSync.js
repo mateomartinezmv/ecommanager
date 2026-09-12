@@ -47,6 +47,11 @@ async function syncShopifyStock(token, shopifyId, cantidad) {
 // Suma stock_dep (y espeja stock_meli/stock_shopify) para cada ítem de una
 // importación que acaba de llegar. No lanza excepción por producto: acumula
 // errores/no-encontrados para que un SKU con problemas no bloquee al resto.
+//
+// Los SKU se procesan en paralelo (en vez de uno por uno) porque cada uno
+// puede implicar varias llamadas HTTP externas (MELI/Shopify); con muchos
+// ítems, hacerlo secuencial supera fácilmente el maxDuration de la función
+// en Vercel y esta termina devolviendo su página de error (no JSON).
 async function applyImportArrival(supabase, items) {
   const aplicados = [];
   const noEncontrados = [];
@@ -73,14 +78,22 @@ async function applyImportArrival(supabase, items) {
   const porSku = {};
   for (const p of (productos || [])) porSku[p.sku] = p;
 
-  let meliToken = null;
-  let shopifyToken = null;
+  const encontrados = skus.filter(sku => porSku[sku]);
+  noEncontrados.push(...skus.filter(sku => !porSku[sku]));
 
-  for (const sku of skus) {
+  // Los tokens se piden una sola vez, antes de paralelizar: si se pidieran
+  // de forma perezosa dentro de cada tarea concurrente, varias podrían
+  // intentar refrescar el mismo token a la vez.
+  const necesitaMeli    = encontrados.some(sku => porSku[sku].meli_id);
+  const necesitaShopify = encontrados.some(sku => porSku[sku].shopify_id);
+  const [meliToken, shopifyToken] = await Promise.all([
+    necesitaMeli    ? getMeliToken().catch(err => ({ __error: err.message }))    : null,
+    necesitaShopify ? getShopifyToken().catch(err => ({ __error: err.message })) : null,
+  ]);
+
+  await Promise.all(encontrados.map(async (sku) => {
     const qty = qtyBySku[sku];
     const p = porSku[sku];
-    if (!p) { noEncontrados.push(sku); continue; }
-
     const nuevoStock = (p.stock_dep || 0) + qty;
 
     const { error: updErr } = await supabase.from('productos').update({
@@ -88,28 +101,36 @@ async function applyImportArrival(supabase, items) {
       stock_meli: nuevoStock,
       stock_shopify: nuevoStock,
     }).eq('sku', sku);
-    if (updErr) { errores.push({ sku, error: updErr.message }); continue; }
+    if (updErr) { errores.push({ sku, error: updErr.message }); return; }
 
     aplicados.push({ sku, sumado: qty, nuevoStock });
 
+    // Producto sin correspondencia todavía en MELI/Shopify: se actualiza el
+    // stock local y no hay nada más que sincronizar (no es un error).
     if (p.meli_id) {
-      try {
-        if (!meliToken) meliToken = await getMeliToken();
-        await syncMeliStock(meliToken, p.meli_id, nuevoStock);
-      } catch (err) {
-        errores.push({ sku, error: 'MELI: ' + err.message });
+      if (meliToken?.__error) {
+        errores.push({ sku, error: 'MELI: ' + meliToken.__error });
+      } else {
+        try {
+          await syncMeliStock(meliToken, p.meli_id, nuevoStock);
+        } catch (err) {
+          errores.push({ sku, error: 'MELI: ' + err.message });
+        }
       }
     }
 
     if (p.shopify_id) {
-      try {
-        if (!shopifyToken) shopifyToken = await getShopifyToken();
-        await syncShopifyStock(shopifyToken, p.shopify_id, nuevoStock);
-      } catch (err) {
-        errores.push({ sku, error: 'Shopify: ' + err.message });
+      if (shopifyToken?.__error) {
+        errores.push({ sku, error: 'Shopify: ' + shopifyToken.__error });
+      } else {
+        try {
+          await syncShopifyStock(shopifyToken, p.shopify_id, nuevoStock);
+        } catch (err) {
+          errores.push({ sku, error: 'Shopify: ' + err.message });
+        }
       }
     }
-  }
+  }));
 
   return { aplicados, noEncontrados, errores };
 }

@@ -65,6 +65,8 @@ module.exports = async (req, res) => {
         cantidad: v.cantidad,
         precio_unit: v.precioUnit,
         comision: v.comision || 0,
+        descuento_pct: v.descuentoPct || 0,
+        descuento_monto: v.descuentoMonto || 0,
         total: v.total,
         estado: v.estado || 'pagada',
         metodo_pago: v.metodoPago || null,
@@ -102,7 +104,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, total, metodoPago, notas } = req.body;
+      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, notas } = req.body;
       const updateData = {};
       if (fecha !== undefined) updateData.fecha = fecha;
       if (estado !== undefined) updateData.estado = estado;
@@ -112,6 +114,8 @@ module.exports = async (req, res) => {
       if (precioUnit !== undefined) updateData.precio_unit = precioUnit;
       if (comision !== undefined) updateData.comision = comision;
       if (costoEnvioMeli !== undefined) updateData.costo_envio_meli = costoEnvioMeli;
+      if (descuentoPct !== undefined) updateData.descuento_pct = descuentoPct;
+      if (descuentoMonto !== undefined) updateData.descuento_monto = descuentoMonto;
       if (total !== undefined) updateData.total = total;
       if (metodoPago !== undefined) updateData.metodo_pago = metodoPago;
       if (notas !== undefined) updateData.notas = notas;

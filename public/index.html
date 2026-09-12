@@ -736,8 +736,13 @@
         </div>
         <input type="hidden" id="vmos-cliente-id">
       </div>
-      <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
-      <div class="form-group"></div>
+      <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago" onchange="vmosOnPagoChange()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
+      <div class="form-group" id="vmos-descuento-wrap" style="display:none;justify-content:flex-end">
+        <label class="form-label" style="display:flex;align-items:center;gap:7px;cursor:pointer">
+          <input type="checkbox" id="vmos-descuento" onchange="vmosRenderCart()" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0">
+          <span>🏷️ Aplicar 10% de descuento (promo efectivo/transferencia)</span>
+        </label>
+      </div>
     </div>
 
     <div style="margin:12px 0 6px;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em">Agregar producto</div>
@@ -768,6 +773,16 @@
         </thead>
         <tbody id="vmos-cart-body"></tbody>
         <tfoot>
+          <tr id="vmos-subtotal-row" style="display:none;border-top:1px solid var(--border)">
+            <td colspan="3" style="padding:6px 4px;text-align:right;color:var(--text-secondary)">Subtotal</td>
+            <td style="padding:6px 4px;text-align:right" id="vmos-subtotal">$0</td>
+            <td></td>
+          </tr>
+          <tr id="vmos-descuento-row" style="display:none">
+            <td colspan="3" style="padding:6px 4px;text-align:right;color:var(--text-secondary)">Descuento 10% (efectivo/transferencia)</td>
+            <td style="padding:6px 4px;text-align:right;color:var(--green)" id="vmos-descuento-monto">$0</td>
+            <td></td>
+          </tr>
           <tr style="border-top:1px solid var(--border);font-weight:700">
             <td colspan="3" style="padding:6px 4px;text-align:right;color:var(--text-secondary)">Total</td>
             <td style="padding:6px 4px;text-align:right" id="vmos-total">$0</td>
@@ -1205,7 +1220,7 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -1557,9 +1572,16 @@ let vmosCart = [];
 let vmosSelectedSku = null;
 let vmosDropdownIndex = -1;
 
+// Promo vigente: 10% de descuento pagando en efectivo o por transferencia
+const PROMO_DESCUENTO_PCT = 10;
+const PROMO_METODOS = ['efectivo', 'transferencia'];
+
 function vmosOpenModal() {
   vmosCart = [];
   vmosSelectedSku = null;
+  document.getElementById('vmos-pago').value = 'efectivo';
+  document.getElementById('vmos-descuento').checked = false;
+  vmosOnPagoChange();
   document.getElementById('vmos-search').value = '';
   document.getElementById('vmos-cantidad').value = '1';
   document.getElementById('vmos-precio').value = '';
@@ -1571,6 +1593,21 @@ function vmosOpenModal() {
   document.getElementById('vmos-notas').value = '';
   vmosRenderCart();
   openModal('modal-venta-mostrador');
+}
+
+// El check de la promo sólo se ofrece si el pago es en efectivo o por transferencia.
+// Al cambiar a otro método se destilda, así no queda un descuento aplicado sin querer.
+function vmosOnPagoChange() {
+  const aplica = PROMO_METODOS.includes(document.getElementById('vmos-pago').value);
+  const wrap = document.getElementById('vmos-descuento-wrap');
+  if (!aplica) document.getElementById('vmos-descuento').checked = false;
+  wrap.style.display = aplica ? '' : 'none';
+  vmosRenderCart();
+}
+
+function vmosDescuentoActivo() {
+  return PROMO_METODOS.includes(document.getElementById('vmos-pago').value)
+    && document.getElementById('vmos-descuento').checked;
 }
 
 function vmosGetResults() {
@@ -1673,8 +1710,31 @@ function vmosRenderCart() {
       <td style="padding:5px 4px;text-align:center"><span onclick="vmosRemoveFromCart('${item.sku}')" style="cursor:pointer;color:var(--text-secondary);font-size:16px;line-height:1" title="Eliminar">×</span></td>
     </tr>`
   ).join('');
-  const total = vmosCart.reduce((s, x) => s + x.subtotal, 0);
-  document.getElementById('vmos-total').textContent = `$${total.toLocaleString()}`;
+  const t = vmosCalcTotales();
+  document.getElementById('vmos-subtotal-row').style.display = t.descuento ? '' : 'none';
+  document.getElementById('vmos-descuento-row').style.display = t.descuento ? '' : 'none';
+  document.getElementById('vmos-subtotal').textContent = `$${t.subtotal.toLocaleString()}`;
+  document.getElementById('vmos-descuento-monto').textContent = `-$${t.descuento.toLocaleString()}`;
+  document.getElementById('vmos-total').textContent = `$${t.total.toLocaleString()}`;
+}
+
+function redondear2(n) { return Math.round(n * 100) / 100; }
+
+// El descuento se calcula por línea (cada ítem del carrito termina siendo una venta
+// separada en la base), así lo que se muestra en el modal coincide con lo que se guarda.
+function vmosCalcTotales() {
+  const pct = vmosDescuentoActivo() ? PROMO_DESCUENTO_PCT : 0;
+  const lineas = vmosCart.map(item => {
+    const descuento = redondear2(item.subtotal * pct / 100);
+    return { ...item, descuentoPct: pct, descuentoMonto: descuento, total: redondear2(item.subtotal - descuento) };
+  });
+  return {
+    pct,
+    lineas,
+    subtotal: redondear2(lineas.reduce((s, x) => s + x.subtotal, 0)),
+    descuento: redondear2(lineas.reduce((s, x) => s + x.descuentoMonto, 0)),
+    total: redondear2(lineas.reduce((s, x) => s + x.total, 0)),
+  };
 }
 
 // =====================
@@ -1712,11 +1772,12 @@ async function saveVenta(canal) {
     const clienteId = document.getElementById('vmos-cliente-id').value || null;
     const metodoPago = document.getElementById('vmos-pago').value;
     const notas = document.getElementById('vmos-notas').value.trim();
+    const totales = vmosCalcTotales();
     closeModal('modal-venta-mostrador');
     try {
-      for (let i = 0; i < vmosCart.length; i++) {
-        const item = vmosCart[i];
-        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, total: item.subtotal, estado: 'pagada', metodoPago, notas, generaEnvio: false };
+      for (let i = 0; i < totales.lineas.length; i++) {
+        const item = totales.lineas[i];
+        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, descuentoPct: item.descuentoPct, descuentoMonto: item.descuentoMonto, total: item.total, estado: 'pagada', metodoPago, notas, generaEnvio: false };
         await api('POST', '/ventas', v);
       }
       await loadAll();
@@ -1751,6 +1812,10 @@ async function guardarEdicionVenta() {
   const precioUnit = parseFloat(document.getElementById('ev-precio').value) || 0;
   const comision = parseFloat(document.getElementById('ev-comision').value) || 0;
   const costoEnvioMeli = v.canal === 'meli' ? (parseFloat(document.getElementById('ev-costo-envio-meli').value) || 0) : 0;
+  // Si la venta se cargó con la promo de efectivo/transferencia, el descuento se mantiene
+  // y se recalcula sobre el nuevo subtotal en vez de perderse al editar.
+  const descuentoPct = v.descuentoPct || 0;
+  const descuentoMonto = redondear2(precioUnit * cantidad * descuentoPct / 100);
   const updates = {
     fecha: document.getElementById('ev-fecha').value,
     estado: document.getElementById('ev-estado').value,
@@ -1760,7 +1825,9 @@ async function guardarEdicionVenta() {
     precioUnit,
     comision,
     costoEnvioMeli,
-    total: precioUnit * cantidad,
+    descuentoPct,
+    descuentoMonto,
+    total: redondear2(precioUnit * cantidad - descuentoMonto),
     metodoPago: document.getElementById('ev-metodo').value || null,
     notas: document.getElementById('ev-notas').value.trim(),
   };
@@ -2066,7 +2133,7 @@ function renderVentas() {
       <td>${canalBadge(v.canal)}${tipoEnvioLabel ? `<br><span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
       <td>${v.cantidad}</td>
-      <td>${fmt(v.total)}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.costoEnvioMeli)} envío</span>` : ''}</td>
+      <td>${fmt(v.total)}${v.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(v.descuentoMonto)} promo ${v.descuentoPct}%</span>` : ''}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.costoEnvioMeli)} envío</span>` : ''}</td>
       <td>
         <select class="badge" onchange="cambiarEstadoVenta('${v.id}',this.value)" style="background:transparent;border:none;cursor:pointer;font-size:11px;padding:2px 6px">
           ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${v.estado===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}

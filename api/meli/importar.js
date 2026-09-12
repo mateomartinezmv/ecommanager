@@ -33,12 +33,13 @@ module.exports = async (req, res) => {
     }
 
     let importados = 0;
+    let vinculados = 0;
     let omitidos = 0;
     const errores = [];
 
     for (const batch of batches) {
       const idsParam = batch.join(',');
-      const itemsRes = await fetch(`https://api.mercadolibre.com/items?ids=${idsParam}&attributes=id,title,price,available_quantity,category_id,status,thumbnail,date_created`, {
+      const itemsRes = await fetch(`https://api.mercadolibre.com/items?ids=${idsParam}&attributes=id,title,price,available_quantity,category_id,status,thumbnail,date_created,seller_custom_field`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const items = await itemsRes.json();
@@ -68,7 +69,40 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // Generar SKU automático basado en el ID de MELI
+        // Si la publicación lleva el SKU del vendedor y ese producto ya existe
+        // en el CRM sin enlazar, la vinculamos en vez de crear un duplicado.
+        const skuVendedor = (item.seller_custom_field || '').trim();
+        if (skuVendedor) {
+          const { data: propio } = await supabase
+            .from('productos')
+            .select('sku, meli_id, fecha_publicacion')
+            .eq('sku', skuVendedor)
+            .single();
+
+          if (propio) {
+            if (propio.meli_id) {
+              omitidos++;   // ya está enlazado a otra publicación
+              continue;
+            }
+            const { error: linkErr } = await supabase.from('productos').update({
+              meli_id: item.id,
+              stock_meli: item.available_quantity,
+              fecha_publicacion: propio.fecha_publicacion
+                || (item.date_created ? item.date_created.slice(0, 10) : null),
+            }).eq('sku', skuVendedor);
+
+            if (linkErr) {
+              console.error('Error enlazando:', skuVendedor, linkErr.message);
+              errores.push(item.id);
+            } else {
+              vinculados++;
+              console.log(`🔗 Enlazado: ${skuVendedor} → ${item.id}`);
+            }
+            continue;
+          }
+        }
+
+        // Sin SKU propio: generamos uno automático basado en el ID de MELI
         const sku = `MELI-${item.id}`;
 
         // Verificar que el SKU no exista
@@ -87,7 +121,6 @@ module.exports = async (req, res) => {
         const { error } = await supabase.from('productos').insert({
           sku,
           nombre: item.title,
-          categoria: '',
           stock_dep: item.available_quantity,
           stock_meli: item.available_quantity,
           costo: 0,
@@ -111,10 +144,11 @@ module.exports = async (req, res) => {
     res.json({
       ok: true,
       importados,
+      vinculados,
       omitidos,
       errores: errores.length,
       total: ids.length,
-      mensaje: `${importados} productos importados, ${omitidos} omitidos (ya existían o inactivos)`
+      mensaje: `${importados} productos importados, ${vinculados} enlazados por SKU, ${omitidos} omitidos (ya existían o inactivos)`
     });
 
   } catch (err) {

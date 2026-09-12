@@ -185,7 +185,7 @@
     <!-- Filters -->
     <div class="filter-bar">
       <select id="filter-cat" onchange="applyFilters()">
-        <option value="">Todas las categorías</option>
+        <option value="">Todos los grupos</option>
       </select>
       <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
     </div>
@@ -277,7 +277,7 @@ async function load() {
     }
     document.getElementById('lead-time-info').textContent = leadTimeTxt;
 
-    const cats = [...new Set(allProducts.map(p => p.categoria).filter(Boolean))].sort();
+    const cats = [...new Set(allProducts.map(p => p.grupo).filter(Boolean))].sort();
     const sel = document.getElementById('filter-cat');
     // Reset options except the first
     while (sel.options.length > 1) sel.remove(1);
@@ -299,7 +299,7 @@ function reload() { allProducts = []; load(); }
 // ─── Filters + Segmento ───────────────────────────────────────────────────────
 function applyFilters() {
   const cat = document.getElementById('filter-cat').value;
-  let base = cat ? allProducts.filter(p => p.categoria === cat) : [...allProducts];
+  let base = cat ? allProducts.filter(p => p.grupo === cat) : [...allProducts];
 
   // Segmento filter
   if (currentSeg === 'comprar')  base = base.filter(p => p.restock_status !== 'cubierto');
@@ -436,7 +436,7 @@ function renderList() {
       <tr>
         <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${p.sku}</span></td>
         <td>${p.nombre}</td>
-        <td style="color:var(--text-muted);font-size:12px">${p.categoria || '—'}</td>
+        <td style="color:var(--text-muted);font-size:12px">${p.grupo || '—'}${p.subgrupo ? `<br><span style="font-size:10px">${p.subgrupo}</span>` : ''}</td>
         <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
         <td style="font-family:'JetBrains Mono',monospace">
           ${p.daily_velocity > 0
@@ -456,7 +456,7 @@ function renderList() {
         <tr>
           <th>SKU</th>
           <th>Producto</th>
-          <th>Categoría</th>
+          <th>Grupo</th>
           <th>Stock actual</th>
           <th>Velocidad</th>
           <th>Cobertura</th>

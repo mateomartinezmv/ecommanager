@@ -172,7 +172,7 @@ module.exports = async (req, res) => {
     // ── 1. All products ──────────────────────────────────────────────────────
     const { data: productos, error: prodErr } = await supabase
       .from('productos')
-      .select('sku, nombre, categoria, stock_dep, tipo, fecha_publicacion, alerta_min, created_at')
+      .select('sku, nombre, grupo, subgrupo, stock_dep, tipo, fecha_publicacion, alerta_min, created_at')
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
@@ -457,7 +457,8 @@ module.exports = async (req, res) => {
       results.push({
         sku:                        p.sku,
         nombre:                     p.nombre,
-        categoria:                  p.categoria || '',
+        grupo:                      p.grupo || '',
+        subgrupo:                   p.subgrupo || '',
         stock:                      stock,
         alerta_min:                 alertaMin,
         total_sold:                 totalSold,

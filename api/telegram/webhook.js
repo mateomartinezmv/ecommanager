@@ -70,7 +70,7 @@ Para DEVOLUCIÓN:
 {"tipo":"devolucion","sku":"SKU del producto o null","producto":"nombre del producto","cantidad":1,"resumen":"Registrar devolución de [X] unidades de [producto] y reponer stock"}
 
 Para NUEVO PRODUCTO:
-{"tipo":"nuevo_producto","sku":"SKU si lo mencionó o autogenerar con formato CAT-001","nombre":"nombre del producto","precio":0,"stock":0,"costo":0,"categoria":"categoría o null","resumen":"Crear producto [nombre] SKU [X] precio $Y stock Z"}
+{"tipo":"nuevo_producto","sku":"SKU si lo mencionó o autogenerar con formato CAT-001","nombre":"nombre del producto","precio":0,"stock":0,"costo":0,"grupo":"familia del producto (Manillares, Escapes, Puños, Espejos, Protección...) o null","subgrupo":"variante dentro de esa familia (Domino, SC Project, Akrapovic...) o null","resumen":"Crear producto [nombre] SKU [X] precio $Y stock Z"}
 
 Para REPOSICIÓN:
 {"tipo":"reposicion","resumen":"Consulta de reposición"}
@@ -243,7 +243,8 @@ async function ejecutarNuevoProducto(supabase, accion) {
   const { error } = await supabase.from('productos').insert({
     sku,
     nombre: accion.nombre,
-    categoria: accion.categoria || '',
+    grupo: accion.grupo || null,
+    subgrupo: accion.subgrupo || null,
     stock_dep: accion.stock || 0,
     stock_meli: 0,
     costo: accion.costo || 0,

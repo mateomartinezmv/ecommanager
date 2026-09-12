@@ -30,7 +30,9 @@ module.exports = async (req, res) => {
     if (req.method === 'POST') {
       const p = req.body;
       const { data, error } = await supabase.from('productos').insert({
-        sku: p.sku, nombre: p.nombre, categoria: p.categoria,
+        sku: p.sku, nombre: p.nombre,
+        grupo: p.grupo?.trim() || null,
+        subgrupo: p.subgrupo?.trim() || null,
         tipo: p.tipo || 'nuevo',
         stock_dep: p.stockDep || 0,
         stock_meli: p.stockMeli || 0,
@@ -62,7 +64,9 @@ module.exports = async (req, res) => {
 
       const { data, error } = await supabase.from('productos').update({
         sku: p.sku,  // permite cambiar el SKU
-        nombre: p.nombre, categoria: p.categoria,
+        nombre: p.nombre,
+        grupo: p.grupo?.trim() || null,
+        subgrupo: p.subgrupo?.trim() || null,
         tipo: p.tipo || 'nuevo',
         stock_dep: stockCanon,
         stock_meli: stockCanon,

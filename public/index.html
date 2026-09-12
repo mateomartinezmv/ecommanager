@@ -255,13 +255,23 @@
         <button class="tab" onclick="switchStockTab('usado')">🔄 Usados</button>
         <button class="tab" onclick="switchStockTab('disc')">⛔ Discontinuados</button>
       </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <select id="stock-grupo" onchange="onGrupoFiltroChange()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+          <option value="">Todos los grupos</option>
+        </select>
+        <select id="stock-subgrupo" onchange="renderStock()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+          <option value="">Todos los subgrupos</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" id="btn-agrupar" onclick="toggleAgrupado()">🗂 Agrupar</button>
+        <button class="btn btn-ghost btn-sm" onclick="limpiarFiltrosStock()">✕ Limpiar</button>
+      </div>
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">Productos en inventario</span>
           <span id="stock-count" style="font-size:12px;color:var(--text-muted)"></span>
         </div>
         <table>
-          <thead><tr><th>SKU</th><th>Producto</th><th>Categoría</th><th>Tipo</th><th>Stock depósito</th><th>Stock MELI</th><th>Stock Shopify</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Producto</th><th>Grupo / Subgrupo</th><th>Tipo</th><th>Stock depósito</th><th>Stock MELI</th><th>Stock Shopify</th><th>Precio venta</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="stock-tbody"></tbody>
         </table>
         <div id="stock-empty" class="empty-state" style="display:none"><div class="empty-icon">📦</div><p>No hay productos todavía.</p></div>
@@ -679,7 +689,8 @@
     <div class="modal-title" id="modal-producto-title">+ Nuevo Producto</div>
     <div class="form-grid">
       <div class="form-group"><label class="form-label">SKU *</label><input type="text" id="p-sku" placeholder="ej: ZAP-001"></div>
-      <div class="form-group"><label class="form-label">Categoría</label><input type="text" id="p-cat" placeholder="ej: Calzado"></div>
+      <div class="form-group"><label class="form-label">Grupo</label><input type="text" id="p-grupo" list="dl-grupos" placeholder="ej: Escapes" oninput="refreshSubgrupoList()"><datalist id="dl-grupos"></datalist></div>
+      <div class="form-group"><label class="form-label">Subgrupo</label><input type="text" id="p-subgrupo" list="dl-subgrupos" placeholder="ej: Akrapovic"><datalist id="dl-subgrupos"></datalist></div>
       <div class="form-group form-full"><label class="form-label">Nombre del producto *</label><input type="text" id="p-nombre" placeholder="Nombre completo del producto"></div>
       <div class="form-group"><label class="form-label">Stock depósito</label><input type="number" id="p-stock-dep" placeholder="0" min="0"></div>
       <div class="form-group"><label class="form-label">Stock publicado MELI</label><input type="number" id="p-stock-meli" placeholder="0" min="0"></div>
@@ -1163,6 +1174,8 @@
 let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [] };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
+let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
+let stockGruposCerrados = new Set();    // grupos plegados en la vista agrupada
 let enviosTabFilter = 'all';
 let devolucionesTabFilter = 'pendiente';
 let editingProductoSKU = null;
@@ -1202,7 +1215,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, categoria: p.categoria, tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -1478,8 +1491,37 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-cat','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  ['p-sku','p-nombre','p-grupo','p-subgrupo','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('p-tipo').value = 'nuevo';
+  refreshGrupoLists();
+}
+
+// ── Grupos y subgrupos ───────────────────────────────────────────────────────
+// Los valores no son una lista fija: salen de lo que ya está cargado. Los
+// datalist sugieren lo existente pero dejan escribir uno nuevo.
+function gruposExistentes() {
+  return [...new Set(db.productos.map(p => p.grupo).filter(Boolean))].sort();
+}
+
+function subgruposDe(grupo) {
+  return [...new Set(db.productos
+    .filter(p => !grupo || p.grupo === grupo)
+    .map(p => p.subgrupo).filter(Boolean))].sort();
+}
+
+function fillDatalist(id, valores) {
+  const dl = document.getElementById(id);
+  if (dl) dl.innerHTML = valores.map(v => `<option value="${v.replace(/"/g, '&quot;')}"></option>`).join('');
+}
+
+// Al escribir un grupo, las sugerencias de subgrupo se acotan a ese grupo.
+function refreshSubgrupoList() {
+  fillDatalist('dl-subgrupos', subgruposDe(document.getElementById('p-grupo').value.trim()));
+}
+
+function refreshGrupoLists() {
+  fillDatalist('dl-grupos', gruposExistentes());
+  refreshSubgrupoList();
 }
 
 async function saveProducto() {
@@ -1487,7 +1529,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, categoria: document.getElementById('p-cat').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -1501,7 +1543,10 @@ function editProducto(sku) {
   editingProductoSKU = sku;
   document.getElementById('p-sku').value = p.sku;
   document.getElementById('p-nombre').value = p.nombre;
-  document.getElementById('p-cat').value = p.categoria || '';
+  refreshGrupoLists();
+  document.getElementById('p-grupo').value = p.grupo || '';
+  document.getElementById('p-subgrupo').value = p.subgrupo || '';
+  refreshSubgrupoList();
   document.getElementById('p-stock-dep').value = p.stockDep;
   document.getElementById('p-stock-meli').value = p.stockMeli;
   document.getElementById('p-costo').value = p.costo;
@@ -1948,40 +1993,150 @@ function renderDashboard() {
 // =====================
 // RENDER: STOCK
 // =====================
+// Rellena los dos selects de filtro. El de subgrupo se acota al grupo elegido.
+function syncStockFiltros() {
+  const selG = document.getElementById('stock-grupo');
+  const selS = document.getElementById('stock-subgrupo');
+  if (!selG || !selS) return;
+
+  const grupoSel = selG.value;
+  selG.innerHTML = '<option value="">Todos los grupos</option>' +
+    gruposExistentes().map(g => `<option value="${g}"${g === grupoSel ? ' selected' : ''}>${g}</option>`).join('');
+
+  const subs = subgruposDe(grupoSel);
+  const subSel = subs.includes(selS.value) ? selS.value : '';
+  selS.value = subSel;
+  selS.innerHTML = '<option value="">Todos los subgrupos</option>' +
+    subs.map(s => `<option value="${s}"${s === subSel ? ' selected' : ''}>${s}</option>`).join('');
+}
+
+function onGrupoFiltroChange() {
+  // Cambiar de grupo puede invalidar el subgrupo elegido: syncStockFiltros lo resetea.
+  syncStockFiltros();
+  renderStock();
+}
+
+function limpiarFiltrosStock() {
+  document.getElementById('stock-search').value = '';
+  document.getElementById('stock-grupo').value = '';
+  document.getElementById('stock-subgrupo').value = '';
+  syncStockFiltros();
+  renderStock();
+}
+
+function toggleAgrupado() {
+  stockAgrupado = !stockAgrupado;
+  const btn = document.getElementById('btn-agrupar');
+  btn.classList.toggle('btn-primary', stockAgrupado);
+  btn.classList.toggle('btn-ghost', !stockAgrupado);
+  renderStock();
+}
+
+function toggleGrupoCerrado(grupo) {
+  if (stockGruposCerrados.has(grupo)) stockGruposCerrados.delete(grupo);
+  else stockGruposCerrados.add(grupo);
+  renderStock();
+}
+
+function stockRowHtml(p, sangria = false) {
+  const alerta = p.stockDep <= 0 ? 'stock-low' : p.stockDep <= p.alertaMin ? 'stock-med' : 'stock-ok';
+  const discBtn = p.discontinuado
+    ? `<button class="btn btn-ghost btn-sm" title="Reactivar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, false)">♻️</button>`
+    : `<button class="btn btn-ghost btn-sm" title="Discontinuar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, true)">⛔</button>`;
+  const etiquetas = p.grupo
+    ? `<span class="badge badge-blue">${p.grupo}</span>${p.subgrupo ? ` <span class="badge badge-gray" style="font-size:10px">${p.subgrupo}</span>` : ''}`
+    : '<span style="color:var(--text-muted)">Sin grupo</span>';
+  return `<tr${p.discontinuado ? ' style="opacity:0.55"' : ''}>
+    <td${sangria ? ' style="padding-left:28px"' : ''}><span class="badge badge-gray">${p.sku}</span></td>
+    <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado ? ' <span class="badge badge-red" style="font-size:10px">Discontinuado</span>' : ''}</td>
+    <td>${etiquetas}</td>
+    <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
+    <td class="${alerta}">${p.stockDep}</td>
+    <td>${p.stockMeli}</td>
+    <td>${p.shopifyId ? p.stockShopify : '—'}</td>
+    <td>${fmt(p.precio)}</td>
+    <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
+    <td>
+      <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
+      <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
+      ${discBtn}
+      <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
+    </td>
+  </tr>`;
+}
+
+// Vista agrupada: una fila cabecera por grupo (plegable) y, dentro, una
+// subcabecera por subgrupo. Cada cabecera lleva su conteo y su stock total.
+function stockAgrupadoHtml(productos) {
+  const porGrupo = {};
+  for (const p of productos) {
+    const g = p.grupo || 'Sin grupo';
+    const s = p.subgrupo || 'Sin subgrupo';
+    (porGrupo[g] ??= {})[s] ??= [];
+    porGrupo[g][s].push(p);
+  }
+
+  return Object.keys(porGrupo).sort().map(grupo => {
+    const subgrupos = porGrupo[grupo];
+    const items = Object.values(subgrupos).flat();
+    const stockGrupo = items.reduce((s, p) => s + (p.stockDep || 0), 0);
+    const cerrado = stockGruposCerrados.has(grupo);
+
+    let html = `<tr style="background:var(--surface2);cursor:pointer" data-grupo="${grupo.replace(/"/g, '&quot;')}" onclick="toggleGrupoCerrado(this.dataset.grupo)">
+      <td colspan="4" style="font-weight:700;font-size:13px">
+        <span style="display:inline-block;width:14px">${cerrado ? '▸' : '▾'}</span>
+        ${grupo}
+        <span style="color:var(--text-muted);font-weight:400;margin-left:6px">${items.length} producto${items.length === 1 ? '' : 's'}</span>
+      </td>
+      <td style="font-weight:700">${stockGrupo}</td>
+      <td colspan="5"></td>
+    </tr>`;
+    if (cerrado) return html;
+
+    // Con un solo subgrupo la subcabecera no aporta nada: se omite.
+    const unico = Object.keys(subgrupos).length === 1;
+    for (const sub of Object.keys(subgrupos).sort()) {
+      const lista = subgrupos[sub];
+      if (!unico) {
+        const stockSub = lista.reduce((s, p) => s + (p.stockDep || 0), 0);
+        html += `<tr style="background:rgba(255,255,255,0.02)">
+          <td colspan="4" style="padding-left:28px;font-size:12px;color:var(--text-dim);font-weight:600">
+            ${sub} <span style="color:var(--text-muted);font-weight:400">· ${lista.length}</span>
+          </td>
+          <td style="font-size:12px;color:var(--text-dim);font-weight:600">${stockSub}</td>
+          <td colspan="5"></td>
+        </tr>`;
+      }
+      html += lista.map(p => stockRowHtml(p, true)).join('');
+    }
+    return html;
+  }).join('');
+}
+
 function renderStock() {
+  syncStockFiltros();
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
+  const fGrupo = document.getElementById('stock-grupo')?.value || '';
+  const fSub = document.getElementById('stock-subgrupo')?.value || '';
+
   const filtered = db.productos.filter(p => {
-    const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q);
-    if (stockTabFilter === 'disc') return matchQ && p.discontinuado;
+    const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+      || (p.grupo || '').toLowerCase().includes(q) || (p.subgrupo || '').toLowerCase().includes(q);
+    const matchGrupo = !fGrupo || p.grupo === fGrupo;
+    const matchSub = !fSub || p.subgrupo === fSub;
+    if (!matchQ || !matchGrupo || !matchSub) return false;
+    if (stockTabFilter === 'disc') return p.discontinuado;
     const matchTipo = stockTabFilter === 'all' || (p.tipo || 'nuevo') === stockTabFilter;
-    return matchQ && matchTipo && !p.discontinuado;
+    return matchTipo && !p.discontinuado;
   });
-  document.getElementById('stock-count').textContent = `${filtered.length} productos`;
+
+  const stockTotal = filtered.reduce((s, p) => s + (p.stockDep || 0), 0);
+  document.getElementById('stock-count').textContent = `${filtered.length} productos · ${stockTotal} uds`;
   if (filtered.length === 0) { document.getElementById('stock-tbody').innerHTML = ''; document.getElementById('stock-empty').style.display = 'block'; return; }
   document.getElementById('stock-empty').style.display = 'none';
-  document.getElementById('stock-tbody').innerHTML = filtered.map(p => {
-    const alerta = p.stockDep <= 0 ? 'stock-low' : p.stockDep <= p.alertaMin ? 'stock-med' : 'stock-ok';
-    const discBtn = p.discontinuado
-      ? `<button class="btn btn-ghost btn-sm" title="Reactivar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, false)">♻️</button>`
-      : `<button class="btn btn-ghost btn-sm" title="Discontinuar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, true)">⛔</button>`;
-    return `<tr${p.discontinuado ? ' style="opacity:0.55"' : ''}>
-      <td><span class="badge badge-gray">${p.sku}</span></td>
-      <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado ? ' <span class="badge badge-red" style="font-size:10px">Discontinuado</span>' : ''}</td>
-      <td>${p.categoria ? `<span class="badge badge-blue">${p.categoria}</span>` : '—'}</td>
-      <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
-      <td class="${alerta}">${p.stockDep}</td>
-      <td>${p.stockMeli}</td>
-      <td>${p.shopifyId ? p.stockShopify : '—'}</td>
-      <td>${fmt(p.precio)}</td>
-      <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
-        <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
-        ${discBtn}
-        <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
-      </td>
-    </tr>`;
-  }).join('');
+  document.getElementById('stock-tbody').innerHTML = stockAgrupado
+    ? stockAgrupadoHtml(filtered)
+    : filtered.map(p => stockRowHtml(p)).join('');
 }
 
 async function toggleDiscontinuado(sku, value) {
@@ -2776,7 +2931,7 @@ async function importarDesdeMELI() {
   try {
     const result = await api('POST', '/meli/importar');
     await loadAll(); renderStock();
-    alert(`✅ ${result.mensaje}\n\nTotal: ${result.total}\nImportados: ${result.importados}\nOmitidos: ${result.omitidos}`);
+    alert(`✅ ${result.mensaje}\n\nTotal: ${result.total}\nImportados: ${result.importados}\nEnlazados por SKU: ${result.vinculados ?? 0}\nOmitidos: ${result.omitidos}`);
   } catch(e) { alert('❌ Error importando desde MELI: ' + e.message); }
   finally { btn.disabled = false; btn.textContent = '🟡 Importar desde MELI'; }
 }

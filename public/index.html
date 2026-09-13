@@ -1313,16 +1313,37 @@ function getCostosFijosDefault() {
     { concepto: 'Vercel Pro', monto: 20, moneda: 'USD', notas: 'Hosting del CRM (EcomManager)' },
     { concepto: 'Shopify', monto: 25, moneda: 'USD', notas: 'Tienda online martínezmotos.com' },
     { concepto: 'MercadoLibre Mi Página', monto: 400, moneda: 'UYU', notas: 'Suscripción tienda MELI' },
-    { concepto: 'MONTO IVA MÍNIMO DGI', monto: 1478, moneda: 'UYU', notas: 'Pago reducido 25%' },
-    { concepto: 'Aportes al BPS (Seguridad Social)', monto: 2375.5, moneda: 'UYU', notas: 'Pago reducido 25%' },
+    { concepto: 'MONTO IVA MÍNIMO DGI', monto: 1478, moneda: 'UYU', notas: 'Reducido al 25% — sube a 50% y luego a 100%' },
+    { concepto: 'Aportes al BPS (Seguridad Social)', monto: BPS_MONTO, moneda: 'UYU', notas: 'Tarifa plena' },
     { concepto: 'Facturación Electrónica (gesta.uy)', monto: 370.18, moneda: 'UYU', notas: 'Plan Básico' },
   ];
+}
+
+// El BPS estuvo cargado como $2.375,50 con la nota "pago reducido 25%". Era un error: los
+// aportes se pagan a tarifa plena desde el arranque; el único tributo con reducción por
+// inicio de actividad es el IVA mínimo de DGI. El valor viejo subestimaba los costos fijos
+// en $6.456,50 por mes e inflaba la ganancia de todos los reportes de rentabilidad.
+const BPS_MONTO = 8832;
+const BPS_MONTO_ERRONEO = 2375.5;
+const BPS_FIX_KEY = 'ecom_costos_fijos_fix_bps';
+
+// Corrige una sola vez lo que ya está guardado en este navegador. Si el monto fue editado
+// a mano a otro valor, se respeta: sólo se toca el importe erróneo original.
+function corregirBPSGuardado(costos) {
+  if (localStorage.getItem(BPS_FIX_KEY)) return costos;
+  const i = costos.findIndex(c => /BPS/i.test(c.concepto || '') && c.monto === BPS_MONTO_ERRONEO);
+  if (i !== -1) {
+    costos[i] = { ...costos[i], monto: BPS_MONTO, notas: 'Tarifa plena' };
+    localStorage.setItem('ecom_costos_fijos', JSON.stringify(costos));
+  }
+  localStorage.setItem(BPS_FIX_KEY, '1');
+  return costos;
 }
 
 function getCostosFijos() {
   try {
     const raw = localStorage.getItem('ecom_costos_fijos');
-    if (raw) return JSON.parse(raw);
+    if (raw) return corregirBPSGuardado(JSON.parse(raw));
   } catch {}
   return getCostosFijosDefault();
 }
@@ -1437,9 +1458,15 @@ function calcFacturacion() {
     : topeAnualPleno;
   const topeMensual = topeAnualPleno / 12;
 
-  const delAnio = db.ventas.filter(v => (v.fecha || '').slice(0, 4) === String(anio) && v.estado !== 'cancelada');
-  const facturadas = delAnio.filter(v => esVentaFacturada(v, cfg));
-  const noFacturadas = delAnio.filter(v => !esVentaFacturada(v, cfg));
+  // El ejercicio arranca en el mes de alta, no en enero: las ventas anteriores existen en el
+  // CRM pero son de antes de que la empresa facturara, así que no computan contra el tope.
+  const desdeKey = anio + '-' + String(primerMes).padStart(2, '0');
+  const delEjercicio = db.ventas.filter(v => {
+    const f = v.fecha || '';
+    return f.slice(0, 4) === String(anio) && f.slice(0, 7) >= desdeKey && v.estado !== 'cancelada';
+  });
+  const facturadas = delEjercicio.filter(v => esVentaFacturada(v, cfg));
+  const noFacturadas = delEjercicio.filter(v => !esVentaFacturada(v, cfg));
 
   const facturadoAnio = facturadas.reduce((a, v) => a + (v.total || 0), 0);
   const noFacturadoAnio = noFacturadas.reduce((a, v) => a + (v.total || 0), 0);
@@ -1471,7 +1498,7 @@ function calcFacturacion() {
   // Desglose por canal y, en mostrador, por método de pago
   const desglose = [];
   Object.keys(FACT_CANAL_LABELS).forEach(canal => {
-    const delCanal = delAnio.filter(v => v.canal === canal);
+    const delCanal = delEjercicio.filter(v => v.canal === canal);
     if (!delCanal.length) return;
     if (FACT_CANALES_POR_METODO.includes(canal)) {
       const porMetodo = {};

@@ -42,13 +42,28 @@ update ventas
    set notas = 'Venta personal de un articulo usado, ajena a la empresa. Se vendio por la misma cuenta de MELI. La publicacion MLU1017734718 queda deliberadamente sin vincular a ningun SKU del CRM.'
  where id = 'V_MELI_2000014708277324_MLU1017734718';
 
--- Quedan 7 publicaciones activas sin vincular, a propósito:
---   Personales / ajenas a la empresa (mismo criterio que la GoPro):
---     MLU1314531996  Set Cambiador Bebé
---     MLU690817651   Borcegos de cuero para mujer
---     MLU695246803   Championes adidas Superstar mujer
---     MLU699762377   Pantalón Moto Torque Revo Talle XL (1 unidad, a confirmar)
---   Sin equivalente claro en el CRM, a definir:
---     MLU1503031072  Manillar Custom Chopper — Negro
---     MLU1503031074  Manillar Custom Chopper — Plateado
---     MLU700264541   Manillar Café Racer 7/8 Negro (el CRM sólo tiene el plateado)
+-- Los manillares nuevos también van al CRM. El atributo Modelo de la
+-- publicación trae el SKU, así que el mapeo es directo:
+with manillares(sku, nuevo) as (values
+  ('MAN-78-V2-NEG-001', 'MLU1503031072'),  -- Modelo=MAN-78-V2, Color=Negro
+  ('MAN-78-V2-PLA-001', 'MLU1503031074'),  -- Modelo=MAN-78-V2, Color=Plateado
+  ('MAN-78-V3-PLA-001', 'MLU700264541')    -- único Café Racer del CRM, mismo precio y stock
+)
+update productos p
+   set meli_ids = p.meli_ids || v.nuevo, updated_at = now()
+  from manillares v
+ where p.sku = v.sku and not (v.nuevo = any (p.meli_ids));
+
+-- Criterio acordado: los artículos USADOS son ventas personales y no entran al
+-- CRM; los NUEVOS sí. Se aplicó con el campo `condition` de MELI, no a ojo.
+-- Quedan 4 publicaciones activas sin vincular, todas condition=used:
+--   MLU1314531996  Set Cambiador Bebé
+--   MLU690817651   Borcegos de cuero para mujer
+--   MLU695246803   Championes adidas Superstar mujer
+--   MLU699762377   Pantalón Moto Torque Revo Talle XL
+-- (misma categoría que la GoPro MLU1017734718, ya vendida y también excluida).
+--
+-- Pendiente de revisar: MLU700264541 se publicó como Color=Negro y el SKU del
+-- CRM se llama "Plateado Cromado". Es el único Café Racer que existe, mismo
+-- precio y mismas 5 unidades, así que se vinculó igual — pero conviene
+-- corregir el color en la publicación o en el nombre del producto.

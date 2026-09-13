@@ -116,6 +116,18 @@ module.exports = async (req, res) => {
 
     // ── Sin `respuesta` → sólo sugerir, no publica nada ─────────
     if (respuesta === undefined) {
+      // Redactar automáticamente es opcional: sin la key igual se puede
+      // listar preguntas y publicar una respuesta escrita a mano.
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return res.status(503).json({
+          ok: false,
+          error: 'Falta ANTHROPIC_API_KEY: no se puede redactar la respuesta automáticamente.',
+          question_id: pregunta.id,
+          item_titulo: titulo,
+          pregunta: pregunta.text,
+          siguiente_paso: 'Podés publicar igual mandando el campo "respuesta" con tu texto.',
+        });
+      }
       const sugerida = await sugerirRespuesta(pregunta, titulo);
       return res.status(200).json({
         ok: true,

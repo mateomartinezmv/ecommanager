@@ -24,6 +24,9 @@
     "api/meli/recalcular-comisiones.js": { "maxDuration": 60 },
     "api/meli/reprocesar-ordenes.js": { "maxDuration": 60 },
     "api/cron/resumen-diario.js": { "maxDuration": 30 },
+    "api/cron/ads-diario.js": { "maxDuration": 30 },
+    "api/meli/ads.js": { "maxDuration": 30 },
+    "api/meli/ads-historico.js": { "maxDuration": 10 },
     "api/telegram/setup.js": { "maxDuration": 15 },
     "api/telegram/webhook.js": { "maxDuration": 30 }
   },
@@ -35,6 +38,10 @@
     {
       "path": "/api/cron/resumen-diario",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/ads-diario",
+      "schedule": "0 14 * * *"
     }
   ]
 }

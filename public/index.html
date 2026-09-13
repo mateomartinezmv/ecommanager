@@ -3759,8 +3759,11 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
   container.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:13px">Cargando datos de Ads...</div>';
 
   try {
-    const mesRef = new Date().toISOString().slice(0, 7);
-    const data = await fetch(`/api/meli/ads-historico?mes=${mesRef}`).then(r => r.json());
+    // El gasto se guarda por día, así que se puede pedir exactamente el período del reporte
+    // en vez del mes corriente.
+    const desdeQ = desde || '2020-01-01';
+    const hastaQ = hasta || new Date().toISOString().slice(0, 10);
+    const data = await fetch(`/api/meli/ads-historico?desde=${desdeQ}&hasta=${hastaQ}`).then(r => r.json());
 
     const adsSpend = data.total_spend || 0;
     const gananciaConAds = ganancia - adsSpend;
@@ -3768,10 +3771,17 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
 
     const desdeParam = desde || '2020-01-01';
 
+    const faltan = data.dias_sin_datos || 0;
+    const avisoFaltantes = faltan > 0
+      ? `<br><span style="color:var(--yellow)">${faltan} día${faltan === 1 ? '' : 's'} sin capturar en este rango.</span>`
+      : '';
+
     const adsHtml = adsSpend > 0
       ? `<div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
-         <div style="font-size:12px;color:var(--text-muted)">Gasto del mes actual · Actualizá para ver período exacto</div>`
-      : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Sin datos de Ads para el período.<br>Hacé clic en "Actualizar desde MELI" para traer los datos.</div>`;
+         <div style="font-size:12px;color:var(--text-muted)">
+           ${data.dias_con_datos} día${data.dias_con_datos === 1 ? '' : 's'} con datos${data.roas ? ` · ROAS ${data.roas}x` : ''}${avisoFaltantes}
+         </div>`
+      : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Sin datos de Ads para el período.<br>Hacé clic en "Actualizar desde MELI" para traerlos.</div>`;
 
     container.innerHTML = `
       <div class="two-col" style="margin-bottom:0">
@@ -3855,8 +3865,12 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
     const gananciaConAds = ganancia - adsSpend;
     const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
     const periodoLabel = data.periodo ? `${data.periodo.desde} → ${data.periodo.hasta}` : `${desde} → ${hasta}`;
-    const porCampanaHtml = (data.por_campana || []).filter(c => c.spend > 0)
-      .map(c => `<span style="margin-right:14px">${c.campaign_id}: ${fmt(c.spend)}${c.roas ? ` (ROAS ${c.roas}x)` : ''}</span>`).join('');
+    const notas = [];
+    if (data.dias_guardados) notas.push(`${data.dias_guardados} días guardados`);
+    if (data.recortado) {
+      notas.push(`el rango se recortó desde ${data.recortado.pedido}: MELI sólo sirve 90 días de métricas`);
+    }
+    const porCampanaHtml = notas.join(' · ');
 
     const container = document.getElementById('reporte-ads');
     if (container) container.innerHTML = `

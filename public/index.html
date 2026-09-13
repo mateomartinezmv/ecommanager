@@ -801,6 +801,7 @@
           </tr>
         </tfoot>
       </table>
+      <div id="vmos-carrito-hint" style="display:none;margin-top:6px;font-size:11px;color:var(--text-secondary)"></div>
     </div>
 
     <div class="form-grid" style="margin-top:8px">
@@ -1233,7 +1234,7 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -1761,12 +1762,19 @@ function vmosRenderCart() {
   document.getElementById('vmos-subtotal').textContent = `$${t.subtotal.toLocaleString()}`;
   document.getElementById('vmos-descuento-monto').textContent = `-$${t.descuento.toLocaleString()}`;
   document.getElementById('vmos-total').textContent = `$${t.total.toLocaleString()}`;
+  // Aviso de que varios SKUs se registran como un solo carrito (una venta, un ticket)
+  const hint = document.getElementById('vmos-carrito-hint');
+  hint.style.display = vmosCart.length > 1 ? '' : 'none';
+  hint.textContent = vmosCart.length > 1
+    ? `🛒 Se registra como UNA sola venta (carrito de ${vmosCart.length} productos) — suma $${t.total.toLocaleString()} al ticket promedio.`
+    : '';
 }
 
 function redondear2(n) { return Math.round(n * 100) / 100; }
 
-// El descuento se calcula por línea (cada ítem del carrito termina siendo una venta
-// separada en la base), así lo que se muestra en el modal coincide con lo que se guarda.
+// El descuento se calcula por línea (cada ítem del carrito se guarda como una fila de
+// `ventas`, aunque todas compartan venta_grupo y cuenten como una sola venta), así lo que
+// se muestra en el modal coincide con lo que se guarda.
 function vmosCalcTotales() {
   const pct = vmosDescuentoActivo() ? PROMO_DESCUENTO_PCT : 0;
   const lineas = vmosCart.map(item => {
@@ -1818,11 +1826,14 @@ async function saveVenta(canal) {
     const metodoPago = document.getElementById('vmos-pago').value;
     const notas = document.getElementById('vmos-notas').value.trim();
     const totales = vmosCalcTotales();
+    // Si el cliente se lleva más de un SKU, todas las líneas van con el mismo venta_grupo:
+    // se siguen guardando por producto (stock, devoluciones) pero cuentan como UNA venta.
+    const ventaGrupo = totales.lineas.length > 1 ? 'C' + Date.now() : null;
     closeModal('modal-venta-mostrador');
     try {
       for (let i = 0; i < totales.lineas.length; i++) {
         const item = totales.lineas[i];
-        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, descuentoPct: item.descuentoPct, descuentoMonto: item.descuentoMonto, total: item.total, estado: 'pagada', metodoPago, notas, generaEnvio: false };
+        const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, ventaGrupo, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, descuentoPct: item.descuentoPct, descuentoMonto: item.descuentoMonto, total: item.total, estado: 'pagada', metodoPago, notas, generaEnvio: false };
         await api('POST', '/ventas', v);
       }
       await loadAll();
@@ -2257,6 +2268,78 @@ function tipoEnvioVenta(v, enviosByVenta) {
   return tipoEnvioDeTransportista(e.transportista);
 }
 
+// =====================
+// TICKETS / CARRITOS
+// =====================
+// Cada producto se guarda como una línea en `ventas` (hace falta para stock, envíos y
+// devoluciones), pero una compra real puede tener varias líneas:
+//   · carrito mostrador → las líneas comparten ventaGrupo
+//   · orden MELI con varios ítems → las líneas comparten ordenMeli
+// Un ticket es esa compra completa, no cada línea suelta.
+function ticketKey(v) {
+  if (v.ventaGrupo) return 'G:' + v.ventaGrupo;
+  if (v.canal === 'meli' && v.ordenMeli) return 'M:' + v.ordenMeli;
+  return 'V:' + v.id;
+}
+
+function contarTickets(ventas) {
+  return new Set(ventas.map(ticketKey)).size;
+}
+
+// Agrupa líneas en tickets conservando el orden en que vienen.
+function agruparTickets(ventas) {
+  const grupos = [];
+  const porKey = {};
+  for (const v of ventas) {
+    const key = ticketKey(v);
+    if (porKey[key] === undefined) { porKey[key] = grupos.length; grupos.push({ key, lineas: [] }); }
+    grupos[porKey[key]].lineas.push(v);
+  }
+  return grupos;
+}
+
+function resumenTicket(lineas) {
+  return {
+    cantidad: lineas.reduce((a, v) => a + (v.cantidad || 0), 0),
+    total: lineas.reduce((a, v) => a + (v.total || 0), 0),
+    descuentoMonto: lineas.reduce((a, v) => a + (v.descuentoMonto || 0), 0),
+    comision: lineas.reduce((a, v) => a + (v.comision || 0), 0),
+    costoEnvioMeli: lineas.reduce((a, v) => a + (v.costoEnvioMeli || 0), 0),
+  };
+}
+
+// Carritos desplegados en la tabla de ventas (por key de ticket)
+let ventasGruposAbiertos = new Set();
+
+function toggleGrupoVenta(key) {
+  if (ventasGruposAbiertos.has(key)) ventasGruposAbiertos.delete(key);
+  else ventasGruposAbiertos.add(key);
+  renderVentas();
+}
+
+// Cambia el estado de todas las líneas del carrito de una sola pasada.
+async function cambiarEstadoGrupo(key, estado) {
+  const lineas = db.ventas.filter(v => ticketKey(v) === key);
+  try {
+    for (const v of lineas) {
+      await api('PUT', `/ventas?id=${v.id}`, { ...v, precioUnit: v.precioUnit, estado });
+    }
+    await loadAll(); renderVentas();
+  } catch(e) { console.error('Error cambiando estado del carrito:', e); }
+}
+
+// Cancela el carrito entero: cada línea restaura su stock y queda registrada como cancelada.
+async function deleteGrupoVenta(key) {
+  const lineas = db.ventas.filter(v => ticketKey(v) === key);
+  if (!lineas.length) return;
+  if (!confirm(`¿Cancelar este carrito completo (${lineas.length} productos)?\n\nEsto va a:\n✅ Restaurar el stock de cada producto\n🗑️ Eliminar los envíos asociados (si hay)\n📋 Registrar cada línea como venta cancelada en Reportes`)) return;
+  try {
+    for (const v of lineas) await api('DELETE', `/ventas?id=${v.id}`);
+    await loadAll();
+    renderVentas(); renderStock();
+  } catch(e) { alert('Error cancelando el carrito: ' + e.message); }
+}
+
 function renderVentas() {
   const q = (document.getElementById('ventas-search')?.value || '').toLowerCase();
   const desde = document.getElementById('ventas-desde')?.value || '';
@@ -2278,14 +2361,18 @@ function renderVentas() {
   if (tipoEnvioFiltro) ventas = ventas.filter(v => tipoEnvioVenta(v, enviosByVenta) === tipoEnvioFiltro);
   if (ventas.length === 0) { document.getElementById('ventas-tbody').innerHTML = ''; document.getElementById('ventas-empty').style.display = 'block'; return; }
   document.getElementById('ventas-empty').style.display = 'none';
-  document.getElementById('ventas-tbody').innerHTML = ventas.map(v => {
+
+  // Fila de una línea suelta. `dentroDeCarrito` la muestra indentada bajo su carrito.
+  const filaLinea = (v, dentroDeCarrito) => {
     const tipoEnvio = tipoEnvioVenta(v, enviosByVenta);
     const tipoEnvioLabel = tipoEnvio ? TIPO_ENVIO_LABELS[tipoEnvio] : '';
     return `
-    <tr>
-      <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${v.ordenMeli || v.id.slice(-6)}</span></td>
-      <td>${v.fecha}</td>
-      <td>${canalBadge(v.canal)}${tipoEnvioLabel ? `<br><span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
+    <tr${dentroDeCarrito ? ' style="background:var(--bg-tertiary)"' : ''}>
+      <td>${dentroDeCarrito
+        ? `<span style="color:var(--text-muted);font-size:11px;padding-left:14px">↳ ${v.sku}</span>`
+        : `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${v.ordenMeli || v.id.slice(-6)}</span>`}</td>
+      <td>${dentroDeCarrito ? '' : v.fecha}</td>
+      <td>${dentroDeCarrito ? '' : canalBadge(v.canal)}${tipoEnvioLabel ? `${dentroDeCarrito ? '' : '<br>'}<span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
       <td>${v.cantidad}</td>
       <td>${fmt(v.total)}${v.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(v.descuentoMonto)} promo ${v.descuentoPct}%</span>` : ''}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.costoEnvioMeli)} envío</span>` : ''}</td>
@@ -2304,7 +2391,51 @@ function renderVentas() {
       </td>
     </tr>
   `;
-  }).join('');
+  };
+
+  // Fila resumen de un carrito: una sola venta con el total sumado, desplegable por producto.
+  const filaCarrito = (grupo) => {
+    const lineas = [...grupo.lineas].sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0));
+    const primera = lineas[0];
+    const t = resumenTicket(lineas);
+    const abierto = ventasGruposAbiertos.has(grupo.key);
+    const estados = [...new Set(lineas.map(v => v.estado))];
+    const cliente = primera.cliente || primera.comprador || '';
+    const tiposEnvio = [...new Set(lineas.map(v => tipoEnvioVenta(v, enviosByVenta)).filter(Boolean))];
+    const refCarrito = primera.ordenMeli || (primera.ventaGrupo || primera.id).slice(-6);
+    return `
+    <tr style="cursor:pointer" onclick="toggleGrupoVenta('${grupo.key}')">
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${refCarrito}</span></td>
+      <td>${primera.fecha}</td>
+      <td>${canalBadge(primera.canal)}${tiposEnvio.length ? `<br><span style="font-size:10px;color:var(--text-muted)">${tiposEnvio.map(t2 => TIPO_ENVIO_LABELS[t2]).join(' · ')}</span>` : ''}</td>
+      <td>
+        <span style="color:var(--text-muted);font-size:11px">${abierto ? '▾' : '▸'}</span>
+        <span class="badge badge-blue" style="font-size:10px">🛒 Carrito</span>
+        <strong>${lineas.length} productos</strong>
+        ${cliente ? `<br><span style="font-size:11px;color:var(--text-muted)">${cliente}</span>` : ''}
+        <br><span style="font-size:11px;color:var(--text-muted)">${lineas.map(v => v.producto).join(' · ')}</span>
+      </td>
+      <td>${t.cantidad}</td>
+      <td><strong>${fmt(t.total)}</strong>${t.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(t.descuentoMonto)} promo</span>` : ''}${t.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(t.comision)} com.</span>` : ''}${t.costoEnvioMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(t.costoEnvioMeli)} envío</span>` : ''}</td>
+      <td onclick="event.stopPropagation()">
+        ${estados.length > 1
+          ? '<span class="badge badge-gray" style="font-size:11px">Mixto</span>'
+          : `<select class="badge" onchange="cambiarEstadoGrupo('${grupo.key}',this.value)" style="background:transparent;border:none;cursor:pointer;font-size:11px;padding:2px 6px">
+              ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${estados[0]===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+            </select>`}
+      </td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-sm" onclick="toggleGrupoVenta('${grupo.key}')" title="${abierto ? 'Ocultar productos' : 'Ver productos'}">${abierto ? '➖' : '➕'}</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteGrupoVenta('${grupo.key}')" title="Cancelar el carrito completo">🗑️</button>
+      </td>
+    </tr>
+    ${abierto ? lineas.map(v => filaLinea(v, true)).join('') : ''}
+  `;
+  };
+
+  document.getElementById('ventas-tbody').innerHTML = agruparTickets(ventas)
+    .map(g => g.lineas.length > 1 ? filaCarrito(g) : filaLinea(g.lineas[0], false))
+    .join('');
 }
 
 // =====================
@@ -2415,13 +2546,15 @@ function renderReportes() {
   const costosFijosAjustados = parseFloat((costosFijosMensuales * factorPeriodo).toFixed(2));
   const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costosFijosAjustados;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
-  const ticketPromedio = ventasFiltradas.length > 0 ? totalIngresos / ventasFiltradas.length : 0;
+  // Ventas = tickets (un carrito con varios productos es UNA venta), no líneas sueltas
+  const totalVentas = contarTickets(ventasFiltradas);
+  const ticketPromedio = totalVentas > 0 ? totalIngresos / totalVentas : 0;
   const unidadesVendidas = ventasFiltradas.reduce((a,v) => a + v.cantidad, 0);
   const periodoLabel = val === 'all' ? 'todo el tiempo' : val === 'custom' ? `${desde} → ${hasta}` : `${diasNum} días`;
 
   document.getElementById('reporte-stats').innerHTML = `
     <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(totalIngresos)}</div><div class="stat-label">Ingresos totales</div></div>
-    <div class="stat-card blue"><div class="stat-icon">📊</div><div class="stat-value">${ventasFiltradas.length}</div><div class="stat-label">Ventas realizadas</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📊</div><div class="stat-value">${totalVentas}</div><div class="stat-label">Ventas realizadas</div></div>
     <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${unidadesVendidas}</div><div class="stat-label">Unidades vendidas</div></div>
     <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${fmt(ticketPromedio)}</div><div class="stat-label">Ticket promedio</div></div>
     <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(totalComisiones)}</div><div class="stat-label">Comisiones MELI</div></div>
@@ -2438,14 +2571,17 @@ function renderReportes() {
   const mosIngresos = ventasMostrador.reduce((a,v) => a+v.total,0);
   const shopIngresos = ventasShopify.reduce((a,v) => a+v.total,0);
   const maxCanal = Math.max(meliIngresos, mosIngresos, shopIngresos, 1);
-  const meliTicket = ventasMeli.length ? meliIngresos/ventasMeli.length : 0;
-  const mosTicket = ventasMostrador.length ? mosIngresos/ventasMostrador.length : 0;
-  const shopTicket = ventasShopify.length ? shopIngresos/ventasShopify.length : 0;
+  const meliTickets = contarTickets(ventasMeli);
+  const mosTickets = contarTickets(ventasMostrador);
+  const shopTickets = contarTickets(ventasShopify);
+  const meliTicket = meliTickets ? meliIngresos/meliTickets : 0;
+  const mosTicket = mosTickets ? mosIngresos/mosTickets : 0;
+  const shopTicket = shopTickets ? shopIngresos/shopTickets : 0;
   document.getElementById('chart-canal').innerHTML = `
     <div class="chart-bar-wrap">
-      <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${ventasMeli.length} ventas · ${fmt(meliTicket)} ticket</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
-      <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${ventasMostrador.length} ventas · ${fmt(mosTicket)} ticket</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
-      <div class="chart-bar-row"><span class="chart-bar-label">🛍️ Shopify</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(shopIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#166534,#22c55e)">${ventasShopify.length} ventas · ${fmt(shopTicket)} ticket</div></div><span class="chart-bar-val">${fmt(shopIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🟡 MELI</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(meliIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#b8a200,#ffe600)">${meliTickets} ventas · ${fmt(meliTicket)} ticket</div></div><span class="chart-bar-val">${fmt(meliIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🏪 Mostrador</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(mosIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#1e5ab5,#4f8ef7)">${mosTickets} ventas · ${fmt(mosTicket)} ticket</div></div><span class="chart-bar-val">${fmt(mosIngresos)}</span></div>
+      <div class="chart-bar-row"><span class="chart-bar-label">🛍️ Shopify</span><div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(shopIngresos/maxCanal*100).toFixed(1)}%;background:linear-gradient(90deg,#166534,#22c55e)">${shopTickets} ventas · ${fmt(shopTicket)} ticket</div></div><span class="chart-bar-val">${fmt(shopIngresos)}</span></div>
     </div>`;
 
   const prodVentas = {};
@@ -2506,35 +2642,38 @@ function renderReportes() {
 
     // Mejor canal por ingresos
     const canalData = [
-      { label: '🟡 MELI',      ing: meliIngresos, v: ventasMeli.length },
-      { label: '🏪 Mostrador', ing: mosIngresos,  v: ventasMostrador.length },
-      { label: '🛍️ Shopify',   ing: shopIngresos, v: ventasShopify.length }
+      { label: '🟡 MELI',      ing: meliIngresos, v: meliTickets },
+      { label: '🏪 Mostrador', ing: mosIngresos,  v: mosTickets },
+      { label: '🛍️ Shopify',   ing: shopIngresos, v: shopTickets }
     ];
     const mejorCanal = [...canalData].sort((a,b) => b.ing - a.ing)[0];
     const totalCanalIng = meliIngresos + mosIngresos + shopIngresos || 1;
 
-    // Día con más ventas
+    // Día con más ventas (un carrito cuenta una sola vez)
     const ventasPorDia = {};
-    ventasFiltradas.forEach(v => { ventasPorDia[v.fecha] = (ventasPorDia[v.fecha] || 0) + 1; });
+    agruparTickets(ventasFiltradas).forEach(g => {
+      const fecha = g.lineas[0].fecha;
+      ventasPorDia[fecha] = (ventasPorDia[fecha] || 0) + 1;
+    });
     const topDia = Object.entries(ventasPorDia).sort((a,b) => b[1] - a[1])[0];
 
     // Top cliente por monto total
     const porCliente = {};
-    ventasFiltradas.forEach(v => {
-      const key = v.cliente || v.comprador;
+    agruparTickets(ventasFiltradas).forEach(g => {
+      const key = g.lineas[0].cliente || g.lineas[0].comprador;
       if (!key) return;
       if (!porCliente[key]) porCliente[key] = { total: 0, count: 0 };
-      porCliente[key].total += v.total;
+      porCliente[key].total += g.lineas.reduce((a,v) => a + v.total, 0);
       porCliente[key].count++;
     });
     const topClienteEntry = Object.entries(porCliente).sort((a,b) => b[1].total - a[1].total)[0];
 
     // Tasa de envíos generados
-    const conEnvio = ventasFiltradas.filter(v => v.generaEnvio).length;
-    const tasaEnvios = ((conEnvio / ventasFiltradas.length) * 100).toFixed(0);
+    const conEnvio = agruparTickets(ventasFiltradas).filter(g => g.lineas.some(v => v.generaEnvio)).length;
+    const tasaEnvios = ((conEnvio / totalVentas) * 100).toFixed(0);
 
     // Promedio de unidades por venta
-    const promedioUds = (unidadesVendidas / ventasFiltradas.length).toFixed(1);
+    const promedioUds = (unidadesVendidas / totalVentas).toFixed(1);
 
     hlDiv.innerHTML = `
       <div class="table-wrap" style="margin-bottom:0">
@@ -3194,11 +3333,12 @@ function _enrichVenta(v) {
 function exportVentasCSV() {
   const { ventas, desde, hasta } = _getVentasFiltradas();
   if (!ventas.length) { alert('No hay ventas para exportar con los filtros actuales.'); return; }
-  const headers = ['ID/Orden','Fecha','Canal','Comprador','Producto','SKU','Cantidad','Precio Unit.','Costo Unit.','Comision','Ingreso Neto','Costo Total','Ganancia Bruta','Margen %','Total','Estado','Metodo Pago'];
+  const headers = ['ID/Orden','Carrito','Fecha','Canal','Comprador','Producto','SKU','Cantidad','Precio Unit.','Costo Unit.','Comision','Ingreso Neto','Costo Total','Ganancia Bruta','Margen %','Total','Estado','Metodo Pago'];
   const rows = ventas.map(v => {
     const e = _enrichVenta(v);
     return [
       e.ordenMeli || e.id,
+      e.ventaGrupo || '',
       e.fecha || '',
       e.canal || '',
       e.comprador || e.cliente || '',
@@ -3283,7 +3423,7 @@ function exportVentasPDF() {
   const gananciaBruta  = ingresosNetos - costoTotalSum;
 
   const metricas = [
-    ['Total ventas', enriched.length],
+    ['Total ventas', contarTickets(enriched)],
     ['Ingresos brutos', f2(ingresosBrutos)],
     ['Comisiones MELI', f2(comisionesSum)],
     ['Ingresos netos', f2(ingresosNetos)],
@@ -3442,7 +3582,9 @@ function exportReportePDF() {
   const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
-  const ticketPromedio = ventasFiltradas.length > 0 ? totalIngresos / ventasFiltradas.length : 0;
+  // Ventas = tickets: un carrito con varios productos cuenta como una sola venta
+  const totalVentas = contarTickets(ventasFiltradas);
+  const ticketPromedio = totalVentas > 0 ? totalIngresos / totalVentas : 0;
   const unidadesVendidas = ventasFiltradas.reduce((a,v) => a + v.cantidad, 0);
 
   const ventasMeli = ventasFiltradas.filter(v => v.canal === 'meli');
@@ -3482,7 +3624,7 @@ function exportReportePDF() {
   doc.text('RESUMEN EJECUTIVO', 14, y); y += 5;
 
   const kpis = [
-    ['Ventas realizadas', ventasFiltradas.length],
+    ['Ventas realizadas', totalVentas],
     ['Unidades vendidas', unidadesVendidas],
     ['Ingresos totales', f2(totalIngresos)],
     ['Ticket promedio', f2(ticketPromedio)],
@@ -3549,14 +3691,15 @@ function exportReportePDF() {
   // Métricas clave
   const topUds = [...prodArr].sort((a,b) => b.cant - a.cant)[0];
   const topGan = [...prodArr].map(d => ({ ...d, gan: d.total - d.costo*d.cant })).sort((a,b) => b.gan - a.gan)[0];
-  const mejorCanal = [{ label:'MELI', ing:meliIng, v:ventasMeli.length }, { label:'Mostrador', ing:mosIng, v:ventasMostrador.length }, { label:'Shopify', ing:shopIng, v:ventasShopify.length }].sort((a,b) => b.ing - a.ing)[0];
+  const mejorCanal = [{ label:'MELI', ing:meliIng, v:contarTickets(ventasMeli) }, { label:'Mostrador', ing:mosIng, v:contarTickets(ventasMostrador) }, { label:'Shopify', ing:shopIng, v:contarTickets(ventasShopify) }].sort((a,b) => b.ing - a.ing)[0];
+  const tickets = agruparTickets(ventasFiltradas);
   const ventasPorDia = {};
-  ventasFiltradas.forEach(v => { ventasPorDia[v.fecha] = (ventasPorDia[v.fecha]||0)+1; });
+  tickets.forEach(g => { const f = g.lineas[0].fecha; ventasPorDia[f] = (ventasPorDia[f]||0)+1; });
   const topDia = Object.entries(ventasPorDia).sort((a,b) => b[1]-a[1])[0];
   const porCliente = {};
-  ventasFiltradas.forEach(v => { const k = v.cliente||v.comprador; if (!k) return; if (!porCliente[k]) porCliente[k]={total:0,count:0}; porCliente[k].total+=v.total; porCliente[k].count++; });
+  tickets.forEach(g => { const k = g.lineas[0].cliente||g.lineas[0].comprador; if (!k) return; if (!porCliente[k]) porCliente[k]={total:0,count:0}; porCliente[k].total+=g.lineas.reduce((a,v)=>a+v.total,0); porCliente[k].count++; });
   const topCli = Object.entries(porCliente).sort((a,b) => b[1].total - a[1].total)[0];
-  const tasaEnvios = ventasFiltradas.length > 0 ? ((ventasFiltradas.filter(v=>v.generaEnvio).length/ventasFiltradas.length)*100).toFixed(0)+'%' : '0%';
+  const tasaEnvios = totalVentas > 0 ? ((tickets.filter(g=>g.lineas.some(v=>v.generaEnvio)).length/totalVentas)*100).toFixed(0)+'%' : '0%';
 
   const destacados = [];
   if (topUds) destacados.push(['Producto más vendido', topUds.nombre, topUds.cant+' uds']);
@@ -3926,9 +4069,11 @@ function calcularMetricas(ventas, envios) {
   const costoProductos = ventas.reduce((a, v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const ganancia = ingresos - comisiones - costoProductos - costoEnvios;
   const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : 0;
-  const ticket = ventas.length > 0 ? ingresos / ventas.length : 0;
+  // Un carrito con varios productos es una sola venta, no una por línea
+  const cantVentas = contarTickets(ventas);
+  const ticket = cantVentas > 0 ? ingresos / cantVentas : 0;
   const unidades = ventas.reduce((a, v) => a + v.cantidad, 0);
-  return { ingresos, comisiones, costoEnvios, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: ventas.length };
+  return { ingresos, comisiones, costoEnvios, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: cantVentas };
 }
 
 function renderComparador() {
@@ -4151,21 +4296,29 @@ async function clienteVerDetalle(id) {
       ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:4px">${infoItems.join('')}</div>`
       : '';
 
-    const ventas = data.ventas || [];
-    document.getElementById('detalle-cliente-historial').innerHTML = ventas.length === 0
+    // El historial se muestra por compra: las líneas de un carrito van en una sola fila
+    const compras = agruparTickets((data.ventas || []).map(normVenta));
+    document.getElementById('detalle-cliente-historial').innerHTML = compras.length === 0
       ? '<div class="empty-state" style="padding:24px"><div class="empty-icon">🛒</div><p>Sin compras registradas</p></div>'
       : `<div class="table-wrap"><table>
           <thead><tr><th>Fecha</th><th>Canal</th><th>Producto</th><th>Cant.</th><th>Total</th><th>Estado</th></tr></thead>
-          <tbody>${ventas.map(v => `
+          <tbody>${compras.map(g => {
+            const v = g.lineas[0];
+            const t = resumenTicket(g.lineas);
+            const estados = [...new Set(g.lineas.map(x => x.estado))];
+            const detalle = g.lineas.length > 1
+              ? `<span class="badge badge-blue" style="font-size:10px">🛒 ${g.lineas.length} productos</span> ${g.lineas.map(x => x.producto).join(' · ')}`
+              : (v.producto || '—');
+            return `
             <tr>
               <td>${v.fecha}</td>
               <td>${canalBadge(v.canal)}</td>
-              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${v.producto || '—'}</td>
-              <td style="text-align:center">${v.cantidad}</td>
-              <td style="font-weight:600">${fmt(v.total)}</td>
-              <td>${estadoVentaBadge(v.estado)}</td>
-            </tr>
-          `).join('')}</tbody>
+              <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${g.lineas.map(x => x.producto).join(' · ')}">${detalle}</td>
+              <td style="text-align:center">${t.cantidad}</td>
+              <td style="font-weight:600">${fmt(t.total)}</td>
+              <td>${estados.length > 1 ? '<span class="badge badge-gray">mixto</span>' : estadoVentaBadge(estados[0])}</td>
+            </tr>`;
+          }).join('')}</tbody>
         </table></div>`;
 
     openModal('modal-detalle-cliente');

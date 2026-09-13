@@ -7,8 +7,17 @@
 
 const { getSupabase } = require('./_supabase');
 
+// Una compra = un ticket, no una línea. Las líneas de un carrito mostrador comparten
+// venta_grupo y los ítems de una orden MELI comparten orden_meli: en ambos casos el
+// cliente hizo UNA sola compra, así el ticket promedio no queda diluido por ítem.
+function ticketKey(v) {
+  if (v.venta_grupo) return 'G:' + v.venta_grupo;
+  if (v.canal === 'meli' && v.orden_meli) return 'M:' + v.orden_meli;
+  return 'V:' + v.id;
+}
+
 function calcularMetricas(ventas) {
-  const total_compras = ventas.length;
+  const total_compras = new Set(ventas.map(ticketKey)).size;
   const monto_total = ventas.reduce((s, v) => s + (Number(v.total) || 0), 0);
   const ultima_compra = ventas.length
     ? ventas.reduce((max, v) => (v.fecha > max ? v.fecha : max), ventas[0].fecha)
@@ -57,7 +66,7 @@ module.exports = async (req, res) => {
       // Listado con métricas calculadas
       const [{ data: clientes }, { data: ventas }] = await Promise.all([
         supabase.from('clientes').select('*').order('created_at', { ascending: false }),
-        supabase.from('ventas').select('id,total,fecha,cliente_id,comprador'),
+        supabase.from('ventas').select('id,total,fecha,cliente_id,comprador,canal,orden_meli,venta_grupo'),
       ]);
 
       const result = (clientes || []).map(c => {

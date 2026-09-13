@@ -57,6 +57,8 @@ module.exports = async (req, res) => {
         id: v.id,
         canal: v.canal,
         fecha: v.fecha,
+        // Las líneas de un mismo carrito comparten venta_grupo → cuentan como una sola venta
+        venta_grupo: v.ventaGrupo || null,
         orden_meli: v.ordenMeli || null,
         comprador: v.comprador || null,
         cliente: v.cliente || null,
@@ -194,6 +196,7 @@ module.exports = async (req, res) => {
       const { error: cancelErr } = await supabase.from('ventas_canceladas').insert({
         venta_id: venta.id,
         canal: venta.canal,
+        venta_grupo: venta.venta_grupo || null,
         fecha_venta: venta.fecha,
         cancelada_at: new Date().toISOString(),
         orden_meli: venta.orden_meli || null,

@@ -904,10 +904,13 @@
       </div>
       <div class="form-group form-full">
         <label class="form-label">Dirección de entrega</label>
-        <div style="position:relative">
-          <input type="text" id="env-direccion" placeholder="Calle, número, barrio..." autocomplete="off"
-            oninput="dirOnInput('env')" onkeydown="dirKeydown(event,'env')" onblur="dirCerrarDropdown('env')">
-          <div id="env-direccion-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:start">
+          <div style="position:relative">
+            <input type="text" id="env-direccion" placeholder="Calle y barrio..." autocomplete="off"
+              oninput="dirOnInput('env')" onkeydown="dirKeydown(event,'env')" onblur="dirCerrarDropdown('env')">
+            <div id="env-direccion-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+          </div>
+          <input type="text" id="env-puerta" placeholder="Nº puerta" autocomplete="off" inputmode="numeric">
         </div>
         <div id="env-zona-hint" style="display:none;margin-top:5px;font-size:11px"></div>
       </div>
@@ -972,10 +975,13 @@
       </div>
       <div class="form-group form-full">
         <label class="form-label">Dirección de entrega</label>
-        <div style="position:relative">
-          <input type="text" id="ee-direccion" placeholder="Calle, número, barrio..." autocomplete="off"
-            oninput="dirOnInput('ee')" onkeydown="dirKeydown(event,'ee')" onblur="dirCerrarDropdown('ee')">
-          <div id="ee-direccion-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        <div style="display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:start">
+          <div style="position:relative">
+            <input type="text" id="ee-direccion" placeholder="Calle y barrio..." autocomplete="off"
+              oninput="dirOnInput('ee')" onkeydown="dirKeydown(event,'ee')" onblur="dirCerrarDropdown('ee')">
+            <div id="ee-direccion-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+          </div>
+          <input type="text" id="ee-puerta" placeholder="Nº puerta" autocomplete="off" inputmode="numeric">
         </div>
         <div id="ee-zona-hint" style="display:none;margin-top:5px;font-size:11px"></div>
       </div>
@@ -2012,6 +2018,21 @@ function dirCostoDeZona(zona) {
   return c == null ? null : c;
 }
 
+// Junta la dirección con el número de puerta, que se carga en un campo aparte para que
+// elegir una sugerencia no obligue a reescribirlo. El número va pegado a la calle
+// ("Av. Italia 3000, Pocitos Nuevo"), que es como se escribe una dirección acá.
+function dirComponerDireccion(prefix) {
+  const direccion = document.getElementById(`${prefix}-direccion`).value.trim();
+  const puerta = document.getElementById(`${prefix}-puerta`).value.trim();
+  if (!puerta) return direccion;
+  if (!direccion) return puerta;
+  const partes = direccion.split(',').map(p => p.trim());
+  // Si la calle ya tiene ese número (por ejemplo al reeditar un envío) no se repite
+  if (partes[0].split(/\s+/).includes(puerta)) return direccion;
+  partes[0] = `${partes[0]} ${puerta}`.trim();
+  return partes.filter(Boolean).join(', ');
+}
+
 function dirMostrarHint(prefix, zona) {
   const hint = document.getElementById(`${prefix}-zona-hint`);
   if (!hint) return;
@@ -2087,7 +2108,9 @@ function dirElegir(prefix, i) {
   const st = dirState[prefix];
   const s = st.items[i];
   if (!s) return;
-  document.getElementById(`${prefix}-direccion`).value = s.direccion;
+  // La sugerencia puede venir con puerta (OSM): va al campo de al lado, no a la calle
+  document.getElementById(`${prefix}-direccion`).value = s.direccionBase || s.direccion;
+  if (s.numero) document.getElementById(`${prefix}-puerta`).value = s.numero;
   dirAplicarZona(prefix, s.zona, true);
   if (!s.zona) dirMostrarHint(prefix, null);
   dirCerrarDropdown(prefix, true);
@@ -2127,7 +2150,7 @@ async function saveEnvio() {
     tracking: document.getElementById('env-tracking').value.trim(),
     fechaDespacho: document.getElementById('env-fecha').value,
     estado: document.getElementById('env-estado').value,
-    direccion: document.getElementById('env-direccion').value.trim(),
+    direccion: dirComponerDireccion('env'),
     costo: parseFloat(document.getElementById('env-costo').value) || 0,
     zona: parseInt(document.getElementById('env-zona').value) || null,
     colecta: document.getElementById('env-colecta').checked,
@@ -2185,6 +2208,7 @@ function openEnvioManual(ventaId) {
   // Dirección: la última que usó este cliente, ya con su zona y costo
   const previo = ultimoEnvioDeCliente(v);
   document.getElementById('env-direccion').value = previo ? previo.direccion : '';
+  document.getElementById('env-puerta').value = '';
   dirCerrarDropdown('env', true);
   dirMostrarHint('env', null);
   if (previo) dirAplicarZona('env', previo.zona || dirDetectarZona(previo.direccion), true);
@@ -2225,6 +2249,7 @@ function abrirEdicionEnvio(id) {
   document.getElementById('ee-fecha').value = e.fechaDespacho || '';
   document.getElementById('ee-estado').value = e.estado || 'pendiente';
   document.getElementById('ee-direccion').value = e.direccion || '';
+  document.getElementById('ee-puerta').value = '';
   dirCerrarDropdown('ee', true);
   dirMostrarHint('ee', e.zona || dirDetectarZona(e.direccion));
   openModal('modal-editar-envio');
@@ -2248,7 +2273,7 @@ async function guardarEdicionEnvio() {
     transportista: document.getElementById('ee-transportista').value,
     comprador: document.getElementById('ee-comprador').value.trim(),
     fechaDespacho: document.getElementById('ee-fecha').value,
-    direccion: document.getElementById('ee-direccion').value.trim(),
+    direccion: dirComponerDireccion('ee'),
   };
   try {
     await api('PUT', `/envios?id=${id}`, updates);

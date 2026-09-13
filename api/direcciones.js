@@ -51,11 +51,16 @@ function aSugerencia(item) {
   const numero = a.house_number || '';
   const barrio = a.neighbourhood || a.suburb || a.quarter || a.city_district || a.hamlet || '';
   const ciudad = a.city || a.town || a.village || a.municipality || '';
-  const partes = [[calle, numero].filter(Boolean).join(' '), barrio, ciudad].filter(Boolean);
-  const direccion = partes.join(', ') || item.display_name;
+  const resto = [barrio, ciudad].filter(Boolean);
+  // `direccion` es la que se muestra en el listado (con puerta, para reconocerla) y
+  // `direccionBase` la misma sin el número, porque en el formulario la puerta va aparte.
+  const direccion = [[calle, numero].filter(Boolean).join(' '), ...resto].filter(Boolean).join(', ') || item.display_name;
+  const direccionBase = [calle, ...resto].filter(Boolean).join(', ') || item.display_name;
   const zona = detectarZona(barrio) || detectarZona(ciudad) || detectarZona(item.display_name);
   return {
     direccion,
+    direccionBase,
+    numero: numero || null,
     barrio: barrio || null,
     ciudad: ciudad || null,
     zona: zona || null,

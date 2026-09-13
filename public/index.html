@@ -2319,7 +2319,6 @@ function generarComprobantePDF(lineas) {
 
   const NEGRO = [17, 17, 17];
   const GRIS = [110, 110, 110];
-  const GRIS_CLARO = [238, 238, 238];
   const BLANCO = [255, 255, 255];
 
   const primera = lineas[0];
@@ -2336,31 +2335,30 @@ function generarComprobantePDF(lineas) {
   const vence = sumarDiasCorrientes(fecha, COMPROBANTE.diasCambio);
 
   // ── Encabezado
-  doc.setFillColor(...NEGRO);
-  doc.rect(0, 0, W, 26, 'F');
+  // Fondo blanco y letra negra a propósito: son comprobantes que se imprimen todo el día,
+  // una banda llena de tinta en cada uno se come el cartucho.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.setTextColor(...BLANCO);
-  doc.text(COMPROBANTE.comercio, M, 13);
+  doc.setTextColor(...NEGRO);
+  doc.text(COMPROBANTE.comercio, M, 15);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  if (COMPROBANTE.contacto.length) doc.text(COMPROBANTE.contacto.join('  ·  '), M, 19);
+  doc.setTextColor(...GRIS);
+  if (COMPROBANTE.contacto.length) doc.text(COMPROBANTE.contacto.join('  ·  '), M, 21);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('COMPROBANTE DE VENTA', W - M, 13, { align: 'right' });
+  doc.setTextColor(...NEGRO);
+  doc.text('COMPROBANTE DE VENTA', W - M, 15, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.text('Venta de mostrador', W - M, 19, { align: 'right' });
+  doc.setTextColor(...GRIS);
+  doc.text('Venta de mostrador', W - M, 21, { align: 'right' });
+  // Una línea alcanza para separar el encabezado del cuerpo, sin rellenar nada.
+  doc.setDrawColor(...NEGRO);
+  doc.setLineWidth(0.6);
+  doc.line(M, 25, W - M, 25);
 
-  // ── Aviso: esto no es una factura
-  doc.setFillColor(...GRIS_CLARO);
-  doc.rect(0, 26, W, 9, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...NEGRO);
-  doc.text('DOCUMENTO SIN VALIDEZ FISCAL — NO ES UNA FACTURA', W / 2, 32, { align: 'center' });
-
-  let y = 45;
+  let y = 36;
 
   // ── Datos de la operación
   const datos = [
@@ -2401,15 +2399,13 @@ function generarComprobantePDF(lineas) {
     // la hoja suelta no quede anónima.
     didDrawPage: (data) => {
       if (data.pageNumber === 1) return;
-      doc.setFillColor(...NEGRO);
-      doc.rect(0, 0, W, 14, 'F');
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.setTextColor(...BLANCO);
-      doc.text(`${COMPROBANTE.comercio} — Comprobante N° ${numero} (continuación)`, M, 9);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.text('SIN VALIDEZ FISCAL', W - M, 9, { align: 'right' });
+      doc.setTextColor(...NEGRO);
+      doc.text(`${COMPROBANTE.comercio} — Comprobante N° ${numero} (continuación)`, M, 13);
+      doc.setDrawColor(...NEGRO);
+      doc.setLineWidth(0.4);
+      doc.line(M, 16, W - M, 16);
     },
     columnStyles: {
       0: { cellWidth: 26 },

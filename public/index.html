@@ -2119,7 +2119,7 @@ function stockRowHtml(p, sangria = false) {
     <td>${etiquetas}</td>
     <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
     <td class="${alerta}">${p.stockDep}</td>
-    <td>${p.stockMeli}</td>
+    <td>${p.meliId ? p.stockMeli : '—'}</td>
     <td>${p.shopifyId ? p.stockShopify : '—'}</td>
     <td>${fmt(p.precio)}</td>
     <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>

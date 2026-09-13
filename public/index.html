@@ -150,6 +150,18 @@
   .chart-bar-track { flex: 1; background: var(--surface2); border-radius: 4px; height: 22px; overflow: hidden; }
   .chart-bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; color: #fff; transition: width 0.4s ease; }
   .chart-bar-val { width: 60px; text-align: right; font-family: 'JetBrains Mono', monospace; color: var(--text-dim); }
+  /* Barras de tope de facturación (Literal E) */
+  .fact-bar-track { position: relative; background: var(--surface2); border: 1px solid var(--border); border-radius: 999px; height: 28px; overflow: hidden; }
+  .fact-bar-fill { height: 100%; border-radius: 999px; display: flex; align-items: center; justify-content: flex-end; padding-right: 10px; font-size: 12px; font-weight: 700; color: #fff; transition: width 0.5s ease; white-space: nowrap; }
+  .fact-bar-mark { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.45); }
+  .fact-mini-track { background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; min-width: 70px; }
+  .fact-mini-fill { height: 100%; border-radius: 4px; }
+  .fact-alert { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: var(--radius); font-size: 13px; line-height: 1.55; margin-bottom: 16px; }
+  .fact-alert .fact-alert-icon { font-size: 20px; line-height: 1; }
+  .fact-alert.ok { background: rgba(34,197,94,0.10); border: 1px solid rgba(34,197,94,0.28); color: var(--green); }
+  .fact-alert.alerta { background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.35); color: var(--yellow); }
+  .fact-alert.critico { background: rgba(249,115,22,0.14); border: 1px solid rgba(249,115,22,0.4); color: #fb923c; }
+  .fact-alert.excedido { background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.4); color: var(--red); }
 
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
   .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
@@ -1324,6 +1336,437 @@ function getCostosFijosEnUYU() {
   return getCostosFijos().reduce((sum, c) => sum + (c.moneda === 'USD' ? c.monto * cotiz : c.monto), 0);
 }
 
+// =====================
+// TOPES DE FACTURACIÓN (LITERAL E)
+// =====================
+// El tope del Literal E se fija en UI y se mide contra el ejercicio (año calendario).
+// Sólo cuenta lo que realmente se factura:
+//   · MELI / Shopify: la plataforma factura todas las ventas.
+//   · Mostrador: no se factura lo que entra en contado (efectivo y transferencia).
+const FACT_METODOS = [
+  { id: 'efectivo',      label: 'Efectivo' },
+  { id: 'transferencia', label: 'Transferencia' },
+  { id: 'debito',        label: 'Débito' },
+  { id: 'credito',       label: 'Crédito' },
+  { id: 'qr',            label: 'QR / Billetera' },
+];
+// Canales presenciales: facturan o no según el método de pago. El resto factura siempre.
+const FACT_CANALES_POR_METODO = ['mostrador'];
+const FACT_CANAL_LABELS = { meli: '🟡 MELI', mostrador: '🏪 Mostrador', shopify: '🛍️ Shopify' };
+const FACT_NIVEL_COLOR = { ok: 'var(--green)', alerta: 'var(--yellow)', critico: '#fb923c', excedido: 'var(--red)' };
+const FACT_NIVEL_GRAD = {
+  ok:       'linear-gradient(90deg,#166534,#22c55e)',
+  alerta:   'linear-gradient(90deg,#b45309,#f59e0b)',
+  critico:  'linear-gradient(90deg,#c2410c,#f97316)',
+  excedido: 'linear-gradient(90deg,#991b1b,#ef4444)',
+};
+
+function getFacturacionConfigDefault() {
+  return {
+    topeUI: 305000,              // Literal E: 305.000 UI para venta de bienes
+    valorUI: 6.6,                // valor de la UI en pesos (actualizalo desde el INE)
+    inicioActividad: '2026-06',  // primer mes facturado
+    alertaPct: 75,
+    criticoPct: 90,
+    prorratearPrimerEjercicio: false,
+    canales: { meli: true, mostrador: true, shopify: true },
+    metodosNoFacturados: ['efectivo', 'transferencia'],
+  };
+}
+
+function getFacturacionConfig() {
+  const def = getFacturacionConfigDefault();
+  try {
+    const raw = localStorage.getItem('ecom_facturacion_config');
+    if (raw) {
+      const saved = JSON.parse(raw) || {};
+      return { ...def, ...saved, canales: { ...def.canales, ...(saved.canales || {}) } };
+    }
+  } catch {}
+  return def;
+}
+
+function getTopeAnualUYU(cfg) {
+  cfg = cfg || getFacturacionConfig();
+  return (parseFloat(cfg.topeUI) || 0) * (parseFloat(cfg.valorUI) || 0);
+}
+
+// Meses que dura el ejercicio: 12, salvo el primer año, que arranca en el mes de alta.
+function factMesesEjercicio(anio, cfg) {
+  const [aIni, mIni] = (cfg.inicioActividad || '').split('-').map(Number);
+  if (!aIni || !mIni) return 12;
+  if (anio > aIni) return 12;
+  if (anio < aIni) return 0;
+  return 12 - mIni + 1;
+}
+
+// ¿Esta venta va a la facturación del Literal E?
+function esVentaFacturada(v, cfg) {
+  cfg = cfg || getFacturacionConfig();
+  if (!v || v.estado === 'cancelada') return false;
+  if (cfg.canales[v.canal] === false) return false;
+  if (FACT_CANALES_POR_METODO.includes(v.canal)) {
+    const metodo = (v.metodoPago || '').toLowerCase();
+    if (metodo && cfg.metodosNoFacturados.includes(metodo)) return false;
+  }
+  return true;
+}
+
+function factNivel(pct, cfg) {
+  if (pct >= 100) return 'excedido';
+  if (pct >= cfg.criticoPct) return 'critico';
+  if (pct >= cfg.alertaPct) return 'alerta';
+  return 'ok';
+}
+
+// Todos los números del ejercicio corriente en un solo objeto.
+function calcFacturacion() {
+  const cfg = getFacturacionConfig();
+  const hoy = new Date();
+  const anio = hoy.getFullYear();
+  const mesActualKey = anio + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+  const [aIni, mIni] = (cfg.inicioActividad || '').split('-').map(Number);
+
+  const mesesEjercicio = factMesesEjercicio(anio, cfg);
+  const primerMes = (aIni === anio && mIni) ? mIni : 1;
+  const mesesTranscurridos = Math.max(0, (hoy.getMonth() + 1) - primerMes + 1);
+
+  const topeAnualPleno = getTopeAnualUYU(cfg);
+  const topeAnual = cfg.prorratearPrimerEjercicio && mesesEjercicio > 0 && mesesEjercicio < 12
+    ? topeAnualPleno * mesesEjercicio / 12
+    : topeAnualPleno;
+  const topeMensual = topeAnualPleno / 12;
+
+  const delAnio = db.ventas.filter(v => (v.fecha || '').slice(0, 4) === String(anio) && v.estado !== 'cancelada');
+  const facturadas = delAnio.filter(v => esVentaFacturada(v, cfg));
+  const noFacturadas = delAnio.filter(v => !esVentaFacturada(v, cfg));
+
+  const facturadoAnio = facturadas.reduce((a, v) => a + (v.total || 0), 0);
+  const noFacturadoAnio = noFacturadas.reduce((a, v) => a + (v.total || 0), 0);
+
+  // Acumulado mes a mes del ejercicio
+  const meses = [];
+  for (let m = primerMes; m <= (anio === hoy.getFullYear() ? hoy.getMonth() + 1 : 12); m++) {
+    const key = anio + '-' + String(m).padStart(2, '0');
+    const fact = facturadas.filter(v => (v.fecha || '').slice(0, 7) === key).reduce((a, v) => a + (v.total || 0), 0);
+    const noFact = noFacturadas.filter(v => (v.fecha || '').slice(0, 7) === key).reduce((a, v) => a + (v.total || 0), 0);
+    meses.push({
+      key,
+      label: new Date(anio, m - 1, 1).toLocaleDateString('es-UY', { month: 'long' }),
+      facturado: fact,
+      noFacturado: noFact,
+      pct: topeMensual > 0 ? (fact / topeMensual) * 100 : 0,
+      esActual: key === mesActualKey,
+    });
+  }
+
+  const mesActual = meses.find(m => m.esActual) || { key: mesActualKey, label: new Date().toLocaleDateString('es-UY', { month: 'long' }), facturado: 0, noFacturado: 0, pct: 0 };
+
+  const pctAnual = topeAnual > 0 ? (facturadoAnio / topeAnual) * 100 : 0;
+  const pctMes = mesActual.pct;
+  const proyeccion = mesesTranscurridos > 0 && mesesEjercicio > 0
+    ? (facturadoAnio / mesesTranscurridos) * mesesEjercicio
+    : 0;
+
+  // Desglose por canal y, en mostrador, por método de pago
+  const desglose = [];
+  Object.keys(FACT_CANAL_LABELS).forEach(canal => {
+    const delCanal = delAnio.filter(v => v.canal === canal);
+    if (!delCanal.length) return;
+    if (FACT_CANALES_POR_METODO.includes(canal)) {
+      const porMetodo = {};
+      delCanal.forEach(v => {
+        const key = (v.metodoPago || '').toLowerCase() || 'sin_metodo';
+        if (!porMetodo[key]) porMetodo[key] = 0;
+        porMetodo[key] += v.total || 0;
+      });
+      Object.entries(porMetodo).forEach(([metodo, total]) => {
+        const meta = FACT_METODOS.find(m => m.id === metodo);
+        desglose.push({
+          canal,
+          detalle: meta ? meta.label : 'Sin método cargado',
+          total,
+          factura: cfg.canales[canal] !== false && !(metodo !== 'sin_metodo' && cfg.metodosNoFacturados.includes(metodo)),
+        });
+      });
+    } else {
+      desglose.push({
+        canal,
+        detalle: 'Todas las ventas',
+        total: delCanal.reduce((a, v) => a + (v.total || 0), 0),
+        factura: cfg.canales[canal] !== false,
+      });
+    }
+  });
+
+  return {
+    cfg, anio, topeAnual, topeAnualPleno, topeMensual, mesesEjercicio, mesesTranscurridos,
+    prorrateado: topeAnual !== topeAnualPleno,
+    facturadoAnio, noFacturadoAnio, pctAnual, proyeccion,
+    meses, mesActual, pctMes, desglose,
+    nivelAnual: factNivel(pctAnual, cfg),
+    nivelMes: factNivel(pctMes, cfg),
+    sinActividad: mesesEjercicio === 0,
+  };
+}
+
+function factBar(pct, nivel, cfg, label) {
+  const ancho = Math.min(100, Math.max(0, pct));
+  const marca = Math.min(100, Math.max(0, cfg.alertaPct));
+  return `
+    <div class="fact-bar-track">
+      <div class="fact-bar-fill" style="width:${ancho.toFixed(1)}%;background:${FACT_NIVEL_GRAD[nivel]}">${ancho >= 18 ? (label || pct.toFixed(1) + '%') : ''}</div>
+      <div class="fact-bar-mark" style="left:${marca}%" title="Umbral de alerta: ${cfg.alertaPct}%"></div>
+    </div>`;
+}
+
+function factAlertas(f) {
+  const cfg = f.cfg;
+  const alertas = [];
+  const restaAnual = f.topeAnual - f.facturadoAnio;
+  const restaMes = f.topeMensual - f.mesActual.facturado;
+
+  if (f.nivelAnual === 'excedido') {
+    alertas.push({ nivel: 'excedido', icono: '🚨', txt: `<strong>Pasaste el tope anual del Literal E.</strong> Llevás ${fmt(f.facturadoAnio)} facturados sobre un tope de ${fmt(f.topeAnual)} (${f.pctAnual.toFixed(1)}%). Hablá con tu contador: con el ejercicio excedido corresponde cambiar de régimen.` });
+  } else if (f.nivelAnual === 'critico') {
+    alertas.push({ nivel: 'critico', icono: '🔴', txt: `<strong>Estás al ${f.pctAnual.toFixed(1)}% del tope anual.</strong> Te quedan ${fmt(restaAnual)} para facturar en ${f.anio}. Frená lo que puedas pasar a contado o preparate para el cambio de régimen.` });
+  } else if (f.nivelAnual === 'alerta') {
+    alertas.push({ nivel: 'alerta', icono: '⚠️', txt: `<strong>Superaste el ${cfg.alertaPct}% del tope anual</strong> (${f.pctAnual.toFixed(1)}%). Te quedan ${fmt(restaAnual)} de margen hasta fin de ${f.anio}.` });
+  }
+
+  if (f.nivelMes === 'excedido') {
+    alertas.push({ nivel: 'critico', icono: '📅', txt: `<strong>${f.mesActual.label}</strong>: facturaste ${fmt(f.mesActual.facturado)}, por encima del ritmo mensual sostenible (${fmt(f.topeMensual)} = tope anual ÷ 12). Un mes solo no rompe nada, pero a este ritmo el tope anual se te va.` });
+  } else if (f.nivelMes === 'critico' || f.nivelMes === 'alerta') {
+    alertas.push({ nivel: f.nivelMes, icono: '📅', txt: `<strong>${f.mesActual.label}</strong>: vas por ${f.pctMes.toFixed(1)}% del ritmo mensual. Te quedan ${fmt(restaMes)} este mes para no pasarte del promedio de ${fmt(f.topeMensual)}.` });
+  }
+
+  if (f.proyeccion > f.topeAnual && f.topeAnual > 0 && f.nivelAnual !== 'excedido') {
+    alertas.push({ nivel: 'alerta', icono: '📈', txt: `<strong>Proyección:</strong> al ritmo actual cerrás el ejercicio en ${fmt(f.proyeccion)}, por encima del tope de ${fmt(f.topeAnual)}.` });
+  }
+
+  if (!alertas.length) {
+    alertas.push({ nivel: 'ok', icono: '✅', txt: `Vas al <strong>${f.pctAnual.toFixed(1)}%</strong> del tope anual y al <strong>${f.pctMes.toFixed(1)}%</strong> del ritmo de ${f.mesActual.label}. Te quedan ${fmt(restaAnual)} para facturar en ${f.anio}.` });
+  }
+
+  return alertas.map(a => `<div class="fact-alert ${a.nivel}"><span class="fact-alert-icon">${a.icono}</span><span>${a.txt}</span></div>`).join('');
+}
+
+function renderFacturacionSection() {
+  const f = calcFacturacion();
+  const cfg = f.cfg;
+
+  if (f.sinActividad) {
+    return `
+      <div style="margin-bottom:32px">
+        <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px">🧾 Tope de facturación · Literal E</h2>
+        <div class="fact-alert ok" style="margin-top:12px"><span class="fact-alert-icon">📅</span><span>La empresa empieza a facturar en ${cfg.inicioActividad}. Todavía no hay ejercicio corriente que medir.</span></div>
+        ${renderFacturacionConfig(cfg)}
+      </div>`;
+  }
+
+  const filasMeses = f.meses.slice().reverse().map(m => {
+    const nivel = factNivel(m.pct, cfg);
+    return `
+      <tr${m.esActual ? ' style="background:var(--surface2)"' : ''}>
+        <td style="text-transform:capitalize">${m.label}${m.esActual ? ' <span class="badge badge-blue">actual</span>' : ''}</td>
+        <td><strong>${fmt(m.facturado)}</strong></td>
+        <td style="color:var(--text-muted)">${fmt(m.noFacturado)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="fact-mini-track" style="flex:1"><div class="fact-mini-fill" style="width:${Math.min(100, m.pct).toFixed(1)}%;background:${FACT_NIVEL_GRAD[nivel]}"></div></div>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${FACT_NIVEL_COLOR[nivel]};min-width:46px;text-align:right">${m.pct.toFixed(0)}%</span>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+
+  const filasDesglose = f.desglose.map(d => `
+    <tr>
+      <td>${FACT_CANAL_LABELS[d.canal] || d.canal}</td>
+      <td style="color:var(--text-dim)">${d.detalle}</td>
+      <td><strong>${fmt(d.total)}</strong></td>
+      <td>${d.factura
+        ? '<span class="badge badge-green">✔ factura</span>'
+        : '<span class="badge badge-gray">contado · no factura</span>'}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="margin-bottom:20px">
+      <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px">🧾 Tope de facturación · Literal E</h2>
+      <p style="font-size:12px;color:var(--text-muted)">
+        Ejercicio ${f.anio} (${f.mesesEjercicio} ${f.mesesEjercicio === 1 ? 'mes' : 'meses'}${f.prorrateado ? ', tope prorrateado' : ''}) · ${cfg.topeUI.toLocaleString('es-UY')} UI × $${cfg.valorUI} = ${fmt(f.topeAnualPleno)} al año.
+        Se computan las ventas de MELI y las de mostrador que <strong>no</strong> son en contado.
+      </p>
+    </div>
+
+    ${factAlertas(f)}
+
+    <div class="cards-grid" style="margin-bottom:24px">
+      <div class="stat-card blue">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-value">${fmt(f.topeAnual)}</div>
+        <div class="stat-label">Tope del ejercicio ${f.anio}</div>
+      </div>
+      <div class="stat-card ${f.nivelAnual === 'ok' ? 'green' : f.nivelAnual === 'alerta' ? 'yellow' : 'red'}">
+        <div class="stat-icon">🧾</div>
+        <div class="stat-value">${fmt(f.facturadoAnio)}</div>
+        <div class="stat-label">Facturado en ${f.anio} · ${f.pctAnual.toFixed(1)}%</div>
+      </div>
+      <div class="stat-card ${f.topeAnual - f.facturadoAnio >= 0 ? 'purple' : 'red'}">
+        <div class="stat-icon">🪙</div>
+        <div class="stat-value">${fmt(f.topeAnual - f.facturadoAnio)}</div>
+        <div class="stat-label">Margen disponible hasta fin de año</div>
+      </div>
+      <div class="stat-card ${f.proyeccion > f.topeAnual ? 'red' : 'green'}">
+        <div class="stat-icon">📈</div>
+        <div class="stat-value">${fmt(f.proyeccion)}</div>
+        <div class="stat-label">Proyección al cierre (ritmo actual)</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="stat-icon">💵</div>
+        <div class="stat-value">${fmt(f.noFacturadoAnio)}</div>
+        <div class="stat-label">Cobrado en contado (fuera del tope)</div>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom:24px">
+      <div class="table-header"><span class="table-title">📊 Avance del tope anual</span></div>
+      <div style="padding:20px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:6px">
+          <span>${fmt(f.facturadoAnio)} facturados</span>
+          <span>Tope ${fmt(f.topeAnual)}</span>
+        </div>
+        ${factBar(f.pctAnual, f.nivelAnual, cfg, f.pctAnual.toFixed(1) + '% del tope anual')}
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px">La línea marca el umbral de alerta (${cfg.alertaPct}%). Rojo a partir del ${cfg.criticoPct}%.</div>
+
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin:22px 0 6px">
+          <span style="text-transform:capitalize">${f.mesActual.label}: ${fmt(f.mesActual.facturado)}</span>
+          <span>Ritmo mensual ${fmt(f.topeMensual)} (tope ÷ 12)</span>
+        </div>
+        ${factBar(f.pctMes, f.nivelMes, cfg, f.pctMes.toFixed(1) + '% del ritmo mensual')}
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-bottom:24px">
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">📅 Mes a mes del ejercicio ${f.anio}</span></div>
+        <table>
+          <thead><tr><th>Mes</th><th>Facturado</th><th>Contado</th><th>% del ritmo mensual</th></tr></thead>
+          <tbody>${filasMeses || '<tr><td colspan="4" style="color:var(--text-muted)">Sin ventas en el ejercicio.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">🔍 Qué entra y qué no</span></div>
+        <table>
+          <thead><tr><th>Canal</th><th>Detalle</th><th>Total ${f.anio}</th><th>Estado</th></tr></thead>
+          <tbody>${filasDesglose || '<tr><td colspan="4" style="color:var(--text-muted)">Sin ventas en el ejercicio.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+
+    ${renderFacturacionConfig(cfg)}
+
+    <div style="height:1px;background:var(--border);margin:32px 0"></div>
+  `;
+}
+
+function renderFacturacionConfig(cfg) {
+  const inputStyle = "width:100%;padding:9px 12px;font-size:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'JetBrains Mono',monospace";
+  const checks = FACT_METODOS.map(m => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer">
+      <input type="checkbox" id="fact-met-${m.id}" ${cfg.metodosNoFacturados.includes(m.id) ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;flex-shrink:0">
+      ${m.label}
+    </label>`).join('');
+  const canales = Object.entries(FACT_CANAL_LABELS).map(([id, label]) => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer">
+      <input type="checkbox" id="fact-canal-${id}" ${cfg.canales[id] !== false ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;flex-shrink:0">
+      ${label}
+    </label>`).join('');
+
+  return `
+    <div class="table-wrap">
+      <div class="table-header"><span class="table-title">⚙️ Configuración del tope</span></div>
+      <div style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px">
+        <div>
+          <label class="form-label">Tope anual en UI</label>
+          <input type="number" id="fact-tope-ui" value="${cfg.topeUI}" step="1000" style="${inputStyle}">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">305.000 UI para venta de bienes · 183.000 UI si sólo prestás servicios.</div>
+        </div>
+        <div>
+          <label class="form-label">Valor de la UI (UYU)</label>
+          <input type="number" id="fact-valor-ui" value="${cfg.valorUI}" step="0.01" style="${inputStyle}">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Actualizalo con el valor publicado por el INE.</div>
+        </div>
+        <div>
+          <label class="form-label">Primer mes facturado</label>
+          <input type="month" id="fact-inicio" value="${cfg.inicioActividad}" style="${inputStyle}">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">El conteo se reinicia en enero de cada año.</div>
+        </div>
+        <div>
+          <label class="form-label">Umbral de alerta (%)</label>
+          <input type="number" id="fact-alerta" value="${cfg.alertaPct}" min="1" max="100" style="${inputStyle}">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Amarillo desde acá.</div>
+        </div>
+        <div>
+          <label class="form-label">Umbral crítico (%)</label>
+          <input type="number" id="fact-critico" value="${cfg.criticoPct}" min="1" max="100" style="${inputStyle}">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Rojo desde acá.</div>
+        </div>
+        <div>
+          <label class="form-label">Métodos que NO se facturan</label>
+          <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px">${checks}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">Sólo aplica a mostrador.</div>
+        </div>
+        <div>
+          <label class="form-label">Canales que facturan</label>
+          <div style="display:flex;flex-direction:column;gap:7px;margin-top:6px">${canales}</div>
+        </div>
+        <div>
+          <label class="form-label">Primer ejercicio</label>
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer;margin-top:6px">
+            <input type="checkbox" id="fact-prorratear" ${cfg.prorratearPrimerEjercicio ? 'checked' : ''} style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:3px 0 0;flex-shrink:0">
+            <span>Prorratear el tope si el ejercicio dura menos de 12 meses</span>
+          </label>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">DGI suele exigir el tope proporcional a los meses de actividad en el primer ejercicio. Confirmalo con tu contador.</div>
+        </div>
+      </div>
+      <div style="padding:0 20px 20px">
+        <button class="btn btn-primary btn-sm" onclick="saveFacturacionConfigForm()">Guardar configuración</button>
+      </div>
+    </div>`;
+}
+
+function saveFacturacionConfigForm() {
+  const cfg = getFacturacionConfig();
+  const topeUI = parseFloat(document.getElementById('fact-tope-ui').value);
+  const valorUI = parseFloat(document.getElementById('fact-valor-ui').value);
+  const alertaPct = parseFloat(document.getElementById('fact-alerta').value);
+  const criticoPct = parseFloat(document.getElementById('fact-critico').value);
+  const inicio = document.getElementById('fact-inicio').value;
+
+  if (!topeUI || topeUI <= 0) return alert('Ingresá un tope en UI válido.');
+  if (!valorUI || valorUI <= 0) return alert('Ingresá un valor de la UI válido.');
+  if (!alertaPct || alertaPct <= 0 || alertaPct > 100) return alert('El umbral de alerta tiene que estar entre 1 y 100.');
+  if (!criticoPct || criticoPct <= 0 || criticoPct > 100) return alert('El umbral crítico tiene que estar entre 1 y 100.');
+  if (criticoPct < alertaPct) return alert('El umbral crítico no puede ser menor que el de alerta.');
+  if (!/^\d{4}-\d{2}$/.test(inicio)) return alert('Ingresá el primer mes facturado (mes y año).');
+
+  cfg.topeUI = topeUI;
+  cfg.valorUI = valorUI;
+  cfg.alertaPct = alertaPct;
+  cfg.criticoPct = criticoPct;
+  cfg.inicioActividad = inicio;
+  cfg.prorratearPrimerEjercicio = document.getElementById('fact-prorratear').checked;
+  cfg.metodosNoFacturados = FACT_METODOS.filter(m => document.getElementById('fact-met-' + m.id).checked).map(m => m.id);
+  cfg.canales = Object.keys(FACT_CANAL_LABELS).reduce((acc, id) => {
+    acc[id] = document.getElementById('fact-canal-' + id).checked;
+    return acc;
+  }, {});
+
+  localStorage.setItem('ecom_facturacion_config', JSON.stringify(cfg));
+  renderInformacion();
+}
+
 function renderInformacion() {
   const container = document.getElementById('content-informacion');
   const costos = getCostosFijos();
@@ -1349,6 +1792,8 @@ function renderInformacion() {
   `).join('');
 
   container.innerHTML = `
+    ${renderFacturacionSection()}
+
     <div style="margin-bottom:24px">
       <h2 style="font-size:20px;font-weight:700;letter-spacing:-0.5px;margin-bottom:4px">💸 Costos Fijos Mensuales</h2>
       <p style="font-size:12px;color:var(--text-muted)">Última actualización: ${mesActual} · Se descuentan automáticamente en el cálculo de ganancia en Reportes.</p>

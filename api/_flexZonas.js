@@ -25,8 +25,16 @@ const ZONAS_KEYWORDS = {
   11: ['canelones ciudad', 'canelones capital'],
 };
 
+// Además de bajar a minúsculas y sacar tildes, saca los "de/del" sueltos: la misma zona
+// se escribe "Punta de Rieles" o "Punta Rieles" según quién la tipee. Como se aplica igual
+// al texto y a la keyword, la comparación queda pareja.
 function normalizarTexto(t) {
-  return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return (t || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/\b(de|del)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // Detecta zona a partir de cualquier texto (barrio, ciudad, dirección)

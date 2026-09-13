@@ -5,6 +5,7 @@
     "api/productos.js": { "maxDuration": 10 },
     "api/ventas.js": { "maxDuration": 10 },
     "api/envios.js": { "maxDuration": 10 },
+    "api/direcciones.js": { "maxDuration": 10 },
     "api/transportistas.js": { "maxDuration": 10 },
     "api/meli/auth.js": { "maxDuration": 10 },
     "api/meli/callback.js": { "maxDuration": 10 },

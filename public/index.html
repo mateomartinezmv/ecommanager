@@ -2261,6 +2261,258 @@ function vmosCalcTotales() {
 }
 
 // =====================
+// COMPROBANTE DE VENTA MOSTRADOR (sin validez fiscal)
+// =====================
+// Las ventas de mostrador no llevan factura, así que se emite este comprobante interno:
+// le sirve al cliente para saber qué se llevó, a qué precio y hasta cuándo lo puede cambiar,
+// pero NO es un documento fiscal y el propio PDF lo aclara para que no se confunda.
+const COMPROBANTE = {
+  comercio: 'MARTINEZ MOTOS',
+  // Líneas opcionales bajo el nombre (dirección, teléfono, etc.). Vacío = no se imprimen.
+  contacto: [],
+  diasCambio: 10,   // días corrientes (no hábiles) para el cambio
+};
+
+const METODO_PAGO_LABELS = { efectivo: 'Efectivo', debito: 'Débito', credito: 'Crédito', transferencia: 'Transferencia', qr: 'QR / Billetera' };
+
+function fechaDDMMAAAA(iso) {
+  if (!iso) return '—';
+  const [a, m, d] = String(iso).slice(0, 10).split('-');
+  return (a && m && d) ? `${d}/${m}/${a}` : String(iso);
+}
+
+// Vencimiento del cambio: días CORRIENTES, o sea de calendario — sábados, domingos y
+// feriados cuentan igual. Se suma en UTC para que la zona horaria no corra el día.
+function sumarDiasCorrientes(iso, dias) {
+  const base = new Date(String(iso).slice(0, 10) + 'T00:00:00Z');
+  if (isNaN(base.getTime())) return null;
+  base.setUTCDate(base.getUTCDate() + dias);
+  return base.toISOString().slice(0, 10);
+}
+
+function comprobanteMoneda(n) {
+  return '$' + (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Abre el PDF en una pestaña nueva con el diálogo de impresión ya lanzado. Si el navegador
+// bloquea el popup se descarga el archivo, así la venta nunca queda sin comprobante.
+function abrirComprobanteParaImprimir(doc, nombreArchivo) {
+  try {
+    doc.autoPrint();
+    const win = window.open(doc.output('bloburl'), '_blank');
+    if (win) return;
+  } catch (e) {
+    console.warn('No se pudo abrir el comprobante para imprimir:', e);
+  }
+  doc.save(nombreArchivo);
+}
+
+// Genera el comprobante de un ticket completo: una venta suelta o todas las líneas de un
+// carrito. `lineas` usa el mismo formato que db.ventas (camelCase), así sirve tanto recién
+// registrada la venta como al reimprimirla más tarde desde la lista.
+function generarComprobantePDF(lineas) {
+  if (!lineas || !lineas.length) { alert('No hay productos para armar el comprobante.'); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const W = 210, M = 16, ANCHO = W - M * 2;
+
+  const NEGRO = [17, 17, 17];
+  const GRIS = [110, 110, 110];
+  const GRIS_CLARO = [238, 238, 238];
+  const BLANCO = [255, 255, 255];
+
+  const primera = lineas[0];
+  const numero = primera.ventaGrupo || primera.id;
+  const fecha = primera.fecha;
+  const cliente = (primera.cliente || primera.comprador || '').trim();
+  const metodo = METODO_PAGO_LABELS[primera.metodoPago] || primera.metodoPago || '—';
+  const notas = (primera.notas || '').trim();
+
+  const subtotal = lineas.reduce((s, v) => s + (v.precioUnit || 0) * (v.cantidad || 0), 0);
+  const descuento = lineas.reduce((s, v) => s + (v.descuentoMonto || 0), 0);
+  const total = lineas.reduce((s, v) => s + (v.total || 0), 0);
+  const descuentoPct = lineas.find(v => (v.descuentoPct || 0) > 0)?.descuentoPct || 0;
+  const vence = sumarDiasCorrientes(fecha, COMPROBANTE.diasCambio);
+
+  // ── Encabezado
+  doc.setFillColor(...NEGRO);
+  doc.rect(0, 0, W, 26, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...BLANCO);
+  doc.text(COMPROBANTE.comercio, M, 13);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  if (COMPROBANTE.contacto.length) doc.text(COMPROBANTE.contacto.join('  ·  '), M, 19);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('COMPROBANTE DE VENTA', W - M, 13, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text('Venta de mostrador', W - M, 19, { align: 'right' });
+
+  // ── Aviso: esto no es una factura
+  doc.setFillColor(...GRIS_CLARO);
+  doc.rect(0, 26, W, 9, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(...NEGRO);
+  doc.text('DOCUMENTO SIN VALIDEZ FISCAL — NO ES UNA FACTURA', W / 2, 32, { align: 'center' });
+
+  let y = 45;
+
+  // ── Datos de la operación
+  const datos = [
+    ['Comprobante N°', String(numero)],
+    ['Fecha', fechaDDMMAAAA(fecha)],
+    ['Cliente', cliente || 'Consumidor final'],
+    ['Método de pago', metodo],
+  ];
+  doc.setFontSize(9);
+  datos.forEach(([label, valor], i) => {
+    const cx = M + (i % 2) * (ANCHO / 2);
+    const cy = y + Math.floor(i / 2) * 11;
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...GRIS);
+    doc.text(label, cx, cy);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...NEGRO);
+    doc.text(String(valor), cx, cy + 5);
+  });
+  y += 11 * Math.ceil(datos.length / 2) + 4;
+
+  // ── Detalle de productos
+  doc.autoTable({
+    startY: y,
+    head: [['SKU', 'Producto', 'Cant.', 'P. Unit.', 'Desc.', 'Subtotal']],
+    body: lineas.map(v => [
+      v.sku || '',
+      v.producto || '',
+      String(v.cantidad || 0),
+      comprobanteMoneda(v.precioUnit),
+      (v.descuentoMonto || 0) > 0 ? '-' + comprobanteMoneda(v.descuentoMonto) : '—',
+      comprobanteMoneda(v.total),
+    ]),
+    margin: { left: M, right: M, top: 22 },
+    styles: { font: 'helvetica', fontSize: 9, textColor: NEGRO, cellPadding: 3, overflow: 'linebreak' },
+    headStyles: { fillColor: NEGRO, textColor: BLANCO, fontStyle: 'bold', fontSize: 9 },
+    // Un carrito grande se va a una segunda hoja: ahí se repite una banda finita para que
+    // la hoja suelta no quede anónima.
+    didDrawPage: (data) => {
+      if (data.pageNumber === 1) return;
+      doc.setFillColor(...NEGRO);
+      doc.rect(0, 0, W, 14, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...BLANCO);
+      doc.text(`${COMPROBANTE.comercio} — Comprobante N° ${numero} (continuación)`, M, 9);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text('SIN VALIDEZ FISCAL', W - M, 9, { align: 'right' });
+    },
+    columnStyles: {
+      0: { cellWidth: 26 },
+      2: { cellWidth: 14, halign: 'center' },
+      3: { cellWidth: 26, halign: 'right' },
+      4: { cellWidth: 26, halign: 'right' },
+      5: { cellWidth: 28, halign: 'right', fontStyle: 'bold' },
+    },
+    theme: 'grid',
+  });
+  y = doc.lastAutoTable.finalY + 6;
+
+  // ── Totales
+  const totales = [];
+  if (descuento > 0) {
+    totales.push(['Subtotal', comprobanteMoneda(subtotal)]);
+    totales.push([`Descuento${descuentoPct ? ` ${descuentoPct}%` : ''}`, '-' + comprobanteMoneda(descuento)]);
+  }
+  totales.push(['TOTAL', comprobanteMoneda(total)]);
+
+  const anchoTot = 80, xTot = W - M - anchoTot;
+  totales.forEach(([label, valor], i) => {
+    const esTotal = i === totales.length - 1;
+    if (esTotal) {
+      doc.setFillColor(...NEGRO);
+      doc.rect(xTot, y - 5, anchoTot, 10, 'F');
+      doc.setTextColor(...BLANCO);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+    } else {
+      doc.setTextColor(...NEGRO);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+    }
+    doc.text(label, xTot + 3, y + (esTotal ? 2 : 0));
+    doc.text(valor, W - M - 3, y + (esTotal ? 2 : 0), { align: 'right' });
+    y += esTotal ? 12 : 7;
+  });
+  y += 4;
+
+  // ── Notas de la venta
+  if (notas) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...GRIS);
+    doc.text('Notas', M, y);
+    doc.setTextColor(...NEGRO);
+    const wrap = doc.splitTextToSize(notas, ANCHO);
+    doc.text(wrap, M, y + 5);
+    y += 5 + wrap.length * 4.5 + 5;
+  }
+
+  // ── Condiciones de cambio
+  const condiciones = [
+    `Presentando este comprobante, el producto tiene cambio por hasta ${COMPROBANTE.diasCambio} días corrientes (no hábiles, se cuentan los fines de semana y feriados) desde la fecha de compra.`,
+    vence ? `Plazo de cambio hasta el ${fechaDDMMAAAA(vence)} inclusive.` : '',
+    'Sin este comprobante no se puede verificar la compra y no corresponde el cambio.',
+  ].filter(Boolean);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const wrapCond = condiciones.flatMap(t => doc.splitTextToSize(t, ANCHO - 8));
+  const altoCond = 12 + wrapCond.length * 4.6;
+  doc.setDrawColor(...NEGRO);
+  doc.setLineWidth(0.4);
+  doc.rect(M, y, ANCHO, altoCond);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...NEGRO);
+  doc.text('CONDICIONES DE CAMBIO', M + 4, y + 7);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(wrapCond, M + 4, y + 13);
+  y += altoCond + 8;
+
+  // ── Pie: de nuevo el aviso, porque es lo que más importa que quede claro
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(...GRIS);
+  const pie = doc.splitTextToSize(
+    'Este documento no tiene validez legal ni fiscal: no es una factura, un ticket fiscal ni un remito. ' +
+    'Se emite únicamente como constancia operativa de la operación entre el comercio y el cliente. ' +
+    `Emitido el ${fechaDDMMAAAA(new Date().toISOString().slice(0, 10))}.`, ANCHO);
+  doc.text(pie, M, Math.max(y, 272));
+
+  abrirComprobanteParaImprimir(doc, `comprobante_${numero}.pdf`);
+}
+
+// Reimprime el comprobante de un ticket ya registrado (una venta suelta o un carrito).
+function imprimirComprobanteTicket(key) {
+  const lineas = db.ventas
+    .filter(v => ticketKey(v) === key)
+    .sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0));
+  if (!lineas.length) { alert('No se encontró la venta para imprimir el comprobante.'); return; }
+  generarComprobantePDF(lineas);
+}
+
+function imprimirComprobanteVenta(id) {
+  const v = db.ventas.find(x => x.id === id);
+  if (!v) { alert('No se encontró la venta para imprimir el comprobante.'); return; }
+  imprimirComprobanteTicket(ticketKey(v));
+}
+
+// =====================
 // VENTAS
 // =====================
 async function saveVenta(canal) {
@@ -2300,14 +2552,19 @@ async function saveVenta(canal) {
     // se siguen guardando por producto (stock, devoluciones) pero cuentan como UNA venta.
     const ventaGrupo = totales.lineas.length > 1 ? 'C' + Date.now() : null;
     closeModal('modal-venta-mostrador');
+    const creadas = [];
     try {
       for (let i = 0; i < totales.lineas.length; i++) {
         const item = totales.lineas[i];
         const v = { id: 'V' + Date.now() + i, canal: 'mostrador', fecha, ventaGrupo, cliente, clienteId, sku: item.sku, producto: item.nombre, cantidad: item.cantidad, precioUnit: item.precioUnit, comision: 0, descuentoPct: item.descuentoPct, descuentoMonto: item.descuentoMonto, total: item.total, estado: 'pagada', metodoPago, notas, generaEnvio: false };
         await api('POST', '/ventas', v);
+        creadas.push(v);
       }
       await loadAll();
       renderVentas(); renderStock();
+      // La venta de mostrador no lleva factura: se emite el comprobante interno para
+      // imprimir y entregar. Si falla el PDF la venta ya quedó registrada igual.
+      generarComprobantePDF(creadas);
     } catch(e) { alert('Error registrando venta: ' + e.message); }
   }
 }
@@ -3088,6 +3345,7 @@ function renderVentas() {
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="${enviosByVenta[v.id] ? 'Editar envío' : 'Crear envío'}">🚚</button>
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="recalcularComisionVenta('${v.id}', this)" title="Recalcular comisión y envío MELI">🔁</button>` : ''}
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
+        ${v.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteVenta('${v.id}')" title="Imprimir comprobante de venta (sin validez fiscal)">🧾</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
@@ -3131,6 +3389,7 @@ function renderVentas() {
         <button class="btn btn-ghost btn-sm" onclick="toggleGrupoVenta('${grupo.key}')" title="${abierto ? 'Ocultar productos' : 'Ver productos'}">${abierto ? '➖' : '➕'}</button>
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeCarrito('${grupo.key}')" title="${envioDelCarrito ? 'Editar envío del carrito' : 'Crear envío para todo el carrito'}">🚚</button>
         ${primera.canal === 'meli' && primera.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${primera.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
+        ${primera.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteTicket('${grupo.key}')" title="Imprimir comprobante del carrito (sin validez fiscal)">🧾</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteGrupoVenta('${grupo.key}')" title="Cancelar el carrito completo">🗑️</button>
       </td>
     </tr>

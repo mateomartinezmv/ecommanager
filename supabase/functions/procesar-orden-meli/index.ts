@@ -268,8 +268,15 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
 
     log.push(`Procesando item ${meliItemId} x${cantidad} $${precioUnit}`)
 
-    const { data: producto } = await supabase
-      .from('productos').select('*').eq('meli_id', meliItemId).single()
+    // Un SKU puede tener varias publicaciones (es común duplicarlas con
+    // distintos ángulos de venta): hay que buscar en meli_ids, no sólo en la
+    // publicación principal, o la venta se pierde y el stock queda inflado.
+    const { data: porArray } = await supabase
+      .from('productos').select('*').contains('meli_ids', [meliItemId]).limit(1)
+    const { data: porLegacy } = porArray?.length
+      ? { data: null }
+      : await supabase.from('productos').select('*').eq('meli_id', meliItemId).limit(1)
+    const producto = porArray?.[0] ?? porLegacy?.[0] ?? null
 
     let skuFinal: string, nombreFinal: string
 
@@ -291,7 +298,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
           sku: skuAuto, nombre: nombreItem,
           stock_dep: 0, stock_meli: 0, costo: 0,
           precio: precioUnit, alerta_min: 3,
-          meli_id: meliItemId, notas: 'Auto-creado por webhook MELI',
+          meli_ids: [meliItemId], notas: 'Auto-creado por webhook MELI',
         })
         log.push(`✅ Producto auto-creado: ${skuAuto}`)
       }

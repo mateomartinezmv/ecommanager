@@ -172,8 +172,16 @@ async function procesarOrden(orderId, supabase, token) {
       continue;
     }
 
-    // Buscar producto por meli_id
-    let { data: producto } = await supabase.from('productos').select('*').eq('meli_id', meliItemId).single();
+    // Buscar producto por cualquiera de sus publicaciones (un SKU puede tener
+    // varias): meli_ids primero, meli_id como respaldo para filas viejas.
+    const { data: porArray } = await supabase
+      .from('productos').select('*').contains('meli_ids', [meliItemId]).limit(1);
+    let producto = porArray?.[0] || null;
+    if (!producto) {
+      const { data: porLegacy } = await supabase
+        .from('productos').select('*').eq('meli_id', meliItemId).limit(1);
+      producto = porLegacy?.[0] || null;
+    }
 
     // Si no existe, auto-crear (bug original: el webhook no hacía esto)
     if (!producto) {
@@ -198,7 +206,7 @@ async function procesarOrden(orderId, supabase, token) {
           costo: 0,
           precio: precioUnit,
           alerta_min: 3,
-          meli_id: meliItemId,
+          meli_ids: [meliItemId],
           notas: 'Auto-creado por reprocesamiento manual',
         });
         if (insertErr) {

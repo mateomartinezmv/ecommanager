@@ -3,6 +3,8 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { buscarProductoPorMeliId, meliIdsDe } = require('../_meliIds');
+const { syncMeliStockProducto } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
@@ -145,14 +147,21 @@ async function handleOrder(resource) {
     const cantidad = item.quantity;
     const precioUnit = item.unit_price;
 
-    const { data: producto } = await supabase
-      .from('productos')
-      .select('*')
-      .eq('meli_id', meliItemId)
-      .single();
+    // Busca entre TODAS las publicaciones del SKU, no sólo la principal.
+    const producto = await buscarProductoPorMeliId(supabase, meliItemId);
 
     if (!producto) {
+      // Antes esto era un `continue` mudo: la venta se perdía y el stock
+      // quedaba inflado sin que nadie se enterara. Ahora avisa.
       console.log(`Producto con MELI ID ${meliItemId} no encontrado en DB`);
+      await sendTelegram(
+        `⚠️ <b>Venta sin registrar</b>\n\n` +
+        `La publicación <b>${esc(meliItemId)}</b> no está vinculada a ningún SKU del CRM, ` +
+        `así que la orden <b>${esc(String(order.id))}</b> no se registró y el stock no se descontó.\n\n` +
+        `📦 <b>Publicación:</b> ${esc(item.item.title || '—')}\n` +
+        `🔢 <b>Cantidad:</b> ${cantidad}\n\n` +
+        `Vinculá esa publicación al SKU en el CRM y reprocesá la orden.`
+      );
       continue;
     }
 
@@ -169,6 +178,19 @@ async function handleOrder(resource) {
         stock_meli: nuevoStockMeli,
         updated_at: new Date().toISOString(),
       }).eq('sku', producto.sku);
+
+      // MELI sólo descuenta la publicación que vendió. Si el SKU tiene otras,
+      // quedan mostrando stock de más: hay que bajarlas a mano.
+      if (meliIdsDe(producto).length > 1) {
+        try {
+          const r = await syncMeliStockProducto(token, producto, nuevoStockDep);
+          for (const e of r.errores) {
+            console.error(`❌ Stock MELI ${e.meliId}: ${e.error}`);
+          }
+        } catch (err) {
+          console.error('❌ Error sincronizando publicaciones hermanas:', err.message);
+        }
+      }
 
       const comisionItem = totalDeduction !== null
         ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
@@ -268,8 +290,9 @@ async function handleItem(resource) {
 
   if (item.status !== 'paused') return;
 
-  const { data: producto } = await supabase
-    .from('productos').select('nombre, stock_dep, stock_meli').eq('meli_id', itemId).single();
+  const producto = await buscarProductoPorMeliId(
+    supabase, itemId, 'nombre, stock_dep, stock_meli'
+  );
 
   const nombre = producto?.nombre || item.title;
   const motivo = item.available_quantity === 0

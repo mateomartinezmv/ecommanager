@@ -710,7 +710,7 @@
       <div class="form-group"><label class="form-label">Precio costo</label><input type="number" id="p-costo" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Precio venta *</label><input type="number" id="p-precio" placeholder="0.00" step="0.01"></div>
       <div class="form-group"><label class="form-label">Alerta stock mínimo</label><input type="number" id="p-alerta" placeholder="5" min="0"></div>
-      <div class="form-group"><label class="form-label">ID Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLA0000000"></div>
+      <div class="form-group"><label class="form-label">IDs de Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLU0000000, MLU1111111"><small style="font-size:11px;color:var(--text-muted)">Si el producto tiene varias publicaciones, separalas con coma. La primera es la principal.</small></div>
       <div class="form-group"><label class="form-label">ID Variant Shopify</label><input type="text" id="p-shopify-id" placeholder="ej: 12345678901234"></div>
       <div class="form-group"><label class="form-label">Tipo</label><select id="p-tipo"><option value="nuevo">🆕 Nuevo</option><option value="usado">🔄 Usado</option></select></div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
@@ -1268,7 +1268,7 @@ async function loadAll() {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -2042,7 +2042,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliId: document.getElementById('p-meli-id').value.trim(), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliIds: document.getElementById('p-meli-id').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -2066,7 +2066,7 @@ function editProducto(sku) {
   document.getElementById('p-precio').value = p.precio;
   document.getElementById('p-alerta').value = p.alertaMin;
   document.getElementById('p-tipo').value = p.tipo || 'nuevo';
-  document.getElementById('p-meli-id').value = p.meliId || '';
+  document.getElementById('p-meli-id').value = (p.meliIds || []).join(', ');
   document.getElementById('p-shopify-id').value = p.shopifyId || '';
   document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
   document.getElementById('p-notas').value = p.notas || '';
@@ -3112,7 +3112,7 @@ function stockRowHtml(p, sangria = false) {
     <td>${etiquetas}</td>
     <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
     <td class="${alerta}">${p.stockDep}</td>
-    <td>${p.meliId ? p.stockMeli : '—'}</td>
+    <td>${(p.meliIds || []).length ? `${p.stockMeli}${p.meliIds.length > 1 ? ` <span class="badge badge-gray" style="font-size:10px" title="${p.meliIds.join(', ')}">×${p.meliIds.length}</span>` : ''}` : '—'}</td>
     <td>${p.shopifyId ? p.stockShopify : '—'}</td>
     <td>${fmt(p.precio)}</td>
     <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
@@ -3206,7 +3206,7 @@ async function toggleDiscontinuado(sku, value) {
     await api('PUT', `/productos?sku=${encodeURIComponent(sku)}`, {
       ...p,
       stockDep: p.stockDep, stockMeli: p.stockMeli, stockShopify: p.stockShopify,
-      alertaMin: p.alertaMin, meliId: p.meliId, shopifyId: p.shopifyId,
+      alertaMin: p.alertaMin, meliIds: p.meliIds, shopifyId: p.shopifyId,
       discontinuado: value,
     });
     p.discontinuado = value;

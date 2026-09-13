@@ -3,6 +3,7 @@
 
 const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
+const { meliIdsDe } = require('./_meliIds');
 
 const SHOPIFY_SHOP = 'martinez-motos.myshopify.com';
 
@@ -15,6 +16,26 @@ async function syncMeliStock(token, meliId, cantidad) {
   const meliData = await meliRes.json();
   if (meliData.error) throw new Error(meliData.message);
   return meliData;
+}
+
+// Empuja el mismo stock a TODAS las publicaciones del producto: cada
+// publicación lleva su propio available_quantity y todas venden del mismo
+// depósito. Un fallo en una no frena a las demás; se devuelven los errores.
+async function syncMeliStockProducto(token, producto, cantidad) {
+  const ids = meliIdsDe(producto);
+  const sincronizadas = [];
+  const errores = [];
+
+  for (const meliId of ids) {
+    try {
+      await syncMeliStock(token, meliId, cantidad);
+      sincronizadas.push(meliId);
+    } catch (err) {
+      errores.push({ meliId, error: err.message });
+    }
+  }
+
+  return { sincronizadas, errores };
 }
 
 async function syncShopifyStock(token, shopifyId, cantidad) {
@@ -66,7 +87,7 @@ async function applyImportArrival(supabase, items) {
 
   const { data: productos, error } = await supabase
     .from('productos')
-    .select('sku, stock_dep, meli_id, shopify_id')
+    .select('sku, stock_dep, meli_id, meli_ids, shopify_id')
     .in('sku', skus);
   if (error) throw error;
 
@@ -92,10 +113,11 @@ async function applyImportArrival(supabase, items) {
 
     aplicados.push({ sku, sumado: qty, nuevoStock });
 
-    if (p.meli_id) {
+    if (meliIdsDe(p).length) {
       try {
         if (!meliToken) meliToken = await getMeliToken();
-        await syncMeliStock(meliToken, p.meli_id, nuevoStock);
+        const r = await syncMeliStockProducto(meliToken, p, nuevoStock);
+        for (const e of r.errores) errores.push({ sku, error: `MELI ${e.meliId}: ${e.error}` });
       } catch (err) {
         errores.push({ sku, error: 'MELI: ' + err.message });
       }
@@ -114,4 +136,4 @@ async function applyImportArrival(supabase, items) {
   return { aplicados, noEncontrados, errores };
 }
 
-module.exports = { applyImportArrival, syncMeliStock, syncShopifyStock };
+module.exports = { applyImportArrival, syncMeliStock, syncMeliStockProducto, syncShopifyStock };

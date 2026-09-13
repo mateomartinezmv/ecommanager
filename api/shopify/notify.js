@@ -4,6 +4,8 @@
 
 const { getSupabase } = require('../_supabase');
 const { getMeliToken } = require('../_meliToken');
+const { meliIdsDe } = require('../_meliIds');
+const { syncMeliStockProducto } = require('../_stockSync');
 const { getShopifyToken } = require('../_shopifyToken');
 
 const SHOP = 'martinez-motos.myshopify.com';
@@ -66,17 +68,18 @@ async function procesarOrden(order, supabase, log) {
     if (log) log.push(`✅ Venta registrada: ${ventaId}`);
 
     // ── Sync → MELI ──
-    if (producto.meli_id) {
+    if (meliIdsDe(producto).length) {
       try {
         const token = await getMeliToken();
-        const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ available_quantity: nuevoStockDep }),
-        });
-        const meliData = await meliRes.json();
-        if (meliData.error) { const w = `⚠️ MELI sync error: ${meliData.message}`; console.warn(w); if (log) log.push(w); }
-        else { const ok = `✅ MELI sync: ${producto.meli_id} → ${nuevoStockDep}`; console.log(ok); if (log) log.push(ok); }
+        const r = await syncMeliStockProducto(token, producto, nuevoStockDep);
+        if (r.sincronizadas.length) {
+          const ok = `✅ MELI sync: ${r.sincronizadas.join(', ')} → ${nuevoStockDep}`;
+          console.log(ok); if (log) log.push(ok);
+        }
+        for (const err of r.errores) {
+          const w = `⚠️ MELI sync error (${err.meliId}): ${err.error}`;
+          console.warn(w); if (log) log.push(w);
+        }
       } catch (meliErr) {
         const e = `❌ Error sync MELI: ${meliErr.message}`; console.error(e); if (log) log.push(e);
       }

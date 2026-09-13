@@ -7,7 +7,8 @@
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
-const { syncMeliStock, syncShopifyStock } = require('./_stockSync');
+const { syncMeliStockProducto, syncShopifyStock } = require('./_stockSync');
+const { parseMeliIds } = require('./_meliIds');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,7 +40,8 @@ module.exports = async (req, res) => {
         stock_shopify: p.stockShopify || 0,
         costo: p.costo || 0, precio: p.precio,
         alerta_min: p.alertaMin || 5,
-        meli_id: p.meliId || null,
+        // meli_id lo deriva el trigger a partir de meli_ids[1].
+        meli_ids: parseMeliIds(p.meliIds !== undefined ? p.meliIds : p.meliId),
         shopify_id: p.shopifyId || null,
         notas: p.notas,
         discontinuado: p.discontinuado || false,
@@ -55,7 +57,7 @@ module.exports = async (req, res) => {
       // Obtener producto anterior para comparar stock
       const { data: anterior } = await supabase
         .from('productos')
-        .select('stock_dep, stock_meli, stock_shopify, meli_id, shopify_id')
+        .select('stock_dep, stock_meli, stock_shopify, meli_id, meli_ids, shopify_id')
         .eq('sku', sku)
         .single();
 
@@ -73,24 +75,33 @@ module.exports = async (req, res) => {
         stock_shopify: stockCanon,
         costo: p.costo, precio: p.precio,
         alerta_min: p.alertaMin,
-        meli_id: p.meliId || null,
+        // meli_id lo deriva el trigger a partir de meli_ids[1].
+        meli_ids: parseMeliIds(p.meliIds !== undefined ? p.meliIds : p.meliId),
         shopify_id: p.shopifyId || null,
         notas: p.notas,
         discontinuado: p.discontinuado !== undefined ? p.discontinuado : false,
       }).eq('sku', sku).select().single();
       if (error) throw error;
 
-      const meliId = p.meliId || anterior?.meli_id;
       const shopifyId = p.shopifyId || anterior?.shopify_id;
       const forzarSync = p.forzarSync === true;
       const stockCambio = !anterior || anterior.stock_dep !== stockCanon;
 
-      // Sincronizar stock MELI si stock_dep cambió, si se enlazó un meli_id nuevo, o se forzó
-      if (meliId && (forzarSync || stockCambio || (!anterior?.meli_id && meliId))) {
+      // Se sincroniza si cambió el stock, si se sumó alguna publicación nueva
+      // o si se forzó. `data` ya trae meli_ids normalizado por el trigger.
+      const idsAntes = new Set(parseMeliIds(anterior?.meli_ids ?? anterior?.meli_id));
+      const hayPublicacionNueva = parseMeliIds(data.meli_ids).some((id) => !idsAntes.has(id));
+
+      if (parseMeliIds(data.meli_ids).length && (forzarSync || stockCambio || hayPublicacionNueva)) {
         try {
           const token = await getMeliToken();
-          await syncMeliStock(token, meliId, stockCanon);
-          console.log(`✅ Stock MELI sincronizado: ${meliId} → ${stockCanon}`);
+          const r = await syncMeliStockProducto(token, data, stockCanon);
+          if (r.sincronizadas.length) {
+            console.log(`✅ Stock MELI sincronizado: ${r.sincronizadas.join(', ')} → ${stockCanon}`);
+          }
+          for (const e of r.errores) {
+            console.error(`❌ Error sincronizando stock MELI ${e.meliId}:`, e.error);
+          }
         } catch (meliErr) {
           console.error('❌ Error sincronizando stock MELI:', meliErr.message);
         }

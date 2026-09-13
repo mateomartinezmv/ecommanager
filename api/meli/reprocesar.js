@@ -3,6 +3,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { buscarProductoPorMeliId } = require('../_meliIds');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
@@ -113,8 +114,8 @@ module.exports = async (req, res) => {
       const precioUnit = item.unit_price || 0;
       log.push(`Item: ${meliItemId}, x${cantidad}, $${precioUnit}`);
 
-      const { data: producto } = await supabase.from('productos').select('*').eq('meli_id', meliItemId).single();
-      if (!producto) { log.push(`⚠️ meli_id=${meliItemId} no encontrado`); resultados.push({ item: meliItemId, error: 'Producto no encontrado' }); continue; }
+      const producto = await buscarProductoPorMeliId(supabase, meliItemId);
+      if (!producto) { log.push(`⚠️ publicación ${meliItemId} no vinculada a ningún SKU`); resultados.push({ item: meliItemId, error: 'Publicación no vinculada a ningún SKU' }); continue; }
       log.push(`✅ Producto: ${producto.sku} - ${producto.nombre}`);
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;

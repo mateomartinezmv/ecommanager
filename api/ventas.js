@@ -6,6 +6,8 @@
 
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
+const { meliIdsDe } = require('./_meliIds');
+const { syncMeliStockProducto } = require('./_stockSync');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -84,18 +86,15 @@ module.exports = async (req, res) => {
         updated_at: new Date().toISOString(),
       }).eq('sku', v.sku);
 
-      // 5. Si es venta MELI y tiene meli_id → actualizar stock en MELI
-      if (v.canal === 'meli' && producto.meli_id) {
+      // 5. Si es venta MELI → actualizar el stock de TODAS sus publicaciones
+      if (v.canal === 'meli' && meliIdsDe(producto).length) {
         try {
           const token = await getMeliToken();
-          const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ available_quantity: nuevoStockMeli }),
-          });
-          const meliData = await meliRes.json();
-          if (meliData.error) console.warn('⚠️ MELI error:', meliData.message);
-          else console.log(`✅ Stock MELI actualizado: ${producto.meli_id} → ${nuevoStockMeli}`);
+          const r = await syncMeliStockProducto(token, producto, nuevoStockMeli);
+          if (r.sincronizadas.length) {
+            console.log(`✅ Stock MELI actualizado: ${r.sincronizadas.join(', ')} → ${nuevoStockMeli}`);
+          }
+          for (const e of r.errores) console.warn(`⚠️ MELI error (${e.meliId}):`, e.error);
         } catch (meliErr) {
           console.error('❌ No se pudo actualizar stock en MELI:', meliErr.message);
         }
@@ -162,18 +161,15 @@ module.exports = async (req, res) => {
 
         console.log(`🔄 Stock restaurado: ${venta.sku} depósito +${venta.cantidad} → ${stockDepRestaurado}`);
 
-        // 4. Si era MELI y tiene meli_id → restaurar stock en MELI también
-        if (venta.canal === 'meli' && producto.meli_id) {
+        // 4. Si era MELI → restaurar el stock en TODAS sus publicaciones
+        if (venta.canal === 'meli' && meliIdsDe(producto).length) {
           try {
             const token = await getMeliToken();
-            const meliRes = await fetch(`https://api.mercadolibre.com/items/${producto.meli_id}`, {
-              method: 'PUT',
-              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ available_quantity: stockMeliRestaurado }),
-            });
-            const meliData = await meliRes.json();
-            if (meliData.error) console.warn('⚠️ MELI stock restore warning:', meliData.message);
-            else console.log(`✅ Stock MELI restaurado: ${producto.meli_id} → ${stockMeliRestaurado}`);
+            const r = await syncMeliStockProducto(token, producto, stockMeliRestaurado);
+            if (r.sincronizadas.length) {
+              console.log(`✅ Stock MELI restaurado: ${r.sincronizadas.join(', ')} → ${stockMeliRestaurado}`);
+            }
+            for (const e of r.errores) console.warn(`⚠️ MELI stock restore warning (${e.meliId}):`, e.error);
           } catch (meliErr) {
             console.error('❌ Error restaurando stock MELI:', meliErr.message);
           }

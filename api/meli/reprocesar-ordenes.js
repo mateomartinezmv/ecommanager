@@ -4,6 +4,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { buscarProductoPorMeliId } = require('../_meliIds');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -55,12 +56,21 @@ module.exports = async (req, res) => {
         const meliItemId = item.item.id;
         const cantidad = item.quantity;
 
-        // Buscar producto por meli_id
-        const { data: producto } = await supabase
-          .from('productos')
-          .select('*')
-          .eq('meli_id', meliItemId)
-          .single();
+        // Buscar producto por cualquiera de sus publicaciones
+        const producto = await buscarProductoPorMeliId(supabase, meliItemId);
+
+        // Sin producto no se puede insertar nada útil: una venta con sku NULL
+        // no descuenta stock y no aparece en ningún informe por SKU. Mejor
+        // avisar para que se vincule la publicación y se reprocese.
+        if (!producto) {
+          resultados.push({
+            orden: orderId,
+            producto: item.item.title,
+            status: 'sin_producto',
+            msg: `La publicación ${meliItemId} no está vinculada a ningún SKU. Vinculala y reprocesá.`,
+          });
+          continue;
+        }
 
         const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
 
@@ -80,8 +90,8 @@ module.exports = async (req, res) => {
         const estadoMeli = order.status; // paid, cancelled, etc.
         const estadoCRM = estadoMeli === 'cancelled' ? 'cancelada' : 'pagada';
 
-        // Descontar stock solo si está pagada y hay producto
-        if (producto && estadoMeli === 'paid') {
+        // Descontar stock solo si está pagada
+        if (estadoMeli === 'paid') {
           const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
           const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
           await supabase.from('productos').update({
@@ -98,8 +108,8 @@ module.exports = async (req, res) => {
           fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
           orden_meli: String(order.id),
           comprador: order.buyer?.nickname || '',
-          sku: producto?.sku || null,
-          producto: producto?.nombre || item.item.title,
+          sku: producto.sku,
+          producto: producto.nombre,
           cantidad,
           precio_unit: item.unit_price,
           comision: 0,
@@ -113,7 +123,7 @@ module.exports = async (req, res) => {
         } else {
           resultados.push({
             orden: orderId,
-            producto: producto?.nombre || item.item.title,
+            producto: producto.nombre,
             comprador: order.buyer?.nickname,
             total: item.unit_price * cantidad,
             estado: estadoCRM,
@@ -129,11 +139,13 @@ module.exports = async (req, res) => {
   const importadas = resultados.filter(r => r.status === 'importada').length;
   const yaExistian = resultados.filter(r => r.status === 'ya_existia').length;
   const errores = resultados.filter(r => r.status === 'error' || r.status === 'error_insert').length;
+  const sinProducto = resultados.filter(r => r.status === 'sin_producto').length;
 
   return res.json({
     ok: true,
     importadas,
     ya_existian: yaExistian,
+    sin_producto: sinProducto,
     errores,
     detalle: resultados,
   });

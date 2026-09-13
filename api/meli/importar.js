@@ -3,6 +3,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { buscarProductoPorMeliId, meliIdsDe } = require('../_meliIds');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -57,14 +58,9 @@ module.exports = async (req, res) => {
           continue;
         }
 
-        // Verificar si ya existe un producto con ese meli_id
-        const { data: existente } = await supabase
-          .from('productos')
-          .select('sku')
-          .eq('meli_id', item.id)
-          .single();
-
-        if (existente) {
+        // Verificar si esta publicación ya está vinculada a algún SKU
+        const yaVinculada = await buscarProductoPorMeliId(supabase, item.id, 'sku');
+        if (yaVinculada) {
           omitidos++;
           continue;
         }
@@ -75,28 +71,33 @@ module.exports = async (req, res) => {
         if (skuVendedor) {
           const { data: propio } = await supabase
             .from('productos')
-            .select('sku, meli_id, fecha_publicacion')
+            .select('sku, meli_id, meli_ids, fecha_publicacion')
             .eq('sku', skuVendedor)
             .single();
 
           if (propio) {
-            if (propio.meli_id) {
-              omitidos++;   // ya está enlazado a otra publicación
-              continue;
-            }
-            const { error: linkErr } = await supabase.from('productos').update({
-              meli_id: item.id,
-              stock_meli: item.available_quantity,
+            // Un SKU puede tener varias publicaciones: la que llega se suma a
+            // las que ya tenía en vez de descartarse.
+            const idsPrevios = meliIdsDe(propio);
+            const esPrimera = idsPrevios.length === 0;
+
+            const cambios = {
+              meli_ids: [...idsPrevios, item.id],
               fecha_publicacion: propio.fecha_publicacion
                 || (item.date_created ? item.date_created.slice(0, 10) : null),
-            }).eq('sku', skuVendedor);
+            };
+            // stock_meli espeja el depósito; sólo lo sembramos al primer enlace.
+            if (esPrimera) cambios.stock_meli = item.available_quantity;
+
+            const { error: linkErr } = await supabase.from('productos')
+              .update(cambios).eq('sku', skuVendedor);
 
             if (linkErr) {
               console.error('Error enlazando:', skuVendedor, linkErr.message);
               errores.push(item.id);
             } else {
               vinculados++;
-              console.log(`🔗 Enlazado: ${skuVendedor} → ${item.id}`);
+              console.log(`🔗 Enlazado: ${skuVendedor} → ${item.id}${esPrimera ? '' : ' (publicación adicional)'}`);
             }
             continue;
           }
@@ -126,7 +127,7 @@ module.exports = async (req, res) => {
           costo: 0,
           precio: item.price,
           alerta_min: 3,
-          meli_id: item.id,
+          meli_ids: [item.id],
           fecha_publicacion: item.date_created ? item.date_created.slice(0, 10) : null,
           notas: `Importado desde MELI`,
         });

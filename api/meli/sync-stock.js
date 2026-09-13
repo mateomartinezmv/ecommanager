@@ -4,6 +4,8 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { meliIdsDe } = require('../_meliIds');
+const { syncMeliStock } = require('../_stockSync');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -13,8 +15,8 @@ module.exports = async (req, res) => {
     const supabase = getSupabase();
     const skuFiltro = req.body?.sku || null;
 
-    // Obtener productos con meli_id (todos o solo el indicado)
-    let query = supabase.from('productos').select('sku, nombre, meli_id, stock_dep').not('meli_id', 'is', null);
+    // Obtener productos con alguna publicación (todos o solo el indicado)
+    let query = supabase.from('productos').select('sku, nombre, meli_id, meli_ids, stock_dep').not('meli_id', 'is', null);
     if (skuFiltro) query = query.eq('sku', skuFiltro);
     const { data: productos, error } = await query;
     if (error) throw error;
@@ -24,26 +26,28 @@ module.exports = async (req, res) => {
     const errores = [];
 
     for (const p of productos) {
-      try {
-        const meliRes = await fetch(`https://api.mercadolibre.com/items/${p.meli_id}`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ available_quantity: p.stock_dep }),
-        });
-        const meliData = await meliRes.json();
-        if (meliData.error) throw new Error(meliData.message);
+      // Cada publicación del SKU lleva su propio available_quantity y todas
+      // venden del mismo depósito: se empuja el mismo stock_dep a todas.
+      let algunaOk = false;
 
-        // Actualizar campos espejo en CRM
+      for (const meliId of meliIdsDe(p)) {
+        try {
+          await syncMeliStock(token, meliId, p.stock_dep);
+          algunaOk = true;
+          resultados.push({ sku: p.sku, meli_id: meliId, stock: p.stock_dep });
+          console.log(`✅ ${p.sku} (${meliId}) → ${p.stock_dep}`);
+        } catch (err) {
+          errores.push({ sku: p.sku, meli_id: meliId, error: err.message });
+          console.error(`❌ ${p.sku} (${meliId}):`, err.message);
+        }
+      }
+
+      // Los espejos del CRM se actualizan si al menos una publicación aceptó.
+      if (algunaOk) {
         await supabase.from('productos').update({
           stock_meli: p.stock_dep,
           stock_shopify: p.stock_dep,
         }).eq('sku', p.sku);
-
-        resultados.push({ sku: p.sku, meli_id: p.meli_id, stock: p.stock_dep });
-        console.log(`✅ ${p.sku} (${p.meli_id}) → ${p.stock_dep}`);
-      } catch (err) {
-        errores.push({ sku: p.sku, meli_id: p.meli_id, error: err.message });
-        console.error(`❌ ${p.sku}:`, err.message);
       }
     }
 

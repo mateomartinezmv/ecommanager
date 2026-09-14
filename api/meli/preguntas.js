@@ -15,6 +15,9 @@ const {
   listarSinResponder,
   obtenerPregunta,
   titulosDeItems,
+  esPrimeraPregunta,
+  aplicarFirma,
+  redactarRespuesta,
   responderPregunta,
 } = require('../_meliPreguntas');
 
@@ -22,45 +25,6 @@ function autorizado(req) {
   const secret = process.env.ADMIN_SECRET;
   if (!secret) return false;
   return req.headers['authorization'] === `Bearer ${secret}`;
-}
-
-async function sugerirRespuesta(pregunta, titulo) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('Falta ANTHROPIC_API_KEY');
-  }
-
-  const prompt = `Sos el asistente de Martinez Motos, una tienda de accesorios para motos en Uruguay que vende por Mercado Libre.
-
-Un comprador preguntó esto sobre el producto "${titulo}":
-
-"${pregunta.text}"
-
-Escribí una respuesta corta, amigable y en español rioplatense (voseo). Máximo 3 oraciones.
-- Si pregunta por disponibilidad, precio o envío: respondé que hay stock y que se envía a todo Uruguay.
-- Si es una consulta técnica que no podés responder con certeza, invitá a escribir por mensaje privado.
-- No inventes especificaciones, medidas ni compatibilidades que no estén en el título.`;
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  const data = await res.json();
-  if (!res.ok || data.error) {
-    throw new Error(data.error?.message || `Anthropic HTTP ${res.status}`);
-  }
-  const texto = data.content?.[0]?.text?.trim();
-  if (!texto) throw new Error('La IA no devolvió texto');
-  return texto;
 }
 
 module.exports = async (req, res) => {
@@ -116,9 +80,13 @@ module.exports = async (req, res) => {
 
     // ── Sin `respuesta` → sólo sugerir, no publica nada ─────────
     if (respuesta === undefined) {
-      // Redactar automáticamente es opcional: sin la key igual se puede
-      // listar preguntas y publicar una respuesta escrita a mano.
-      if (!process.env.ANTHROPIC_API_KEY) {
+      let borrador;
+      try {
+        borrador = await redactarRespuesta(token, pregunta, titulo);
+      } catch (e) {
+        // Redactar automáticamente es opcional: sin la key igual se puede
+        // listar preguntas y publicar una respuesta escrita a mano.
+        if (e.code !== 'SIN_API_KEY') throw e;
         return res.status(503).json({
           ok: false,
           error: 'Falta ANTHROPIC_API_KEY: no se puede redactar la respuesta automáticamente.',
@@ -128,23 +96,28 @@ module.exports = async (req, res) => {
           siguiente_paso: 'Podés publicar igual mandando el campo "respuesta" con tu texto.',
         });
       }
-      const sugerida = await sugerirRespuesta(pregunta, titulo);
+
       return res.status(200).json({
         ok: true,
         publicada: false,
         question_id: pregunta.id,
         item_titulo: titulo,
         pregunta: pregunta.text,
-        respuesta_sugerida: sugerida,
+        primera_pregunta: borrador.primeraPregunta,
+        respuesta_sugerida: borrador.texto,
         siguiente_paso: 'Para publicarla, repetí el POST agregando el campo "respuesta".',
       });
     }
 
     // ── Con `respuesta` → publicar en MELI ──────────────────────
-    const texto = String(respuesta).trim();
-    if (!texto) {
+    const propio = String(respuesta).trim();
+    if (!propio) {
       return res.status(400).json({ ok: false, error: 'La respuesta está vacía' });
     }
+
+    const primera = await esPrimeraPregunta(token, pregunta);
+    const texto = aplicarFirma(propio, primera);
+
     if (texto.length > MAX_RESPUESTA) {
       return res.status(400).json({
         ok: false,

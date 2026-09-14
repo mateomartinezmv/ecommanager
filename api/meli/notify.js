@@ -384,7 +384,7 @@ async function handleQuestion(resource) {
     `❓ <b>Nueva pregunta en MELI</b>\n\n` +
     `📦 <b>Producto:</b> ${esc(titulo)}\n` +
     `💬 <b>Pregunta:</b> ${esc(q.text)}\n\n` +
-    `<b>responder</b> → te propongo un texto\n` +
+    `<b>sugerir respuesta</b> → te propongo un texto y lo aprobás con <b>ok</b>\n` +
     `<b>responder</b> + tu texto → lo publico tal cual`
   );
 }

@@ -10,8 +10,8 @@ const MENU = `🏍️ <b>Martinez Motos Bot</b>\n\n` +
   `💰 <b>ganancia</b> — ganancia estimada del mes\n` +
   `🤖 <b>recomendaciones</b> — análisis IA\n\n` +
   `<b>Preguntas de MELI:</b>\n` +
-  `💬 <b>responder</b> — borrador automático de la última pregunta\n` +
-  `✍️ <b>responder &lt;tu texto&gt;</b> — publica tu texto tal cual\n\n` +
+  `💬 <b>sugerir respuesta</b> — te propongo un texto, lo aprobás con <b>ok</b>\n` +
+  `✍️ <b>responder &lt;tu texto&gt;</b> — publica tu texto\n\n` +
   `<b>Acciones (texto libre):</b>\n` +
   `🛒 "vendí 2 señaleros a $1500 efectivo"\n` +
   `📦 "agregá casco Shiro talle M precio $4500 stock 3"\n` +
@@ -347,8 +347,11 @@ module.exports = async (req, res) => {
   const supabase = getSupabase();
 
   try {
-    // ── Responder pregunta MELI ─────────────────────────────
-    if (textoLower === 'responder' || textoLower.startsWith('responder ')) {
+    // ── Preguntas de MELI ───────────────────────────────────
+    const pideSugerencia = textoLower === 'sugerir respuesta' || textoLower === 'sugerir';
+    const escribeRespuesta = textoLower.startsWith('responder ');
+
+    if (pideSugerencia || escribeRespuesta) {
       const { data: estadoPregunta } = await supabase
         .from('bot_estado')
         .select('accion_pendiente')
@@ -361,12 +364,17 @@ module.exports = async (req, res) => {
         return res.status(200).json({ ok: true });
       }
 
+      const { getMeliToken } = require('../_meliToken');
+      const {
+        obtenerPregunta, esPrimeraPregunta, aplicarFirma, redactarRespuesta,
+      } = require('../_meliPreguntas');
+
       // El aviso guardado puede ser viejo o estar ya respondido: la fuente de
       // verdad es MELI, no esta tabla.
+      let token, viva;
       try {
-        const { getMeliToken } = require('../_meliToken');
-        const { obtenerPregunta } = require('../_meliPreguntas');
-        const viva = await obtenerPregunta(await getMeliToken(), pregData.question_id);
+        token = await getMeliToken();
+        viva = await obtenerPregunta(token, pregData.question_id);
         if (viva.status !== 'UNANSWERED') {
           await limpiarPreguntaPendiente(supabase, pregData.question_id);
           await sendTelegram(chatId, `⚠️ Esa pregunta ya no está pendiente (estado: ${viva.status}).`);
@@ -377,60 +385,33 @@ module.exports = async (req, res) => {
         return res.status(200).json({ ok: true });
       }
 
-      // "responder <texto>" publica tu texto tal cual; "responder" a secas le
-      // pide un borrador a Claude.
-      const propio = texto.slice('responder'.length).trim();
       let respuestaSugerida;
+      let primera;
 
-      if (propio) {
-        respuestaSugerida = propio;
-      } else if (!process.env.ANTHROPIC_API_KEY) {
-        await sendTelegram(chatId,
-          `💬 <b>Pregunta:</b> ${esc(pregData.pregunta)}\n\n` +
-          `No tengo configurada la API de Claude, así que no puedo redactar sola.\n` +
-          `Mandá <b>responder</b> seguido de tu texto y lo publico tal cual.`
-        );
-        return res.status(200).json({ ok: true });
-      } else {
-        await sendTelegram(chatId, '🤖 <b>Generando respuesta...</b> Un momento.');
-
-        const prompt = `Sos el asistente de Martinez Motos, una tienda de accesorios para motos en Uruguay.
-
-Un comprador de Mercado Libre hizo esta pregunta sobre el producto "${pregData.item_titulo}":
-
-"${pregData.pregunta}"
-
-Escribí una respuesta corta, amigable y en español rioplatense (voseo). Máximo 3 oraciones. Si la pregunta es sobre disponibilidad, precio o envío, respondé positivamente indicando que tienen stock y envían a todo Uruguay. Si es una pregunta técnica específica que no podés responder con certeza, sugerí que se contacten por mensaje privado. No inventes medidas, materiales ni compatibilidades que no estén en el título.`;
-
-        let iaData;
-        try {
-          const iaRes = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.ANTHROPIC_API_KEY,
-              'anthropic-version': '2023-06-01',
-            },
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 300,
-              messages: [{ role: 'user', content: prompt }],
-            }),
-          });
-          iaData = await iaRes.json();
-        } catch (e) {
-          await sendTelegram(chatId,
-            `❌ No pude generar el borrador: ${esc(e.message)}\n\n` +
-            `Mandá <b>responder</b> seguido de tu texto para publicarlo a mano.`
-          );
+      if (escribeRespuesta) {
+        // Tu texto se publica tal cual, pero la firma se agrega igual si es un
+        // primer contacto (salvo que ya la hayas escrito vos).
+        const propio = texto.slice('responder'.length).trim();
+        if (!propio) {
+          await sendTelegram(chatId, '⚠️ Mandá <b>responder</b> seguido del texto a publicar.');
           return res.status(200).json({ ok: true });
         }
-
-        respuestaSugerida = iaData?.content?.[0]?.text?.trim();
-        if (!respuestaSugerida) {
+        primera = await esPrimeraPregunta(token, viva);
+        respuestaSugerida = aplicarFirma(propio, primera);
+      } else {
+        await sendTelegram(chatId, '🤖 <b>Redactando...</b> Un momento.');
+        try {
+          const borrador = await redactarRespuesta(token, viva, pregData.item_titulo);
+          respuestaSugerida = borrador.texto;
+          primera = borrador.primeraPregunta;
+        } catch (e) {
+          const motivo = e.code === 'SIN_API_KEY'
+            ? 'No tengo configurada la API de Claude, así que no puedo redactar sola.'
+            : `No pude generar el borrador: ${esc(e.message)}`;
           await sendTelegram(chatId,
-            `❌ La IA no devolvió texto: ${esc(iaData?.error?.message || 'sin detalle')}\n\n` +
-            `Mandá <b>responder</b> seguido de tu texto para publicarlo a mano.`
+            `💬 <b>Pregunta:</b> ${esc(pregData.pregunta)}\n\n` +
+            `${motivo}\n\n` +
+            `Mandá <b>responder</b> seguido de tu texto y lo publico tal cual.`
           );
           return res.status(200).json({ ok: true });
         }
@@ -451,14 +432,15 @@ Escribí una respuesta corta, amigable y en español rioplatense (voseo). Máxim
 
       await sendTelegram(chatId,
         `💬 <b>Pregunta:</b> ${esc(pregData.pregunta)}\n\n` +
-        `🤖 <b>Respuesta a publicar:</b>\n${esc(respuestaSugerida)}\n\n` +
-        `Respondé <b>si</b> para publicarla en MELI o <b>no</b> para cancelar.`
+        `📝 <b>Respuesta a publicar:</b>\n${esc(respuestaSugerida)}\n\n` +
+        `<i>${primera ? 'Primer contacto → lleva firma' : 'Ya venían conversando → sin firma'}</i>\n\n` +
+        `Respondé <b>ok</b> para publicarla en MELI o <b>no</b> para cancelar.`
       );
       return res.status(200).json({ ok: true });
     }
 
     // ── Confirmación pendiente ───────────────────────────────
-    if (textoLower === 'si' || textoLower === 'sí' || textoLower === 'confirmar') {
+    if (['si', 'sí', 'ok', 'dale', 'confirmar'].includes(textoLower)) {
       const accion = await getPendiente(supabase, chatId);
       if (!accion) return (await sendTelegram(chatId, '⚠️ No hay ninguna acción pendiente de confirmar.'), res.status(200).json({ ok: true }));
 

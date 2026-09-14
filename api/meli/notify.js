@@ -43,8 +43,6 @@ module.exports = async (req, res) => {
   try {
     if (topic === 'orders_v2' || topic === 'orders') {
       await handleOrder(resource);
-    } else if (topic === 'feedback') {
-      await handleFeedback(resource);
     } else if (topic === 'items') {
       await handleItem(resource);
     } else if (topic === 'shipments') {
@@ -244,35 +242,6 @@ async function handleOrder(resource) {
   }
 }
 
-// ── CALIFICACIONES ───────────────────────────────────────────
-async function handleFeedback(resource) {
-  const token = await getMeliToken();
-
-  const feedbackId = resource.split('/').pop();
-  let feedback;
-  try {
-    const res = await fetch(`https://api.mercadolibre.com/feedback/${feedbackId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    feedback = await res.json();
-  } catch (e) { console.error('fetch feedback fallido:', e.message); return; }
-  if (feedback.error) { console.log('Feedback no disponible:', feedback.message); return; }
-
-  if (feedback.role !== 'seller') return;
-
-  const rating = feedback.rating;
-  const emoji = rating === 'positive' ? '⭐' : rating === 'negative' ? '😡' : '😐';
-  const label = rating === 'positive' ? 'Positiva' : rating === 'negative' ? 'Negativa' : 'Neutral';
-  const comentario = feedback.message ? `\n💬 <b>Comentario:</b> "${esc(feedback.message)}"` : '';
-
-  await sendTelegram(
-    `${emoji} <b>Nueva calificación en MELI</b>\n\n` +
-    `📊 <b>Tipo:</b> ${label}\n` +
-    `👤 <b>Comprador:</b> ${esc(feedback.from?.nickname || '—')}` +
-    comentario
-  );
-}
-
 // ── ITEMS (publicaciones pausadas / sin stock) ───────────────
 async function handleItem(resource) {
   const token = await getMeliToken();
@@ -331,9 +300,11 @@ async function handleShipment(resource) {
 
   const orderId = String(shipment.order_id);
 
+  // Marca la entrega en el CRM sin avisar por Telegram: es información que se
+  // consulta cuando hace falta, no algo que amerite interrumpir.
   const { data: envio } = await supabase
     .from('envios')
-    .select('*')
+    .select('id, estado')
     .eq('orden', orderId)
     .single();
 
@@ -343,19 +314,6 @@ async function handleShipment(resource) {
       .eq('id', envio.id);
     console.log(`✅ Envío marcado como entregado: orden ${orderId}`);
   }
-
-  const comprador = envio?.comprador || shipment.receiver?.receiver_name || '—';
-  const producto = envio?.producto || '—';
-  const crmActualizado = envio ? '✅ CRM actualizado automáticamente.' : '⚠️ No se encontró el envío en el CRM.';
-
-  await sendTelegram(
-    `✅ <b>Envío entregado</b>\n\n` +
-    `👤 <b>Comprador:</b> ${esc(comprador)}\n` +
-    `📦 <b>Producto:</b> ${esc(producto)}\n` +
-    `🔖 <b>Orden:</b> ${orderId}\n` +
-    `🚚 <b>Tracking:</b> ${esc(envio?.tracking || shipmentId)}\n\n` +
-    crmActualizado
-  );
 }
 
 // ── PREGUNTAS ────────────────────────────────────────────────
@@ -364,6 +322,25 @@ async function handleQuestion(resource) {
   const supabase = getSupabase();
 
   const questionId = resource.split('/').pop();
+
+  // MELI reintenta la notificación si tardamos en devolver 200, y este handler
+  // responde recién después de hacer todo el trabajo. Por eso la misma pregunta
+  // llegaba dos y tres veces al teléfono. Nos quedamos con el primer aviso.
+  const clave = `/questions/${questionId}`;
+  const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: yaAvisado } = await supabase
+    .from('meli_notify_log')
+    .select('id')
+    .eq('topic', 'questions')
+    .eq('resource', clave)
+    .gte('recibido_at', desde)
+    .limit(1);
+
+  if (yaAvisado?.length) {
+    console.log(`ℹ️ Pregunta ${questionId} ya avisada — omitiendo duplicado`);
+    return;
+  }
+
   let q;
   try {
     const res = await fetch(`https://api.mercadolibre.com/questions/${questionId}`, {
@@ -393,16 +370,21 @@ async function handleQuestion(resource) {
       item_id: q.item_id,
       item_titulo: titulo,
       pregunta: q.text,
-      comprador: q.from?.nickname || '—',
     },
     updated_at: new Date().toISOString(),
   });
 
+  // Se marca acá y no antes: si algo falla más arriba, el reintento de MELI
+  // todavía puede avisar en lugar de quedar silenciado.
+  await supabase.from('meli_notify_log').insert({ topic: 'questions', resource: clave });
+
+  // El nickname del comprador no viene en esta respuesta de MELI, así que la
+  // línea "Comprador" siempre mostraba un guión: se saca.
   await sendTelegram(
     `❓ <b>Nueva pregunta en MELI</b>\n\n` +
     `📦 <b>Producto:</b> ${esc(titulo)}\n` +
-    `👤 <b>Comprador:</b> ${esc(q.from?.nickname || '—')}\n` +
     `💬 <b>Pregunta:</b> ${esc(q.text)}\n\n` +
-    `Respondé <b>responder</b> para que Claude te sugiera una respuesta.`
+    `<b>responder</b> → te propongo un texto\n` +
+    `<b>responder</b> + tu texto → lo publico tal cual`
   );
 }

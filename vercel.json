@@ -15,6 +15,7 @@
     "api/meli/reprocesar.js": { "maxDuration": 30 },
     "api/meli/actualizar-envios.js": { "maxDuration": 60 },
     "api/meli/backfill-envios.js": { "maxDuration": 60 },
+    "api/meli/sync-envios.js": { "maxDuration": 60 },
     "api/meli/etiqueta.js": { "maxDuration": 15 },
     "api/shopify/notify.js": { "maxDuration": 10 },
     "api/meli/sync-stock.js": { "maxDuration": 30 },
@@ -26,6 +27,7 @@
     "api/meli/reprocesar-ordenes.js": { "maxDuration": 60 },
     "api/cron/resumen-diario.js": { "maxDuration": 30 },
     "api/cron/ads-diario.js": { "maxDuration": 30 },
+    "api/cron/sync-envios.js": { "maxDuration": 60 },
     "api/meli/ads.js": { "maxDuration": 30 },
     "api/meli/ads-historico.js": { "maxDuration": 10 },
     "api/telegram/setup.js": { "maxDuration": 15 },
@@ -43,6 +45,10 @@
     {
       "path": "/api/cron/ads-diario",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/sync-envios",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

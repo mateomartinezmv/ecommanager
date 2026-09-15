@@ -6,6 +6,10 @@ const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId, meliIdsDe } = require('../_meliIds');
 const { syncMeliStockProducto } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const {
+  obtenerShipment, ordenesDelShipment, sincronizarEnviosDeOrden,
+  estadoDesdeShipment, fechaDespachoDesdeShipment,
+} = require('../_meliEnvios');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -109,12 +113,13 @@ async function handleOrder(resource) {
   let logisticType = '';
   let direccion = null;
   let zonaFlex = null;
+  let shipData = null;
   if (shippingId) {
     try {
       const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      const shipData = await shipRes.json();
+      shipData = await shipRes.json();
       logisticType = shipData?.logistic_type || '';
       if (shipData?.receiver_address) {
         const addr = shipData.receiver_address;
@@ -229,9 +234,11 @@ async function handleOrder(resource) {
           comprador: order.buyer?.nickname || '',
           producto: producto.nombre,
           transportista,
-          tracking: null,
-          fecha_despacho: null,
-          estado: 'pendiente',
+          tracking: shipData?.tracking_number || null,
+          fecha_despacho: fechaDespachoDesdeShipment(shipData),
+          // Si la orden se procesa tarde (reintento del webhook, reproceso
+          // manual) el paquete ya puede estar viajando: se guarda el estado real.
+          estado: estadoDesdeShipment(shipData) || 'pendiente',
           direccion: direccion || null,
           costo: costoEnvio,
           zona: zonaFlex,
@@ -279,6 +286,10 @@ async function handleItem(resource) {
 }
 
 // ── ENVÍOS (shipments) ───────────────────────────────────────
+// Cada notificación del tópico `shipments` refleja el estado real del paquete
+// sobre el CRM: pendiente → en camino → entregado (y problema si MELI lo marca
+// como no entregado o cancelado). No avisa por Telegram: es información que se
+// consulta cuando hace falta, no algo que amerite interrumpir.
 async function handleShipment(resource) {
   const token = await getMeliToken();
   const supabase = getSupabase();
@@ -286,33 +297,36 @@ async function handleShipment(resource) {
   const shipmentId = resource.split('/').pop();
   let shipment;
   try {
-    const res = await fetch(`https://api.mercadolibre.com/shipments/${shipmentId}`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    shipment = await res.json();
+    shipment = await obtenerShipment(token, shipmentId);
   } catch (e) { console.error('fetch shipment fallido:', e.message); return; }
-  if (shipment.error) {
-    console.log('Shipment no disponible:', shipment.message);
+  if (!shipment) {
+    console.log(`Shipment ${shipmentId} no disponible`);
     return;
   }
 
-  if (shipment.status !== 'delivered') return;
+  // Un shipment puede cubrir varias órdenes (carrito) y cada orden varios ítems,
+  // así que se resuelven todas y se actualizan todos sus envíos.
+  const ordenes = await ordenesDelShipment(token, shipmentId, shipment);
+  if (ordenes.length === 0) {
+    console.log(`⚠ Shipment ${shipmentId}: no se pudo resolver la orden`);
+    return;
+  }
 
-  const orderId = String(shipment.order_id);
-
-  // Marca la entrega en el CRM sin avisar por Telegram: es información que se
-  // consulta cuando hace falta, no algo que amerite interrumpir.
-  const { data: envio } = await supabase
-    .from('envios')
-    .select('id, estado')
-    .eq('orden', orderId)
-    .single();
-
-  if (envio && envio.estado !== 'entregado') {
-    await supabase.from('envios')
-      .update({ estado: 'entregado' })
-      .eq('id', envio.id);
-    console.log(`✅ Envío marcado como entregado: orden ${orderId}`);
+  for (const orden of ordenes) {
+    try {
+      const aplicados = await sincronizarEnviosDeOrden(supabase, orden, shipment);
+      for (const c of aplicados) {
+        console.log(
+          `✅ Envío ${c.id}: ${c.estadoAnterior} → ${c.estado || c.estadoAnterior}` +
+          ` | status MELI ${shipment.status}/${shipment.substatus || '—'}`
+        );
+      }
+      if (aplicados.length === 0) {
+        console.log(`ℹ Orden ${orden}: sin cambios (status ${shipment.status})`);
+      }
+    } catch (err) {
+      console.error(`❌ Error sincronizando orden ${orden}:`, err.message);
+    }
   }
 }
 

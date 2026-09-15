@@ -52,12 +52,20 @@ function estadoDesdeShipment(shipment) {
   }
 }
 
-// Fecha en que el paquete salió. MELI la expone en status_history; si el envío
-// todavía no se despachó no hay nada que guardar.
+// Fecha en que el paquete salió, según el status_history de MELI.
 function fechaDespachoDesdeShipment(shipment) {
   const h = shipment?.status_history || {};
-  const fecha = h.date_shipped || h.date_first_printed || h.date_ready_to_ship;
-  return fecha ? String(fecha).slice(0, 10) : null;
+  if (h.date_shipped) return String(h.date_shipped).slice(0, 10);
+
+  // Con cross-docking no hay date_shipped: el paquete viaja con status
+  // ready_to_ship. Ahí sirve la fecha de la etiqueta, pero sólo si ya salió —
+  // una etiqueta impresa sin despachar todavía es un paquete en el depósito.
+  const estado = estadoDesdeShipment(shipment);
+  if (estado === 'en_camino' || estado === 'entregado') {
+    const fecha = h.date_first_printed || h.date_ready_to_ship;
+    if (fecha) return String(fecha).slice(0, 10);
+  }
+  return null;
 }
 
 // Calcula qué campos hay que tocar de un envío. Devuelve null si no cambia nada.

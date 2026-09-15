@@ -79,6 +79,8 @@
   .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 4px; width: fit-content; margin-bottom: 20px; }
   .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; border: none; background: none; font-family: 'Space Grotesk', sans-serif; }
   .tab.active { background: var(--surface2); color: var(--text); }
+  .seg-count { display:inline-block; margin-left:5px; padding:1px 6px; border-radius:20px; background:var(--surface2); border:1px solid var(--border); font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--text-muted); }
+  .tab.active .seg-count { background:var(--bg); color:var(--text-dim); }
 
   /* ── Transit pill ── */
   .transit-pill { display:inline-flex; align-items:center; gap:5px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:6px; padding:3px 8px; font-size:11px; color:var(--green); font-weight:600; }
@@ -192,9 +194,9 @@
 
     <!-- Segmento tabs -->
     <div class="tabs" style="margin-bottom:16px">
-      <button class="tab active" id="seg-comprar"   onclick="switchSegmento('comprar')">🛒 Hay que comprar</button>
-      <button class="tab"        id="seg-transito"  onclick="switchSegmento('transito')">🚢 En tránsito / Pedido</button>
-      <button class="tab"        id="seg-todos"     onclick="switchSegmento('todos')">📋 Todos</button>
+      <button class="tab active" id="seg-comprar"   onclick="switchSegmento('comprar')">🛒 Hay que comprar <span class="seg-count" id="seg-count-comprar"></span></button>
+      <button class="tab"        id="seg-transito"  onclick="switchSegmento('transito')">🚢 En tránsito / Pedido <span class="seg-count" id="seg-count-transito"></span></button>
+      <button class="tab"        id="seg-todos"     onclick="switchSegmento('todos')">📋 Todos <span class="seg-count" id="seg-count-todos"></span></button>
     </div>
 
     <!-- View tabs -->
@@ -301,15 +303,36 @@ function applyFilters() {
   const cat = document.getElementById('filter-cat').value;
   let base = cat ? allProducts.filter(p => p.grupo === cat) : [...allProducts];
 
-  // Segmento filter
-  if (currentSeg === 'comprar')  base = base.filter(p => p.restock_status !== 'cubierto');
+  // Segmento filter. 'sin_ventas' queda fuera de "Hay que comprar" igual que
+  // 'cubierto': sin ventas en la ventana no hay nada que reponer. Pero sí
+  // aparece en "Todos" — el listado completo tiene que ser completo de verdad.
+  if (currentSeg === 'comprar')  base = base.filter(p => !NO_ACCIONABLE.includes(p.restock_status));
   if (currentSeg === 'transito') base = base.filter(p => p.already_ordered);
 
   filtered = base;
   document.getElementById('filtered-count').textContent =
     filtered.length ? `${filtered.length} producto${filtered.length !== 1 ? 's' : ''}` : '';
+  updateSegCounts(cat);
   if (currentView === 'lista') renderList();
   else renderCalendar();
+}
+
+// Estados que no representan una compra pendiente.
+const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
+
+// Cuántos productos caen en cada segmento, para que se vea de una que "Todos"
+// tiene el catálogo entero y no sólo lo que hay que comprar.
+function updateSegCounts(cat) {
+  const base = cat ? allProducts.filter(p => p.grupo === cat) : allProducts;
+  const n = {
+    comprar:  base.filter(p => !NO_ACCIONABLE.includes(p.restock_status)).length,
+    transito: base.filter(p => p.already_ordered).length,
+    todos:    base.length,
+  };
+  Object.entries(n).forEach(([seg, count]) => {
+    const el = document.getElementById('seg-count-' + seg);
+    if (el) el.textContent = count;
+  });
 }
 
 function switchSegmento(seg) {
@@ -324,12 +347,19 @@ function switchSegmento(seg) {
 function urgencyClass(p, todayStr) {
   if (p.restock_status === 'quiebre_confirmado') return 'quiebre-confirmado';
   if (p.restock_status === 'insuficiente') return 'insuficiente';
+  if (p.restock_status === 'sin_ventas') return 'no-velocity';
   if (p.already_ordered) {
     // Distinguish ordered (not shipped yet) vs in_transit (already shipping)
     const hasInTransit = (p.en_transito || []).some(t => t.estado === 'in_transit');
     return hasInTransit ? 'in-transit' : 'ordered';
   }
-  if (!p.restock_date)             return 'no-velocity';
+  if (!p.restock_date) {
+    // Sin velocidad no hay fecha proyectada, pero si la API igual lo marcó
+    // 'ordenar_ya' es porque el stock cayó debajo del piso manual (alerta_min):
+    // eso hay que comprarlo y tiene que verse como tal, no como "sin ventas".
+    if (p.restock_status !== 'ordenar_ya') return 'no-velocity';
+    return p.stock === 0 ? 'stocked-out' : 'overdue';
+  }
   if (p.stockout_date <= todayStr) return 'stocked-out';
   if (p.restock_date  <= todayStr) return 'overdue';
   const daysUntil = Math.round((new Date(p.restock_date) - new Date(todayStr)) / 86400000);
@@ -348,7 +378,7 @@ function urgencyBadge(p, cls) {
     urgent:       ['badge-yellow', '⚠️ Urgente'],
     soon:         ['badge-blue',   '🔵 Próximo'],
     ok:           ['badge-gray',   '✓ OK'],
-    'no-velocity':['badge-gray',   '— Sin ventas'],
+    'no-velocity':['badge-gray',   '— Sin ventas en la ventana'],
     insuficiente: ['badge-orange', '🟠 Insuficiente'],
   };
   let [css, label] = map[cls] || ['badge-gray', cls];
@@ -408,7 +438,7 @@ function renderList() {
       ? '🎉 No hay productos que necesiten compra urgente.'
       : currentSeg === 'transito'
         ? '📭 No hay pedidos ni productos en tránsito.'
-        : 'No hay productos con datos de ventas en los últimos 30 días.';
+        : 'No hay productos activos para este grupo.';
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${msg}</p></div>`;
     return;
   }

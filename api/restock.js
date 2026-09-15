@@ -4,8 +4,8 @@
 // Returns { lead_time_promedio, lead_time_muestra, lead_time_stdev, lead_time_min,
 //           lead_time_max, lead_time_metodo, productos } where each product has:
 //   - daily_velocity           = units sold (net of confirmed returns) / active selling days
-//                                 (días desde publicación hasta hoy, acotado a 90 días, menos
-//                                 tramos confirmados sin stock — NO solo primera venta→última venta)
+//                                 (días desde publicación hasta hoy, acotado a DEMAND_WINDOW_DAYS,
+//                                 menos tramos confirmados sin stock — NO solo primera venta→última venta)
 //   - days_coverage            = current stock / daily_velocity
 //   - restock_date             = today + days_coverage − lead_time_promedio (last day to order before stockout)
 //   - stockout_date            = today + days_coverage
@@ -13,7 +13,8 @@
 //   - punto_pedido_uds         = demanda esperada durante el lead time + stock de seguridad estadístico
 //   - safety_stock_uds         = colchón por variabilidad de demanda y de lead time (fórmula de King)
 //   - cantidad_sugerida        = units still needed to reach punto_pedido_uds (or alerta_min, lo que sea mayor)
-//   - restock_status           = 'quiebre_confirmado' | 'ordenar_ya' | 'insuficiente' | 'proximo' | 'cubierto'
+//   - restock_status           = 'quiebre_confirmado' | 'ordenar_ya' | 'insuficiente' | 'proximo'
+//                                 | 'cubierto' | 'sin_ventas'
 //   - already_ordered          = true if the SKU appears in a non-arrived import (kept for compat)
 //   - gap_cierra_fecha         = si hay quiebre_confirmado, fecha en la que el próximo envío lo cierra
 //   - periodos_sin_stock       = tramos dentro de la ventana de ventas donde el stock reconstruido dio 0
@@ -21,11 +22,29 @@
 //
 // CRITICAL: sales velocity aggregates ALL channels (meli + mostrador + shopify).
 // No channel filter is applied anywhere in this file.
+//
+// CRITICAL: este endpoint devuelve TODOS los productos activos, siempre — incluidos
+// los que no vendieron nada en la ventana de demanda. Antes se descartaban en
+// silencio y el calendario mostraba 40 de 70 productos, así que el catálogo
+// "completo" de la pantalla no era completo y no había forma de notarlo desde la
+// UI. Los que no tienen señal de venta salen con restock_status 'sin_ventas' para
+// que el front los muestre en "Todos" sin ensuciar "Hay que comprar".
 
 const { getSupabase } = require('./_supabase');
 
 const FALLBACK_LEAD_DAYS = 85;
 const MS_PER_DAY         = 86400 * 1000;
+
+// Ventana de demanda: cuántos días hacia atrás se miran las ventas para estimar
+// la velocidad. Tiene que cubrir holgadamente el lead time (~82 días) — si no, un
+// producto que estuvo sin stock la mayor parte de la ventana se queda sin datos
+// suficientes y aparece con una velocidad ridículamente baja. Ej. ALERONFINOSNK:
+// vendió 11 uds en mayo, se quedó sin stock hasta el 12/09 y volvió a vender 2;
+// con una ventana de 90 días las 11 de mayo quedaban afuera y la velocidad daba
+// 0.14/día (7 veces menos que la real), así que el producto figuraba "cubierto".
+// El denominador ya descuenta los tramos confirmados sin stock (findStockoutPeriods),
+// así que estirar la ventana suma ventas reales sin diluir la tasa.
+const DEMAND_WINDOW_DAYS = 180;
 
 // ── Modelo de stock de seguridad (fórmula de King: demanda y lead time inciertos) ──
 // safety_stock = Z · √( LEAD_DAYS · σ_demanda² + demanda_diaria² · σ_leadtime² )
@@ -36,7 +55,8 @@ const SERVICE_Z          = 1.28; // ~90% de nivel de servicio (ajustable según 
 const DEFAULT_DEMAND_CV  = 0.75; // coef. de variación asumido cuando no hay suficientes días de venta para medirlo empíricamente
 const DEFAULT_LT_CV      = 0.30; // ídem para lead time, cuando hay <2 importaciones terminales con datos
 const MIN_SPAN_FOR_STDEV = 5;    // días mínimos de ventana real de ventas para confiar en el desvío empírico de demanda
-const MIN_DAYS_LOW_SAMPLE = 14;  // piso de días activos cuando hay 1-2 ventas y no alcanza con fecha de publicación
+const MIN_DAYS_LOW_SAMPLE = 14;  // piso de días activos cuando la muestra es muy chica (pocas ventas o pocos días
+                                  // observados) y la fecha de publicación no alcanza para dar una ventana creíble
 const STOCKOUT_TOLERANCE = 1;    // tolerancia al reconstruir stock: acepta hasta -1 (un desajuste chico, ej. una
                                   // venta de mostrador no sincronizada) como "confirmado sin stock"; valores más
                                   // negativos indican un problema de datos más de fondo (ej. una importación vieja
@@ -177,12 +197,10 @@ module.exports = async (req, res) => {
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
 
-    // ── 2. Sales velocity: last 90 days, ALL channels, exclude cancelled ─────
-    // 90-day window instead of 30 so products that ran out of stock 30-90 days
-    // ago still have sales data and show a real velocity instead of "Sin ventas".
+    // ── 2. Sales velocity: last DEMAND_WINDOW_DAYS, ALL channels, exclude cancelled ──
     const today = new Date();
     const since = new Date(today);
-    since.setDate(since.getDate() - 90);
+    since.setDate(since.getDate() - DEMAND_WINDOW_DAYS);
     const sinceStr = since.toISOString().slice(0, 10);
 
     const { data: ventas, error: ventasErr } = await supabase
@@ -192,11 +210,11 @@ module.exports = async (req, res) => {
     if (ventasErr) throw ventasErr;
 
     // Aggregate units sold, track first/last sale date, and keep a per-day
-    // series per SKU. soldBySku/first/lastDateBySku quedan acotados a los 90
-    // días reales (definen la ventana de demanda "reciente"); dailyQtyBySku
-    // guarda TODO el historial porque lo usa findStockoutPeriods, que necesita
-    // ver ventas anteriores al corte de 90 días para confirmar tramos en 0
-    // (ver comentario en esa función).
+    // series per SKU. soldBySku/first/lastDateBySku quedan acotados a la ventana
+    // de demanda (definen la demanda "reciente"); dailyQtyBySku guarda TODO el
+    // historial porque lo usa findStockoutPeriods, que necesita ver ventas
+    // anteriores al corte de la ventana para confirmar tramos en 0 (ver
+    // comentario en esa función).
     const soldBySku      = {};
     const firstDateBySku = {};
     const lastDateBySku  = {};
@@ -206,14 +224,14 @@ module.exports = async (req, res) => {
       if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
       dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + v.cantidad;
 
-      if (v.fecha < sinceStr) continue; // fuera de la ventana de 90 días: solo aporta a la reconstrucción
+      if (v.fecha < sinceStr) continue; // fuera de la ventana de demanda: solo aporta a la reconstrucción
       soldBySku[v.sku] = (soldBySku[v.sku] || 0) + v.cantidad;
       if (!firstDateBySku[v.sku] || v.fecha < firstDateBySku[v.sku]) firstDateBySku[v.sku] = v.fecha;
       if (!lastDateBySku[v.sku]  || v.fecha > lastDateBySku[v.sku])  lastDateBySku[v.sku]  = v.fecha;
     }
 
     // ── 2b. Devoluciones confirmadas: se descuentan de la demanda (solo las de
-    // los últimos 90 días — si no, una venta devuelta sigue "contando" como
+    // la ventana de demanda — si no, una venta devuelta sigue "contando" como
     // demanda real y sobreestima la velocidad). returnsBySku guarda todo el
     // historial, igual que dailyQtyBySku, para la reconstrucción de stock.
     const { data: devoluciones, error: devErr } = await supabase
@@ -314,7 +332,7 @@ module.exports = async (req, res) => {
       const alertaMin = p.alerta_min || 0;
 
       // Ventana de venta activa: por defecto, TODO el período en que el
-      // producto pudo haber estado a la venta dentro de los últimos 90 días —
+      // producto pudo haber estado a la venta dentro de la ventana de demanda —
       // desde que se publicó (o desde que lo cargamos en el sistema, si no
       // tenemos fecha real) hasta hoy (o hasta la última venta, si ya está sin
       // stock). No arranca en la primera venta: un producto puede llevar
@@ -325,7 +343,7 @@ module.exports = async (req, res) => {
       // (ventas + llegadas + devoluciones, ver findStockoutPeriods) da EXACTO
       // 0 — esos sí son días en que la venta era imposible, no que faltó
       // demanda, y diluirían la velocidad real si se contaran igual.
-      let activeDays = 90;
+      let activeDays = DEMAND_WINDOW_DAYS;
       let spanDays   = 0;
       let stockoutPeriods = [];
       let diasSinStock    = 0;
@@ -349,10 +367,19 @@ module.exports = async (req, res) => {
         spanDays   = Math.max(1, rawSpanDays - diasSinStock);
         activeDays = spanDays;
 
-        // Con 1-2 ventas nada más, ni siquiera esta ventana alcanza si el
+        // Con una muestra muy chica, ni siquiera esta ventana alcanza si el
         // producto es nuevo de verdad (publicado y vendido casi el mismo día):
         // una sola venta el día 1 no es una tasa diaria confiable.
-        if (totalSold <= 2) activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
+        //
+        // El piso mira las DOS caras de la muestra, no sólo las unidades: pocos
+        // días observados extrapolan igual de mal aunque las unidades no sean
+        // pocas. EXT-ESP-10F-10F-001 vendió 4 uds el día que se publicó y, con
+        // sólo 3 días de ventana, daba 1.33/día → 144 unidades sugeridas para
+        // cubrir el lead time. Con el piso queda en 0.29/día, que sigue marcando
+        // que hay que reponer pero con una cantidad que se puede mirar sin susto.
+        if (totalSold <= 2 || spanDays < MIN_DAYS_LOW_SAMPLE) {
+          activeDays = Math.max(activeDays, MIN_DAYS_LOW_SAMPLE);
+        }
       }
 
       const dailyVelocity = totalSold > 0 ? totalSold / activeDays : 0;
@@ -401,9 +428,6 @@ module.exports = async (req, res) => {
           .toISOString().slice(0, 10);
       }
 
-      // Only include products that have had sales activity OR are at zero stock
-      if (dailyVelocity === 0 && stock > 0 && stock >= alertaMin) continue;
-
       const transito      = transitBySku[p.sku] || [];
       const already_ordered = transito.length > 0;
       const qty_en_transito = transito.reduce((a, t) => a + t.qty, 0);
@@ -432,7 +456,12 @@ module.exports = async (req, res) => {
 
       let restockStatus;
       if (dailyVelocity === 0) {
-        restockStatus = already_ordered ? 'cubierto' : 'proximo';
+        // Sin una sola venta en la ventana de demanda no hay nada que proyectar:
+        // ni fecha de quiebre ni cantidad a pedir. Se etiqueta aparte ('sin_ventas')
+        // en vez de mezclarlo con 'proximo', que significa "vende y hay que pedir
+        // pronto". Igual se devuelve: el producto existe, tiene stock y plata
+        // inmovilizada, y el usuario quiere verlo en el listado completo.
+        restockStatus = already_ordered ? 'cubierto' : 'sin_ventas';
       } else if (already_ordered && tieneQuiebre) {
         // Hay pedido en camino, pero el stock actual no llega a esa fecha:
         // esto es lo que antes se escondía como "cubierto".
@@ -450,7 +479,8 @@ module.exports = async (req, res) => {
       // demanda no tiene (p. ej. "de esto siempre quiero tener al menos 5").
       // Si el stock físico ya está por debajo, se escala el status — pero nunca
       // se baja la urgencia de un status ya crítico.
-      if (alertaMin > 0 && stock < alertaMin && (restockStatus === 'cubierto' || restockStatus === 'proximo')) {
+      if (alertaMin > 0 && stock < alertaMin &&
+          (restockStatus === 'cubierto' || restockStatus === 'proximo' || restockStatus === 'sin_ventas')) {
         restockStatus = already_ordered ? 'insuficiente' : 'ordenar_ya';
       }
 
@@ -485,7 +515,9 @@ module.exports = async (req, res) => {
     }
 
     // Sort: most urgent first
-    const STATUS_RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4 };
+    // 'sin_ventas' va último: son los que no tienen señal de demanda, así que no
+    // compiten por atención con los que sí hay que reponer.
+    const STATUS_RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5 };
     results.sort((a, b) => {
       const rankDiff = STATUS_RANK[a.restock_status] - STATUS_RANK[b.restock_status];
       if (rankDiff !== 0) return rankDiff;

@@ -66,6 +66,16 @@
 
   /* ── Filters bar ── */
   .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .search-box { position: relative; display: flex; align-items: center; }
+  .search-box input { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 28px 8px 30px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; width: 280px; max-width: 100%; }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text-muted); }
+  .search-icon { position: absolute; left: 9px; font-size: 12px; pointer-events: none; opacity: 0.6; }
+  .search-clear { position: absolute; right: 5px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 5px; border-radius: 4px; }
+  .search-clear:hover { color: var(--text); background: var(--border); }
+  .search-hint { font-size: 12px; color: var(--yellow); }
+  .search-hint button { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; padding: 0; }
+  mark.hit { background: rgba(79,142,247,0.28); color: inherit; border-radius: 3px; padding: 0 1px; }
   select { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; cursor: pointer; }
   select:focus { border-color: var(--accent); }
   select option { background: var(--surface2); }
@@ -186,10 +196,17 @@
 
     <!-- Filters -->
     <div class="filter-bar">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input id="filter-q" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Buscar por SKU o nombre…" oninput="applyFilters()">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()" title="Limpiar (Esc)" hidden>×</button>
+      </div>
       <select id="filter-cat" onchange="applyFilters()">
         <option value="">Todos los grupos</option>
       </select>
       <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
+      <span id="search-hint" class="search-hint"></span>
     </div>
 
     <!-- Segmento tabs -->
@@ -298,41 +315,135 @@ async function load() {
 
 function reload() { allProducts = []; load(); }
 
+// ─── Búsqueda ─────────────────────────────────────────────────────────────────
+// Normaliza CARÁCTER A CARÁCTER, no con un normalize() sobre todo el string.
+// Es a propósito: NFD sobre "Alerón" devuelve 7 caracteres (la 'o' se parte en
+// 'o' + tilde combinante) y entonces los índices que devuelve una búsqueda
+// sobre el texto normalizado ya no sirven para recortar el texto original al
+// resaltarlo. Así el resultado mide exactamente lo mismo que la entrada.
+// De paso, "aleron" encuentra "Alerón" y "punos" encuentra "Puños", que es
+// como la gente escribe cuando busca rápido.
+function norm(s) {
+  const str = String(s ?? '');
+  let out = '';
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i].normalize('NFD')[0].toLowerCase();
+    // Si un carácter no mapea 1:1 se deja el original: el largo tiene que
+    // coincidir con el de la entrada para que los índices sigan siendo válidos.
+    out += c.length === 1 ? c : str[i];
+  }
+  return out;
+}
+
+function queryTerms() {
+  return norm(document.getElementById('filter-q').value.trim()).split(/\s+/).filter(Boolean);
+}
+
+// Todos los términos tienen que aparecer, en cualquier orden y repartidos entre
+// SKU y nombre: "espejos naked" encuentra "Espejos Moto Tipo Alerón Finos
+// Universales Naked Y Otras" aunque las palabras no estén pegadas.
+function matchesQuery(p, terms) {
+  if (!terms.length) return true;
+  const hay = norm(p.sku) + ' ' + norm(p.nombre);
+  return terms.every(t => hay.includes(t));
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// Resalta los términos sobre el texto original. Busca sobre la versión
+// normalizada pero recorta el original, así "aleron" resalta "Alerón" entero y
+// con sus acentos en vez de romper la palabra.
+function highlight(text, terms) {
+  const raw = String(text ?? '');
+  if (!terms.length) return escapeHtml(raw);
+
+  const hay = norm(raw);
+  const spans = [];
+  for (const t of terms) {
+    let i = hay.indexOf(t);
+    while (i !== -1) { spans.push([i, i + t.length]); i = hay.indexOf(t, i + t.length); }
+  }
+  if (!spans.length) return escapeHtml(raw);
+
+  // Fusiona tramos solapados (dos términos que caen sobre las mismas letras)
+  // para no anidar un <mark> dentro de otro.
+  spans.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const sp of spans) {
+    const last = merged[merged.length - 1];
+    if (last && sp[0] <= last[1]) last[1] = Math.max(last[1], sp[1]);
+    else merged.push([sp[0], sp[1]]);
+  }
+
+  let out = '', pos = 0;
+  for (const [a, b] of merged) {
+    out += escapeHtml(raw.slice(pos, a)) + '<mark class="hit">' + escapeHtml(raw.slice(a, b)) + '</mark>';
+    pos = b;
+  }
+  return out + escapeHtml(raw.slice(pos));
+}
+
+function clearSearch() {
+  const q = document.getElementById('filter-q');
+  q.value = '';
+  q.focus();
+  applyFilters();
+}
+
 // ─── Filters + Segmento ───────────────────────────────────────────────────────
+// Estados que no representan una compra pendiente.
+const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
+
+function segmentFilter(list, seg) {
+  // 'sin_ventas' queda fuera de "Hay que comprar" igual que 'cubierto': sin
+  // ventas en la ventana no hay nada que reponer. Pero sí aparece en "Todos" —
+  // el listado completo tiene que ser completo de verdad.
+  if (seg === 'comprar')  return list.filter(p => !NO_ACCIONABLE.includes(p.restock_status));
+  if (seg === 'transito') return list.filter(p => p.already_ordered);
+  return list;
+}
+
 function applyFilters() {
-  const cat = document.getElementById('filter-cat').value;
-  let base = cat ? allProducts.filter(p => p.grupo === cat) : [...allProducts];
+  const cat   = document.getElementById('filter-cat').value;
+  const terms = queryTerms();
 
-  // Segmento filter. 'sin_ventas' queda fuera de "Hay que comprar" igual que
-  // 'cubierto': sin ventas en la ventana no hay nada que reponer. Pero sí
-  // aparece en "Todos" — el listado completo tiene que ser completo de verdad.
-  if (currentSeg === 'comprar')  base = base.filter(p => !NO_ACCIONABLE.includes(p.restock_status));
-  if (currentSeg === 'transito') base = base.filter(p => p.already_ordered);
+  // Grupo y búsqueda arman la base; la solapa recorta sobre eso.
+  let base = cat ? allProducts.filter(p => p.grupo === cat) : allProducts;
+  base = base.filter(p => matchesQuery(p, terms));
 
-  filtered = base;
+  filtered = segmentFilter(base, currentSeg);
+
+  document.getElementById('search-clear').hidden = !document.getElementById('filter-q').value;
   document.getElementById('filtered-count').textContent =
     filtered.length ? `${filtered.length} producto${filtered.length !== 1 ? 's' : ''}` : '';
-  updateSegCounts(cat);
+  updateSegCounts(base);
+  updateSearchHint(base, terms);
   if (currentView === 'lista') renderList();
   else renderCalendar();
 }
 
-// Estados que no representan una compra pendiente.
-const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
-
-// Cuántos productos caen en cada segmento, para que se vea de una que "Todos"
-// tiene el catálogo entero y no sólo lo que hay que comprar.
-function updateSegCounts(cat) {
-  const base = cat ? allProducts.filter(p => p.grupo === cat) : allProducts;
-  const n = {
-    comprar:  base.filter(p => !NO_ACCIONABLE.includes(p.restock_status)).length,
-    transito: base.filter(p => p.already_ordered).length,
-    todos:    base.length,
-  };
-  Object.entries(n).forEach(([seg, count]) => {
+// Los contadores cuentan sobre la base ya filtrada por grupo y búsqueda, así
+// que al buscar se ve de una en qué solapa cayó cada coincidencia.
+function updateSegCounts(base) {
+  ['comprar', 'transito', 'todos'].forEach(seg => {
     const el = document.getElementById('seg-count-' + seg);
-    if (el) el.textContent = count;
+    if (el) el.textContent = segmentFilter(base, seg).length;
   });
+}
+
+// Si la búsqueda encontró productos que la solapa actual esconde, decirlo. Sin
+// esto, buscar un SKU 'cubierto' parado en "Hay que comprar" da cero resultados
+// y parece que el producto no existe — que es justo el problema que tenía esta
+// pantalla.
+function updateSearchHint(base, terms) {
+  const el = document.getElementById('search-hint');
+  const ocultos = base.length - filtered.length;
+  if (!terms.length || ocultos <= 0) { el.innerHTML = ''; return; }
+  el.innerHTML = `${ocultos} coincidencia${ocultos !== 1 ? 's' : ''} fuera de esta solapa — ` +
+    `<button onclick="switchSegmento('todos')">ver en Todos</button>`;
 }
 
 function switchSegmento(seg) {
@@ -434,16 +545,20 @@ function transitHtml(p) {
 function renderList() {
   const el = document.getElementById('list-container');
   if (!filtered.length) {
-    const msg = currentSeg === 'comprar'
-      ? '🎉 No hay productos que necesiten compra urgente.'
-      : currentSeg === 'transito'
-        ? '📭 No hay pedidos ni productos en tránsito.'
-        : 'No hay productos activos para este grupo.';
+    const q = document.getElementById('filter-q').value.trim();
+    const msg = q
+      ? `Ningún producto coincide con “${escapeHtml(q)}” en esta solapa.`
+      : currentSeg === 'comprar'
+        ? '🎉 No hay productos que necesiten compra urgente.'
+        : currentSeg === 'transito'
+          ? '📭 No hay pedidos ni productos en tránsito.'
+          : 'No hay productos activos para este grupo.';
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${msg}</p></div>`;
     return;
   }
 
   const todayStr = new Date().toISOString().slice(0,10);
+  const terms    = queryTerms();
 
   const rows = filtered.map(p => {
     const cls   = urgencyClass(p, todayStr);
@@ -464,8 +579,8 @@ function renderList() {
 
     return `
       <tr>
-        <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${p.sku}</span></td>
-        <td>${p.nombre}</td>
+        <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${highlight(p.sku, terms)}</span></td>
+        <td>${highlight(p.nombre, terms)}</td>
         <td style="color:var(--text-muted);font-size:12px">${p.grupo || '—'}${p.subgrupo ? `<br><span style="font-size:10px">${p.subgrupo}</span>` : ''}</td>
         <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
         <td style="font-family:'JetBrains Mono',monospace">
@@ -555,7 +670,8 @@ function renderCalendar() {
                  : ev.type === 'stockout'   ? '🔴'
                  : ev.type === 'in-transit' ? '🚢'
                  : '📦';
-      return `<div class="cal-event ${cls}" title="${ev.label}">${icon} ${ev.label}</div>`;
+      const label = escapeHtml(ev.label);
+      return `<div class="cal-event ${cls}" title="${label}">${icon} ${label}</div>`;
     }).join('');
 
     const more = dayEvents.length > 4
@@ -590,6 +706,14 @@ function switchView(v) {
   if (v === 'lista')      renderList();
   if (v === 'calendario') renderCalendar();
 }
+
+// ─── Atajos de teclado ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const q = document.getElementById('filter-q');
+  const escribiendo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === '/' && !escribiendo) { e.preventDefault(); q.focus(); q.select(); }
+  if (e.key === 'Escape' && document.activeElement === q && q.value) { e.preventDefault(); clearSearch(); }
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 load();

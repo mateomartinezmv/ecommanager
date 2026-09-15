@@ -209,6 +209,7 @@
     <a class="nav-item" href="/reposicion.html" style="text-decoration:none"><span class="icon">📅</span><span>Reposición</span></a>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
+    <div class="nav-item" onclick="goPage('opiniones')"><span class="icon">⭐</span><span>Opiniones</span></div>
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
@@ -661,6 +662,42 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- OPINIONES: publicaciones flojas de estrellas, para republicar -->
+  <div id="page-opiniones" class="page">
+    <div class="topbar">
+      <div class="page-title">⭐ Opiniones de publicaciones</div>
+      <div class="topbar-actions">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="opiniones-search" placeholder="Buscar publicación o SKU..." oninput="renderOpiniones()">
+        </div>
+        <button class="btn btn-yellow" id="btn-refrescar-opiniones" onclick="refrescarOpiniones()">🔄 Actualizar desde MELI</button>
+      </div>
+    </div>
+    <div class="content">
+      <div id="opiniones-aviso" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px"></div>
+      <div class="cards-grid" id="opiniones-stats"></div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchOpinionesTab('republicar')">⚠️ A republicar</button>
+        <button class="tab" onclick="switchOpinionesTab('ok')">✅ Bien calificadas</button>
+        <button class="tab" onclick="switchOpinionesTab('sin')">➖ Sin opiniones</button>
+        <button class="tab" onclick="switchOpinionesTab('republicadas')">🔁 Ya republicadas</button>
+        <button class="tab" onclick="switchOpinionesTab('all')">Todas</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title" id="opiniones-titulo">Publicaciones a republicar</span>
+          <span id="opiniones-count" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
+        <table>
+          <thead><tr><th>Publicación</th><th>SKU</th><th>Estrellas</th><th>Opiniones</th><th>Desglose</th><th>Stock MELI</th><th>Vendidos</th><th>Acciones</th></tr></thead>
+          <tbody id="opiniones-tbody"></tbody>
+        </table>
+        <div id="opiniones-empty" class="empty-state" style="display:none"><div class="empty-icon">⭐</div><p>Nada por acá.</p></div>
+      </div>
     </div>
   </div>
 
@@ -1221,7 +1258,7 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [] };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null } };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
@@ -1956,6 +1993,7 @@ function goPage(page) {
   if (page === 'transportistas') renderTransportistas();
   if (page === 'clientes') renderClientes();
   if (page === 'informacion') renderInformacion();
+  if (page === 'opiniones') renderOpiniones();
 }
 
 // =====================
@@ -3036,8 +3074,10 @@ function renderDashboard() {
     <div class="stat-card purple"><div class="stat-icon">🚚</div><div class="stat-value">${enviosPendientes}</div><div class="stat-label">Envíos en curso</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(costoEnviosMes)}</div><div class="stat-label">Costo envíos este mes</div></div>
     <div class="stat-card red" id="dash-ads-card"><div class="stat-icon">📢</div><div class="stat-value" id="dash-ads-value">...</div><div class="stat-label">Gasto en Ads (mes)</div></div>
+    <div class="stat-card yellow" id="dash-opiniones-card" onclick="goPage('opiniones')" style="cursor:pointer"><div class="stat-icon">⭐</div><div class="stat-value" id="dash-opiniones-value">...</div><div class="stat-label">Publicaciones a republicar</div></div>
   `;
   loadDashAds();
+  loadDashOpiniones();
 
   const lowStock = db.productos.filter(p => p.stockDep <= p.alertaMin && !p.discontinuado).slice(0,8);
   document.getElementById('dash-low-stock').innerHTML = lowStock.length === 0
@@ -3048,6 +3088,247 @@ function renderDashboard() {
   document.getElementById('dash-recent-sales').innerHTML = recent.length === 0
     ? '<div class="empty-state"><div class="empty-icon">🛒</div><p>Sin ventas registradas</p></div>'
     : `<table><tbody>${recent.map(v => `<tr><td>${canalBadge(v.canal)}</td><td>${v.producto}</td><td>${fmt(v.total)}</td><td>${estadoVentaBadge(v.estado)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+// =====================
+// RENDER: OPINIONES (publicaciones a republicar)
+// =====================
+// Una publicación que se llenó de opiniones malas no se recupera: la estrategia es
+// republicarla de cero. Acá salen las que están en ese punto, ordenadas de peor a mejor.
+// Las estrellas vienen cacheadas de /api/meli/opiniones; el botón "Actualizar desde MELI"
+// las vuelve a pedir publicación por publicación.
+
+const UMBRAL_REPUBLICAR = 3.9;
+let opinionesTabFilter = 'republicar';
+let opinionesCargando = false;
+
+function escHtml(v) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function estrellasHtml(rating) {
+  if (rating === null || rating === undefined) return '<span class="badge badge-gray">Sin opiniones</span>';
+  const r = Number(rating);
+  const llenas = Math.round(r);
+  const color = r <= UMBRAL_REPUBLICAR ? 'var(--red)' : (r < 4.5 ? 'var(--yellow)' : 'var(--green)');
+  return `<span style="white-space:nowrap"><span style="color:${color};letter-spacing:1px">${'★'.repeat(llenas)}${'☆'.repeat(5 - llenas)}</span>
+    <strong style="color:${color};margin-left:6px">${r.toFixed(2)}</strong></span>`;
+}
+
+function desgloseHtml(o) {
+  const niveles = [
+    ['5', o.cinco_estrellas], ['4', o.cuatro_estrellas], ['3', o.tres_estrellas],
+    ['2', o.dos_estrellas], ['1', o.una_estrella],
+  ].filter(([, n]) => (n || 0) > 0);
+  if (!niveles.length) return '<span style="color:var(--text-muted)">—</span>';
+  return `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim)">` +
+    niveles.map(([e, n]) => `${e}★:${n}`).join('  ') + '</span>';
+}
+
+function esARepublicar(o) {
+  return o.rating !== null && o.rating !== undefined && Number(o.rating) <= UMBRAL_REPUBLICAR && !o.republicada_at;
+}
+
+async function loadOpiniones(force = false) {
+  // La caché del navegador evita repedir la lista en cada tecleo del buscador.
+  if (db.opinionesMeta.cargada && !force) return;
+  const data = await fetch('/api/meli/opiniones').then(r => r.json());
+  db.opiniones = data.publicaciones || [];
+  db.opinionesMeta = { cargada: true, ok: data.ok !== false, error: data.error || null, actualizado: data.actualizado_at || null };
+}
+
+async function renderOpiniones() {
+  const tbody = document.getElementById('opiniones-tbody');
+  if (!tbody) return;
+
+  // Primera entrada a la pantalla: traer la caché de estrellas.
+  if (!db.opinionesMeta.cargada) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:20px;color:var(--text-muted)">Cargando...</td></tr>';
+    try {
+      await loadOpiniones();
+    } catch (e) {
+      db.opinionesMeta = { cargada: true, ok: false, error: e.message, actualizado: null };
+    }
+  }
+
+  const aviso = document.getElementById('opiniones-aviso');
+  if (db.opinionesMeta.error) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `⚠️ ${escHtml(db.opinionesMeta.error)}`;
+  } else if (!db.opiniones.length) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = '📭 Todavía no se trajeron las estrellas. Hacé clic en <strong>🔄 Actualizar desde MELI</strong>.';
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const total = db.opiniones.length;
+  const aRepublicar = db.opiniones.filter(esARepublicar);
+  const conOpiniones = db.opiniones.filter(o => o.rating !== null && o.rating !== undefined);
+  const promedio = conOpiniones.length
+    ? (conOpiniones.reduce((s, o) => s + Number(o.rating), 0) / conOpiniones.length).toFixed(2)
+    : '—';
+  const totalOpiniones = db.opiniones.reduce((s, o) => s + (o.total_opiniones || 0), 0);
+  const actualizado = db.opinionesMeta.actualizado
+    ? new Date(db.opinionesMeta.actualizado).toLocaleString('es-UY', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : 'nunca';
+
+  document.getElementById('opiniones-stats').innerHTML = `
+    <div class="stat-card red"><div class="stat-icon">⚠️</div><div class="stat-value">${aRepublicar.length}</div><div class="stat-label">A republicar (${UMBRAL_REPUBLICAR}★ o menos)</div></div>
+    <div class="stat-card green"><div class="stat-icon">⭐</div><div class="stat-value">${promedio}</div><div class="stat-label">Promedio de tus publicaciones</div></div>
+    <div class="stat-card blue"><div class="stat-icon">💬</div><div class="stat-value">${totalOpiniones}</div><div class="stat-label">Opiniones recibidas</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">🟡</div><div class="stat-value">${total}</div><div class="stat-label">Publicaciones activas · act. ${actualizado}</div></div>`;
+
+  const q = (document.getElementById('opiniones-search')?.value || '').toLowerCase();
+  const filtradas = db.opiniones.filter(o => {
+    const matchQ = !q || (o.titulo || '').toLowerCase().includes(q) || (o.sku || '').toLowerCase().includes(q) || (o.meli_id || '').toLowerCase().includes(q);
+    if (!matchQ) return false;
+    if (opinionesTabFilter === 'republicar') return esARepublicar(o);
+    if (opinionesTabFilter === 'republicadas') return !!o.republicada_at;
+    if (opinionesTabFilter === 'sin') return o.rating === null || o.rating === undefined;
+    if (opinionesTabFilter === 'ok') return o.rating !== null && o.rating !== undefined && Number(o.rating) > UMBRAL_REPUBLICAR;
+    return true;
+  }).sort((a, b) => {
+    const ra = a.rating === null || a.rating === undefined ? 99 : Number(a.rating);
+    const rb = b.rating === null || b.rating === undefined ? 99 : Number(b.rating);
+    if (ra !== rb) return ra - rb;
+    return (b.total_opiniones || 0) - (a.total_opiniones || 0);
+  });
+
+  const titulos = {
+    republicar: 'Publicaciones a republicar',
+    ok: 'Publicaciones bien calificadas',
+    sin: 'Publicaciones sin opiniones',
+    republicadas: 'Publicaciones ya republicadas',
+    all: 'Todas las publicaciones',
+  };
+  document.getElementById('opiniones-titulo').textContent = titulos[opinionesTabFilter];
+  document.getElementById('opiniones-count').textContent = `${filtradas.length} publicaci${filtradas.length === 1 ? 'ón' : 'ones'}`;
+
+  const vacios = {
+    republicar: '✅ Ninguna publicación está en ' + UMBRAL_REPUBLICAR + '★ o menos.',
+    ok: 'Todavía no hay publicaciones bien calificadas.',
+    sin: 'Todas tus publicaciones tienen al menos una opinión.',
+    republicadas: 'No marcaste ninguna publicación como republicada.',
+    all: 'No hay publicaciones cargadas.',
+  };
+  const empty = document.getElementById('opiniones-empty');
+  if (!filtradas.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = vacios[opinionesTabFilter];
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = filtradas.map(o => {
+    const link = o.permalink
+      ? `<a href="${escHtml(o.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml(o.titulo || o.meli_id)} ↗</a>`
+      : escHtml(o.titulo || o.meli_id);
+    const producto = o.sku
+      ? `<span class="badge badge-gray">${escHtml(o.sku)}</span>`
+      : '<span style="color:var(--text-muted);font-size:12px">sin vincular</span>';
+    const marca = o.republicada_at
+      ? `<button class="btn btn-ghost btn-sm" onclick="marcarRepublicada('${escHtml(o.meli_id)}', false)">↩️ Desmarcar</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="marcarRepublicada('${escHtml(o.meli_id)}', true)">🔁 Marcar republicada</button>`;
+    const sello = o.republicada_at
+      ? `<div style="font-size:11px;color:var(--green);margin-top:3px">Republicada el ${new Date(o.republicada_at).toLocaleDateString('es-UY')}</div>`
+      : '';
+    return `<tr>
+      <td>${link}<div style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${escHtml(o.meli_id)}</div>${sello}</td>
+      <td>${producto}</td>
+      <td>${estrellasHtml(o.rating)}</td>
+      <td>${o.total_opiniones || 0}</td>
+      <td>${desgloseHtml(o)}</td>
+      <td>${o.stock ?? 0}</td>
+      <td>${o.vendidos ?? 0}</td>
+      <td>${marca}</td>
+    </tr>`;
+  }).join('');
+}
+
+function switchOpinionesTab(tab) {
+  opinionesTabFilter = tab;
+  document.querySelectorAll('#page-opiniones .tab').forEach((t, i) => {
+    t.classList.toggle('active', ['republicar', 'ok', 'sin', 'republicadas', 'all'][i] === tab);
+  });
+  renderOpiniones();
+}
+
+// El refresco pide las estrellas de a tandas: la función corta por presupuesto de tiempo y
+// devuelve desde dónde seguir, así que acá se la llama hasta que diga que terminó.
+async function refrescarOpiniones() {
+  const btn = document.getElementById('btn-refrescar-opiniones');
+  if (opinionesCargando) return;
+  opinionesCargando = true;
+  btn.disabled = true;
+
+  try {
+    let offset = 0;
+    let procesadas = 0;
+    let errores = 0;
+    while (offset !== null) {
+      btn.textContent = `⏳ Leyendo opiniones... (${procesadas})`;
+      const data = await fetch('/api/meli/opiniones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offset }),
+      }).then(r => r.json());
+
+      if (data.ok === false) throw new Error(data.error || 'Error desconocido');
+      procesadas += data.procesadas || 0;
+      errores += data.errores || 0;
+      offset = data.siguiente_offset ?? null;
+    }
+
+    opinionesCargando = false;
+    await loadOpiniones(true);
+    await renderOpiniones();
+    const aviso = errores ? ` (${errores} publicación/es no se pudieron leer)` : '';
+    alert(`✅ Estrellas actualizadas: ${procesadas} publicaciones${aviso}.`);
+  } catch (e) {
+    alert('⚠️ Error actualizando opiniones: ' + e.message);
+  } finally {
+    opinionesCargando = false;
+    btn.disabled = false;
+    btn.textContent = '🔄 Actualizar desde MELI';
+  }
+}
+
+async function marcarRepublicada(meliId, valor) {
+  try {
+    const data = await fetch(`/api/meli/opiniones?meli_id=${encodeURIComponent(meliId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ republicada: valor }),
+    }).then(r => r.json());
+    if (data.ok === false) throw new Error(data.error);
+    const fila = db.opiniones.find(o => o.meli_id === meliId);
+    if (fila) fila.republicada_at = data.publicacion?.republicada_at || null;
+    renderOpiniones();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// Card del dashboard: la pantalla de opiniones no se mira todos los días, así que el número
+// de publicaciones flojas aparece en la portada.
+async function loadDashOpiniones() {
+  const el = document.getElementById('dash-opiniones-value');
+  if (!el) return;
+  try {
+    await loadOpiniones();
+    const n = db.opiniones.filter(esARepublicar).length;
+    el.textContent = n;
+    const label = el.closest('.stat-card')?.querySelector('.stat-label');
+    if (label) {
+      label.innerHTML = n > 0
+        ? `Publicaciones a republicar<br><span style="font-size:10px;font-weight:400;opacity:.8">${UMBRAL_REPUBLICAR}★ o menos · ver Opiniones</span>`
+        : `Publicaciones a republicar<br><span style="font-size:10px;font-weight:400;opacity:.8">ninguna por debajo de ${UMBRAL_REPUBLICAR}★</span>`;
+    }
+  } catch {
+    el.textContent = '—';
+  }
 }
 
 // =====================

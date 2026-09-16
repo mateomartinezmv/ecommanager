@@ -43,6 +43,37 @@ const EXPERIMENTOS = [
       p.channels = ['marketplace'];
       p.shipping = { mode: item.shipping?.mode || 'me2', local_pick_up: !!item.shipping?.local_pick_up, free_shipping: !!item.shipping?.free_shipping };
     } },
+  // Control: la publicación original tal cual, como si la estuviéramos creando de nuevo.
+  // Si MELI tampoco la acepta, el problema no es lo que arma el clon sino la cuenta.
+  { nombre: 'la original calcada', ajuste: (p, item) => {
+      for (const k of Object.keys(p)) delete p[k];
+      Object.assign(p, {
+        family_name: `${item.family_name} Prueba`,
+        category_id: item.category_id,
+        price: item.price,
+        currency_id: item.currency_id,
+        available_quantity: item.available_quantity || 1,
+        buying_mode: item.buying_mode,
+        condition: item.condition,
+        listing_type_id: item.listing_type_id,
+        pictures: (item.pictures || []).map(f => ({ source: f.secure_url || f.url })),
+        attributes: (item.attributes || [])
+          .filter(a => a.id !== 'ITEM_CONDITION')
+          .map(a => (a.value_id ? { id: a.id, value_id: a.value_id, value_name: a.value_name } : { id: a.id, value_name: a.value_name })),
+        sale_terms: (item.sale_terms || []).map(t => (t.value_id ? { id: t.id, value_id: t.value_id } : { id: t.id, value_name: t.value_name })),
+        shipping: { mode: item.shipping?.mode, local_pick_up: !!item.shipping?.local_pick_up, free_shipping: !!item.shipping?.free_shipping },
+      });
+    } },
+  // Sin las medidas del paquete: 112 cm de alto puede dejar al ítem fuera de ME2.
+  { nombre: 'sin medidas del paquete', ajuste: (p) => { p.attributes = p.attributes.filter(a => !a.id.startsWith('SELLER_PACKAGE_')); } },
+  { nombre: 'medidas chicas', ajuste: (p) => {
+      p.attributes = p.attributes.filter(a => !a.id.startsWith('SELLER_PACKAGE_')).concat([
+        { id: 'SELLER_PACKAGE_HEIGHT', value_name: '10 cm' },
+        { id: 'SELLER_PACKAGE_WIDTH', value_name: '10 cm' },
+        { id: 'SELLER_PACKAGE_LENGTH', value_name: '15 cm' },
+        { id: 'SELLER_PACKAGE_WEIGHT', value_name: '300 g' },
+      ]);
+    } },
   { nombre: 'mínimo absoluto', ajuste: (p, item) => {
       for (const k of Object.keys(p)) delete p[k];
       Object.assign(p, {
@@ -101,6 +132,13 @@ module.exports = async (req, res) => {
 
     // El producto de usuario puede tener datos que el ítem no muestra (peso, dimensiones):
     // si el clon no los hereda, MELI no puede resolver el envío y cae a me1.
+    // Qué modos de envío ofrece la cuenta, según MELI.
+    let preferencias = null;
+    for (const ruta of [`/users/${usuario.id}/shipping_preferences`, `/users/${usuario.id}/shipping_modes`, `/users/${usuario.id}/shipping_options`]) {
+      try { preferencias = { ruta, data: await meliGet(token, ruta) }; break; }
+      catch (e) { preferencias = { ruta, error: e.message }; }
+    }
+
     let userProduct = null;
     if (item.user_product_id) {
       try { userProduct = await meliGet(token, `/user-products/${item.user_product_id}`); }
@@ -111,6 +149,7 @@ module.exports = async (req, res) => {
       ok: true,
       sku: producto.sku,
       cuerpo_del_clon: base(),
+      preferencias_envio: preferencias,
       user_product: userProduct,
       vendedor: {
         id: usuario.id,

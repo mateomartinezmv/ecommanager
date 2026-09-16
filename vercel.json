@@ -33,6 +33,8 @@
     "api/meli/opiniones.js": { "maxDuration": 60 },
     "api/meli/angulos.js": { "maxDuration": 60 },
     "api/meli/diagnostico.js": { "maxDuration": 60 },
+    "api/meli/stock.js": { "maxDuration": 60 },
+    "api/cron/sync-stock-pubs.js": { "maxDuration": 60 },
     "api/telegram/setup.js": { "maxDuration": 15 },
     "api/telegram/webhook.js": { "maxDuration": 30 }
   },
@@ -52,6 +54,10 @@
     {
       "path": "/api/cron/sync-envios",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/sync-stock-pubs",
+      "schedule": "15 */4 * * *"
     }
   ]
 }

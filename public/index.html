@@ -721,6 +721,7 @@
         <button class="tab active" onclick="switchAngulosTab('faltan')">⚠️ Les faltan ángulos</button>
         <button class="tab" onclick="switchAngulosTab('ok')">✅ Cubiertos</button>
         <button class="tab" onclick="switchAngulosTab('todos')">Todos</button>
+        <button class="tab" onclick="switchAngulosTab('stock')">📦 Stock por publicación</button>
         <button class="tab" onclick="switchAngulosTab('historial')">🕐 Historial</button>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
@@ -739,7 +740,7 @@
           <span id="angulos-count" style="font-size:12px;color:var(--text-muted)"></span>
         </div>
         <table>
-          <thead><tr><th>Producto</th><th>Publicaciones activas</th><th>Ángulos</th><th>Stock</th><th>Acciones</th></tr></thead>
+          <thead id="angulos-thead"><tr><th>Producto</th><th>Publicaciones activas</th><th>Ángulos</th><th>Stock</th><th>Acciones</th></tr></thead>
           <tbody id="angulos-tbody"></tbody>
         </table>
         <div id="angulos-empty" class="empty-state" style="display:none"><div class="empty-icon">🎯</div><p>Nada por acá.</p></div>
@@ -3409,6 +3410,7 @@ let angulosOcupado = false;
 let angulosSufijo = '';
 let angulosMaxFinal = 60;   // largo máximo del título que ve el comprador
 let angulosPortadas = [];   // foto de portada elegida para cada ángulo
+let stockPubs = null;       // auditoría de stock publicación por publicación
 
 // La portada es lo único que ve el comprador en los resultados, así que se elige a mano.
 function elegirPortada(i, foto) {
@@ -3439,6 +3441,7 @@ function actualizarTituloAngulo(i, valor) {
 }
 
 async function cargarAngulos(force = false) {
+  if (force) stockPubs = null;
   if (db.angulosMeta.cargada && !force) return;
   const btn = document.getElementById('btn-refrescar-angulos');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Leyendo MELI...'; }
@@ -3503,7 +3506,16 @@ async function renderAngulos() {
     <div class="stat-card blue"><div class="stat-icon">🟡</div><div class="stat-value">${activasTotal}</div><div class="stat-label">Publicaciones activas</div></div>
     <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${creadasTotal}</div><div class="stat-label">Ángulos creados desde acá</div></div>`;
 
-  if (angulosTab === 'historial') return renderAngulosHistorial();
+  const thead = document.getElementById('angulos-thead');
+  if (angulosTab === 'stock') {
+    thead.innerHTML = '<tr><th>Producto</th><th>Stock en el CRM</th><th>Publicación</th><th>Stock en MELI</th><th>Estado</th></tr>';
+    return renderAngulosStock();
+  }
+  if (angulosTab === 'historial') {
+    thead.innerHTML = '<tr><th>Publicación</th><th>Producto</th><th>Estado</th><th>Fecha</th><th>Detalle</th></tr>';
+    return renderAngulosHistorial();
+  }
+  thead.innerHTML = '<tr><th>Producto</th><th>Publicaciones activas</th><th>Ángulos</th><th>Stock</th><th>Acciones</th></tr>';
 
   const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
   const soloVendidos = document.getElementById('angulos-solo-vendidos')?.checked;
@@ -3590,10 +3602,123 @@ function renderAngulosHistorial() {
   }).join('');
 }
 
+// Stock publicación por publicación: lo que dice el CRM contra lo que muestra cada
+// publicación en MELI. Un producto puede tener varias y todas venden del mismo depósito, así
+// que todas tienen que mostrar el mismo número.
+async function renderAngulosStock() {
+  const tbody = document.getElementById('angulos-tbody');
+  const empty = document.getElementById('angulos-empty');
+
+  if (!stockPubs) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;color:var(--text-muted)">Comparando contra MELI publicación por publicación...</td></tr>';
+    try {
+      stockPubs = await fetch('/api/meli/stock').then(r => r.json());
+    } catch (e) {
+      stockPubs = { ok: false, error: e.message, productos: [], sin_enlazar: [], resumen: {} };
+    }
+  }
+
+  const r = stockPubs.resumen || {};
+  document.getElementById('angulos-stats').innerHTML = `
+    <div class="stat-card ${r.desincronizadas ? 'red' : 'green'}"><div class="stat-icon">${r.desincronizadas ? '⚠️' : '✅'}</div><div class="stat-value">${r.desincronizadas || 0}</div><div class="stat-label">Publicaciones con stock distinto al CRM</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">📦</div><div class="stat-value">${r.productos_afectados || 0}</div><div class="stat-label">Productos afectados</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🔗</div><div class="stat-value">${r.publicaciones || 0}</div><div class="stat-label">Publicaciones enlazadas al CRM</div></div>
+    <div class="stat-card ${r.sin_enlazar ? 'red' : 'purple'}"><div class="stat-icon">🚨</div><div class="stat-value">${r.sin_enlazar || 0}</div><div class="stat-label">Activas en MELI sin enlazar</div></div>`;
+
+  const aviso = document.getElementById('angulos-aviso');
+  const huerfanas = stockPubs.sin_enlazar || [];
+  if (stockPubs.ok === false) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `⚠️ ${escHtml(stockPubs.error)}`;
+  } else if (huerfanas.length) {
+    // Éstas son las que rompen la captura de ventas: una orden que entra por acá no
+    // encuentra SKU, no se registra y no descuenta stock.
+    aviso.style.display = 'block';
+    aviso.innerHTML = `🚨 <strong>${huerfanas.length} publicación${huerfanas.length === 1 ? '' : 'es'} activa${huerfanas.length === 1 ? '' : 's'} en MELI sin enlazar a ningún SKU.</strong>
+      Las ventas que entren por ahí no se registran ni descuentan stock. Enlazalas en Stock → editar producto → IDs de Publicación MELI:<br>
+      ${huerfanas.slice(0, 12).map(h => `<a href="${escHtml(h.permalink || '#')}" target="_blank" rel="noopener" style="color:var(--accent)">${escHtml(h.titulo || h.meli_id)}</a>`).join(' · ')}`;
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
+  const soloDesync = !!r.desincronizadas;
+  const productos = (stockPubs.productos || []).filter(p => {
+    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
+    return soloDesync ? p.desincronizadas > 0 : true;
+  });
+
+  document.getElementById('angulos-titulo').innerHTML = soloDesync
+    ? 'Publicaciones con stock distinto al del CRM'
+    : 'Stock por publicación';
+  document.getElementById('angulos-count').innerHTML = r.desincronizadas
+    ? `<button class="btn btn-primary btn-sm" onclick="sincronizarStockPublicaciones()" id="btn-sync-pubs">🔄 Sincronizar las ${r.desincronizadas} desincronizadas</button>`
+    : `${r.publicaciones || 0} publicaciones al día`;
+
+  if (!productos.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = stockPubs.ok === false
+      ? 'No se pudo leer el stock de MELI.'
+      : '✅ Todas las publicaciones tienen el mismo stock que el CRM.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = productos.map(p => p.publicaciones.map((pub, i) => {
+    const badgeEstado = pub.desincronizada
+      ? '<span class="badge badge-red">distinto</span>'
+      : (pub.estado === 'active' ? '<span class="badge badge-green">al día</span>'
+        : `<span class="badge badge-gray">${escHtml(pub.estado || '—')}${pub.sub_estado ? ' · ' + escHtml(pub.sub_estado) : ''}</span>`);
+    const titulo = pub.permalink
+      ? `<a href="${escHtml(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml((pub.titulo || pub.meli_id).slice(0, 52))} ↗</a>`
+      : escHtml(pub.titulo || pub.meli_id);
+    return `<tr>
+      <td>${i === 0 ? `<strong>${escHtml(p.nombre)}</strong><div style="font-size:11px"><span class="badge badge-gray">${escHtml(p.sku)}</span></div>` : ''}</td>
+      <td>${i === 0 ? `<strong>${p.stock_dep}</strong>` : ''}</td>
+      <td>${titulo}<div style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${escHtml(pub.meli_id)}</div></td>
+      <td class="${pub.desincronizada ? 'stock-low' : ''}"><strong>${pub.stock_meli === null ? '—' : pub.stock_meli}</strong></td>
+      <td>${badgeEstado}</td>
+    </tr>`;
+  }).join('')).join('');
+}
+
+// Empuja el stock del CRM a las publicaciones que quedaron distintas.
+async function sincronizarStockPublicaciones() {
+  if (angulosOcupado) return;
+  const btn = document.getElementById('btn-sync-pubs');
+  angulosOcupado = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando...'; }
+
+  try {
+    const data = await fetch('/api/meli/stock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+
+    const fallos = (data.resultados || []).filter(x => !x.ok);
+    const detalle = fallos.length
+      ? '\n\nNo se pudieron:\n' + fallos.map(f => `· ${f.sku} (${f.meli_id}): ${f.error}`).join('\n')
+      : '';
+    alert(`✅ Sincronizadas: ${data.sincronizadas} · Fallidas: ${data.fallidas}${detalle}`);
+
+    stockPubs = null;
+    await renderAngulosStock();
+  } catch (e) {
+    alert('⚠️ Error sincronizando: ' + e.message);
+  } finally {
+    angulosOcupado = false;
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar'; }
+  }
+}
+
 function switchAngulosTab(tab) {
   angulosTab = tab;
   document.querySelectorAll('#page-angulos .tab').forEach((t, i) => {
-    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'historial'][i] === tab);
+    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'stock', 'historial'][i] === tab);
   });
   renderAngulos();
 }

@@ -35,6 +35,14 @@ const EXPERIMENTOS = [
   { nombre: 'cantidad 1', ajuste: (p) => { p.available_quantity = 1; } },
   { nombre: 'listing_type free', ajuste: (p) => { p.listing_type_id = 'free'; } },
   { nombre: 'listing_type bronze', ajuste: (p) => { p.listing_type_id = 'bronze'; } },
+  // La cuenta tiene el tag eshop (Mercado Shops). Si el ítem se valida también para el canal
+  // de la tienda y ese canal no tiene envío configurado, MELI cae a me1 y falla.
+  { nombre: 'channels marketplace', ajuste: (p) => { p.channels = ['marketplace']; } },
+  { nombre: 'channels mshops', ajuste: (p) => { p.channels = ['mshops']; } },
+  { nombre: 'channels marketplace + envío original', ajuste: (p, item) => {
+      p.channels = ['marketplace'];
+      p.shipping = { mode: item.shipping?.mode || 'me2', local_pick_up: !!item.shipping?.local_pick_up, free_shipping: !!item.shipping?.free_shipping };
+    } },
   { nombre: 'mínimo absoluto', ajuste: (p, item) => {
       for (const k of Object.keys(p)) delete p[k];
       Object.assign(p, {
@@ -119,6 +127,7 @@ module.exports = async (req, res) => {
         category_id: item.category_id,
         shipping: item.shipping || null,
         tags: item.tags || [],
+        channels: item.channels || null,
         attributes: (item.attributes || []).map(a => ({ id: a.id, value_id: a.value_id ?? null, value_name: a.value_name ?? null })),
         sale_terms: item.sale_terms || [],
       },

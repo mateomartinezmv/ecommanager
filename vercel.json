@@ -31,6 +31,7 @@
     "api/meli/ads.js": { "maxDuration": 30 },
     "api/meli/ads-historico.js": { "maxDuration": 10 },
     "api/meli/opiniones.js": { "maxDuration": 60 },
+    "api/meli/angulos.js": { "maxDuration": 60 },
     "api/telegram/setup.js": { "maxDuration": 15 },
     "api/telegram/webhook.js": { "maxDuration": 30 }
   },

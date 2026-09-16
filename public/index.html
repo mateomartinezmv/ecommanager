@@ -210,6 +210,7 @@
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
     <div class="nav-item" onclick="goPage('opiniones')"><span class="icon">⭐</span><span>Opiniones</span></div>
+    <div class="nav-item" onclick="goPage('angulos')"><span class="icon">🎯</span><span>Ángulos de venta</span></div>
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
@@ -701,6 +702,51 @@
     </div>
   </div>
 
+  <!-- ÁNGULOS DE VENTA: publicaciones adicionales por producto -->
+  <div id="page-angulos" class="page">
+    <div class="topbar">
+      <div class="page-title">🎯 Ángulos de venta</div>
+      <div class="topbar-actions">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="angulos-search" placeholder="Buscar producto o SKU..." oninput="renderAngulos()">
+        </div>
+        <button class="btn btn-ghost" id="btn-refrescar-angulos" onclick="cargarAngulos(true)">🔄 Actualizar</button>
+      </div>
+    </div>
+    <div class="content">
+      <div id="angulos-aviso" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px"></div>
+      <div class="cards-grid" id="angulos-stats"></div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchAngulosTab('faltan')">⚠️ Les faltan ángulos</button>
+        <button class="tab" onclick="switchAngulosTab('ok')">✅ Cubiertos</button>
+        <button class="tab" onclick="switchAngulosTab('todos')">Todos</button>
+        <button class="tab" onclick="switchAngulosTab('historial')">🕐 Historial</button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="angulos-solo-vendidos" onchange="renderAngulos()" style="width:auto;cursor:pointer">
+          Solo productos que ya vendieron
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="angulos-solo-stock" onchange="renderAngulos()" style="width:auto;cursor:pointer">
+          Solo con stock
+        </label>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title" id="angulos-titulo">Productos con menos de 3 ángulos</span>
+          <span id="angulos-count" style="font-size:12px;color:var(--text-muted)"></span>
+        </div>
+        <table>
+          <thead><tr><th>Producto</th><th>Publicaciones activas</th><th>Ángulos</th><th>Stock</th><th>Acciones</th></tr></thead>
+          <tbody id="angulos-tbody"></tbody>
+        </table>
+        <div id="angulos-empty" class="empty-state" style="display:none"><div class="empty-icon">🎯</div><p>Nada por acá.</p></div>
+      </div>
+    </div>
+  </div>
+
   <!-- INFORMACIÓN -->
   <div id="page-informacion" class="page">
     <div class="topbar">
@@ -731,6 +777,18 @@
   </div>
 
 </main>
+
+<!-- MODAL: ÁNGULOS PROPUESTOS -->
+<div class="modal-overlay" id="modal-angulos">
+  <div class="modal" style="width:820px">
+    <div class="modal-title" id="ang-modal-title">✨ Ángulos propuestos</div>
+    <div id="ang-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-angulos')">Cancelar</button>
+      <button class="btn btn-primary" id="ang-btn-publicar" onclick="publicarAngulos()">🚀 Publicar seleccionados</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL: NUEVO/EDITAR PRODUCTO -->
 <div class="modal-overlay" id="modal-producto">
@@ -1258,7 +1316,7 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null } };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] } };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
@@ -1994,6 +2052,7 @@ function goPage(page) {
   if (page === 'clientes') renderClientes();
   if (page === 'informacion') renderInformacion();
   if (page === 'opiniones') renderOpiniones();
+  if (page === 'angulos') renderAngulos();
 }
 
 // =====================
@@ -3328,6 +3387,327 @@ async function loadDashOpiniones() {
     }
   } catch {
     el.textContent = '—';
+  }
+}
+
+// =====================
+// RENDER: ÁNGULOS DE VENTA
+// =====================
+// Un producto con una sola publicación sólo aparece en las búsquedas que pegan con ese
+// título. Acá se ve cuántos ángulos tiene cada producto y se crean los que faltan: la
+// publicación original queda intacta y las nuevas se suman, apuntando a otras búsquedas.
+//
+// Publicar crea avisos públicos reales, así que el flujo es en dos pasos: primero se
+// proponen los títulos (nada se publica), se revisan y recién ahí se publican.
+
+let angulosTab = 'faltan';
+let angulosPropuesta = null;   // propuesta abierta en el modal
+let angulosOcupado = false;
+
+async function cargarAngulos(force = false) {
+  if (db.angulosMeta.cargada && !force) return;
+  const btn = document.getElementById('btn-refrescar-angulos');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Leyendo MELI...'; }
+  try {
+    const data = await fetch('/api/meli/angulos').then(r => r.json());
+    db.angulos = data.productos || [];
+    db.angulosMeta = {
+      cargada: true,
+      objetivo: data.objetivo || 3,
+      error: data.ok === false ? (data.error || 'Error desconocido') : null,
+      historial: data.historial || [],
+      sinTabla: !!data.sin_tabla,
+    };
+  } catch (e) {
+    db.angulosMeta = { cargada: true, objetivo: 3, error: e.message, historial: [] };
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔄 Actualizar'; }
+  }
+  if (force) renderAngulos();
+}
+
+function skusConVenta() {
+  return new Set(db.ventas.map(v => v.sku).filter(Boolean));
+}
+
+function chipsPublicaciones(p) {
+  if (!p.publicaciones.length) return '<span style="color:var(--text-muted);font-size:12px">sin publicaciones enlazadas</span>';
+  return p.publicaciones.map(pub => {
+    const color = pub.estado === 'active' ? 'badge-green' : (pub.estado === 'paused' ? 'badge-yellow' : 'badge-gray');
+    const texto = escHtml((pub.titulo || pub.meli_id).slice(0, 48));
+    const link = pub.permalink ? `<a href="${escHtml(pub.permalink)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">${texto} ↗</a>` : texto;
+    return `<div style="margin-bottom:3px"><span class="badge ${color}" style="max-width:100%">${link}</span></div>`;
+  }).join('');
+}
+
+async function renderAngulos() {
+  const tbody = document.getElementById('angulos-tbody');
+  if (!tbody) return;
+
+  if (!db.angulosMeta.cargada) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;color:var(--text-muted)">Leyendo publicaciones de MELI...</td></tr>';
+    await cargarAngulos();
+  }
+
+  const objetivo = db.angulosMeta.objetivo;
+  const aviso = document.getElementById('angulos-aviso');
+  if (db.angulosMeta.error) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `⚠️ ${escHtml(db.angulosMeta.error)}`;
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const conFalta = db.angulos.filter(p => p.faltan > 0 && p.publicaciones.length);
+  const activasTotal = db.angulos.reduce((s, p) => s + p.activas, 0);
+  const creadasTotal = db.angulosMeta.historial.filter(h => h.estado === 'publicada').length;
+  const cubiertos = db.angulos.filter(p => p.activas >= objetivo).length;
+
+  document.getElementById('angulos-stats').innerHTML = `
+    <div class="stat-card red"><div class="stat-icon">⚠️</div><div class="stat-value">${conFalta.length}</div><div class="stat-label">Productos con menos de ${objetivo} ángulos</div></div>
+    <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-value">${cubiertos}</div><div class="stat-label">Productos cubiertos</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🟡</div><div class="stat-value">${activasTotal}</div><div class="stat-label">Publicaciones activas</div></div>
+    <div class="stat-card purple"><div class="stat-icon">🎯</div><div class="stat-value">${creadasTotal}</div><div class="stat-label">Ángulos creados desde acá</div></div>`;
+
+  if (angulosTab === 'historial') return renderAngulosHistorial();
+
+  const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
+  const soloVendidos = document.getElementById('angulos-solo-vendidos')?.checked;
+  const soloStock = document.getElementById('angulos-solo-stock')?.checked;
+  const vendidos = soloVendidos ? skusConVenta() : null;
+
+  const filtrados = db.angulos.filter(p => {
+    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
+    if (vendidos && !vendidos.has(p.sku)) return false;
+    if (soloStock && !(p.stock > 0)) return false;
+    if (angulosTab === 'faltan') return p.faltan > 0;
+    if (angulosTab === 'ok') return p.faltan === 0;
+    return true;
+  }).sort((a, b) => (b.faltan - a.faltan) || (b.stock - a.stock));
+
+  const titulos = {
+    faltan: `Productos con menos de ${objetivo} ángulos`,
+    ok: `Productos con ${objetivo} ángulos o más`,
+    todos: 'Todos los productos',
+  };
+  document.getElementById('angulos-titulo').textContent = titulos[angulosTab];
+  document.getElementById('angulos-count').textContent = `${filtrados.length} producto${filtrados.length === 1 ? '' : 's'}`;
+
+  const empty = document.getElementById('angulos-empty');
+  if (!filtrados.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = angulosTab === 'faltan'
+      ? `✅ Todos los productos tienen al menos ${objetivo} publicaciones activas.`
+      : 'No hay productos para mostrar con estos filtros.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = filtrados.map(p => {
+    const puedeClonar = !!p.origen;
+    // Sin molde no hay nada que clonar, y el motivo no es siempre el mismo.
+    const soloCatalogo = !puedeClonar && p.publicaciones.some(x => x.estado === 'active' && x.catalogo);
+    const motivoSinMolde = soloCatalogo
+      ? 'Publicación de catálogo: MELI no deja duplicarla'
+      : 'Sin publicación activa para copiar';
+    const boton = puedeClonar
+      ? `<button class="btn btn-primary btn-sm" onclick="generarAngulos('${escHtml(p.sku)}')">✨ Generar ${p.faltan || 1} ángulo${(p.faltan || 1) === 1 ? '' : 's'}</button>`
+      : `<span style="font-size:11px;color:var(--text-muted)">${motivoSinMolde}</span>`;
+    const marca = p.faltan > 0
+      ? `<span class="badge badge-red">faltan ${p.faltan}</span>`
+      : '<span class="badge badge-green">completo</span>';
+    return `<tr>
+      <td><strong>${escHtml(p.nombre)}</strong><div style="font-size:11px;color:var(--text-muted)"><span class="badge badge-gray">${escHtml(p.sku)}</span></div></td>
+      <td style="max-width:420px">${chipsPublicaciones(p)}</td>
+      <td>${p.activas} / ${objetivo} ${marca}</td>
+      <td class="${p.stock === 0 ? 'stock-low' : ''}">${p.stock}</td>
+      <td>${boton}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderAngulosHistorial() {
+  const historial = db.angulosMeta.historial || [];
+  document.getElementById('angulos-titulo').textContent = 'Publicaciones creadas desde acá';
+  document.getElementById('angulos-count').textContent = `${historial.length} registro${historial.length === 1 ? '' : 's'}`;
+  const tbody = document.getElementById('angulos-tbody');
+  const empty = document.getElementById('angulos-empty');
+
+  if (!historial.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = 'Todavía no se publicó ningún ángulo desde el CRM.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = historial.map(h => {
+    const ok = h.estado === 'publicada';
+    const link = h.permalink
+      ? `<a href="${escHtml(h.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml(h.titulo)} ↗</a>`
+      : escHtml(h.titulo);
+    return `<tr>
+      <td>${link}<div style="font-size:11px;color:var(--text-muted)">${escHtml(h.angulo || '')}</div></td>
+      <td><span class="badge badge-gray">${escHtml(h.sku)}</span> <span style="font-size:11px;color:var(--text-muted)">copiada de ${escHtml(h.origen_meli_id)}</span></td>
+      <td>${ok ? '<span class="badge badge-green">publicada</span>' : '<span class="badge badge-red">error</span>'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${new Date(h.created_at).toLocaleDateString('es-UY')}</td>
+      <td style="font-size:11px;color:${ok ? 'var(--text-muted)' : 'var(--red)'};max-width:280px">${escHtml(h.error || (h.nuevo_meli_id || ''))}</td>
+    </tr>`;
+  }).join('');
+}
+
+function switchAngulosTab(tab) {
+  angulosTab = tab;
+  document.querySelectorAll('#page-angulos .tab').forEach((t, i) => {
+    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'historial'][i] === tab);
+  });
+  renderAngulos();
+}
+
+// Paso 1: pedir los títulos. Esto NO publica nada.
+async function generarAngulos(sku) {
+  if (angulosOcupado) return;
+  angulosOcupado = true;
+  const producto = db.angulos.find(p => p.sku === sku);
+  const cantidad = Math.max(1, producto?.faltan || 1);
+
+  angulosPropuesta = null;
+  document.getElementById('ang-modal-title').textContent = `✨ Ángulos para ${producto?.nombre || sku}`;
+  document.getElementById('ang-modal-body').innerHTML =
+    '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Redactando ángulos y validándolos contra MELI...<br><span style="font-size:11px">Puede tardar un minuto.</span></div>';
+  document.getElementById('ang-btn-publicar').style.display = 'none';
+  openModal('modal-angulos');
+
+  try {
+    const data = await fetch('/api/meli/angulos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku, cantidad }),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+    angulosPropuesta = data;
+    renderPropuestaAngulos(data);
+  } catch (e) {
+    document.getElementById('ang-modal-body').innerHTML =
+      `<div style="padding:20px;color:var(--red);font-size:13px">⚠️ ${escHtml(e.message)}</div>`;
+  } finally {
+    angulosOcupado = false;
+  }
+}
+
+function renderPropuestaAngulos(data) {
+  const origen = data.origen || {};
+  const filas = (data.angulos || []).map((a, i) => {
+    const estado = a.valida === true
+      ? '<span class="badge badge-green">MELI la valida</span>'
+      : (a.valida === false
+        ? `<span class="badge badge-red">MELI la rechaza</span>`
+        : '<span class="badge badge-gray">sin validar</span>');
+    const errores = (a.errores || []).length
+      ? `<div style="font-size:11px;color:var(--red);margin-top:4px">${escHtml(a.errores.join(' · '))}</div>`
+      : (a.aviso ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">${escHtml(a.aviso)}</div>` : '');
+    return `
+      <div style="border:1px solid var(--border);border-radius:9px;padding:14px;margin-bottom:12px;background:var(--surface2)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer">
+            <input type="checkbox" id="ang-ok-${i}" ${a.valida === false ? '' : 'checked'} style="width:auto;cursor:pointer">
+            ${escHtml(a.angulo)}
+          </label>
+          ${estado}
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Título <span style="color:var(--text-muted);font-weight:400">(<span id="ang-len-${i}">${a.titulo.length}</span>/${data.max_titulo})</span></label>
+          <input type="text" id="ang-titulo-${i}" value="${escHtml(a.titulo)}" maxlength="${data.max_titulo}"
+            oninput="document.getElementById('ang-len-${i}').textContent = this.value.length">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Descripción</label>
+          <textarea id="ang-desc-${i}" rows="4">${escHtml(a.descripcion)}</textarea>
+        </div>
+        ${errores}
+      </div>`;
+  }).join('');
+
+  const avisoIA = data.ia_error
+    ? `<div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);font-size:12px;margin-bottom:12px">⚠️ ${escHtml(data.ia_error)}</div>`
+    : '';
+  const avisoStock = data.aviso_stock
+    ? `<div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:12px;margin-bottom:12px">📦 ${escHtml(data.aviso_stock)}</div>`
+    : '';
+
+  document.getElementById('ang-modal-body').innerHTML = `
+    ${avisoIA}${avisoStock}
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+      Se copia de <strong style="color:var(--text)">${escHtml(origen.titulo || origen.meli_id || '')}</strong>:
+      precio, fotos, ficha técnica, garantía y envío. La publicación original no se toca.<br>
+      Cada ángulo se publica con ${data.stock} unidad${data.stock === 1 ? '' : 'es'} de stock y arranca con otra foto de portada.
+      Revisá los títulos antes de publicar: MELI modera las publicaciones que son calcadas entre sí.
+    </div>
+    ${filas || '<div style="color:var(--text-muted);font-size:13px;padding:12px">No se generaron ángulos automáticamente. Agregá uno a mano.</div>'}
+    <button class="btn btn-ghost btn-sm" onclick="agregarAnguloManual()">➕ Agregar ángulo a mano</button>`;
+
+  document.getElementById('ang-btn-publicar').style.display = (data.angulos || []).length ? '' : 'none';
+}
+
+// Si la IA no está disponible o el vendedor quiere escribir el suyo, la ficha se agrega
+// vacía y se publica igual: lo que se manda es lo que está en pantalla.
+function agregarAnguloManual() {
+  if (!angulosPropuesta) return;
+  const textos = (angulosPropuesta.angulos || []).map((a, i) => ({
+    angulo: a.angulo,
+    titulo: document.getElementById(`ang-titulo-${i}`)?.value ?? a.titulo,
+    descripcion: document.getElementById(`ang-desc-${i}`)?.value ?? a.descripcion,
+    valida: a.valida,
+    errores: a.errores,
+    aviso: a.aviso,
+  }));
+  textos.push({ angulo: 'Ángulo escrito a mano', titulo: '', descripcion: '', valida: null, errores: [], aviso: 'Se publica sin validar previamente: si MELI lo rechaza, el error aparece al publicar.' });
+  angulosPropuesta = { ...angulosPropuesta, angulos: textos };
+  renderPropuestaAngulos(angulosPropuesta);
+}
+
+// Paso 2: publicar lo que quedó tildado, con los textos como estén en pantalla.
+async function publicarAngulos() {
+  if (!angulosPropuesta || angulosOcupado) return;
+  const elegidos = (angulosPropuesta.angulos || []).map((a, i) => ({
+    marcado: document.getElementById(`ang-ok-${i}`)?.checked,
+    angulo: a.angulo,
+    titulo: document.getElementById(`ang-titulo-${i}`)?.value?.trim(),
+    descripcion: document.getElementById(`ang-desc-${i}`)?.value?.trim(),
+  })).filter(a => a.marcado && a.titulo);
+
+  if (!elegidos.length) return alert('No hay ningún ángulo tildado con título.');
+  if (!confirm(`Se van a publicar ${elegidos.length} publicaciones nuevas en MELI para ${angulosPropuesta.sku}. La original no se toca. ¿Seguimos?`)) return;
+
+  const btn = document.getElementById('ang-btn-publicar');
+  angulosOcupado = true;
+  btn.disabled = true;
+  btn.textContent = '⏳ Publicando...';
+
+  try {
+    const data = await fetch('/api/meli/angulos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku: angulosPropuesta.sku, publicar: elegidos.map(({ angulo, titulo, descripcion }) => ({ angulo, titulo, descripcion })) }),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+
+    const detalle = (data.resultados || []).map(r => r.ok
+      ? `✅ ${r.titulo}${r.error ? ` (${r.error})` : ''}`
+      : `❌ ${r.titulo}: ${r.error}`).join('\n');
+    alert(`Publicadas: ${data.publicadas} · Fallidas: ${data.fallidas}\n\n${detalle}`);
+
+    closeModal('modal-angulos');
+    await cargarAngulos(true);
+  } catch (e) {
+    alert('⚠️ Error publicando: ' + e.message);
+  } finally {
+    angulosOcupado = false;
+    btn.disabled = false;
+    btn.textContent = '🚀 Publicar seleccionados';
   }
 }
 

@@ -19,15 +19,36 @@ const {
   limpiarTitulo,
 } = require('../_meliPublicaciones');
 
-// Variantes de envío a probar, de la más fiel al original a la más neutra.
-const VARIANTES = [
-  { nombre: 'como la original', ajuste: (p, item) => { if (item.shipping) p.shipping = { mode: item.shipping.mode, local_pick_up: !!item.shipping.local_pick_up, free_shipping: !!item.shipping.free_shipping }; } },
-  { nombre: 'sin el modo', ajuste: (p, item) => { p.shipping = { local_pick_up: !!item.shipping?.local_pick_up, free_shipping: !!item.shipping?.free_shipping }; } },
-  { nombre: 'sin retiro en persona', ajuste: (p, item) => { p.shipping = { local_pick_up: false, free_shipping: !!item.shipping?.free_shipping }; } },
+// Experimentos: cada uno toca una cosa del cuerpo que usaría un ángulo, para ver cuál es la
+// que MELI rechaza. Todos van contra /items/validate, que valida sin publicar.
+const EXPERIMENTOS = [
+  { nombre: 'el ángulo tal cual', ajuste: () => {} },
   { nombre: 'sin bloque de envío', ajuste: (p) => { delete p.shipping; } },
-  { nombre: 'mode me2', ajuste: (p) => { p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: false }; } },
-  { nombre: 'mode not_specified', ajuste: (p) => { p.shipping = { mode: 'not_specified', local_pick_up: false, free_shipping: false }; } },
-  { nombre: 'mode custom', ajuste: (p) => { p.shipping = { mode: 'custom', local_pick_up: false, free_shipping: false }; } },
+  { nombre: 'envío me2 sin retiro', ajuste: (p) => { p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: false }; } },
+  { nombre: 'precio x2', ajuste: (p) => { p.price = Math.round(p.price * 2); } },
+  { nombre: 'precio x5', ajuste: (p) => { p.price = Math.round(p.price * 5); } },
+  { nombre: 'precio 5000', ajuste: (p) => { p.price = 5000; } },
+  { nombre: 'sin atributos copiados', ajuste: (p) => { p.attributes = p.attributes.filter(a => a.id === 'SELLER_SKU'); } },
+  { nombre: 'sin garantía', ajuste: (p) => { delete p.sale_terms; } },
+  { nombre: 'sin SKU propio', ajuste: (p) => { delete p.seller_custom_field; p.attributes = p.attributes.filter(a => a.id !== 'SELLER_SKU'); } },
+  { nombre: 'una sola foto', ajuste: (p) => { p.pictures = p.pictures.slice(0, 1); } },
+  { nombre: 'cantidad 1', ajuste: (p) => { p.available_quantity = 1; } },
+  { nombre: 'listing_type free', ajuste: (p) => { p.listing_type_id = 'free'; } },
+  { nombre: 'listing_type bronze', ajuste: (p) => { p.listing_type_id = 'bronze'; } },
+  { nombre: 'mínimo absoluto', ajuste: (p, item) => {
+      for (const k of Object.keys(p)) delete p[k];
+      Object.assign(p, {
+        family_name: 'Prueba De Validacion Soporte Generico',
+        category_id: item.category_id,
+        price: item.price,
+        currency_id: item.currency_id,
+        available_quantity: 1,
+        buying_mode: 'buy_it_now',
+        condition: 'new',
+        listing_type_id: item.listing_type_id,
+        pictures: [{ source: (item.pictures || [])[0]?.secure_url }],
+      });
+    } },
 ];
 
 module.exports = async (req, res) => {
@@ -59,13 +80,12 @@ module.exports = async (req, res) => {
     });
 
     const pruebas = [];
-    for (const v of VARIANTES) {
+    for (const e of EXPERIMENTOS) {
       const payload = base();
-      v.ajuste(payload, item);
+      e.ajuste(payload, item);
       const r = await validarPayload(token, payload);
       pruebas.push({
-        variante: v.nombre,
-        envio_enviado: payload.shipping || null,
+        experimento: e.nombre,
         acepta: r.valida,
         error: r.errores?.[0] || null,
       });

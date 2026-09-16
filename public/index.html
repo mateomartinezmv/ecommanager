@@ -3408,6 +3408,17 @@ let angulosOcupado = false;
 // poder mostrar en vivo cómo va a quedar el título de verdad.
 let angulosSufijo = '';
 let angulosMaxFinal = 60;   // largo máximo del título que ve el comprador
+let angulosPortadas = [];   // foto de portada elegida para cada ángulo
+
+// La portada es lo único que ve el comprador en los resultados, así que se elige a mano.
+function elegirPortada(i, foto) {
+  angulosPortadas[i] = foto;
+  document.querySelectorAll(`[id^="ang-foto-${i}-"]`).forEach((img, n) => {
+    const elegida = n === foto;
+    img.style.borderColor = elegida ? 'var(--accent)' : 'transparent';
+    img.style.opacity = elegida ? '1' : '0.55';
+  });
+}
 
 function actualizarTituloAngulo(i, valor) {
   const len = document.getElementById(`ang-len-${i}`);
@@ -3529,11 +3540,9 @@ async function renderAngulos() {
 
   tbody.innerHTML = filtrados.map(p => {
     const puedeClonar = !!p.origen;
-    // Sin molde no hay nada que clonar, y el motivo no es siempre el mismo.
-    const soloCatalogo = !puedeClonar && p.publicaciones.some(x => x.estado === 'active' && x.catalogo);
-    const motivoSinMolde = soloCatalogo
-      ? 'Publicación de catálogo: MELI no deja duplicarla'
-      : 'Sin publicación activa para copiar';
+    // Sin publicación activa no hay molde. Las de catálogo sí sirven: el ángulo sale como
+    // publicación propia.
+    const motivoSinMolde = 'Sin publicación activa para copiar';
     const boton = puedeClonar
       ? `<button class="btn btn-primary btn-sm" onclick="generarAngulos('${escHtml(p.sku)}')">✨ Generar ${p.faltan || 1} ángulo${(p.faltan || 1) === 1 ? '' : 's'}</button>`
       : `<span style="font-size:11px;color:var(--text-muted)">${motivoSinMolde}</span>`;
@@ -3597,6 +3606,7 @@ async function generarAngulos(sku) {
   const cantidad = Math.max(1, producto?.faltan || 1);
 
   angulosPropuesta = null;
+  angulosPortadas = [];
   document.getElementById('ang-modal-title').textContent = `✨ Ángulos para ${producto?.nombre || sku}`;
   document.getElementById('ang-modal-body').innerHTML =
     '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">Redactando ángulos y validándolos contra MELI...<br><span style="font-size:11px">Puede tardar un minuto.</span></div>';
@@ -3626,6 +3636,10 @@ function renderPropuestaAngulos(data) {
   const esUP = data.modo_titulo === 'family_name';
   angulosSufijo = data.sufijo_titulo || '';
   angulosMaxFinal = data.max_titulo_final || 60;
+  const fotos = data.origen?.fotos || [];
+  // Por defecto, la misma portada que la original: las fotos del final suelen ser de
+  // contexto y solas quedan raras.
+  (data.angulos || []).forEach((_, i) => { if (angulosPortadas[i] === undefined) angulosPortadas[i] = 0; });
 
   const filas = (data.angulos || []).map((a, i) => {
     const estado = a.valida === true
@@ -3654,6 +3668,14 @@ function renderPropuestaAngulos(data) {
             <span id="ang-cuenta-${i}" style="margin-left:6px">${(a.titulo_final || a.titulo).length}/${data.max_titulo_final || 60}</span>
           </small>
         </div>
+        ${fotos.length > 1 ? `
+        <div class="form-group" style="margin-bottom:8px">
+          <label class="form-label">Foto de portada</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${fotos.map((url, f) => `<img src="${escHtml(url)}" alt="foto ${f + 1}" id="ang-foto-${i}-${f}" onclick="elegirPortada(${i}, ${f})"
+              style="width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:pointer;background:var(--surface);border:2px solid ${f === (angulosPortadas[i] || 0) ? 'var(--accent)' : 'transparent'};opacity:${f === (angulosPortadas[i] || 0) ? '1' : '0.55'}">`).join('')}
+          </div>
+        </div>` : ''}
         <div class="form-group">
           <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
             <span>Descripción</span>
@@ -3668,18 +3690,22 @@ function renderPropuestaAngulos(data) {
   const avisoIA = data.ia_error
     ? `<div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);font-size:12px;margin-bottom:12px">⚠️ ${escHtml(data.ia_error)}</div>`
     : '';
+  const avisoCatalogo = data.aviso_catalogo
+    ? `<div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(79,142,247,0.3);background:rgba(79,142,247,0.08);font-size:12px;margin-bottom:12px">📘 ${escHtml(data.aviso_catalogo)}</div>`
+    : '';
   const avisoStock = data.aviso_stock
     ? `<div style="padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:12px;margin-bottom:12px">📦 ${escHtml(data.aviso_stock)}</div>`
     : '';
 
   document.getElementById('ang-modal-body').innerHTML = `
-    ${avisoIA}${avisoStock}
+    ${avisoIA}${avisoCatalogo}${avisoStock}
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
       Se copia de <strong style="color:var(--text)">${escHtml(origen.titulo || origen.meli_id || '')}</strong>:
       precio, fotos, ficha técnica, garantía y envío. La publicación original no se toca.<br>
-      Cada ángulo se publica con ${data.stock} unidad${data.stock === 1 ? '' : 'es'} de stock y arranca con otra foto de portada.
+      Cada ángulo se publica con ${data.stock} unidad${data.stock === 1 ? '' : 'es'} de stock.
       Revisá los títulos antes de publicar: MELI modera las publicaciones que son calcadas entre sí.
       ${esUP ? `<br><span style="color:var(--text-dim)">Tu cuenta publica con el modelo nuevo de MELI: vos ponés el <strong>nombre base</strong> y MELI arma el título final agregándole${angulosSufijo ? ` <strong style="color:var(--text)">${escHtml(angulosSufijo)}</strong>` : ' los atributos de la variante'}.</span>` : ''}
+      ${fotos.length > 1 ? '<br><span style="color:var(--text-dim)">La portada arranca igual a la de la original. Si tenés otra foto buena, elegila: ayuda a que las publicaciones no se vean calcadas.</span>' : ''}
     </div>
     ${filas || '<div style="color:var(--text-muted);font-size:13px;padding:12px">No se generaron ángulos automáticamente. Agregá uno a mano.</div>'}
     <button class="btn btn-ghost btn-sm" onclick="agregarAnguloManual()">➕ Agregar ángulo a mano</button>`;
@@ -3748,6 +3774,7 @@ async function publicarAngulos() {
     angulo: a.angulo,
     titulo: document.getElementById(`ang-titulo-${i}`)?.value?.trim(),
     descripcion: document.getElementById(`ang-desc-${i}`)?.value?.trim(),
+    portada: angulosPortadas[i] || 0,
   })).filter(a => a.marcado && a.titulo);
 
   if (!elegidos.length) return alert('No hay ningún ángulo tildado con título.');
@@ -3762,7 +3789,7 @@ async function publicarAngulos() {
     const data = await fetch('/api/meli/angulos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sku: angulosPropuesta.sku, publicar: elegidos.map(({ angulo, titulo, descripcion }) => ({ angulo, titulo, descripcion })) }),
+      body: JSON.stringify({ sku: angulosPropuesta.sku, publicar: elegidos.map(({ angulo, titulo, descripcion, portada }) => ({ angulo, titulo, descripcion, portada })) }),
     }).then(r => r.json());
 
     if (data.ok === false) throw new Error(data.error);

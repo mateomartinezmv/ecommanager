@@ -19,9 +19,14 @@
 // los tags del vendedor; si aun así MELI pide el otro campo, se reintenta con ese.
 //
 // OJO con lo que MELI no deja clonar y por eso se rechaza antes de intentarlo:
-//   · Publicaciones de catálogo: el vendedor tiene una sola por producto de catálogo.
 //   · Publicaciones con variaciones: cada variación es su propio producto de usuario y
 //     copiarlas mal deja stock colgado. Se resuelven a mano.
+//
+// De una publicación de catálogo sí se puede sacar un ángulo: lo que MELI no permite es una
+// segunda publicación DE CATÁLOGO del mismo producto, no una publicación propia. El clon se
+// crea siempre como propia —nunca se copia catalog_product_id— con su título, su descripción
+// y su portada. En los dominios donde MELI sólo admite catálogo la validación lo va a
+// rechazar, y ahí el motivo se muestra tal cual.
 
 const API = 'https://api.mercadolibre.com';
 
@@ -146,9 +151,6 @@ function modoQuePide(data) {
 // Por qué este ítem no se puede clonar, o null si se puede.
 function motivoNoClonable(item) {
   if (!item) return 'No se pudo leer la publicación original en MELI.';
-  if (item.catalog_listing) {
-    return 'Es una publicación de catálogo: MELI permite una sola por vendedor y producto, no se puede duplicar.';
-  }
   if (Array.isArray(item.variations) && item.variations.length) {
     return 'Tiene variaciones (talles, colores). Clonarlas automáticamente puede dejar stock mal repartido: conviene hacerla a mano.';
   }
@@ -159,11 +161,17 @@ function motivoNoClonable(item) {
 
 // Rotar el orden de las fotos cambia la miniatura, que es lo primero que ve el comprador
 // en los resultados. Dos publicaciones con la misma primera foto se leen como la misma.
-function rotarFotos(pictures, giro) {
+// Las fotos van en el orden de la original, salvo la portada, que se elige.
+//
+// Antes se rotaba el orden para que la miniatura no fuera idéntica, pero rotar a ciegas
+// asciende a portada una de las últimas fotos, que suelen ser de contexto: se entienden
+// acompañando a las primeras y solas quedan raras. La portada ahora la elige el vendedor y
+// por defecto es la misma que la original.
+function ordenarFotos(pictures, portada = 0) {
   const fotos = (pictures || []).map(p => p.secure_url || p.url).filter(Boolean);
-  if (fotos.length < 2 || !giro) return fotos;
-  const n = giro % fotos.length;
-  return [...fotos.slice(n), ...fotos.slice(0, n)];
+  const i = Number(portada);
+  if (fotos.length < 2 || !Number.isInteger(i) || i <= 0 || i >= fotos.length) return fotos;
+  return [fotos[i], ...fotos.filter((_, n) => n !== i)];
 }
 
 // Cada atributo viaja con value_id Y value_name cuando tiene los dos. Mandar sólo el id
@@ -228,7 +236,7 @@ function errorDeCuentaNoDelItem(data) {
 const ESCALONES_ENVIO = ['completo', 'sin_modo', 'ninguno'];
 
 // El cuerpo del POST /items de la publicación nueva.
-function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtributos = new Set(), modoTitulo = 'title', envio = 'completo' }) {
+function construirPayload(item, { titulo, sku, stock, portada = 0, excluirAtributos = new Set(), modoTitulo = 'title', envio = 'completo' }) {
   const payload = {
     // En User Products el título lo arma MELI: acá va el nombre genérico de la familia.
     ...(modoTitulo === 'family_name' ? { family_name: titulo } : { title: titulo }),
@@ -239,7 +247,7 @@ function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtri
     buying_mode: item.buying_mode || 'buy_it_now',
     condition: item.condition || 'new',
     listing_type_id: item.listing_type_id,
-    pictures: rotarFotos(item.pictures, giroFotos).map(source => ({ source })),
+    pictures: ordenarFotos(item.pictures, portada).map(source => ({ source })),
     attributes: atributosCopiables(item.attributes, sku, excluirAtributos),
   };
 
@@ -414,5 +422,5 @@ module.exports = {
   ponerDescripcion,
   limpiarDescripcion,
   limpiarTitulo,
-  rotarFotos,
+  ordenarFotos,
 };

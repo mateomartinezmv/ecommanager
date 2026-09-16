@@ -120,7 +120,7 @@ module.exports = async (req, res) => {
     // Un título cualquiera pero válido: lo que se está probando es el envío.
     const titulo = limpiarTitulo(`${item.family_name || item.title} Prueba`, max);
     const base = () => construirPayload(item, {
-      titulo, sku: producto.sku, stock: Math.max(1, producto.stock_dep || 1), giroFotos: 1, modoTitulo,
+      titulo, sku: producto.sku, stock: Math.max(1, producto.stock_dep || 1), portada: 0, modoTitulo,
     });
 
     const pruebas = [];

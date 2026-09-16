@@ -76,10 +76,16 @@ async function estadoDePublicaciones(token, ids) {
 
 // La publicación que se usa de molde: la que más vendió entre las activas. Es la que mejor
 // refleja cómo está cargado el producto (fotos, ficha, garantía).
+//
+// Se prefiere una propia, pero si sólo hay de catálogo también sirve: de ahí salen los datos
+// y el ángulo se publica como publicación propia. Justamente las de catálogo suelen ser las
+// que más venden, así que dejarlas afuera era dejar afuera a los mejores productos.
 function elegirOrigen(publicaciones) {
-  const activas = publicaciones.filter(p => p.estado === 'active' && !p.catalogo);
+  const activas = publicaciones.filter(p => p.estado === 'active');
   if (!activas.length) return null;
-  return activas.slice().sort((a, b) => b.vendidos - a.vendidos)[0];
+  const porVentas = (a, b) => b.vendidos - a.vendidos;
+  const propias = activas.filter(p => !p.catalogo).sort(porVentas);
+  return propias[0] || activas.slice().sort(porVentas)[0];
 }
 
 module.exports = async (req, res) => {
@@ -220,6 +226,7 @@ module.exports = async (req, res) => {
           angulo: String(a?.angulo || '').trim() || 'Ángulo alternativo',
           titulo: limpiarTitulo(a?.titulo, maxBase),
           descripcion: limpiarDescripcion(a?.descripcion),
+          portada: Math.max(0, parseInt(a?.portada, 10) || 0),
         }))
         .filter(a => a.titulo)
         .slice(0, MAX_POR_PUBLICADA);
@@ -228,16 +235,14 @@ module.exports = async (req, res) => {
 
       const stock = Math.max(0, Number(producto.stock_dep) || 0);
       const resultados = [];
-      let giro = publicaciones.length; // arranca donde quedó la última, para no repetir miniatura
 
       for (const pedido of pedidos) {
-        giro += 1;
         try {
           const nueva = await crearPublicacion(token, item, {
             titulo: pedido.titulo,
             sku: producto.sku,
             stock,
-            giroFotos: giro,
+            portada: pedido.portada,
             modoTitulo,
           });
 
@@ -354,7 +359,7 @@ module.exports = async (req, res) => {
         titulo,
         sku: producto.sku,
         stock,
-        giroFotos: publicaciones.length + i + 1,
+        portada: 0,
         modoTitulo,
       });
       propuestas.push({
@@ -379,7 +384,16 @@ module.exports = async (req, res) => {
       max_titulo_final: max,
       modo_titulo: modoTitulo,
       sufijo_titulo: sufijo,
-      origen: { ...origen, precio: item.price, moneda: item.currency_id, fotos: (item.pictures || []).length, family_name: item.family_name || null },
+      origen: {
+        ...origen,
+        precio: item.price,
+        moneda: item.currency_id,
+        family_name: item.family_name || null,
+        fotos: (item.pictures || []).map(f => f.secure_url || f.url).filter(Boolean),
+      },
+      aviso_catalogo: item.catalog_listing
+        ? 'La original es una publicación de catálogo. MELI no deja tener dos de catálogo del mismo producto, así que el ángulo se crea como publicación propia: misma ficha y mismas fotos, pero compite por su cuenta.'
+        : null,
       angulos: propuestas,
       ia_error: iaError,
       aviso_stock: stock === 0 ? 'El producto está en 0: MELI va a crear las publicaciones pausadas por falta de stock.' : null,

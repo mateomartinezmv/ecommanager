@@ -91,9 +91,19 @@ module.exports = async (req, res) => {
       });
     }
 
+    // El producto de usuario puede tener datos que el ítem no muestra (peso, dimensiones):
+    // si el clon no los hereda, MELI no puede resolver el envío y cae a me1.
+    let userProduct = null;
+    if (item.user_product_id) {
+      try { userProduct = await meliGet(token, `/user-products/${item.user_product_id}`); }
+      catch (e) { userProduct = { error: e.message }; }
+    }
+
     return res.json({
       ok: true,
       sku: producto.sku,
+      cuerpo_del_clon: base(),
+      user_product: userProduct,
       vendedor: {
         id: usuario.id,
         tags: usuario.tags || [],
@@ -109,6 +119,8 @@ module.exports = async (req, res) => {
         category_id: item.category_id,
         shipping: item.shipping || null,
         tags: item.tags || [],
+        attributes: (item.attributes || []).map(a => ({ id: a.id, value_id: a.value_id ?? null, value_name: a.value_name ?? null })),
+        sale_terms: item.sale_terms || [],
       },
       modo_titulo: modoTitulo,
       pruebas,

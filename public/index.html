@@ -3407,12 +3407,24 @@ let angulosOcupado = false;
 // MELI le pega los atributos de la variante (por ejemplo "Negro"). Se guarda ese sufijo para
 // poder mostrar en vivo cómo va a quedar el título de verdad.
 let angulosSufijo = '';
+let angulosMaxFinal = 60;   // largo máximo del título que ve el comprador
 
 function actualizarTituloAngulo(i, valor) {
   const len = document.getElementById(`ang-len-${i}`);
   if (len) len.textContent = valor.length;
+
   const prev = document.getElementById(`ang-final-${i}`);
-  if (prev) prev.textContent = [valor.trim(), angulosSufijo].filter(Boolean).join(' ') || '—';
+  if (!prev) return;
+  const final = [valor.trim(), angulosSufijo].filter(Boolean).join(' ');
+  prev.textContent = final || '—';
+
+  // El límite que importa es el del título final, no el del nombre base.
+  const cuenta = document.getElementById(`ang-cuenta-${i}`);
+  if (cuenta) {
+    const pasado = final.length > angulosMaxFinal;
+    cuenta.textContent = `${final.length}/${angulosMaxFinal}`;
+    cuenta.style.color = pasado ? 'var(--red)' : 'var(--text-muted)';
+  }
 }
 
 async function cargarAngulos(force = false) {
@@ -3613,6 +3625,7 @@ function renderPropuestaAngulos(data) {
   const origen = data.origen || {};
   const esUP = data.modo_titulo === 'family_name';
   angulosSufijo = data.sufijo_titulo || '';
+  angulosMaxFinal = data.max_titulo_final || 60;
 
   const filas = (data.angulos || []).map((a, i) => {
     const estado = a.valida === true
@@ -3633,10 +3646,13 @@ function renderPropuestaAngulos(data) {
           ${estado}
         </div>
         <div class="form-group" style="margin-bottom:8px">
-          <label class="form-label">${esUP ? 'Nombre base' : 'Título'} <span style="color:var(--text-muted);font-weight:400">(<span id="ang-len-${i}">${a.titulo.length}</span>/${data.max_titulo})</span></label>
+          <label class="form-label">${esUP ? 'Nombre base' : 'Título'} <span style="color:var(--text-muted);font-weight:400">(<span id="ang-len-${i}">${a.titulo.length}</span>/${data.max_titulo}${esUP && angulosSufijo ? ` · MELI le suma "${escHtml(angulosSufijo)}"` : ''})</span></label>
           <input type="text" id="ang-titulo-${i}" value="${escHtml(a.titulo)}" maxlength="${data.max_titulo}"
             oninput="actualizarTituloAngulo(${i}, this.value)">
-          ${esUP ? `<small style="font-size:11px;color:var(--text-muted)">Se va a publicar como: <strong id="ang-final-${i}" style="color:var(--text)">${escHtml(a.titulo_final || a.titulo)}</strong></small>` : ''}
+          <small style="font-size:11px;color:var(--text-muted)">
+            ${esUP ? 'Se va a publicar como: ' : 'Título publicado: '}<strong id="ang-final-${i}" style="color:var(--text)">${escHtml(a.titulo_final || a.titulo)}</strong>
+            <span id="ang-cuenta-${i}" style="margin-left:6px">${(a.titulo_final || a.titulo).length}/${data.max_titulo_final || 60}</span>
+          </small>
         </div>
         <div class="form-group">
           <label class="form-label">Descripción</label>

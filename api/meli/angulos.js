@@ -21,6 +21,7 @@ const {
   obtenerItem,
   obtenerDescripcion,
   maxTitulo,
+  maxNombreBase,
   motivoNoClonable,
   detectarModoTitulo,
   sufijoTitulo,
@@ -181,13 +182,15 @@ module.exports = async (req, res) => {
     try { usuario = await meliGet(token, '/users/me'); } catch { /* alcanza con el ítem */ }
     const modoTitulo = detectarModoTitulo(item, usuario);
     const sufijo = sufijoTitulo(item);
+    // Lo que se escribe es el nombre base: tiene que entrar en los 60 junto con el sufijo.
+    const maxBase = maxNombreBase(max, sufijo);
 
     // ── Publicar lo aprobado ────────────────────────────────────
     if (Array.isArray(req.body?.publicar)) {
       const pedidos = req.body.publicar
         .map(a => ({
           angulo: String(a?.angulo || '').trim() || 'Ángulo alternativo',
-          titulo: limpiarTitulo(a?.titulo, max),
+          titulo: limpiarTitulo(a?.titulo, maxBase),
           descripcion: limpiarDescripcion(a?.descripcion),
         }))
         .filter(a => a.titulo)
@@ -304,7 +307,8 @@ module.exports = async (req, res) => {
         descripcion,
         producto: { sku: producto.sku, nombre: producto.nombre },
         cantidad,
-        maxTitulo: max,
+        maxTitulo: maxBase,
+        maxTituloFinal: max,
         modoTitulo,
         sufijo,
       });
@@ -317,7 +321,7 @@ module.exports = async (req, res) => {
     const propuestas = [];
     for (let i = 0; i < angulos.length; i++) {
       const a = angulos[i];
-      const titulo = limpiarTitulo(a.titulo, max);
+      const titulo = limpiarTitulo(a.titulo, maxBase);
       const validacion = await validarAngulo(token, item, {
         titulo,
         sku: producto.sku,
@@ -343,7 +347,8 @@ module.exports = async (req, res) => {
       stock,
       objetivo: ANGULOS_OBJETIVO,
       activas,
-      max_titulo: max,
+      max_titulo: maxBase,
+      max_titulo_final: max,
       modo_titulo: modoTitulo,
       sufijo_titulo: sufijo,
       origen: { ...origen, precio: item.price, moneda: item.currency_id, fotos: (item.pictures || []).length, family_name: item.family_name || null },

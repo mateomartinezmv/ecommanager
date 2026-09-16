@@ -41,8 +41,17 @@ pega solo los atributos que distinguen a la variante${sufijo ? ` (en este produc
 O sea: nombre base que escribís${sufijo ? ` + "${sufijo}"` : ''} = título publicado.
 No repitas${sufijo ? ` "${sufijo}" ni` : ''} los atributos de variante en el nombre base: quedarían duplicados en el título.
 
-` : ''}Reglas de los títulos (MELI las moderá):
-- Máximo ${maxTitulo} caracteres. Estructura: Producto + Marca + Modelo + especificación que lo identifique.
+` : ''}Reglas de los títulos:
+- MÁXIMO ${maxTitulo} caracteres. Contalos: uno de ${maxTitulo + 1} no sirve. Apuntá a entre 5 y 9 palabras.
+- Un ángulo = UNA idea. Elegí un uso, un sinónimo o una compatibilidad y armá el título alrededor de eso.
+  Encadenar todo lo que se te ocurre no hace que aparezca en más búsquedas: hace un título que
+  no se entiende y que MELI puede moderar por título armado con palabras clave.
+  MAL: Colero Guardabarros Trasero Moto Cross Enduro Y Cuatriciclo Para Rueda 17 A 21 Pulgadas Con Soportes
+  BIEN: Guardabarros Trasero Para Moto De Cross Y Enduro
+  BIEN (otro ángulo, otra publicación): Colero Universal Para Cuatriciclo Con Soportes
+- Estructura: Producto + marca o modelo si aporta + una o dos especificaciones que lo identifiquen.
+  Nada más. Si dudás entre poner un dato o dejarlo, dejalo: va en la ficha técnica y en la descripción.
+- Tiene que leerse como lo escribiría el vendedor, no como una lista de palabras separadas.
 - Sin signos de puntuación, símbolos, comillas ni emojis. Palabras separadas por espacios.
 - No menciones stock, envío gratis, cuotas, precios, ofertas ni si es nuevo o usado.
 - Marcas de terceros sólo para compatibilidad, escritas como "para" o "compatible con".

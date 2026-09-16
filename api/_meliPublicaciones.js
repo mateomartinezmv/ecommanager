@@ -90,14 +90,27 @@ async function obtenerDescripcion(token, itemId) {
   return data.plain_text || data.text || '';
 }
 
-// max_title_length lo define la categoría; pasarse es error de publicación.
+// Cuánto puede medir el título que ve el comprador.
+//
+// La categoría declara un max_title_length que en varias categorías de MLU viene en 200,
+// pero un título de 200 no existe en la práctica: MELI corta en la búsqueda y queda ilegible.
+// El límite real con el que trabaja el vendedor es 60, así que se toma el menor de los dos.
 async function maxTitulo(token, categoryId) {
+  let deLaCategoria = 0;
   try {
     const cat = await meliGet(token, `/categories/${categoryId}`);
-    return Number(cat?.settings?.max_title_length) || MAX_TITULO_DEFAULT;
-  } catch {
-    return MAX_TITULO_DEFAULT;
-  }
+    deLaCategoria = Number(cat?.settings?.max_title_length) || 0;
+  } catch { /* se usa el tope */ }
+  return Math.min(deLaCategoria || MAX_TITULO_DEFAULT, MAX_TITULO_DEFAULT);
+}
+
+// En User Products el vendedor escribe el nombre base y MELI le pega los atributos de la
+// variante. Lo que tiene que entrar en los 60 es la suma, así que el nombre base va más
+// corto: lo que sobra después del sufijo. Nunca menos de 25, que ya no alcanza para nada.
+function maxNombreBase(max, sufijo) {
+  const largoSufijo = String(sufijo || '').trim().length;
+  if (!largoSufijo) return max;
+  return Math.max(25, max - largoSufijo - 1);
 }
 
 // ¿En qué campo viaja el título para esta cuenta?
@@ -369,8 +382,13 @@ function limpiarTitulo(texto, max = MAX_TITULO_DEFAULT) {
     .replace(/\s+/g, ' ')
     .trim();
   if (limpio.length <= max) return limpio;
-  // Cortar por palabra: un título cortado al medio se ve peor que uno más corto.
-  return limpio.slice(0, max).replace(/\s+\S*$/, '').trim();
+  // Cortar por palabra: un título cortado al medio se ve peor que uno más corto. Y si el
+  // corte deja una palabra colgada ("... Scooter Cuatriciclo Y"), también se va.
+  return limpio
+    .slice(0, max)
+    .replace(/\s+\S*$/, '')
+    .replace(/\s+(y|o|de|del|para|con|en|a|la|el|los|las|sin|por)$/i, '')
+    .trim();
 }
 
 module.exports = {
@@ -383,6 +401,7 @@ module.exports = {
   obtenerItem,
   obtenerDescripcion,
   maxTitulo,
+  maxNombreBase,
   motivoNoClonable,
   construirPayload,
   detectarModoTitulo,

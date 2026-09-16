@@ -219,18 +219,40 @@ function errorDeEnvio(data) {
   return /has not mode|shipping|logistic|me1|me2/i.test(JSON.stringify(data || {}));
 }
 
-// "User has not mode meX" no habla de esta publicación: es cómo está configurada la cuenta
-// para publicar. Se verificó contra la cuenta real que MELI lo devuelve incluso al validar
-// una copia exacta de una publicación propia que está activa y vendiendo, con cualquier
-// configuración de envío y hasta sin bloque de envío. O sea que la validación previa se
-// equivoca al rechazar: el alta real puede pasar igual. Por eso no se trata como un rechazo
-// del ángulo sino como una validación no concluyente, y se deja publicar.
-function errorDeCuentaNoDelItem(data) {
+// Reparos que no hablan de la publicación sino de cómo está configurada la cuenta para
+// publicar. Verificado contra la cuenta real: MELI los devuelve incluso al validar una copia
+// exacta de una publicación propia que está activa y vendiendo, con cualquier configuración
+// de envío y hasta sin bloque de envío. La validación previa se equivoca al rechazar por
+// esto, así que no se trata como un rechazo del ángulo sino como validación no concluyente.
+const CAUSAS_DE_CUENTA = [
+  {
+    re: /user has not mode/i,
+    texto: 'el modo de envío que MELI le asigna a las publicaciones nuevas no está habilitado en la cuenta',
+  },
+  {
+    re: /free shipping costs exceeds sale/i,
+    texto: 'a este precio, el envío gratis que la cuenta tiene configurado para todo el país sale más caro que el producto (con un precio más alto deja de aparecer)',
+  },
+  {
+    re: /mandatory free shipping/i,
+    texto: 'MELI le suma envío gratis obligatorio por el precio',
+  },
+];
+
+// Devuelve las causas explicadas, o null si alguna habla de verdad del ítem —un título largo,
+// un atributo que falta—, en cuyo caso el rechazo es real y se muestra como tal.
+function causasDeCuenta(data) {
   const causas = Array.isArray(data?.cause) ? data.cause : [];
   const textos = causas.map(c => c.message || c.code || '').filter(Boolean);
-  if (!textos.length) return false;
-  // Todas las causas tienen que ser de este tipo: si hay otra, el rechazo es real.
-  return textos.every(t => /user has not mode|mandatory free shipping/i.test(t));
+  if (!textos.length) return null;
+
+  const explicadas = [];
+  for (const t of textos) {
+    const conocida = CAUSAS_DE_CUENTA.find(c => c.re.test(t));
+    if (!conocida) return null;
+    if (!explicadas.includes(conocida.texto)) explicadas.push(conocida.texto);
+  }
+  return explicadas;
 }
 
 const ESCALONES_ENVIO = ['completo', 'sin_modo', 'ninguno'];
@@ -330,13 +352,14 @@ async function validarAngulo(token, item, opciones) {
     return { ok: v.valida !== false, data: v.data, valida: v.valida, errores: v.errores, aviso: v.aviso };
   });
 
-  // Si lo único que objeta MELI es el modo de envío de la cuenta, la validación no sirve
+  // Si todo lo que objeta MELI es de la configuración de la cuenta, la validación no sirve
   // para decidir: queda "sin validar" y el ángulo se puede publicar igual.
-  if (r?.valida === false && errorDeCuentaNoDelItem(r.data)) {
+  const deCuenta = r?.valida === false ? causasDeCuenta(r.data) : null;
+  if (deCuenta) {
     return {
       valida: null,
       errores: [],
-      aviso: `MELI no pudo validarla por cómo está configurado el envío de la cuenta (${(r.errores || []).join(' · ')}). No es un problema de este título: devuelve lo mismo al validar una copia exacta de una publicación tuya que está activa. Se puede intentar publicar igual.`,
+      aviso: `MELI no la valida por la configuración de envío de la cuenta: ${deCuenta.join('; ')}. No es un problema de este título ni de este ángulo: devuelve lo mismo al validar una copia exacta de una publicación tuya que está activa y vendiendo. Se puede intentar publicar igual.`,
       ajustes: r?.ajustes || null,
       avisos_ajustes: avisosDeAjustes(r?.ajustes),
       modoTitulo: r?.ajustes?.modoTitulo,

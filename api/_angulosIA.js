@@ -8,7 +8,7 @@
 
 const MODELO = 'claude-opus-5';
 
-function construirPrompt({ tituloOriginal, otrosTitulos, categoria, atributos, descripcion, producto, cantidad, maxTitulo }) {
+function construirPrompt({ tituloOriginal, otrosTitulos, categoria, atributos, descripcion, producto, cantidad, maxTitulo, modoTitulo = 'title', sufijo = '' }) {
   const ficha = (atributos || [])
     .filter(a => a.value_name)
     .slice(0, 25)
@@ -35,7 +35,13 @@ Cada ángulo tiene que atacar una búsqueda REALMENTE distinta. Ideas de por dó
 - La compatibilidad o la medida (22 mm, 12V, universal, para tal modelo).
 - El problema que resuelve (repuesto de fábrica roto, mejora estética, seguridad).
 
-Reglas de los títulos (MELI las moderá):
+${modoTitulo === 'family_name' ? `IMPORTANTE — cómo se arma el título en esta cuenta:
+Lo que escribas NO es el título completo: es el nombre base del producto. Mercado Libre le
+pega solo los atributos que distinguen a la variante${sufijo ? ` (en este producto le agrega "${sufijo}")` : ''} y así arma el título que ve el comprador.
+O sea: nombre base que escribís${sufijo ? ` + "${sufijo}"` : ''} = título publicado.
+No repitas${sufijo ? ` "${sufijo}" ni` : ''} los atributos de variante en el nombre base: quedarían duplicados en el título.
+
+` : ''}Reglas de los títulos (MELI las moderá):
 - Máximo ${maxTitulo} caracteres. Estructura: Producto + Marca + Modelo + especificación que lo identifique.
 - Sin signos de puntuación, símbolos, comillas ni emojis. Palabras separadas por espacios.
 - No menciones stock, envío gratis, cuotas, precios, ofertas ni si es nuevo o usado.

@@ -22,8 +22,10 @@ const {
   obtenerDescripcion,
   maxTitulo,
   motivoNoClonable,
-  construirPayload,
-  validarPayload,
+  detectarModoTitulo,
+  sufijoTitulo,
+  tituloFinal,
+  validarAngulo,
   crearPublicacion,
   ponerDescripcion,
   limpiarTitulo,
@@ -173,6 +175,13 @@ module.exports = async (req, res) => {
     // El largo máximo del título lo fija la categoría: pasarse es error de publicación.
     const max = await maxTitulo(token, item.category_id);
 
+    // Cuentas en User Products mandan family_name y MELI arma el título visible pegándole
+    // los atributos de la variante. El sufijo sale del original: título menos family_name.
+    let usuario = null;
+    try { usuario = await meliGet(token, '/users/me'); } catch { /* alcanza con el ítem */ }
+    const modoTitulo = detectarModoTitulo(item, usuario);
+    const sufijo = sufijoTitulo(item);
+
     // ── Publicar lo aprobado ────────────────────────────────────
     if (Array.isArray(req.body?.publicar)) {
       const pedidos = req.body.publicar
@@ -198,14 +207,23 @@ module.exports = async (req, res) => {
             sku: producto.sku,
             stock,
             giroFotos: giro,
+            modoTitulo,
           });
 
+          // En User Products dos ítems del mismo user_product comparten título y stock: si
+          // la nueva cayó en el mismo UP que la original, no es un ángulo aparte y además
+          // MELI puede espejar el título. Hay que avisarlo, no dejarlo pasar.
+          const mismoUP = !!(nueva.user_product_id && item.user_product_id && nueva.user_product_id === item.user_product_id);
+          const avisoUP = mismoUP
+            ? 'MELI la agrupó en el mismo producto de usuario que la original: comparten título y stock. Revisala y pausala si no quedó como un ángulo aparte.'
+            : null;
+
           // La descripción va aparte y no puede tumbar una publicación que ya se creó.
-          let avisoDescripcion = null;
+          let avisoDescripcion = avisoUP;
           try {
             await ponerDescripcion(token, nueva.id, pedido.descripcion);
           } catch (e) {
-            avisoDescripcion = `La publicación se creó pero la descripción no: ${e.message}`;
+            avisoDescripcion = `${avisoDescripcion ? avisoDescripcion + ' · ' : ''}La publicación se creó pero la descripción no: ${e.message}`;
           }
 
           // Enlazar en el CRM: sin esto la publicación nueva no recibe stock ni registra ventas.
@@ -226,6 +244,10 @@ module.exports = async (req, res) => {
             nuevo_meli_id: nueva.id,
             angulo: pedido.angulo,
             titulo: pedido.titulo,
+            // El título que quedó publicado lo decide MELI en el modelo nuevo: se guarda el
+            // que devolvió, no el que mandamos.
+            titulo_final: nueva.title || tituloFinal(pedido.titulo, sufijo),
+            user_product_id: nueva.user_product_id || null,
             permalink: nueva.permalink || null,
             estado: 'publicada',
             error: avisoDescripcion,
@@ -282,6 +304,8 @@ module.exports = async (req, res) => {
         producto: { sku: producto.sku, nombre: producto.nombre },
         cantidad,
         maxTitulo: max,
+        modoTitulo,
+        sufijo,
       });
     } catch (e) {
       iaError = e.message;
@@ -293,11 +317,17 @@ module.exports = async (req, res) => {
     for (let i = 0; i < angulos.length; i++) {
       const a = angulos[i];
       const titulo = limpiarTitulo(a.titulo, max);
-      const payload = construirPayload(item, { titulo, sku: producto.sku, stock, giroFotos: publicaciones.length + i + 1 });
-      const validacion = await validarPayload(token, payload);
+      const validacion = await validarAngulo(token, item, {
+        titulo,
+        sku: producto.sku,
+        stock,
+        giroFotos: publicaciones.length + i + 1,
+        modoTitulo,
+      });
       propuestas.push({
         angulo: a.angulo,
         titulo,
+        titulo_final: tituloFinal(titulo, sufijo),
         descripcion: limpiarDescripcion(a.descripcion),
         valida: validacion.valida,
         errores: validacion.errores,
@@ -313,7 +343,9 @@ module.exports = async (req, res) => {
       objetivo: ANGULOS_OBJETIVO,
       activas,
       max_titulo: max,
-      origen: { ...origen, precio: item.price, moneda: item.currency_id, fotos: (item.pictures || []).length },
+      modo_titulo: modoTitulo,
+      sufijo_titulo: sufijo,
+      origen: { ...origen, precio: item.price, moneda: item.currency_id, fotos: (item.pictures || []).length, family_name: item.family_name || null },
       angulos: propuestas,
       ia_error: iaError,
       aviso_stock: stock === 0 ? 'El producto está en 0: MELI va a crear las publicaciones pausadas por falta de stock.' : null,

@@ -10,6 +10,14 @@
 // condición, fotos, atributos de ficha técnica, garantía y envío. Lo que cambia: el título,
 // la descripción y el orden de las fotos (así la miniatura no es idéntica).
 //
+// El título viaja en un campo u otro según el modelo en el que esté la cuenta:
+//   · Modelo viejo: se manda `title` y eso es lo que se ve.
+//   · User Products (cuentas con el tag user_product_seller): se manda `family_name` —un
+//     nombre genérico— y MELI arma el título visible pegándole los atributos que distinguen
+//     a la variante ("... Ajustable" + "Negro"). Mandar `title` ahí es error.
+// Se detecta por el ítem original (si tiene family_name ya está en el modelo nuevo) y por
+// los tags del vendedor; si aun así MELI pide el otro campo, se reintenta con ese.
+//
 // OJO con lo que MELI no deja clonar y por eso se rechaza antes de intentarlo:
 //   · Publicaciones de catálogo: el vendedor tiene una sola por producto de catálogo.
 //   · Publicaciones con variaciones: cada variación es su propio producto de usuario y
@@ -92,6 +100,36 @@ async function maxTitulo(token, categoryId) {
   }
 }
 
+// ¿En qué campo viaja el título para esta cuenta?
+function detectarModoTitulo(item, usuario) {
+  if (item && item.family_name) return 'family_name';
+  if (usuario && Array.isArray(usuario.tags) && usuario.tags.includes('user_product_seller')) return 'family_name';
+  return 'title';
+}
+
+// Lo que MELI le agrega al family_name para armar el título visible (el color, la medida).
+// Se deduce del original: título visible menos family_name. Sirve para mostrar en pantalla
+// cómo va a quedar el título de verdad antes de publicar.
+function sufijoTitulo(item) {
+  if (!item?.family_name || !item?.title) return '';
+  const titulo = String(item.title).trim();
+  const base = String(item.family_name).trim();
+  if (!titulo.toLowerCase().startsWith(base.toLowerCase())) return '';
+  return titulo.slice(base.length).trim();
+}
+
+function tituloFinal(base, sufijo) {
+  return [String(base || '').trim(), String(sufijo || '').trim()].filter(Boolean).join(' ');
+}
+
+// MELI avisa qué campo de título le falta al cuerpo; con eso se reintenta en el otro modelo.
+function modoQuePide(data) {
+  const texto = JSON.stringify(data || {});
+  if (/family_name/.test(texto)) return 'family_name';
+  if (/\btitle\b/.test(texto) && /required|does not contain|missing/i.test(texto)) return 'title';
+  return null;
+}
+
 // Por qué este ítem no se puede clonar, o null si se puede.
 function motivoNoClonable(item) {
   if (!item) return 'No se pudo leer la publicación original en MELI.';
@@ -145,9 +183,10 @@ function envioCopiable(shipping) {
 }
 
 // El cuerpo del POST /items de la publicación nueva.
-function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtributos = new Set() }) {
+function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtributos = new Set(), modoTitulo = 'title' }) {
   const payload = {
-    title: titulo,
+    // En User Products el título lo arma MELI: acá va el nombre genérico de la familia.
+    ...(modoTitulo === 'family_name' ? { family_name: titulo } : { title: titulo }),
     category_id: item.category_id,
     price: item.price,
     currency_id: item.currency_id,
@@ -179,32 +218,56 @@ async function validarPayload(token, payload) {
     body: JSON.stringify(payload),
   });
 
-  if (status === 204 || (ok && !data?.cause?.length)) return { valida: true, errores: [] };
+  if (status === 204 || (ok && !data?.cause?.length)) return { valida: true, errores: [], data };
   if (status === 400 || status === 422) {
-    return { valida: false, errores: [mensajeDeError(data, status)], culpables: atributosCulpables(data) };
+    return { valida: false, errores: [mensajeDeError(data, status)], culpables: atributosCulpables(data), data };
   }
-  return { valida: null, errores: [], aviso: `No se pudo validar contra MELI (HTTP ${status}).` };
+  return { valida: null, errores: [], aviso: `No se pudo validar contra MELI (HTTP ${status}).`, data };
 }
 
-// Crea la publicación. Si MELI rechaza por un atributo copiado del original, reintenta una
-// vez sin esos atributos: es el fallo más común al clonar y no amerita frenar todo.
-async function crearPublicacion(token, item, opciones) {
-  let payload = construirPayload(item, opciones);
-  let intento = await meliFetch(token, '/items', { method: 'POST', body: JSON.stringify(payload) });
+// Valida un ángulo y, si MELI pide el título en el otro campo (title vs family_name),
+// rearma el cuerpo con ese y vuelve a validar. Devuelve también el modo que funcionó, para
+// que la publicación use el mismo y no repita el ida y vuelta.
+async function validarAngulo(token, item, opciones) {
+  let modoTitulo = opciones.modoTitulo || detectarModoTitulo(item);
 
-  if (!intento.ok) {
-    const culpables = atributosCulpables(intento.data);
-    const copiados = new Set(payload.attributes.map(a => a.id));
-    const aQuitar = new Set([...culpables].filter(id => copiados.has(id) && id !== 'SELLER_SKU'));
+  for (let intento = 0; intento < 2; intento++) {
+    const payload = construirPayload(item, { ...opciones, modoTitulo });
+    const r = await validarPayload(token, payload);
 
-    if (aQuitar.size) {
-      payload = construirPayload(item, { ...opciones, excluirAtributos: aQuitar });
-      intento = await meliFetch(token, '/items', { method: 'POST', body: JSON.stringify(payload) });
+    if (r.valida === false) {
+      const pide = modoQuePide(r.data);
+      if (pide && pide !== modoTitulo) { modoTitulo = pide; continue; }
     }
+    return { ...r, modoTitulo, payload };
+  }
+  return { valida: false, errores: ['MELI no aceptó el título ni como title ni como family_name.'], modoTitulo };
+}
+
+// Crea la publicación. Dos rechazos de MELI se reintentan solos porque son de forma, no de
+// fondo: que el título vaya en el otro campo, y que un atributo copiado del original no
+// aplique a la publicación nueva.
+async function crearPublicacion(token, item, opciones) {
+  let modoTitulo = opciones.modoTitulo || detectarModoTitulo(item);
+  const excluir = new Set(opciones.excluirAtributos || []);
+  let ultimo = null;
+
+  for (let intento = 0; intento < 3; intento++) {
+    const payload = construirPayload(item, { ...opciones, modoTitulo, excluirAtributos: excluir });
+    const r = await meliFetch(token, '/items', { method: 'POST', body: JSON.stringify(payload) });
+    if (r.ok) return { ...r.data, modo_titulo: modoTitulo };
+    ultimo = r;
+
+    const pide = modoQuePide(r.data);
+    if (pide && pide !== modoTitulo) { modoTitulo = pide; continue; }
+
+    const copiados = new Set((payload.attributes || []).map(a => a.id));
+    const aQuitar = [...atributosCulpables(r.data)].filter(id => copiados.has(id) && id !== 'SELLER_SKU');
+    if (aQuitar.length) { aQuitar.forEach(id => excluir.add(id)); continue; }
+    break;
   }
 
-  if (!intento.ok) throw new Error(mensajeDeError(intento.data, intento.status));
-  return intento.data;
+  throw new Error(mensajeDeError(ultimo?.data, ultimo?.status));
 }
 
 async function ponerDescripcion(token, itemId, texto) {
@@ -251,7 +314,11 @@ module.exports = {
   maxTitulo,
   motivoNoClonable,
   construirPayload,
+  detectarModoTitulo,
+  sufijoTitulo,
+  tituloFinal,
   validarPayload,
+  validarAngulo,
   crearPublicacion,
   ponerDescripcion,
   limpiarDescripcion,

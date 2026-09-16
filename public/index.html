@@ -3403,6 +3403,17 @@ async function loadDashOpiniones() {
 let angulosTab = 'faltan';
 let angulosPropuesta = null;   // propuesta abierta en el modal
 let angulosOcupado = false;
+// En User Products el título visible lo arma MELI: lo que se escribe es el nombre base y
+// MELI le pega los atributos de la variante (por ejemplo "Negro"). Se guarda ese sufijo para
+// poder mostrar en vivo cómo va a quedar el título de verdad.
+let angulosSufijo = '';
+
+function actualizarTituloAngulo(i, valor) {
+  const len = document.getElementById(`ang-len-${i}`);
+  if (len) len.textContent = valor.length;
+  const prev = document.getElementById(`ang-final-${i}`);
+  if (prev) prev.textContent = [valor.trim(), angulosSufijo].filter(Boolean).join(' ') || '—';
+}
 
 async function cargarAngulos(force = false) {
   if (db.angulosMeta.cargada && !force) return;
@@ -3544,9 +3555,10 @@ function renderAngulosHistorial() {
 
   tbody.innerHTML = historial.map(h => {
     const ok = h.estado === 'publicada';
+    const mostrado = h.titulo_final || h.titulo;
     const link = h.permalink
-      ? `<a href="${escHtml(h.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml(h.titulo)} ↗</a>`
-      : escHtml(h.titulo);
+      ? `<a href="${escHtml(h.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml(mostrado)} ↗</a>`
+      : escHtml(mostrado);
     return `<tr>
       <td>${link}<div style="font-size:11px;color:var(--text-muted)">${escHtml(h.angulo || '')}</div></td>
       <td><span class="badge badge-gray">${escHtml(h.sku)}</span> <span style="font-size:11px;color:var(--text-muted)">copiada de ${escHtml(h.origen_meli_id)}</span></td>
@@ -3599,6 +3611,9 @@ async function generarAngulos(sku) {
 
 function renderPropuestaAngulos(data) {
   const origen = data.origen || {};
+  const esUP = data.modo_titulo === 'family_name';
+  angulosSufijo = data.sufijo_titulo || '';
+
   const filas = (data.angulos || []).map((a, i) => {
     const estado = a.valida === true
       ? '<span class="badge badge-green">MELI la valida</span>'
@@ -3618,9 +3633,10 @@ function renderPropuestaAngulos(data) {
           ${estado}
         </div>
         <div class="form-group" style="margin-bottom:8px">
-          <label class="form-label">Título <span style="color:var(--text-muted);font-weight:400">(<span id="ang-len-${i}">${a.titulo.length}</span>/${data.max_titulo})</span></label>
+          <label class="form-label">${esUP ? 'Nombre base' : 'Título'} <span style="color:var(--text-muted);font-weight:400">(<span id="ang-len-${i}">${a.titulo.length}</span>/${data.max_titulo})</span></label>
           <input type="text" id="ang-titulo-${i}" value="${escHtml(a.titulo)}" maxlength="${data.max_titulo}"
-            oninput="document.getElementById('ang-len-${i}').textContent = this.value.length">
+            oninput="actualizarTituloAngulo(${i}, this.value)">
+          ${esUP ? `<small style="font-size:11px;color:var(--text-muted)">Se va a publicar como: <strong id="ang-final-${i}" style="color:var(--text)">${escHtml(a.titulo_final || a.titulo)}</strong></small>` : ''}
         </div>
         <div class="form-group">
           <label class="form-label">Descripción</label>
@@ -3644,6 +3660,7 @@ function renderPropuestaAngulos(data) {
       precio, fotos, ficha técnica, garantía y envío. La publicación original no se toca.<br>
       Cada ángulo se publica con ${data.stock} unidad${data.stock === 1 ? '' : 'es'} de stock y arranca con otra foto de portada.
       Revisá los títulos antes de publicar: MELI modera las publicaciones que son calcadas entre sí.
+      ${esUP ? `<br><span style="color:var(--text-dim)">Tu cuenta publica con el modelo nuevo de MELI: vos ponés el <strong>nombre base</strong> y MELI arma el título final agregándole${angulosSufijo ? ` <strong style="color:var(--text)">${escHtml(angulosSufijo)}</strong>` : ' los atributos de la variante'}.</span>` : ''}
     </div>
     ${filas || '<div style="color:var(--text-muted);font-size:13px;padding:12px">No se generaron ángulos automáticamente. Agregá uno a mano.</div>'}
     <button class="btn btn-ghost btn-sm" onclick="agregarAnguloManual()">➕ Agregar ángulo a mano</button>`;
@@ -3658,12 +3675,13 @@ function agregarAnguloManual() {
   const textos = (angulosPropuesta.angulos || []).map((a, i) => ({
     angulo: a.angulo,
     titulo: document.getElementById(`ang-titulo-${i}`)?.value ?? a.titulo,
+    titulo_final: a.titulo_final,
     descripcion: document.getElementById(`ang-desc-${i}`)?.value ?? a.descripcion,
     valida: a.valida,
     errores: a.errores,
     aviso: a.aviso,
   }));
-  textos.push({ angulo: 'Ángulo escrito a mano', titulo: '', descripcion: '', valida: null, errores: [], aviso: 'Se publica sin validar previamente: si MELI lo rechaza, el error aparece al publicar.' });
+  textos.push({ angulo: 'Ángulo escrito a mano', titulo: '', titulo_final: '', descripcion: '', valida: null, errores: [], aviso: 'Se publica sin validar previamente: si MELI lo rechaza, el error aparece al publicar.' });
   angulosPropuesta = { ...angulosPropuesta, angulos: textos };
   renderPropuestaAngulos(angulosPropuesta);
 }
@@ -3696,7 +3714,7 @@ async function publicarAngulos() {
     if (data.ok === false) throw new Error(data.error);
 
     const detalle = (data.resultados || []).map(r => r.ok
-      ? `✅ ${r.titulo}${r.error ? ` (${r.error})` : ''}`
+      ? `✅ ${r.titulo_final || r.titulo}${r.error ? `\n   ⚠️ ${r.error}` : ''}`
       : `❌ ${r.titulo}: ${r.error}`).join('\n');
     alert(`Publicadas: ${data.publicadas} · Fallidas: ${data.fallidas}\n\n${detalle}`);
 

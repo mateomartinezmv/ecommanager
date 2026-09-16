@@ -3655,7 +3655,10 @@ function renderPropuestaAngulos(data) {
           </small>
         </div>
         <div class="form-group">
-          <label class="form-label">Descripción</label>
+          <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <span>Descripción</span>
+            <button class="btn btn-ghost btn-sm" id="ang-redesc-${i}" onclick="regenerarDescripcion(${i})" style="font-weight:500">🔄 Reescribir para este título</button>
+          </label>
           <textarea id="ang-desc-${i}" rows="4">${escHtml(a.descripcion)}</textarea>
         </div>
         ${errores}
@@ -3700,6 +3703,41 @@ function agregarAnguloManual() {
   textos.push({ angulo: 'Ángulo escrito a mano', titulo: '', titulo_final: '', descripcion: '', valida: null, errores: [], aviso: 'Se publica sin validar previamente: si MELI lo rechaza, el error aparece al publicar.' });
   angulosPropuesta = { ...angulosPropuesta, angulos: textos };
   renderPropuestaAngulos(angulosPropuesta);
+}
+
+// Si el vendedor cambia el ángulo del título —de "Para Cuatriciclo" a "Para Moto"—, la
+// descripción que venía deja de corresponder. Esto la reescribe para el título que quedó.
+async function regenerarDescripcion(i) {
+  if (!angulosPropuesta || angulosOcupado) return;
+  const titulo = document.getElementById(`ang-titulo-${i}`)?.value?.trim();
+  if (!titulo) return alert('Escribí primero el título.');
+
+  const btn = document.getElementById(`ang-redesc-${i}`);
+  const area = document.getElementById(`ang-desc-${i}`);
+  const etiqueta = '🔄 Reescribir para este título';
+
+  angulosOcupado = true;
+  btn.disabled = true;
+  btn.textContent = '⏳ Escribiendo...';
+
+  try {
+    const data = await fetch('/api/meli/angulos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sku: angulosPropuesta.sku, redescribir: { titulo } }),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+    area.value = data.descripcion;
+    btn.textContent = '✅ Reescrita';
+    setTimeout(() => { btn.textContent = etiqueta; }, 2500);
+  } catch (e) {
+    alert('⚠️ No se pudo reescribir: ' + e.message);
+    btn.textContent = etiqueta;
+  } finally {
+    angulosOcupado = false;
+    btn.disabled = false;
+  }
 }
 
 // Paso 2: publicar lo que quedó tildado, con los textos como estén en pantalla.

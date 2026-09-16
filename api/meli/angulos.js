@@ -32,7 +32,7 @@ const {
   limpiarTitulo,
   limpiarDescripcion,
 } = require('../_meliPublicaciones');
-const { redactarAngulos } = require('../_angulosIA');
+const { redactarAngulos, redactarDescripcion } = require('../_angulosIA');
 
 const LOTE = 20;               // multiget de MELI
 const MAX_POR_PUBLICADA = 5;   // tope de publicaciones nuevas por request
@@ -184,6 +184,34 @@ module.exports = async (req, res) => {
     const sufijo = sufijoTitulo(item);
     // Lo que se escribe es el nombre base: tiene que entrar en los 60 junto con el sufijo.
     const maxBase = maxNombreBase(max, sufijo);
+
+    // ── Reescribir la descripción para un título editado ────────
+    // Cambiar el título cambia el ángulo, y la descripción que venía deja de corresponder.
+    if (req.body?.redescribir) {
+      const tituloBase = limpiarTitulo(req.body.redescribir.titulo, maxBase);
+      if (!tituloBase) return res.status(400).json({ ok: false, error: 'Falta el título para el que hay que escribir la descripción.' });
+
+      const descripcionOriginal = await obtenerDescripcion(token, origen.meli_id);
+      try {
+        const texto = await redactarDescripcion({
+          tituloFinal: tituloFinal(tituloBase, sufijo),
+          tituloOriginal: item.title,
+          categoria: item.domain_id || item.category_id,
+          atributos: item.attributes,
+          descripcion: descripcionOriginal,
+          producto: { sku: producto.sku, nombre: producto.nombre },
+        });
+        return res.json({
+          ok: true,
+          sku: producto.sku,
+          titulo: tituloBase,
+          titulo_final: tituloFinal(tituloBase, sufijo),
+          descripcion: limpiarDescripcion(texto),
+        });
+      } catch (e) {
+        return res.status(e.code === 'SIN_API_KEY' ? 503 : 500).json({ ok: false, error: e.message });
+      }
+    }
 
     // ── Publicar lo aprobado ────────────────────────────────────
     if (Array.isArray(req.body?.publicar)) {

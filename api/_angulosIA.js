@@ -80,9 +80,52 @@ function extraerJson(texto) {
   }
 }
 
-async function redactarAngulos(opciones) {
+// Reescribe la descripción para un título que el vendedor editó a mano.
+//
+// Cambiar el título cambia el ángulo: si pasa de "Para Cuatriciclo" a "Para Moto", la
+// descripción que hablaba de cuatriciclos dejó de corresponder. Esto la vuelve a escribir
+// para el título que quedó, con los mismos datos del producto y sin inventar nada nuevo.
+function construirPromptDescripcion({ tituloFinal, tituloOriginal, categoria, atributos, descripcion, producto }) {
+  const ficha = (atributos || [])
+    .filter(a => a.value_name)
+    .slice(0, 25)
+    .map(a => `- ${a.name || a.id}: ${a.value_name}`)
+    .join('\n');
+
+  return `Sos quien redacta las publicaciones de una tienda de repuestos y accesorios de moto en Mercado Libre Uruguay.
+
+Necesito la descripción de esta publicación:
+
+TÍTULO: ${tituloFinal}
+
+Producto en el sistema: ${producto?.nombre || '(sin nombre)'}${producto?.sku ? ` (SKU ${producto.sku})` : ''}
+Título de la publicación original del mismo producto: ${tituloOriginal}
+Categoría de MELI: ${categoria || '(desconocida)'}
+${ficha ? `\nFicha técnica cargada:\n${ficha}` : ''}
+${descripcion ? `\nDescripción de la publicación original:\n${descripcion.slice(0, 800)}` : ''}
+
+La descripción tiene que corresponderse con ESE título, que es lo que el comprador leyó antes de
+entrar. Si el título habla de moto, la descripción habla de moto; si dice cuatriciclo, de
+cuatriciclo. No mezcles el ángulo de la publicación original.
+
+Reglas:
+- Texto plano, sin HTML ni emojis. Saltos de línea simples.
+- Entre 400 y 900 caracteres, arrancando por para qué sirve y a qué le va.
+- Coherente con la ficha técnica. No inventes medidas, materiales ni compatibilidades.
+- No menciones envío, pagos, garantía, precios ni la competencia.
+
+Devolvé SOLO el texto de la descripción, sin comillas, sin títulos y sin explicaciones.`;
+}
+
+async function redactarDescripcion(opciones) {
+  const texto = await pedirTexto(construirPromptDescripcion(opciones), 1500);
+  return texto.replace(/^["'`]+|["'`]+$/g, '').trim();
+}
+
+// Llamada a la API de Anthropic. La comparten los dos usos.
+async function pedirTexto(prompt, maxTokens) {
   if (!process.env.ANTHROPIC_API_KEY) {
-    const err = new Error('Falta ANTHROPIC_API_KEY: no se pueden redactar los ángulos automáticamente. Podés escribirlos a mano.');
+    const err = new Error('Falta ANTHROPIC_API_KEY: no se puede redactar automáticamente. Podés escribirlo a mano.');
     err.code = 'SIN_API_KEY';
     throw err;
   }
@@ -96,17 +139,21 @@ async function redactarAngulos(opciones) {
     },
     body: JSON.stringify({
       model: MODELO,
-      max_tokens: 4000,
-      messages: [{ role: 'user', content: construirPrompt(opciones) }],
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
   const data = await res.json();
-  if (!res.ok || data.error) {
-    throw new Error(data.error?.message || `Anthropic HTTP ${res.status}`);
-  }
+  if (!res.ok || data.error) throw new Error(data.error?.message || `Anthropic HTTP ${res.status}`);
 
-  const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+  const texto = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+  if (!texto) throw new Error('La IA no devolvió texto');
+  return texto;
+}
+
+async function redactarAngulos(opciones) {
+  const texto = await pedirTexto(construirPrompt(opciones), 4000);
   const angulos = extraerJson(texto);
   if (!Array.isArray(angulos) || !angulos.length) {
     throw new Error('La IA no devolvió ángulos utilizables.');
@@ -122,4 +169,4 @@ async function redactarAngulos(opciones) {
     }));
 }
 
-module.exports = { MODELO, redactarAngulos, construirPrompt, extraerJson };
+module.exports = { MODELO, redactarAngulos, redactarDescripcion, construirPrompt, construirPromptDescripcion, extraerJson };

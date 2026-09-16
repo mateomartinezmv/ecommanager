@@ -43,6 +43,11 @@ const EXPERIMENTOS = [
       p.channels = ['marketplace'];
       p.shipping = { mode: item.shipping?.mode || 'me2', local_pick_up: !!item.shipping?.local_pick_up, free_shipping: !!item.shipping?.free_shipping };
     } },
+  // Las preferencias de la cuenta mandan me2 obligatorio: probar con envío gratis, que es
+  // lo que MELI agrega solo cuando el precio pasa el umbral.
+  { nombre: 'me2 + envío gratis', ajuste: (p) => { p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: true }; } },
+  { nombre: 'me2 + envío gratis + precio 5000', ajuste: (p) => { p.price = 5000; p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: true }; } },
+  { nombre: 'sólo mode me2', ajuste: (p) => { p.shipping = { mode: 'me2' }; } },
   // Control: la publicación original tal cual, como si la estuviéramos creando de nuevo.
   // Si MELI tampoco la acepta, el problema no es lo que arma el clon sino la cuenta.
   { nombre: 'la original calcada', ajuste: (p, item) => {

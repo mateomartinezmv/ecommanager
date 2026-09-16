@@ -198,6 +198,20 @@ function errorDeEnvio(data) {
   return /has not mode|shipping|logistic|me1|me2/i.test(JSON.stringify(data || {}));
 }
 
+// "User has not mode meX" no habla de esta publicación: es cómo está configurada la cuenta
+// para publicar. Se verificó contra la cuenta real que MELI lo devuelve incluso al validar
+// una copia exacta de una publicación propia que está activa y vendiendo, con cualquier
+// configuración de envío y hasta sin bloque de envío. O sea que la validación previa se
+// equivoca al rechazar: el alta real puede pasar igual. Por eso no se trata como un rechazo
+// del ángulo sino como una validación no concluyente, y se deja publicar.
+function errorDeCuentaNoDelItem(data) {
+  const causas = Array.isArray(data?.cause) ? data.cause : [];
+  const textos = causas.map(c => c.message || c.code || '').filter(Boolean);
+  if (!textos.length) return false;
+  // Todas las causas tienen que ser de este tipo: si hay otra, el rechazo es real.
+  return textos.every(t => /user has not mode|mandatory free shipping/i.test(t));
+}
+
 const ESCALONES_ENVIO = ['completo', 'sin_modo', 'ninguno'];
 
 // El cuerpo del POST /items de la publicación nueva.
@@ -294,6 +308,19 @@ async function validarAngulo(token, item, opciones) {
     const v = await validarPayload(token, payload);
     return { ok: v.valida !== false, data: v.data, valida: v.valida, errores: v.errores, aviso: v.aviso };
   });
+
+  // Si lo único que objeta MELI es el modo de envío de la cuenta, la validación no sirve
+  // para decidir: queda "sin validar" y el ángulo se puede publicar igual.
+  if (r?.valida === false && errorDeCuentaNoDelItem(r.data)) {
+    return {
+      valida: null,
+      errores: [],
+      aviso: `MELI no pudo validarla por cómo está configurado el envío de la cuenta (${(r.errores || []).join(' · ')}). No es un problema de este título: devuelve lo mismo al validar una copia exacta de una publicación tuya que está activa. Se puede intentar publicar igual.`,
+      ajustes: r?.ajustes || null,
+      avisos_ajustes: avisosDeAjustes(r?.ajustes),
+      modoTitulo: r?.ajustes?.modoTitulo,
+    };
+  }
 
   return {
     valida: r?.valida ?? false,

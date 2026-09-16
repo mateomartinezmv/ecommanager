@@ -3619,7 +3619,7 @@ function renderPropuestaAngulos(data) {
       ? '<span class="badge badge-green">MELI la valida</span>'
       : (a.valida === false
         ? `<span class="badge badge-red">MELI la rechaza</span>`
-        : '<span class="badge badge-gray">sin validar</span>');
+        : '<span class="badge badge-yellow">no se pudo validar</span>');
     const errores = (a.errores || []).length
       ? `<div style="font-size:11px;color:var(--red);margin-top:4px">${escHtml(a.errores.join(' · '))}</div>`
       : (a.aviso ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">${escHtml(a.aviso)}</div>` : '');

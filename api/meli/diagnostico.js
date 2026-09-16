@@ -48,6 +48,17 @@ const EXPERIMENTOS = [
   { nombre: 'me2 + envío gratis', ajuste: (p) => { p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: true }; } },
   { nombre: 'me2 + envío gratis + precio 5000', ajuste: (p) => { p.price = 5000; p.shipping = { mode: 'me2', local_pick_up: false, free_shipping: true }; } },
   { nombre: 'sólo mode me2', ajuste: (p) => { p.shipping = { mode: 'me2' }; } },
+  // La cuenta tiene envío gratis a todo el país por configuración y MELI se lo aplica al alta
+  // aunque el cuerpo mande free_shipping false. ¿Hay forma de apagarlo explícitamente?
+  { nombre: 'envío gratis apagado con free_methods vacío', ajuste: (p, item) => {
+      p.shipping = { mode: 'me2', local_pick_up: !!item.shipping?.local_pick_up, free_shipping: false, free_methods: [] };
+    } },
+  { nombre: 'not_specified sin envío gratis', ajuste: (p) => {
+      p.shipping = { mode: 'not_specified', free_shipping: false, free_methods: [] };
+    } },
+  { nombre: 'custom, paga el comprador', ajuste: (p) => {
+      p.shipping = { mode: 'custom', local_pick_up: false, free_shipping: false, methods: [] };
+    } },
   // Control: la publicación original tal cual, como si la estuviéramos creando de nuevo.
   // Si MELI tampoco la acepta, el problema no es lo que arma el clon sino la cuenta.
   { nombre: 'la original calcada', ajuste: (p, item) => {

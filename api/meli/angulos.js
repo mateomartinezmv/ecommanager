@@ -214,9 +214,10 @@ module.exports = async (req, res) => {
           // la nueva cayó en el mismo UP que la original, no es un ángulo aparte y además
           // MELI puede espejar el título. Hay que avisarlo, no dejarlo pasar.
           const mismoUP = !!(nueva.user_product_id && item.user_product_id && nueva.user_product_id === item.user_product_id);
-          const avisoUP = mismoUP
-            ? 'MELI la agrupó en el mismo producto de usuario que la original: comparten título y stock. Revisala y pausala si no quedó como un ángulo aparte.'
-            : null;
+          const avisoUP = [
+            mismoUP ? 'MELI la agrupó en el mismo producto de usuario que la original: comparten título y stock. Revisala y pausala si no quedó como un ángulo aparte.' : null,
+            ...(nueva.avisos_ajustes || []),
+          ].filter(Boolean).join(' · ') || null;
 
           // La descripción va aparte y no puede tumbar una publicación que ya se creó.
           let avisoDescripcion = avisoUP;
@@ -331,7 +332,7 @@ module.exports = async (req, res) => {
         descripcion: limpiarDescripcion(a.descripcion),
         valida: validacion.valida,
         errores: validacion.errores,
-        aviso: validacion.aviso || null,
+        aviso: [validacion.aviso, ...(validacion.avisos_ajustes || [])].filter(Boolean).join(' · ') || null,
       });
     }
 

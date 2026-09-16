@@ -153,12 +153,18 @@ function rotarFotos(pictures, giro) {
   return [...fotos.slice(n), ...fotos.slice(0, n)];
 }
 
+// Cada atributo viaja con value_id Y value_name cuando tiene los dos. Mandar sólo el id
+// alcanza mientras el valor esté en el catálogo de MELI, pero con valores propios del
+// vendedor (una marca genérica, por ejemplo) el id no resuelve a ningún nombre y MELI
+// contesta "Value name of attribute BRAND was not provided and couldn't be resolved".
 function atributosCopiables(attributes, sku, excluir = new Set()) {
   const salida = [];
   for (const a of attributes || []) {
     if (!a?.id || ATRIBUTOS_NO_COPIABLES.has(a.id) || excluir.has(a.id)) continue;
-    if (a.value_id) salida.push({ id: a.id, value_id: a.value_id });
-    else if (a.value_name) salida.push({ id: a.id, value_name: String(a.value_name) });
+    const attr = { id: a.id };
+    if (a.value_id) attr.value_id = a.value_id;
+    if (a.value_name) attr.value_name = String(a.value_name);
+    if (attr.value_id || attr.value_name) salida.push(attr);
   }
   // El SKU del CRM viaja en la publicación: así "Importar desde MELI" la reconoce sola.
   if (sku) salida.push({ id: 'SELLER_SKU', value_name: String(sku) });
@@ -171,19 +177,31 @@ function saleTermsCopiables(saleTerms) {
     .map(t => (t.value_id ? { id: t.id, value_id: t.value_id } : { id: t.id, value_name: String(t.value_name) }));
 }
 
-function envioCopiable(shipping) {
-  if (!shipping) return undefined;
+// El envío se copia en tres escalones, de más fiel a más conservador:
+//   'completo'  → modo, retiro en persona, envío gratis y dimensiones tal cual el original.
+//   'sin_modo'  → sin el modo. Publicaciones viejas quedaron en modos que la cuenta ya no
+//                 tiene habilitados ("User has not mode me1") y ahí MELI rechaza el alta.
+//   'ninguno'   → sin el bloque: MELI le pone la configuración de envío por defecto.
+function envioCopiable(shipping, nivel = 'completo') {
+  if (!shipping || nivel === 'ninguno') return undefined;
   const envio = {
-    mode: shipping.mode,
     local_pick_up: !!shipping.local_pick_up,
     free_shipping: !!shipping.free_shipping,
   };
+  if (nivel === 'completo' && shipping.mode) envio.mode = shipping.mode;
   if (shipping.dimensions) envio.dimensions = shipping.dimensions;
   return envio;
 }
 
+// ¿El rechazo de MELI es por el envío? Entonces conviene bajar un escalón.
+function errorDeEnvio(data) {
+  return /has not mode|shipping|logistic|me1|me2/i.test(JSON.stringify(data || {}));
+}
+
+const ESCALONES_ENVIO = ['completo', 'sin_modo', 'ninguno'];
+
 // El cuerpo del POST /items de la publicación nueva.
-function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtributos = new Set(), modoTitulo = 'title' }) {
+function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtributos = new Set(), modoTitulo = 'title', envio = 'completo' }) {
   const payload = {
     // En User Products el título lo arma MELI: acá va el nombre genérico de la familia.
     ...(modoTitulo === 'family_name' ? { family_name: titulo } : { title: titulo }),
@@ -201,8 +219,8 @@ function construirPayload(item, { titulo, sku, stock, giroFotos = 0, excluirAtri
   const terms = saleTermsCopiables(item.sale_terms);
   if (terms.length) payload.sale_terms = terms;
 
-  const envio = envioCopiable(item.shipping);
-  if (envio) payload.shipping = envio;
+  const bloqueEnvio = envioCopiable(item.shipping, envio);
+  if (bloqueEnvio) payload.shipping = bloqueEnvio;
 
   if (sku) payload.seller_custom_field = String(sku);
 
@@ -225,49 +243,75 @@ async function validarPayload(token, payload) {
   return { valida: null, errores: [], aviso: `No se pudo validar contra MELI (HTTP ${status}).`, data };
 }
 
-// Valida un ángulo y, si MELI pide el título en el otro campo (title vs family_name),
-// rearma el cuerpo con ese y vuelve a validar. Devuelve también el modo que funcionó, para
-// que la publicación use el mismo y no repita el ida y vuelta.
-async function validarAngulo(token, item, opciones) {
+// Prueba un cuerpo y, ante los rechazos de forma que MELI devuelve al clonar, lo ajusta y
+// reintenta. Los tres que aparecen en la práctica, en orden de probarlos:
+//   1. El título va en el otro campo (title vs family_name).
+//   2. El envío copiado no le sirve a la cuenta ("User has not mode me1") → baja un escalón.
+//   3. Un atributo copiado no aplica a la publicación nueva → se saca ese.
+// Todo esto es forma, no fondo: si el rechazo es otro, se devuelve tal cual para mostrarlo.
+async function conAjustes(item, opciones, hacer) {
   let modoTitulo = opciones.modoTitulo || detectarModoTitulo(item);
-
-  for (let intento = 0; intento < 2; intento++) {
-    const payload = construirPayload(item, { ...opciones, modoTitulo });
-    const r = await validarPayload(token, payload);
-
-    if (r.valida === false) {
-      const pide = modoQuePide(r.data);
-      if (pide && pide !== modoTitulo) { modoTitulo = pide; continue; }
-    }
-    return { ...r, modoTitulo, payload };
-  }
-  return { valida: false, errores: ['MELI no aceptó el título ni como title ni como family_name.'], modoTitulo };
-}
-
-// Crea la publicación. Dos rechazos de MELI se reintentan solos porque son de forma, no de
-// fondo: que el título vaya en el otro campo, y que un atributo copiado del original no
-// aplique a la publicación nueva.
-async function crearPublicacion(token, item, opciones) {
-  let modoTitulo = opciones.modoTitulo || detectarModoTitulo(item);
+  let envio = opciones.envio || 'completo';
   const excluir = new Set(opciones.excluirAtributos || []);
   let ultimo = null;
 
-  for (let intento = 0; intento < 3; intento++) {
-    const payload = construirPayload(item, { ...opciones, modoTitulo, excluirAtributos: excluir });
-    const r = await meliFetch(token, '/items', { method: 'POST', body: JSON.stringify(payload) });
-    if (r.ok) return { ...r.data, modo_titulo: modoTitulo };
-    ultimo = r;
+  for (let intento = 0; intento < 6; intento++) {
+    const payload = construirPayload(item, { ...opciones, modoTitulo, envio, excluirAtributos: excluir });
+    const ajustes = { modoTitulo, envio, atributosQuitados: [...excluir] };
+    const r = await hacer(payload);
+    if (r.ok) return { ...r, ajustes, payload };
+    ultimo = { ...r, ajustes, payload };
 
     const pide = modoQuePide(r.data);
     if (pide && pide !== modoTitulo) { modoTitulo = pide; continue; }
 
+    const siguienteEnvio = ESCALONES_ENVIO[ESCALONES_ENVIO.indexOf(envio) + 1];
+    if (siguienteEnvio && errorDeEnvio(r.data)) { envio = siguienteEnvio; continue; }
+
     const copiados = new Set((payload.attributes || []).map(a => a.id));
     const aQuitar = [...atributosCulpables(r.data)].filter(id => copiados.has(id) && id !== 'SELLER_SKU');
     if (aQuitar.length) { aQuitar.forEach(id => excluir.add(id)); continue; }
+
     break;
   }
 
-  throw new Error(mensajeDeError(ultimo?.data, ultimo?.status));
+  return ultimo;
+}
+
+// Lo que hubo que tocar para que MELI la aceptara, en castellano y sólo si no fue lo obvio.
+function avisosDeAjustes(ajustes) {
+  const avisos = [];
+  if (ajustes?.envio === 'sin_modo') avisos.push('el modo de envío de la original no está habilitado en la cuenta, así que la nueva usa el que MELI le asigne');
+  if (ajustes?.envio === 'ninguno') avisos.push('MELI no aceptó la configuración de envío de la original: la nueva queda con la de por defecto, revisala');
+  if (ajustes?.atributosQuitados?.length) avisos.push(`se publicó sin estos atributos porque MELI los rechazó: ${ajustes.atributosQuitados.join(', ')}`);
+  return avisos;
+}
+
+// Valida un ángulo aplicando los mismos ajustes que usaría al publicar, así lo que se ve en
+// pantalla es lo que va a pasar de verdad.
+async function validarAngulo(token, item, opciones) {
+  const r = await conAjustes(item, opciones, async (payload) => {
+    const v = await validarPayload(token, payload);
+    return { ok: v.valida !== false, data: v.data, valida: v.valida, errores: v.errores, aviso: v.aviso };
+  });
+
+  return {
+    valida: r?.valida ?? false,
+    errores: r?.errores || ['MELI rechazó la publicación y no se pudo ajustar sola.'],
+    aviso: r?.aviso || null,
+    ajustes: r?.ajustes || null,
+    avisos_ajustes: avisosDeAjustes(r?.ajustes),
+    modoTitulo: r?.ajustes?.modoTitulo,
+  };
+}
+
+// Crea la publicación con la misma escalera de ajustes.
+async function crearPublicacion(token, item, opciones) {
+  const r = await conAjustes(item, opciones, (payload) =>
+    meliFetch(token, '/items', { method: 'POST', body: JSON.stringify(payload) }));
+
+  if (!r?.ok) throw new Error(mensajeDeError(r?.data, r?.status));
+  return { ...r.data, ajustes: r.ajustes, avisos_ajustes: avisosDeAjustes(r.ajustes) };
 }
 
 async function ponerDescripcion(token, itemId, texto) {
@@ -319,6 +363,7 @@ module.exports = {
   tituloFinal,
   validarPayload,
   validarAngulo,
+  avisosDeAjustes,
   crearPublicacion,
   ponerDescripcion,
   limpiarDescripcion,

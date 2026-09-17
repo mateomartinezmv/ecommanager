@@ -74,8 +74,10 @@ module.exports = async (req, res) => {
         total: v.total,
         estado: v.estado || 'pagada',
         metodo_pago: v.metodoPago || null,
-        // null = sin marcar → la facturación se deduce del método de pago
-        facturada: v.facturada === undefined ? null : v.facturada,
+        // Sin marcar (lo normal al dar de alta) ni se manda: la venta queda con facturada
+        // NULL y la facturación se deduce del método de pago. Además así el alta sigue
+        // funcionando si el deploy llega antes que la migración de la columna.
+        ...(v.facturada !== undefined ? { facturada: v.facturada } : {}),
         genera_envio: v.generaEnvio || false,
         notas: v.notas || null,
       }).select().single();

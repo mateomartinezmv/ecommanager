@@ -22,6 +22,7 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet, meliFetch, mensajeDeError } = require('../_meliPublicaciones');
 
 const LOTE = 20;
+const CONCURRENCIA = 8;          // consultas de promociones en paralelo
 const PROMO_REPLICABLE = 'PRICE_DISCOUNT';
 const MAX_DIAS_DESCUENTO = 14;   // tope de MELI para un descuento individual
 
@@ -75,12 +76,21 @@ async function datosDePublicaciones(token, ids) {
     }
   }
 
-  // El descuento se consulta de a una: no hay multiget para promociones.
+  // Las promociones no tienen multiget: es una llamada por publicación. De a una son más de
+  // dos minutos para un catálogo como éste, así que van en tandas.
+  const activos = Object.keys(mapa).filter(id => mapa[id].estado === 'active');
+  for (let i = 0; i < activos.length; i += CONCURRENCIA) {
+    const tanda = activos.slice(i, i + CONCURRENCIA);
+    await Promise.all(tanda.map(async (id) => {
+      const promos = await promocionesDeItem(token, id);
+      mapa[id].descuento = descuentoVigente(promos);
+      mapa[id].precio_final = mapa[id].descuento ? mapa[id].descuento.precio : mapa[id].precio;
+    }));
+  }
+
+  // Las que no son activas no se consultan: no tienen promoción vigente ni sentido comparar.
   for (const id of Object.keys(mapa)) {
-    if (mapa[id].estado !== 'active') continue;
-    const promos = await promocionesDeItem(token, id);
-    mapa[id].descuento = descuentoVigente(promos);
-    mapa[id].precio_final = mapa[id].descuento ? mapa[id].descuento.precio : mapa[id].precio;
+    if (mapa[id].precio_final === undefined) mapa[id].precio_final = mapa[id].precio;
   }
 
   return mapa;

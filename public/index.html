@@ -3766,7 +3766,7 @@ async function renderAngulosPrecios() {
   } else if (r.campanas_no_replicables) {
     aviso.style.display = 'block';
     aviso.innerHTML = `📣 <strong>${r.campanas_no_replicables} producto${r.campanas_no_replicables === 1 ? '' : 's'} con la original en una campaña de MELI.</strong>
-      Esas campañas se ofrecen por invitación: no se pueden copiar a otra publicación desde acá. Si querés emparejarlas, sumá los ángulos a la campaña desde Mercado Libre → Promociones.`;
+      Esas campañas se arman por invitación de MELI y los ángulos no están invitados, así que no se pueden copiar desde acá. Las tradicionales (DEAL) sí se suman solas en cuanto MELI invita al ángulo; las automáticas (SMART, co-fondeadas) las arma MELI y no se pueden forzar.`;
   } else {
     aviso.style.display = 'none';
   }

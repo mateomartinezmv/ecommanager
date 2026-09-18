@@ -23,15 +23,33 @@ const { meliGet, meliFetch, mensajeDeError } = require('../_meliPublicaciones');
 
 const LOTE = 20;
 const CONCURRENCIA = 8;          // consultas de promociones en paralelo
-const PROMO_REPLICABLE = 'PRICE_DISCOUNT';
+const PROMO_REPLICABLE = 'PRICE_DISCOUNT';   // descuento individual: lo define el vendedor
+const PROMO_CAMPANA = 'DEAL';                // campaña tradicional: se suma el ítem si está invitado
 const MAX_DIAS_DESCUENTO = 14;   // tope de MELI para un descuento individual
 
-// Promociones vigentes de una publicación. Si el recurso falla, se devuelve vacío: no saber
-// de descuentos no puede romper la comparación de precios.
+// Todas las promociones que MELI asocia a una publicación: las que están corriendo y las
+// invitaciones (status candidate). Si el recurso falla, se devuelve vacío: no saber de
+// descuentos no puede romper la comparación de precios.
 async function promocionesDeItem(token, itemId) {
   const { ok, data } = await meliFetch(token, `/seller-promotions/items/${itemId}?app_version=v2`);
   if (!ok || !Array.isArray(data)) return [];
-  return data.filter(p => p && (p.status === 'started' || p.status === 'pending'));
+  return data.filter(Boolean);
+}
+
+// Las campañas a las que esta publicación está invitada, por id, con el rango de precios que
+// MELI acepta. Sin esto, sumar un ítem a una campaña falla por "precio no creíble".
+function candidaturas(promos) {
+  const mapa = {};
+  for (const p of promos || []) {
+    if (p.status !== 'candidate' || !p.id) continue;
+    mapa[p.id] = {
+      tipo: p.type,
+      min: Number(p.min_discounted_price) || null,
+      max: Number(p.max_discounted_price) || null,
+      sugerido: Number(p.suggested_discounted_price) || null,
+    };
+  }
+  return mapa;
 }
 
 // El descuento que está corriendo: el que baja el precio de verdad.
@@ -41,12 +59,17 @@ function descuentoVigente(promos) {
   // Si hay varias, manda la más barata: es la que ve el comprador.
   const p = activos.slice().sort((a, b) => a.price - b.price)[0];
   return {
+    id: p.id || null,
     tipo: p.type,
     precio: Number(p.price),
     precio_lista: Number(p.original_price),
     nombre: p.name || null,
     finish_date: p.finish_date || null,
+    // El descuento individual lo define el vendedor y se copia. Una campaña tradicional se
+    // puede copiar sólo si MELI invitó también a la otra publicación; el resto (SMART,
+    // co-fondeadas, price matching) no se puede tocar por API.
     replicable: p.type === PROMO_REPLICABLE,
+    por_invitacion: p.type === PROMO_CAMPANA && !!p.id,
   };
 }
 
@@ -84,6 +107,7 @@ async function datosDePublicaciones(token, ids) {
     await Promise.all(tanda.map(async (id) => {
       const promos = await promocionesDeItem(token, id);
       mapa[id].descuento = descuentoVigente(promos);
+      mapa[id].candidaturas = candidaturas(promos);
       mapa[id].precio_final = mapa[id].descuento ? mapa[id].descuento.precio : mapa[id].precio;
     }));
   }
@@ -129,11 +153,16 @@ async function auditar(token, supabase, skuFiltro = '') {
       publicaciones,
       precio_desparejo: precios.size > 1,
       precio_final_desparejo: finales.size > 1,
-      // Lo que se puede arreglar desde acá: el descuento de la referencia que las otras no tienen.
-      descuento_replicable: !!(referencia?.descuento?.replicable &&
-        publicaciones.some(x => x.meli_id !== referencia.meli_id && !x.descuento)),
-      // Lo que no: una campaña de MELI en la referencia.
-      campana_no_replicable: referencia?.descuento && !referencia.descuento.replicable
+      // Lo que se puede arreglar desde acá: el descuento individual de la referencia, o su
+      // campaña tradicional cuando MELI también invitó a la otra publicación.
+      descuento_replicable: !!(referencia?.descuento && publicaciones.some(x =>
+        x.meli_id !== referencia.meli_id && !x.descuento && (
+          referencia.descuento.replicable ||
+          (referencia.descuento.por_invitacion && x.candidaturas?.[referencia.descuento.id])
+        ))),
+      // Lo que no se puede: campañas que MELI arma sola, o tradicionales sin invitación.
+      campana_no_replicable: referencia?.descuento && !referencia.descuento.replicable &&
+        !publicaciones.some(x => x.meli_id !== referencia.meli_id && x.candidaturas?.[referencia.descuento.id])
         ? referencia.descuento.tipo
         : null,
     };
@@ -165,7 +194,29 @@ async function emparejar(token, fila) {
       if (!r.ok) continue;
     }
 
-    // 2) descuento individual de la referencia
+    // 2a) campaña tradicional: se suma el ítem si MELI lo invitó, con el precio de la
+    // referencia acotado al rango que la campaña acepta para ESE ítem.
+    const invitacion = ref.descuento?.por_invitacion ? pub.candidaturas?.[ref.descuento.id] : null;
+    if (invitacion && !pub.descuento) {
+      let precio = ref.descuento.precio;
+      if (invitacion.max && precio > invitacion.max) precio = invitacion.max;
+      if (invitacion.min && precio < invitacion.min) precio = invitacion.min;
+
+      const r = await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?app_version=v2`, {
+        method: 'POST',
+        body: JSON.stringify({
+          promotion_type: PROMO_CAMPANA,
+          promotion_id: ref.descuento.id,
+          deal_price: precio,
+        }),
+      });
+      pasos.push(r.ok
+        ? { ok: true, sku: fila.sku, meli_id: pub.meli_id, accion: 'campaña', campana: ref.descuento.nombre || ref.descuento.id, ahora: precio }
+        : { ok: false, sku: fila.sku, meli_id: pub.meli_id, accion: 'campaña', error: mensajeDeError(r.data, r.status) });
+      continue;
+    }
+
+    // 2b) descuento individual de la referencia
     if (ref.descuento?.replicable && !pub.descuento) {
       // MELI tapa los descuentos de más de 14 días: si la original termina más lejos, se
       // corta ahí y se vuelve a aplicar cuando el vendedor lo renueve.

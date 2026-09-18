@@ -722,6 +722,7 @@
         <button class="tab" onclick="switchAngulosTab('ok')">✅ Cubiertos</button>
         <button class="tab" onclick="switchAngulosTab('todos')">Todos</button>
         <button class="tab" onclick="switchAngulosTab('stock')">📦 Stock por publicación</button>
+        <button class="tab" onclick="switchAngulosTab('precios')">💲 Precios y descuentos</button>
         <button class="tab" onclick="switchAngulosTab('historial')">🕐 Historial</button>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
@@ -3411,6 +3412,7 @@ let angulosSufijo = '';
 let angulosMaxFinal = 60;   // largo máximo del título que ve el comprador
 let angulosPortadas = [];   // foto de portada elegida para cada ángulo
 let stockPubs = null;       // auditoría de stock publicación por publicación
+let preciosPubs = null;     // auditoría de precio y descuento publicación por publicación
 
 // La portada es lo único que ve el comprador en los resultados, así que se elige a mano.
 function elegirPortada(i, foto) {
@@ -3441,7 +3443,7 @@ function actualizarTituloAngulo(i, valor) {
 }
 
 async function cargarAngulos(force = false) {
-  if (force) stockPubs = null;
+  if (force) { stockPubs = null; preciosPubs = null; }
   if (db.angulosMeta.cargada && !force) return;
   const btn = document.getElementById('btn-refrescar-angulos');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Leyendo MELI...'; }
@@ -3510,6 +3512,10 @@ async function renderAngulos() {
   if (angulosTab === 'stock') {
     thead.innerHTML = '<tr><th>Producto</th><th>Stock en el CRM</th><th>Publicación</th><th>Stock en MELI</th><th>Estado</th></tr>';
     return renderAngulosStock();
+  }
+  if (angulosTab === 'precios') {
+    thead.innerHTML = '<tr><th>Producto</th><th>Publicación</th><th>Precio de lista</th><th>Precio con descuento</th><th>Estado</th></tr>';
+    return renderAngulosPrecios();
   }
   if (angulosTab === 'historial') {
     thead.innerHTML = '<tr><th>Publicación</th><th>Producto</th><th>Estado</th><th>Fecha</th><th>Detalle</th></tr>';
@@ -3715,10 +3721,125 @@ async function sincronizarStockPublicaciones() {
   }
 }
 
+// Precio y descuento parejos. Los ángulos nacen con el precio de lista de la original pero
+// sin sus descuentos, así que la original queda más barata y MELI —que agrupa las
+// publicaciones parecidas— marca a las otras como "perdiendo" contra uno mismo.
+async function renderAngulosPrecios() {
+  const tbody = document.getElementById('angulos-tbody');
+  const empty = document.getElementById('angulos-empty');
+
+  if (!preciosPubs) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;color:var(--text-muted)">Leyendo precios y promociones de cada publicación...</td></tr>';
+    try {
+      preciosPubs = await fetch('/api/meli/precios').then(r => r.json());
+    } catch (e) {
+      preciosPubs = { ok: false, error: e.message, productos: [], resumen: {} };
+    }
+  }
+
+  const r = preciosPubs.resumen || {};
+  document.getElementById('angulos-stats').innerHTML = `
+    <div class="stat-card ${r.desparejos ? 'red' : 'green'}"><div class="stat-icon">${r.desparejos ? '⚠️' : '✅'}</div><div class="stat-value">${r.desparejos || 0}</div><div class="stat-label">Productos con precio desparejo</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">🏷️</div><div class="stat-value">${r.sin_descuento || 0}</div><div class="stat-label">Con descuento sólo en la original</div></div>
+    <div class="stat-card blue"><div class="stat-icon">💲</div><div class="stat-value">${r.precio_distinto || 0}</div><div class="stat-label">Con precio de lista distinto</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📣</div><div class="stat-value">${r.campanas_no_replicables || 0}</div><div class="stat-label">En campañas de MELI (no replicables)</div></div>`;
+
+  const aviso = document.getElementById('angulos-aviso');
+  if (preciosPubs.ok === false) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `⚠️ ${escHtml(preciosPubs.error)}`;
+  } else if (r.campanas_no_replicables) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `📣 <strong>${r.campanas_no_replicables} producto${r.campanas_no_replicables === 1 ? '' : 's'} con la original en una campaña de MELI.</strong>
+      Esas campañas se ofrecen por invitación: no se pueden copiar a otra publicación desde acá. Si querés emparejarlas, sumá los ángulos a la campaña desde Mercado Libre → Promociones.`;
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
+  const productos = (preciosPubs.productos || []).filter(p => {
+    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
+    return r.desparejos ? (p.precio_final_desparejo || p.descuento_replicable) : true;
+  });
+
+  document.getElementById('angulos-titulo').textContent = r.desparejos
+    ? 'Productos con precio o descuento desparejo'
+    : 'Precio por publicación';
+  document.getElementById('angulos-count').innerHTML = r.desparejos
+    ? `<button class="btn btn-primary btn-sm" onclick="emparejarPrecios()" id="btn-emparejar">💲 Emparejar los ${r.desparejos}</button>`
+    : `${r.productos || 0} productos con más de una publicación`;
+
+  if (!productos.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = preciosPubs.ok === false
+      ? 'No se pudieron leer los precios de MELI.'
+      : '✅ Todas las publicaciones de cada producto tienen el mismo precio y el mismo descuento.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = productos.map(p => p.publicaciones.map((pub, i) => {
+    const esRef = pub.meli_id === p.referencia?.meli_id;
+    const conDesc = pub.descuento
+      ? `<strong style="color:var(--green)">${fmt(pub.descuento.precio)}</strong> <span style="font-size:11px;color:var(--text-muted)">${escHtml(pub.descuento.tipo)}</span>`
+      : '<span style="color:var(--text-muted)">sin descuento</span>';
+    const estado = esRef
+      ? '<span class="badge badge-blue">referencia</span>'
+      : (pub.precio_final !== p.referencia?.precio_final
+        ? '<span class="badge badge-red">no coincide</span>'
+        : '<span class="badge badge-green">coincide</span>');
+    const titulo = pub.permalink
+      ? `<a href="${escHtml(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml((pub.titulo || pub.meli_id).slice(0, 48))} ↗</a>`
+      : escHtml(pub.titulo || pub.meli_id);
+    return `<tr>
+      <td>${i === 0 ? `<strong>${escHtml(p.nombre)}</strong><div style="font-size:11px"><span class="badge badge-gray">${escHtml(p.sku)}</span></div>` : ''}</td>
+      <td>${titulo}<div style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${escHtml(pub.meli_id)}</div></td>
+      <td>${fmt(pub.precio)}</td>
+      <td>${conDesc}</td>
+      <td>${estado}</td>
+    </tr>`;
+  }).join('')).join('');
+}
+
+// Copia el precio y el descuento de la publicación principal a las demás del mismo SKU.
+async function emparejarPrecios() {
+  if (angulosOcupado) return;
+  if (!confirm('Se va a poner el mismo precio de lista y el mismo descuento de la publicación original en las demás publicaciones de cada producto. ¿Seguimos?')) return;
+
+  const btn = document.getElementById('btn-emparejar');
+  angulosOcupado = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Emparejando...'; }
+
+  try {
+    const data = await fetch('/api/meli/precios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+
+    const fallos = (data.resultados || []).filter(x => !x.ok);
+    const detalle = fallos.length
+      ? '\n\nNo se pudieron:\n' + fallos.map(f => `· ${f.sku} (${f.meli_id}) ${f.accion}: ${f.error}`).join('\n')
+      : '';
+    alert(`✅ Cambios aplicados: ${data.emparejadas} · Fallidos: ${data.fallidas}${detalle}`);
+
+    preciosPubs = null;
+    await renderAngulosPrecios();
+  } catch (e) {
+    alert('⚠️ Error emparejando: ' + e.message);
+  } finally {
+    angulosOcupado = false;
+    if (btn) { btn.disabled = false; btn.textContent = '💲 Emparejar'; }
+  }
+}
+
 function switchAngulosTab(tab) {
   angulosTab = tab;
   document.querySelectorAll('#page-angulos .tab').forEach((t, i) => {
-    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'stock', 'historial'][i] === tab);
+    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'stock', 'precios', 'historial'][i] === tab);
   });
   renderAngulos();
 }

@@ -58,7 +58,7 @@
     },
     {
       "path": "/api/cron/sync-stock-pubs",
-      "schedule": "15 */4 * * *"
+      "schedule": "15 * * * *"
     }
   ]
 }

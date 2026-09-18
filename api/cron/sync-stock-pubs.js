@@ -1,5 +1,5 @@
 // api/cron/sync-stock-pubs.js
-// Cron — cada 4 horas.
+// Cron — cada hora.
 //
 // Red de contención del stock cuando un producto tiene varias publicaciones. El CRM ya las
 // sincroniza en el momento (al editar el producto, al entrar una venta), pero eso sólo cubre

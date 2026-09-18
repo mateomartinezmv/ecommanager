@@ -329,7 +329,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>Fecha</th><th>Canal</th><th>Producto</th><th>Cantidad</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>ID</th><th>Fecha</th><th>Canal</th><th>Producto</th><th>Cantidad</th><th>Total</th><th>Estado</th><th title="Marcá si la venta de mostrador salió con factura. El * es que todavía no se marcó a mano: se deduce del método de pago.">🧾 Facturada</th><th>Acciones</th></tr></thead>
           <tbody id="ventas-tbody"></tbody>
         </table>
         <div id="ventas-empty" class="empty-state" style="display:none"><div class="empty-icon">🛒</div><p>No hay ventas registradas aún.</p></div>
@@ -1368,7 +1368,7 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -1518,14 +1518,23 @@ function factMesesEjercicio(anio, cfg) {
   return 12 - mIni + 1;
 }
 
+// ¿El método de pago, por sí solo, implica factura? (sin mirar la marca manual)
+function factMetodoFactura(metodo, cfg) {
+  metodo = (metodo || '').toLowerCase();
+  if (!metodo || metodo === 'sin_metodo') return true;
+  return !cfg.metodosNoFacturados.includes(metodo);
+}
+
 // ¿Esta venta va a la facturación del Literal E?
+// El check de la tabla de ventas (v.facturada) es lo que el mostrador marcó a mano, así que
+// manda sobre lo que se deduciría del método de pago. NULL = nadie lo tocó → se deduce.
 function esVentaFacturada(v, cfg) {
   cfg = cfg || getFacturacionConfig();
   if (!v || v.estado === 'cancelada') return false;
   if (cfg.canales[v.canal] === false) return false;
+  if (v.facturada != null) return !!v.facturada;
   if (FACT_CANALES_POR_METODO.includes(v.canal)) {
-    const metodo = (v.metodoPago || '').toLowerCase();
-    if (metodo && cfg.metodosNoFacturados.includes(metodo)) return false;
+    return factMetodoFactura(v.metodoPago, cfg);
   }
   return true;
 }
@@ -1598,19 +1607,24 @@ function calcFacturacion() {
     const delCanal = delEjercicio.filter(v => v.canal === canal);
     if (!delCanal.length) return;
     if (FACT_CANALES_POR_METODO.includes(canal)) {
+      // Las marcadas a mano pueden no coincidir con lo que dice su método de pago, así que
+      // el método se abre en dos filas (factura / no factura) y el desglose sigue cuadrando.
       const porMetodo = {};
       delCanal.forEach(v => {
-        const key = (v.metodoPago || '').toLowerCase() || 'sin_metodo';
-        if (!porMetodo[key]) porMetodo[key] = 0;
-        porMetodo[key] += v.total || 0;
+        const metodo = (v.metodoPago || '').toLowerCase() || 'sin_metodo';
+        const factura = esVentaFacturada(v, cfg);
+        const key = metodo + (factura ? '|si' : '|no');
+        if (!porMetodo[key]) porMetodo[key] = { metodo, factura, total: 0 };
+        porMetodo[key].total += v.total || 0;
       });
-      Object.entries(porMetodo).forEach(([metodo, total]) => {
+      Object.values(porMetodo).forEach(({ metodo, factura, total }) => {
         const meta = FACT_METODOS.find(m => m.id === metodo);
+        const porDefecto = cfg.canales[canal] !== false && factMetodoFactura(metodo, cfg);
         desglose.push({
           canal,
-          detalle: meta ? meta.label : 'Sin método cargado',
+          detalle: (meta ? meta.label : 'Sin método cargado') + (factura !== porDefecto ? ' · marcadas a mano' : ''),
           total,
-          factura: cfg.canales[canal] !== false && !(metodo !== 'sin_metodo' && cfg.metodosNoFacturados.includes(metodo)),
+          factura,
         });
       });
     } else {
@@ -1711,7 +1725,7 @@ function renderFacturacionSection() {
       <td><strong>${fmt(d.total)}</strong></td>
       <td>${d.factura
         ? '<span class="badge badge-green">✔ factura</span>'
-        : '<span class="badge badge-gray">contado · no factura</span>'}</td>
+        : '<span class="badge badge-gray">no factura</span>'}</td>
     </tr>`).join('');
 
   return `
@@ -1720,6 +1734,7 @@ function renderFacturacionSection() {
       <p style="font-size:12px;color:var(--text-muted)">
         Ejercicio ${f.anio} (${f.mesesEjercicio} ${f.mesesEjercicio === 1 ? 'mes' : 'meses'}${f.prorrateado ? ', tope prorrateado' : ''}) · ${cfg.topeUI.toLocaleString('es-UY')} UI × $${cfg.valorUI} = ${fmt(f.topeAnualPleno)} al año.
         Se computan las ventas de MELI y las de mostrador que <strong>no</strong> son en contado.
+        El check 🧾 de la tabla de ventas manda sobre eso: lo que marques a mano ahí es lo que se cuenta acá.
       </p>
     </div>
 
@@ -4316,6 +4331,61 @@ async function cambiarEstadoGrupo(key, estado) {
   } catch(e) { console.error('Error cambiando estado del carrito:', e); }
 }
 
+// Check de facturación (mostrador): deja registrado a mano si la venta salió con factura.
+// Es lo que después usa el tope del Literal E, en vez de deducirlo del método de pago.
+async function toggleFacturada(checkbox) {
+  const id = checkbox.dataset.id;
+  const facturada = checkbox.checked;
+  const v = db.ventas.find(x => x.id === id);
+  if (!v) return;
+  try {
+    await api('PUT', `/ventas?id=${id}`, { facturada });
+    await loadAll();
+    renderVentas();
+  } catch(err) {
+    checkbox.checked = !facturada;
+    alert('Error marcando la venta como facturada: ' + err.message);
+  }
+}
+
+// Mismo check, pero para un carrito: marca/desmarca todas sus líneas de una pasada.
+async function toggleFacturadaGrupo(checkbox, key) {
+  const facturada = checkbox.checked;
+  const lineas = db.ventas.filter(v => ticketKey(v) === key);
+  try {
+    for (const v of lineas) await api('PUT', `/ventas?id=${v.id}`, { facturada });
+    await loadAll();
+    renderVentas();
+  } catch(err) {
+    checkbox.checked = !facturada;
+    alert('Error marcando el carrito como facturado: ' + err.message);
+  }
+}
+
+// Lo que muestra el check: la marca manual si existe, y si no lo que hoy se deduce del
+// método de pago (así arranca en el valor que el tope del Literal E ya está contando).
+function facturadaVista(v) {
+  if (v.facturada != null) return { valor: !!v.facturada, manual: true };
+  return { valor: factMetodoFactura(v.metodoPago, getFacturacionConfig()), manual: false };
+}
+
+// Celda del check. Sólo se marca a mano en mostrador: en MELI y Shopify factura siempre la
+// plataforma, así que ahí no hay nada que tocar.
+function celdaFacturada(canal, vista, onchange, nota) {
+  if (canal !== 'mostrador') {
+    return '<span style="font-size:11px;color:var(--text-muted)" title="La plataforma factura todas sus ventas">🧾 auto</span>';
+  }
+  const detalle = [vista.manual ? 'marcada a mano' : 'según el método de pago', nota].filter(Boolean).join(' · ');
+  return `
+    <label class="toggle-wrap" title="${vista.valor ? 'Facturada' : 'Sin facturar'} · ${detalle}">
+      <span class="toggle">
+        <input type="checkbox" ${vista.valor ? 'checked' : ''} ${onchange}>
+        <span class="toggle-slider"></span>
+      </span>
+      <span style="font-size:11px;color:${vista.valor ? 'var(--green)' : 'var(--text-muted)'}">${vista.valor ? 'Sí' : 'No'}${vista.manual ? '' : ' *'}</span>
+    </label>`;
+}
+
 // Cancela el carrito entero: cada línea restaura su stock y queda registrada como cancelada.
 async function deleteGrupoVenta(key) {
   const lineas = db.ventas.filter(v => ticketKey(v) === key);
@@ -4369,6 +4439,7 @@ function renderVentas() {
           ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${v.estado===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
         </select>
       </td>
+      <td>${celdaFacturada(v.canal, facturadaVista(v), `data-id="${v.id}" onchange="toggleFacturada(this)"`)}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="${enviosByVenta[v.id] ? 'Editar envío' : 'Crear envío'}">🚚</button>
@@ -4393,6 +4464,10 @@ function renderVentas() {
     const tiposEnvio = [...new Set(lineas.map(v => tipoEnvioVenta(v, enviosByVenta)).filter(Boolean))];
     const refCarrito = primera.ordenMeli || (primera.ventaGrupo || primera.id).slice(-6);
     const envioDelCarrito = lineas.some(v => enviosByVenta[v.id]);
+    // El carrito se factura entero: el check queda en "sí" sólo si todas sus líneas lo están.
+    const vistasFact = lineas.map(facturadaVista);
+    const factCarrito = { valor: vistasFact.every(f => f.valor), manual: vistasFact.every(f => f.manual) };
+    const factMixto = vistasFact.some(f => f.valor !== vistasFact[0].valor);
     return `
     <tr style="cursor:pointer" onclick="toggleGrupoVenta('${grupo.key}')">
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${refCarrito}</span></td>
@@ -4414,6 +4489,7 @@ function renderVentas() {
               ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${estados[0]===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
             </select>`}
       </td>
+      <td onclick="event.stopPropagation()">${celdaFacturada(primera.canal, factCarrito, `onchange="toggleFacturadaGrupo(this, '${grupo.key}')"`, factMixto ? 'hay líneas distintas: marcá o desmarcá para igualarlas' : '')}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="toggleGrupoVenta('${grupo.key}')" title="${abierto ? 'Ocultar productos' : 'Ver productos'}">${abierto ? '➖' : '➕'}</button>
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeCarrito('${grupo.key}')" title="${envioDelCarrito ? 'Editar envío del carrito' : 'Crear envío para todo el carrito'}">🚚</button>
@@ -5340,7 +5416,7 @@ function _enrichVenta(v) {
 function exportVentasCSV() {
   const { ventas, desde, hasta } = _getVentasFiltradas();
   if (!ventas.length) { alert('No hay ventas para exportar con los filtros actuales.'); return; }
-  const headers = ['ID/Orden','Carrito','Fecha','Canal','Comprador','Producto','SKU','Cantidad','Precio Unit.','Costo Unit.','Comision','Ingreso Neto','Costo Total','Ganancia Bruta','Margen %','Total','Estado','Metodo Pago'];
+  const headers = ['ID/Orden','Carrito','Fecha','Canal','Comprador','Producto','SKU','Cantidad','Precio Unit.','Costo Unit.','Comision','Ingreso Neto','Costo Total','Ganancia Bruta','Margen %','Total','Estado','Metodo Pago','Facturada'];
   const rows = ventas.map(v => {
     const e = _enrichVenta(v);
     return [
@@ -5361,7 +5437,9 @@ function exportVentasCSV() {
       e.margen,
       (e.total || 0).toFixed(2),
       e.estado || '',
-      e.metodoPago || ''
+      e.metodoPago || '',
+      // Igual que en la tabla: lo marcado a mano, o lo deducido del método de pago.
+      esVentaFacturada(e) ? 'SI' : 'NO'
     ];
   });
   const csv = [headers, ...rows]

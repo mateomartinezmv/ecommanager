@@ -74,6 +74,10 @@ module.exports = async (req, res) => {
         total: v.total,
         estado: v.estado || 'pagada',
         metodo_pago: v.metodoPago || null,
+        // Sin marcar (lo normal al dar de alta) ni se manda: la venta queda con facturada
+        // NULL y la facturación se deduce del método de pago. Además así el alta sigue
+        // funcionando si el deploy llega antes que la migración de la columna.
+        ...(v.facturada !== undefined ? { facturada: v.facturada } : {}),
         genera_envio: v.generaEnvio || false,
         notas: v.notas || null,
       }).select().single();
@@ -105,7 +109,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, notas } = req.body;
+      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, facturada, notas } = req.body;
       const updateData = {};
       if (fecha !== undefined) updateData.fecha = fecha;
       if (estado !== undefined) updateData.estado = estado;
@@ -119,6 +123,8 @@ module.exports = async (req, res) => {
       if (descuentoMonto !== undefined) updateData.descuento_monto = descuentoMonto;
       if (total !== undefined) updateData.total = total;
       if (metodoPago !== undefined) updateData.metodo_pago = metodoPago;
+      // Se acepta null a propósito: es volver la venta a "sin marcar".
+      if (facturada !== undefined) updateData.facturada = facturada;
       if (notas !== undefined) updateData.notas = notas;
 
       const { data, error } = await supabase.from('ventas')

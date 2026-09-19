@@ -4266,11 +4266,20 @@ function switchVentasTab(tab) {
 
 const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', otros: '🚚 Otro' };
 
-// Clasifica un transportista en uno de los 3 buckets de tipo de envío
+// Clasifica un transportista en uno de los 3 buckets de tipo de envío.
+// Flex = todo envío que despachamos nosotros con un transportista propio
+// (no solo EnviosUy: también GestionPost, UES o MMOTOS MATEO).
+const TIPO_ENVIO_POR_TRANSPORTISTA = {
+  mercado_envios: 'meli_envios',
+  enviosuy: 'flex',
+  gestionpost: 'flex',
+  ues: 'flex',
+  mmotos_mateo: 'flex',
+  otro: 'otros',
+};
+
 function tipoEnvioDeTransportista(transportista) {
-  if (transportista === 'mercado_envios') return 'meli_envios';
-  if (transportista === 'enviosuy') return 'flex';
-  return 'otros';
+  return TIPO_ENVIO_POR_TRANSPORTISTA[transportista] || 'otros';
 }
 
 // Clasifica una venta según el transportista de su envío asociado.

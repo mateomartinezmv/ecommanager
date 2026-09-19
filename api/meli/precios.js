@@ -157,10 +157,14 @@ async function auditar(token, supabase, skuFiltro = '') {
       nombre: p.nombre,
       referencia,
       publicaciones,
+      // Lo único que importa para el comprador: lo que termina pagando. Los precios de
+      // lista distintos son normales (la original puede tener descuento y el ángulo no).
       precio_desparejo: precios.size > 1,
       precio_final_desparejo: finales.size > 1,
       // Lo que se puede arreglar desde acá: el descuento individual de la referencia, o su
       // campaña tradicional cuando MELI también invitó a la otra publicación.
+      // Oportunidad, no problema: el precio ya coincide y el ángulo podría además llevar la
+      // etiqueta de la campaña de la original.
       descuento_replicable: !!(referencia?.descuento && publicaciones.some(x =>
         x.meli_id !== referencia.meli_id && !x.descuento && (
           referencia.descuento.replicable ||
@@ -319,15 +323,19 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const filas = await auditar(token, supabase);
-      const desparejos = filas.filter(f => f.precio_final_desparejo || f.descuento_replicable);
+      // Desparejo es una sola cosa: que el comprador pague distinto según en qué publicación
+      // entre. Si el precio final ya coincide, el producto está bien aunque la original tenga
+      // la etiqueta de la campaña y el ángulo no.
+      const desparejos = filas.filter(f => f.precio_final_desparejo);
       return res.json({
         ok: true,
         productos: filas,
         resumen: {
           productos: filas.length,
           desparejos: desparejos.length,
+          bloqueados: desparejos.filter(f => f.campana_no_replicable).length,
+          sin_etiqueta: filas.filter(f => !f.precio_final_desparejo && f.descuento_replicable).length,
           precio_distinto: filas.filter(f => f.precio_desparejo).length,
-          sin_descuento: filas.filter(f => f.descuento_replicable).length,
           campanas_no_replicables: filas.filter(f => f.campana_no_replicable).length,
         },
       });
@@ -336,8 +344,10 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
     const sku = String(req.body?.sku || '').trim();
+    // Se toca sólo lo que está desparejo de verdad: si el precio final ya coincide, moverle
+    // promociones a una publicación sana no cambia nada y arriesga a que MELI la recalcule.
     const filas = (await auditar(token, supabase, sku))
-      .filter(f => f.precio_final_desparejo || f.descuento_replicable);
+      .filter(f => f.precio_final_desparejo);
 
     const resultados = [];
     for (const fila of filas) resultados.push(...await emparejar(token, fila));

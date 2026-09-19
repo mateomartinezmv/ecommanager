@@ -3754,19 +3754,23 @@ async function renderAngulosPrecios() {
 
   const r = preciosPubs.resumen || {};
   document.getElementById('angulos-stats').innerHTML = `
-    <div class="stat-card ${r.desparejos ? 'red' : 'green'}"><div class="stat-icon">${r.desparejos ? '⚠️' : '✅'}</div><div class="stat-value">${r.desparejos || 0}</div><div class="stat-label">Productos con precio desparejo</div></div>
-    <div class="stat-card yellow"><div class="stat-icon">🏷️</div><div class="stat-value">${r.sin_descuento || 0}</div><div class="stat-label">Con descuento sólo en la original</div></div>
-    <div class="stat-card blue"><div class="stat-icon">💲</div><div class="stat-value">${r.precio_distinto || 0}</div><div class="stat-label">Con precio de lista distinto</div></div>
-    <div class="stat-card purple"><div class="stat-icon">📣</div><div class="stat-value">${r.campanas_no_replicables || 0}</div><div class="stat-label">En campañas de MELI (no replicables)</div></div>`;
+    <div class="stat-card ${r.desparejos ? 'red' : 'green'}"><div class="stat-icon">${r.desparejos ? '⚠️' : '✅'}</div><div class="stat-value">${r.desparejos || 0}</div><div class="stat-label">Productos donde el comprador paga distinto</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📣</div><div class="stat-value">${r.bloqueados || 0}</div><div class="stat-label">De esos, trabados por una campaña de MELI</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">🏷️</div><div class="stat-value">${r.sin_etiqueta || 0}</div><div class="stat-label">Mismo precio, sin la etiqueta de descuento</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🔗</div><div class="stat-value">${r.productos || 0}</div><div class="stat-label">Productos con más de una publicación</div></div>`;
 
   const aviso = document.getElementById('angulos-aviso');
   if (preciosPubs.ok === false) {
     aviso.style.display = 'block';
     aviso.innerHTML = `⚠️ ${escHtml(preciosPubs.error)}`;
-  } else if (r.campanas_no_replicables) {
+  } else if (r.bloqueados) {
     aviso.style.display = 'block';
-    aviso.innerHTML = `📣 <strong>${r.campanas_no_replicables} producto${r.campanas_no_replicables === 1 ? '' : 's'} con la original en una campaña de MELI.</strong>
-      En esas campañas MELI pone parte del descuento, así que igualar el precio en los ángulos saldría de tu bolsillo: se dejan como están. Para emparejarlas de verdad hay que sumar los ángulos a la campaña desde Mercado Libre → Promociones. Las tradicionales (DEAL) sí las empareja este botón.`;
+    aviso.innerHTML = `📣 <strong>${r.bloqueados} producto${r.bloqueados === 1 ? '' : 's'} no se puede${r.bloqueados === 1 ? '' : 'n'} emparejar desde acá.</strong>
+      La original está en una campaña donde MELI pone parte del descuento: bajar el ángulo al mismo precio saldría enteramente de tu bolsillo. Hay que sumar el ángulo a esa campaña desde Mercado Libre → Promociones.`;
+  } else if (r.sin_etiqueta) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `🏷️ <strong>${r.sin_etiqueta} producto${r.sin_etiqueta === 1 ? '' : 's'} con el precio parejo pero la etiqueta de descuento sólo en la original.</strong>
+      El comprador paga lo mismo en cualquiera de las publicaciones; al ángulo le falta el cartelito de la campaña. Si querés que también lo tenga, se suma desde Mercado Libre → Promociones.`;
   } else {
     aviso.style.display = 'none';
   }
@@ -3774,11 +3778,11 @@ async function renderAngulosPrecios() {
   const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
   const productos = (preciosPubs.productos || []).filter(p => {
     if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
-    return r.desparejos ? (p.precio_final_desparejo || p.descuento_replicable) : true;
+    return r.desparejos ? p.precio_final_desparejo : true;
   });
 
   document.getElementById('angulos-titulo').textContent = r.desparejos
-    ? 'Productos con precio o descuento desparejo'
+    ? 'Productos donde el comprador paga distinto según la publicación'
     : 'Precio por publicación';
   document.getElementById('angulos-count').innerHTML = r.desparejos
     ? `<button class="btn btn-primary btn-sm" onclick="emparejarPrecios()" id="btn-emparejar">💲 Emparejar los ${r.desparejos}</button>`
@@ -3789,7 +3793,7 @@ async function renderAngulosPrecios() {
     empty.style.display = 'block';
     empty.querySelector('p').textContent = preciosPubs.ok === false
       ? 'No se pudieron leer los precios de MELI.'
-      : '✅ Todas las publicaciones de cada producto tienen el mismo precio y el mismo descuento.';
+      : '✅ En todos los productos, el comprador paga lo mismo entre en la publicación que entre.';
     return;
   }
   empty.style.display = 'none';

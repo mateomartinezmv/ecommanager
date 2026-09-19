@@ -3766,7 +3766,7 @@ async function renderAngulosPrecios() {
   } else if (r.campanas_no_replicables) {
     aviso.style.display = 'block';
     aviso.innerHTML = `📣 <strong>${r.campanas_no_replicables} producto${r.campanas_no_replicables === 1 ? '' : 's'} con la original en una campaña de MELI.</strong>
-      Esas campañas se arman por invitación de MELI y los ángulos no están invitados, así que no se pueden copiar desde acá. Las tradicionales (DEAL) sí se suman solas en cuanto MELI invita al ángulo; las automáticas (SMART, co-fondeadas) las arma MELI y no se pueden forzar.`;
+      En esas campañas MELI pone parte del descuento, así que igualar el precio en los ángulos saldría de tu bolsillo: se dejan como están. Para emparejarlas de verdad hay que sumar los ángulos a la campaña desde Mercado Libre → Promociones. Las tradicionales (DEAL) sí las empareja este botón.`;
   } else {
     aviso.style.display = 'none';
   }
@@ -3820,7 +3820,7 @@ async function renderAngulosPrecios() {
 // Copia el precio y el descuento de la publicación principal a las demás del mismo SKU.
 async function emparejarPrecios() {
   if (angulosOcupado) return;
-  if (!confirm('Se va a poner el mismo precio de lista y el mismo descuento de la publicación original en las demás publicaciones de cada producto. ¿Seguimos?')) return;
+  if (!confirm('Se va a dejar a todas las publicaciones de cada producto en el MISMO precio final que la original — nunca más baratas.\n\nCuando MELI no acepta ese precio dentro de la campaña, la publicación se saca de la campaña y se le baja el precio de lista: el comprador paga lo mismo, sin la etiqueta de descuento.\n\n¿Seguimos?')) return;
 
   const btn = document.getElementById('btn-emparejar');
   angulosOcupado = true;

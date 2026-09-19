@@ -25,6 +25,8 @@ const LOTE = 20;
 const CONCURRENCIA = 8;          // consultas de promociones en paralelo
 const PROMO_REPLICABLE = 'PRICE_DISCOUNT';   // descuento individual: lo define el vendedor
 const PROMO_CAMPANA = 'DEAL';                // campaña tradicional: se suma el ítem si está invitado
+// Campañas donde Mercado Libre pone parte del descuento.
+const COFONDEADAS = new Set(['MARKETPLACE_CAMPAIGN', 'SMART', 'PRICE_MATCHING', 'PRE_NEGOTIATED', 'UNHEALTHY_STOCK']);
 const MAX_DIAS_DESCUENTO = 14;   // tope de MELI para un descuento individual
 
 // Todas las promociones que MELI asocia a una publicación: las que están corriendo y las
@@ -70,6 +72,10 @@ function descuentoVigente(promos) {
     // co-fondeadas, price matching) no se puede tocar por API.
     replicable: p.type === PROMO_REPLICABLE,
     por_invitacion: p.type === PROMO_CAMPANA && !!p.id,
+    // En estas campañas parte del descuento lo paga MELI. Igualar el precio final por precio
+    // de lista en otra publicación no es lo mismo: ahí lo pagaría entero el vendedor.
+    cofondeada: Number(p.meli_percentage) > 0 || COFONDEADAS.has(p.type),
+    meli_percentage: Number(p.meli_percentage) || 0,
   };
 }
 
@@ -174,52 +180,89 @@ const soloFecha = d => new Date(d).toISOString().slice(0, 19);
 
 // Empareja un producto: mismo precio de lista en todas y, si la referencia tiene descuento
 // individual, el mismo descuento en las demás.
+// Empareja un producto: que todas sus publicaciones queden en el MISMO precio final que la
+// principal. El objetivo es el precio que paga el comprador en la original, no "que tenga
+// descuento": un ángulo con un descuento más grande sale más barato que la original y le
+// come las ventas al mismo vendedor, que es peor que no tener descuento.
+//
+// Por eso nunca se acepta un precio distinto al objetivo. Se intenta, en orden:
+//   1. Si ya está en el objetivo, no se toca.
+//   2. Si está en una promo con otro precio, se corrige el precio de esa promo.
+//   3. Si MELI no acepta ese precio en la promo (lo considera poco creíble), se saca de la
+//      promo y se baja el precio de lista al objetivo: el comprador paga lo mismo, sin la
+//      etiqueta de descuento.
+//   4. Si no tiene promo y está invitado a la de la referencia con el objetivo dentro del
+//      rango permitido, se suma a la campaña con ese precio.
+//   5. Si no, precio de lista al objetivo.
 async function emparejar(token, fila) {
   const ref = fila.referencia;
   const pasos = [];
   if (!ref) return pasos;
 
+  const objetivo = ref.precio_final;
+  const anotar = (pub, accion, extra) => pasos.push({ sku: fila.sku, meli_id: pub.meli_id, titulo: pub.titulo, accion, ...extra });
+
+  // Deja la publicación en el precio objetivo sin promociones de por medio.
+  const ponerPrecioDeLista = async (pub, quitarPromo) => {
+    if (quitarPromo) {
+      await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?promotion_type=${quitarPromo.tipo}&promotion_id=${quitarPromo.id || ''}&app_version=v2`, { method: 'DELETE' });
+    }
+    const r = await meliFetch(token, `/items/${pub.meli_id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ price: objetivo }),
+    });
+    anotar(pub, 'precio de lista', r.ok
+      ? { ok: true, antes: pub.precio_final, ahora: objetivo, nota: quitarPromo ? 'se sacó de la campaña: MELI no aceptaba ese precio dentro de ella' : null }
+      : { ok: false, error: mensajeDeError(r.data, r.status) });
+  };
+
   for (const pub of fila.publicaciones) {
     if (pub.meli_id === ref.meli_id) continue;
+    if (pub.precio_final === objetivo) continue;
 
-    // 1) precio de lista
-    if (pub.precio !== ref.precio) {
-      const r = await meliFetch(token, `/items/${pub.meli_id}`, {
+    // Ya está en una promo, pero a otro precio.
+    if (pub.descuento) {
+      const r = await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?app_version=v2`, {
         method: 'PUT',
-        body: JSON.stringify({ price: ref.precio }),
+        body: JSON.stringify({
+          promotion_type: pub.descuento.tipo,
+          promotion_id: pub.descuento.id,
+          deal_price: objetivo,
+        }),
       });
-      pasos.push(r.ok
-        ? { ok: true, sku: fila.sku, meli_id: pub.meli_id, accion: 'precio', antes: pub.precio, ahora: ref.precio }
-        : { ok: false, sku: fila.sku, meli_id: pub.meli_id, accion: 'precio', error: mensajeDeError(r.data, r.status) });
-      if (!r.ok) continue;
+      if (r.ok) {
+        anotar(pub, 'precio en la campaña', { ok: true, antes: pub.precio_final, ahora: objetivo });
+      } else {
+        await ponerPrecioDeLista(pub, pub.descuento);
+      }
+      continue;
     }
 
-    // 2a) campaña tradicional: se suma el ítem si MELI lo invitó, con el precio de la
-    // referencia acotado al rango que la campaña acepta para ESE ítem.
+    // Sin promo: si está invitada a la de la referencia y el objetivo entra en el rango que
+    // MELI acepta para ESA publicación, se suma con ese precio. Si no entra, no se la suma
+    // con otro precio: se iguala por precio de lista.
     const invitacion = ref.descuento?.por_invitacion ? pub.candidaturas?.[ref.descuento.id] : null;
-    if (invitacion && !pub.descuento) {
-      let precio = ref.descuento.precio;
-      if (invitacion.max && precio > invitacion.max) precio = invitacion.max;
-      if (invitacion.min && precio < invitacion.min) precio = invitacion.min;
+    const entraEnRango = invitacion &&
+      (!invitacion.min || objetivo >= invitacion.min) &&
+      (!invitacion.max || objetivo <= invitacion.max);
 
+    if (entraEnRango) {
       const r = await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?app_version=v2`, {
         method: 'POST',
         body: JSON.stringify({
           promotion_type: PROMO_CAMPANA,
           promotion_id: ref.descuento.id,
-          deal_price: precio,
+          deal_price: objetivo,
         }),
       });
-      pasos.push(r.ok
-        ? { ok: true, sku: fila.sku, meli_id: pub.meli_id, accion: 'campaña', campana: ref.descuento.nombre || ref.descuento.id, ahora: precio }
-        : { ok: false, sku: fila.sku, meli_id: pub.meli_id, accion: 'campaña', error: mensajeDeError(r.data, r.status) });
-      continue;
+      if (r.ok) {
+        anotar(pub, 'campaña', { ok: true, campana: ref.descuento.nombre || ref.descuento.id, antes: pub.precio_final, ahora: objetivo });
+        continue;
+      }
     }
 
-    // 2b) descuento individual de la referencia
-    if (ref.descuento?.replicable && !pub.descuento) {
-      // MELI tapa los descuentos de más de 14 días: si la original termina más lejos, se
-      // corta ahí y se vuelve a aplicar cuando el vendedor lo renueve.
+    // Descuento individual de la referencia: mismo precio, sin campaña de por medio.
+    if (ref.descuento?.replicable) {
       const tope = new Date(Date.now() + MAX_DIAS_DESCUENTO * 86400000);
       const fin = ref.descuento.finish_date && new Date(ref.descuento.finish_date) < tope
         ? new Date(ref.descuento.finish_date)
@@ -229,15 +272,30 @@ async function emparejar(token, fila) {
         method: 'POST',
         body: JSON.stringify({
           promotion_type: PROMO_REPLICABLE,
-          deal_price: ref.descuento.precio,
+          deal_price: objetivo,
           start_date: soloFecha(Date.now()),
           finish_date: soloFecha(fin),
         }),
       });
-      pasos.push(r.ok
-        ? { ok: true, sku: fila.sku, meli_id: pub.meli_id, accion: 'descuento', ahora: ref.descuento.precio, hasta: soloFecha(fin) }
-        : { ok: false, sku: fila.sku, meli_id: pub.meli_id, accion: 'descuento', error: mensajeDeError(r.data, r.status) });
+      if (r.ok) {
+        anotar(pub, 'descuento', { ok: true, antes: pub.precio_final, ahora: objetivo, hasta: soloFecha(fin) });
+        continue;
+      }
     }
+
+    // Última opción: bajar el precio de lista. No se hace cuando el descuento de la
+    // referencia es co-fondeado: ahí una parte la pone MELI, y copiar el precio final a
+    // pulmón significa regalar esa parte en cada venta de esta publicación.
+    if (ref.descuento?.cofondeada) {
+      anotar(pub, 'sin igualar', {
+        ok: false,
+        error: `La original está en una campaña ${ref.descuento.tipo} donde MELI pone ${ref.descuento.meli_percentage || 'parte'}% del descuento. ` +
+               `Igualar el precio acá saldría de tu bolsillo: se deja como está y conviene sumar esta publicación a la campaña desde MELI.`,
+      });
+      continue;
+    }
+
+    await ponerPrecioDeLista(pub, null);
   }
 
   return pasos;

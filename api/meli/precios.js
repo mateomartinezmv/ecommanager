@@ -179,7 +179,10 @@ async function auditar(token, supabase, skuFiltro = '') {
     // mismo descuento que la original o ninguno.
     const listaDistinta = otras.filter(x => x.precio !== referencia?.precio);
     const descuentoPropio = otras.filter(x => x.descuento && x.precio_final !== referencia?.precio_final);
-    const sinEtiqueta = desc ? otras.filter(x => x.precio_final !== referencia.precio_final) : [];
+    // Le falta el descuento de la original: o no tiene ninguno, o tiene uno que la deja a
+    // otro precio. Ojo: una hija sin descuento puede estar al precio final de la original
+    // porque le bajaron la lista; también le falta la etiqueta.
+    const sinEtiqueta = desc ? otras.filter(x => !x.descuento || x.precio_final !== referencia.precio_final) : [];
     const sumables = sinEtiqueta.filter(entraEnLaCampana);
 
     return {

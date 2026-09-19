@@ -3754,23 +3754,19 @@ async function renderAngulosPrecios() {
 
   const r = preciosPubs.resumen || {};
   document.getElementById('angulos-stats').innerHTML = `
-    <div class="stat-card ${r.desparejos ? 'red' : 'green'}"><div class="stat-icon">${r.desparejos ? '⚠️' : '✅'}</div><div class="stat-value">${r.desparejos || 0}</div><div class="stat-label">Productos donde el comprador paga distinto</div></div>
-    <div class="stat-card purple"><div class="stat-icon">📣</div><div class="stat-value">${r.bloqueados || 0}</div><div class="stat-label">De esos, trabados por una campaña de MELI</div></div>
-    <div class="stat-card yellow"><div class="stat-icon">🏷️</div><div class="stat-value">${r.sin_etiqueta || 0}</div><div class="stat-label">Mismo precio, sin la etiqueta de descuento</div></div>
+    <div class="stat-card ${r.desparejos ? 'red' : 'green'}"><div class="stat-icon">${r.desparejos ? '⚠️' : '✅'}</div><div class="stat-value">${r.desparejos || 0}</div><div class="stat-label">Productos para emparejar</div></div>
+    <div class="stat-card green"><div class="stat-icon">🏷️</div><div class="stat-value">${r.parejos || 0}</div><div class="stat-label">Con el mismo descuento en todas</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">💲</div><div class="stat-value">${r.sin_etiqueta || 0}</div><div class="stat-label">Con alguna al precio de lista (MELI no la deja al descuento)</div></div>
     <div class="stat-card blue"><div class="stat-icon">🔗</div><div class="stat-value">${r.productos || 0}</div><div class="stat-label">Productos con más de una publicación</div></div>`;
 
   const aviso = document.getElementById('angulos-aviso');
   if (preciosPubs.ok === false) {
     aviso.style.display = 'block';
     aviso.innerHTML = `⚠️ ${escHtml(preciosPubs.error)}`;
-  } else if (r.bloqueados) {
-    aviso.style.display = 'block';
-    aviso.innerHTML = `📣 <strong>${r.bloqueados} producto${r.bloqueados === 1 ? '' : 's'} no se puede${r.bloqueados === 1 ? '' : 'n'} emparejar desde acá.</strong>
-      La original está en una campaña donde MELI pone parte del descuento: bajar el ángulo al mismo precio saldría enteramente de tu bolsillo. Hay que sumar el ángulo a esa campaña desde Mercado Libre → Promociones.`;
   } else if (r.sin_etiqueta) {
     aviso.style.display = 'block';
-    aviso.innerHTML = `🏷️ <strong>${r.sin_etiqueta} producto${r.sin_etiqueta === 1 ? '' : 's'} con el precio parejo pero la etiqueta de descuento sólo en la original.</strong>
-      El comprador paga lo mismo en cualquiera de las publicaciones; al ángulo le falta el cartelito de la campaña. Si querés que también lo tenga, se suma desde Mercado Libre → Promociones.`;
+    aviso.innerHTML = `🏷️ <strong>${r.sin_etiqueta} producto${r.sin_etiqueta === 1 ? '' : 's'} con alguna publicación al precio de lista.</strong>
+      MELI no la deja entrar al descuento de la original —a las publicaciones nuevas les pide un descuento más grande, y uno más grande la dejaría más barata que la original—, así que se queda en el precio de lista, sin descuento. Para darle la misma etiqueta hay que sumarla a la campaña desde Mercado Libre → Promociones.`;
   } else {
     aviso.style.display = 'none';
   }
@@ -3778,11 +3774,11 @@ async function renderAngulosPrecios() {
   const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
   const productos = (preciosPubs.productos || []).filter(p => {
     if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
-    return r.desparejos ? p.precio_final_desparejo : true;
+    return r.desparejos ? p.accionable : true;
   });
 
   document.getElementById('angulos-titulo').textContent = r.desparejos
-    ? 'Productos donde el comprador paga distinto según la publicación'
+    ? 'Productos donde el precio o el descuento no siguen a la original'
     : 'Precio por publicación';
   document.getElementById('angulos-count').innerHTML = r.desparejos
     ? `<button class="btn btn-primary btn-sm" onclick="emparejarPrecios()" id="btn-emparejar">💲 Emparejar los ${r.desparejos}</button>`
@@ -3803,11 +3799,15 @@ async function renderAngulosPrecios() {
     const conDesc = pub.descuento
       ? `<strong style="color:var(--green)">${fmt(pub.descuento.precio)}</strong> <span style="font-size:11px;color:var(--text-muted)">${escHtml(pub.descuento.tipo)}</span>`
       : '<span style="color:var(--text-muted)">sin descuento</span>';
+    // La regla: mismo precio de lista que la original y, encima, su mismo descuento o
+    // ninguno. Quedar al precio de lista no es un error; tener precio propio sí.
     const estado = esRef
       ? '<span class="badge badge-blue">referencia</span>'
-      : (pub.precio_final !== p.referencia?.precio_final
-        ? '<span class="badge badge-red">no coincide</span>'
-        : '<span class="badge badge-green">coincide</span>');
+      : pub.precio_final === p.referencia?.precio_final
+        ? '<span class="badge badge-green">coincide</span>'
+        : pub.precio === p.referencia?.precio && !pub.descuento
+          ? '<span class="badge badge-yellow">al precio de lista</span>'
+          : '<span class="badge badge-red">no coincide</span>';
     const titulo = pub.permalink
       ? `<a href="${escHtml(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml((pub.titulo || pub.meli_id).slice(0, 48))} ↗</a>`
       : escHtml(pub.titulo || pub.meli_id);
@@ -3824,7 +3824,7 @@ async function renderAngulosPrecios() {
 // Copia el precio y el descuento de la publicación principal a las demás del mismo SKU.
 async function emparejarPrecios() {
   if (angulosOcupado) return;
-  if (!confirm('Se va a dejar a todas las publicaciones de cada producto en el MISMO precio final que la original — nunca más baratas.\n\nCuando MELI no acepta ese precio dentro de la campaña, la publicación se saca de la campaña y se le baja el precio de lista: el comprador paga lo mismo, sin la etiqueta de descuento.\n\n¿Seguimos?')) return;
+  if (!confirm('Todas las publicaciones de un producto van a quedar con el MISMO precio de lista que la original y, encima, con SU MISMO descuento.\n\nA la que MELI no deje entrar a ese descuento se le saca cualquier descuento propio y queda en el precio de lista, sin oferta: nunca con un precio distinto al de la original.\n\n¿Seguimos?')) return;
 
   const btn = document.getElementById('btn-emparejar');
   angulosOcupado = true;
@@ -3840,10 +3840,16 @@ async function emparejarPrecios() {
     if (data.ok === false) throw new Error(data.error);
 
     const fallos = (data.resultados || []).filter(x => !x.ok);
+    const aLista = (data.resultados || []).filter(x => x.ok && x.accion === 'queda al precio de lista');
     const detalle = fallos.length
       ? '\n\nNo se pudieron:\n' + fallos.map(f => `· ${f.sku} (${f.meli_id}) ${f.accion}: ${f.error}`).join('\n')
       : '';
-    alert(`✅ Cambios aplicados: ${data.emparejadas} · Fallidos: ${data.fallidas}${detalle}`);
+    const lista = aLista.length
+      ? `\n\nMELI no dejó entrar al descuento de la original a ${aLista.length} publicación${aLista.length === 1 ? '' : 'es'}: quedaron en el precio de lista, sin oferta.\n` +
+        aLista.slice(0, 8).map(f => `· ${f.sku} (${f.meli_id}) → ${fmt(f.ahora)}`).join('\n') +
+        (aLista.length > 8 ? `\n· …y ${aLista.length - 8} más` : '')
+      : '';
+    alert(`✅ Cambios aplicados: ${data.emparejadas} · Fallidos: ${data.fallidas}${detalle}${lista}`);
 
     preciosPubs = null;
     await renderAngulosPrecios();

@@ -3766,7 +3766,7 @@ async function renderAngulosPrecios() {
   } else if (r.sin_etiqueta) {
     aviso.style.display = 'block';
     aviso.innerHTML = `🏷️ <strong>${r.sin_etiqueta} producto${r.sin_etiqueta === 1 ? '' : 's'} con alguna publicación al precio de lista.</strong>
-      MELI no la deja entrar al descuento de la original —a las publicaciones nuevas les pide un descuento más grande, y uno más grande la dejaría más barata que la original—, así que se queda en el precio de lista, sin descuento. Para darle la misma etiqueta hay que sumarla a la campaña desde Mercado Libre → Promociones.`;
+      No se le pudo dar el descuento de la original: o es una campaña donde MELI pone parte —copiarla saldría de tu bolsillo— o el descuento es menor al 5% y MELI no lo acepta suelto. Queda en el precio de lista, sin oferta. La única forma de darle la etiqueta es sumarla a esa campaña desde Mercado Libre → Promociones.`;
   } else {
     aviso.style.display = 'none';
   }
@@ -3824,7 +3824,7 @@ async function renderAngulosPrecios() {
 // Copia el precio y el descuento de la publicación principal a las demás del mismo SKU.
 async function emparejarPrecios() {
   if (angulosOcupado) return;
-  if (!confirm('Todas las publicaciones de un producto van a quedar con el MISMO precio de lista que la original y, encima, con SU MISMO descuento.\n\nA la que MELI no deje entrar a ese descuento se le saca cualquier descuento propio y queda en el precio de lista, sin oferta: nunca con un precio distinto al de la original.\n\n¿Seguimos?')) return;
+  if (!confirm('Todas las publicaciones de un producto van a quedar con el MISMO precio de lista que la original y, encima, con SU MISMO descuento: sumándolas a su campaña si MELI las invitó, o poniéndoles el mismo descuento aparte — que no te cuesta un peso más, porque esa campaña ya la pagás vos entera.\n\nA la que MELI no deje (campañas donde MELI pone parte, o descuentos menores al 5%) se le saca cualquier descuento propio y queda en el precio de lista, sin oferta: nunca con un precio distinto al de la original.\n\n¿Seguimos?')) return;
 
   const btn = document.getElementById('btn-emparejar');
   angulosOcupado = true;

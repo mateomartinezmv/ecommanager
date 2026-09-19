@@ -28,6 +28,13 @@ const PROMO_CAMPANA = 'DEAL';                // campaña tradicional: se suma el
 // Campañas donde Mercado Libre pone parte del descuento.
 const COFONDEADAS = new Set(['MARKETPLACE_CAMPAIGN', 'SMART', 'PRICE_MATCHING', 'PRE_NEGOTIATED', 'UNHEALTHY_STOCK']);
 const MAX_DIAS_DESCUENTO = 14;   // tope de MELI para un descuento individual
+const MIN_DESCUENTO = 0.05;      // MELI no acepta un descuento individual de menos del 5%
+
+// Un descuento que paga el vendedor entero se puede reproducir a dedo en otra publicación
+// sin que cueste un peso más: es el mismo dinero que ya resigna en la original.
+function aPulmon(descuento) {
+  return !!descuento && !descuento.cofondeada && !(Number(descuento.meli_percentage) > 0);
+}
 
 // Todas las promociones que MELI asocia a una publicación: las que están corriendo y las
 // invitaciones (status candidate). Si el recurso falla, se devuelve vacío: no saber de
@@ -159,9 +166,13 @@ async function auditar(token, supabase, skuFiltro = '') {
       if (!desc) return false;
       if (desc.replicable) return true;            // descuento individual: se copia siempre
       const inv = x.candidaturas?.[desc.id];
-      return !!inv &&
+      if (inv &&
         (!inv.min || referencia.precio_final >= inv.min) &&
-        (!inv.max || referencia.precio_final <= inv.max);
+        (!inv.max || referencia.precio_final <= inv.max)) return true;
+      // Si no la invitaron, todavía queda reproducir el descuento a dedo, siempre que lo
+      // pague el vendedor entero y llegue al mínimo que MELI pide para uno individual.
+      const porcentaje = (referencia.precio - referencia.precio_final) / (referencia.precio || 1);
+      return aPulmon(desc) && porcentaje >= MIN_DESCUENTO - 0.0001;
     };
 
     // Lo que hay que arreglar, según la regla: mismo precio de lista en todas y, encima, el
@@ -279,8 +290,13 @@ async function emparejar(token, fila) {
       }
     }
 
-    // Descuento individual de la original: ése sí se puede copiar a cualquiera.
-    if (ref.descuento.replicable) {
+    // Si la campaña de la original la paga el vendedor entera —MELI pone 0%—, el mismo
+    // precio en la hija cuesta exactamente lo mismo que ya cuesta en la madre. Entonces se
+    // reproduce con un descuento individual, que sí se pone a dedo: mismo precio final, y
+    // la hija también muestra su etiqueta de oferta.
+    // Cuando MELI pone parte (campañas cofondeadas), copiarlo saldría del bolsillo del
+    // vendedor: ahí no se toca y la hija se queda en el precio de lista.
+    if (ref.descuento.replicable || aPulmon(ref.descuento)) {
       const tope = new Date(Date.now() + MAX_DIAS_DESCUENTO * 86400000);
       const fin = ref.descuento.finish_date && new Date(ref.descuento.finish_date) < tope
         ? new Date(ref.descuento.finish_date)
@@ -306,9 +322,9 @@ async function emparejar(token, fila) {
     anotar(pub, 'queda al precio de lista', {
       ok: true,
       ahora: lista,
-      nota: ref.descuento.cofondeada
-        ? `${ref.descuento.nombre || ref.descuento.tipo} es una campaña cofondeada: MELI la arma y hay que sumar esta publicación desde Promociones`
-        : `MELI no acepta esta publicación en ${ref.descuento.nombre || ref.descuento.tipo} al precio de la original (pide un descuento más grande)`,
+      nota: aPulmon(ref.descuento)
+        ? `MELI no aceptó ni sumarla a ${ref.descuento.nombre || ref.descuento.tipo} ni ponerle el mismo descuento aparte (pide al menos ${Math.round(MIN_DESCUENTO * 100)}% y el de la original es menor)`
+        : `${ref.descuento.nombre || ref.descuento.tipo} es una campaña donde MELI pone parte del descuento: copiarlo acá saldría de tu bolsillo, hay que sumar esta publicación desde Promociones`,
     });
   }
 

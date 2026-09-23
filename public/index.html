@@ -186,6 +186,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
 </head>
 <body>
 
@@ -4149,6 +4150,7 @@ function stockRowHtml(p, sangria = false) {
     <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
     <td>
       <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
+      <button class="btn btn-ghost btn-sm" title="Descargar etiquetas SKU (una por unidad en depósito)" data-sku="${p.sku}" onclick="descargarEtiquetas(this.dataset.sku)"${p.stockDep > 0 ? '' : ' disabled style="opacity:0.35"'}>🏷️</button>
       <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
       ${discBtn}
       <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
@@ -4245,6 +4247,118 @@ async function toggleDiscontinuado(sku, value) {
   } catch(e) {
     alert('Error: ' + e.message);
   }
+}
+
+// =====================
+// ETIQUETAS SKU (impresora térmica, 100 × 50 mm)
+// =====================
+// Una etiqueta por unidad en depósito. Pensadas para leerse de un vistazo al
+// armar paquetes: el SKU es lo más grande, la variante (color, medida…) va
+// resaltada aparte y el código de barras permite escanearlas más adelante.
+const ETQ_W = 100, ETQ_H = 50, ETQ_M = 3;
+
+// En los nombres la variante va al final después de " - " ("… 22mm - Negro").
+function separarVariante(nombre) {
+  const i = (nombre || '').lastIndexOf(' - ');
+  if (i <= 0) return { base: nombre || '', variante: '' };
+  const variante = nombre.slice(i + 3).trim();
+  if (!variante || variante.length > 18) return { base: nombre, variante: '' };
+  return { base: nombre.slice(0, i).trim(), variante };
+}
+
+function recortarTexto(doc, texto, ancho) {
+  if (doc.getTextWidth(texto) <= ancho) return texto;
+  while (texto.length > 1 && doc.getTextWidth(texto + '…') > ancho) texto = texto.slice(0, -1);
+  return texto.trimEnd() + '…';
+}
+
+// Code128 dibujado con rectángulos (vectorial, nítido en la térmica). El ancho
+// de cada barra se ajusta a múltiplos de 0,125 mm = 1 punto a 203 dpi.
+function dibujarCodigoBarras(doc, texto, y, alto) {
+  const cod = {};
+  JsBarcode(cod, texto, { format: 'CODE128' });
+  const bits = cod.encodings.map(e => e.data).join('');
+  const disponible = ETQ_W - 2 * ETQ_M;
+  const modulos = bits.length + 20; // 10 módulos de zona libre a cada lado
+  let modulo = Math.floor(disponible / modulos / 0.125) * 0.125;
+  if (modulo < 0.25) modulo = disponible / modulos;
+  let x = (ETQ_W - bits.length * modulo) / 2;
+  doc.setFillColor(0);
+  for (let i = 0; i < bits.length; ) {
+    let j = i;
+    while (j < bits.length && bits[j] === bits[i]) j++;
+    if (bits[i] === '1') doc.rect(x + i * modulo, y, (j - i) * modulo, alto, 'F');
+    i = j;
+  }
+}
+
+function dibujarEtiquetaSku(doc, p, unidad, total, fecha) {
+  const ancho = ETQ_W - 2 * ETQ_M;
+  const usado = p.tipo === 'usado';
+
+  // Franja superior invertida: dónde vive el producto y su condición.
+  doc.setFillColor(0);
+  doc.roundedRect(2, 2, ETQ_W - 4, 7, 1, 1, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  const cond = usado ? 'USADO' : 'NUEVO';
+  doc.text(cond, ETQ_W - ETQ_M - 1, 6.8, { align: 'right' });
+  const ruta = [p.grupo, p.subgrupo].filter(Boolean).join('  /  ').toUpperCase() || 'SIN GRUPO';
+  doc.text(recortarTexto(doc, ruta, ancho - doc.getTextWidth(cond) - 6), ETQ_M + 1, 6.8);
+  doc.setTextColor(0);
+
+  // SKU gigante: se achica hasta que entre en el ancho.
+  let tam = 32;
+  doc.setFontSize(tam);
+  while (tam > 12 && doc.getTextWidth(p.sku) > ancho) doc.setFontSize(--tam);
+  doc.text(p.sku, ETQ_W / 2, 20.5, { align: 'center' });
+
+  // Nombre (2 renglones) y, si tiene, la variante en un recuadro negro.
+  const { base, variante } = separarVariante(p.nombre);
+  let anchoNombre = ancho;
+  if (variante) {
+    doc.setFontSize(11);
+    const w = Math.min(doc.getTextWidth(variante.toUpperCase()) + 4, 38);
+    doc.roundedRect(ETQ_W - ETQ_M - w, 23.2, w, 6.6, 1, 1, 'F');
+    doc.setTextColor(255);
+    doc.text(recortarTexto(doc, variante.toUpperCase(), w - 3), ETQ_W - ETQ_M - w / 2, 27.9, { align: 'center' });
+    doc.setTextColor(0);
+    anchoNombre = ancho - w - 2;
+  }
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  let lineas = doc.splitTextToSize(base, anchoNombre);
+  if (lineas.length > 2) lineas = [lineas[0], recortarTexto(doc, lineas.slice(1).join(' '), anchoNombre)];
+  doc.text(lineas, ETQ_M, 25.8, { lineHeightFactor: 1.15 });
+
+  dibujarCodigoBarras(doc, p.sku, 32.5, 11);
+
+  doc.setFontSize(7);
+  doc.text(`Unidad ${unidad} de ${total}`, ETQ_M, 47.3);
+  doc.text(fecha, ETQ_W - ETQ_M, 47.3, { align: 'right' });
+
+  // Los usados llevan un marco grueso para distinguirlos de lejos.
+  if (usado) {
+    doc.setLineWidth(1.2);
+    doc.roundedRect(0.9, 0.9, ETQ_W - 1.8, ETQ_H - 1.8, 1.5, 1.5, 'S');
+  }
+}
+
+function descargarEtiquetas(sku) {
+  const p = db.productos.find(x => x.sku === sku);
+  if (!p) return;
+  const total = p.stockDep || 0;
+  if (total <= 0) { alert(`${p.sku} no tiene unidades en depósito, no hay etiquetas para imprimir.`); return; }
+  if (typeof JsBarcode === 'undefined') { alert('No se pudo cargar la librería de códigos de barras. Recargá la página e intentá de nuevo.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [ETQ_W, ETQ_H] });
+  const fecha = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  for (let i = 1; i <= total; i++) {
+    if (i > 1) doc.addPage([ETQ_W, ETQ_H], 'landscape');
+    dibujarEtiquetaSku(doc, p, i, total, fecha);
+  }
+  doc.save(`etiquetas-${p.sku.replace(/[^\w-]+/g, '_')}-x${total}.pdf`);
 }
 
 // =====================

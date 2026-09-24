@@ -1156,6 +1156,23 @@
   </div>
 </div>
 
+<!-- MODAL: ETIQUETAS SKU -->
+<div class="modal-overlay" id="modal-etiquetas">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">🏷️ Imprimir etiquetas</div>
+    <input type="hidden" id="etq-sku">
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group"><label class="form-label">Producto</label><input type="text" id="etq-nombre" disabled style="opacity:0.6"></div>
+      <div class="form-group"><label class="form-label">Cantidad de etiquetas</label><input type="number" id="etq-cantidad" min="1" max="500"></div>
+    </div>
+    <p id="etq-ayuda" style="font-size:12px;color:var(--text-muted);margin-top:8px"></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-etiquetas')">Cancelar</button>
+      <button class="btn btn-primary" onclick="descargarEtiquetas()">Descargar PDF</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: NUEVO/EDITAR CLIENTE -->
 <div class="modal-overlay" id="modal-cliente">
   <div class="modal" style="max-width:560px">
@@ -4150,7 +4167,7 @@ function stockRowHtml(p, sangria = false) {
     <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : p.stockDep <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
     <td>
       <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
-      <button class="btn btn-ghost btn-sm" title="Descargar etiquetas SKU (una por unidad en depósito)" data-sku="${p.sku}" onclick="descargarEtiquetas(this.dataset.sku)"${p.stockDep > 0 ? '' : ' disabled style="opacity:0.35"'}>🏷️</button>
+      <button class="btn btn-ghost btn-sm" title="Imprimir etiquetas SKU" data-sku="${p.sku}" onclick="openEtiquetas(this.dataset.sku)">🏷️</button>
       <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="editProducto(this.dataset.sku)">✏️</button>
       ${discBtn}
       <button class="btn btn-danger btn-sm" data-sku="${p.sku}" onclick="deleteProducto(this.dataset.sku)">🗑️</button>
@@ -4252,7 +4269,7 @@ async function toggleDiscontinuado(sku, value) {
 // =====================
 // ETIQUETAS SKU (impresora térmica, 100 × 50 mm)
 // =====================
-// Una etiqueta por unidad en depósito. Pensadas para leerse de un vistazo al
+// Una etiqueta por unidad (por defecto, lo que hay en depósito). Pensadas para leerse de un vistazo al
 // armar paquetes: el SKU es lo más grande, la variante (color, medida…) va
 // resaltada aparte y el código de barras permite escanearlas más adelante.
 const ETQ_W = 100, ETQ_H = 50, ETQ_M = 3;
@@ -4292,7 +4309,7 @@ function dibujarCodigoBarras(doc, texto, y, alto) {
   }
 }
 
-function dibujarEtiquetaSku(doc, p, unidad, total, fecha) {
+function dibujarEtiquetaSku(doc, p, fecha) {
   const ancho = ETQ_W - 2 * ETQ_M;
   const usado = p.tipo === 'usado';
 
@@ -4335,8 +4352,7 @@ function dibujarEtiquetaSku(doc, p, unidad, total, fecha) {
   dibujarCodigoBarras(doc, p.sku, 32.5, 11);
 
   doc.setFontSize(7);
-  doc.text(`Unidad ${unidad} de ${total}`, ETQ_M, 47.3);
-  doc.text(fecha, ETQ_W - ETQ_M, 47.3, { align: 'right' });
+  doc.text(`Impresa ${fecha}`, ETQ_W - ETQ_M, 47.3, { align: 'right' });
 
   // Los usados llevan un marco grueso para distinguirlos de lejos.
   if (usado) {
@@ -4345,20 +4361,33 @@ function dibujarEtiquetaSku(doc, p, unidad, total, fecha) {
   }
 }
 
-function descargarEtiquetas(sku) {
+// Se pregunta la cantidad porque al reponer sólo hacen falta etiquetas para
+// las unidades que llegaron, no para las que ya estaban etiquetadas.
+function openEtiquetas(sku) {
   const p = db.productos.find(x => x.sku === sku);
   if (!p) return;
-  const total = p.stockDep || 0;
-  if (total <= 0) { alert(`${p.sku} no tiene unidades en depósito, no hay etiquetas para imprimir.`); return; }
+  document.getElementById('etq-sku').value = p.sku;
+  document.getElementById('etq-nombre').value = `${p.sku} — ${p.nombre}`;
+  document.getElementById('etq-cantidad').value = Math.max(p.stockDep || 0, 1);
+  document.getElementById('etq-ayuda').textContent = `En depósito: ${p.stockDep || 0} uds. Si ya tenés unidades etiquetadas (por ejemplo al reponer), poné sólo las nuevas.`;
+  openModal('modal-etiquetas');
+}
+
+function descargarEtiquetas() {
+  const p = db.productos.find(x => x.sku === document.getElementById('etq-sku').value);
+  if (!p) return;
+  const total = parseInt(document.getElementById('etq-cantidad').value) || 0;
+  if (total < 1 || total > 500) { alert('Poné una cantidad entre 1 y 500.'); return; }
   if (typeof JsBarcode === 'undefined') { alert('No se pudo cargar la librería de códigos de barras. Recargá la página e intentá de nuevo.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [ETQ_W, ETQ_H] });
   const fecha = new Date().toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit' });
   for (let i = 1; i <= total; i++) {
     if (i > 1) doc.addPage([ETQ_W, ETQ_H], 'landscape');
-    dibujarEtiquetaSku(doc, p, i, total, fecha);
+    dibujarEtiquetaSku(doc, p, fecha);
   }
   doc.save(`etiquetas-${p.sku.replace(/[^\w-]+/g, '_')}-x${total}.pdf`);
+  closeModal('modal-etiquetas');
 }
 
 // =====================

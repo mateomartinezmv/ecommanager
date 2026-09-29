@@ -582,7 +582,7 @@ function renderList() {
         <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${highlight(p.sku, terms)}</span></td>
         <td>${highlight(p.nombre, terms)}</td>
         <td style="color:var(--text-muted);font-size:12px">${p.grupo || '—'}${p.subgrupo ? `<br><span style="font-size:10px">${p.subgrupo}</span>` : ''}</td>
-        <td style="font-family:'JetBrains Mono',monospace">${p.stock}</td>
+        <td style="font-family:'JetBrains Mono',monospace">${p.stock}${(p.unidades_por_venta || 1) > 1 ? `<div style="font-size:10px;color:var(--text-muted)">de a ${p.unidades_por_venta} · ${Math.floor(p.stock / p.unidades_por_venta)} vendibles</div>` : ''}</td>
         <td style="font-family:'JetBrains Mono',monospace">
           ${p.daily_velocity > 0
             ? `<div>${p.daily_velocity.toFixed(2)}/día</div><div style="font-size:10px;color:var(--text-muted)">${p.total_sold || 0} uds · ${p.active_days || '—'} días activos</div>${stockoutPeriodsHtml(p)}`

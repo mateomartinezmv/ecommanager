@@ -19,6 +19,7 @@ const { getSupabase } = require('../_supabase');
 const { meliIdsDe } = require('../_meliIds');
 const { meliGet } = require('../_meliPublicaciones');
 const { syncMeliStock } = require('../_stockSync');
+const { packsDisponibles } = require('../_packs');
 
 const LOTE = 20;                 // multiget de MELI
 const ESTADOS_SINCRONIZABLES = new Set(['active', 'paused']);
@@ -73,7 +74,7 @@ async function idsActivosDelVendedor(token, sellerId) {
 async function auditar(token, supabase) {
   const { data: productos, error } = await supabase
     .from('productos')
-    .select('sku, nombre, stock_dep, meli_id, meli_ids, discontinuado')
+    .select('sku, nombre, stock_dep, unidades_por_venta, meli_id, meli_ids, discontinuado')
     .order('nombre');
   if (error) throw error;
 
@@ -82,6 +83,9 @@ async function auditar(token, supabase) {
 
   const filas = vivos
     .map(p => {
+      // Lo que las publicaciones TIENEN que mostrar son packs completos: un
+      // producto de a par con 16 unidades sueltas se publica como 8.
+      const stockPublicado = packsDisponibles(p.stock_dep, p);
       const publicaciones = meliIdsDe(p).map(id => {
         const info = mapa[id] || { meli_id: id, titulo: null, estado: 'desconocida', sub_estado: null, stock_meli: null, permalink: null, user_product_id: null };
         const sincronizable = ESTADOS_SINCRONIZABLES.has(info.estado);
@@ -89,7 +93,7 @@ async function auditar(token, supabase) {
           ...info,
           // Una publicación cerrada o que no se pudo leer no cuenta como desincronizada:
           // no hay nada que arreglarle.
-          desincronizada: sincronizable && info.stock_meli !== null && info.stock_meli !== (p.stock_dep || 0),
+          desincronizada: sincronizable && info.stock_meli !== null && info.stock_meli !== stockPublicado,
         };
       });
 
@@ -97,6 +101,8 @@ async function auditar(token, supabase) {
         sku: p.sku,
         nombre: p.nombre,
         stock_dep: p.stock_dep || 0,
+        stock_publicado: stockPublicado,
+        unidades_por_venta: p.unidades_por_venta || 1,
         publicaciones,
         total: publicaciones.length,
         desincronizadas: publicaciones.filter(x => x.desincronizada).length,
@@ -121,9 +127,9 @@ async function empujar(token, supabase, filas, todas = false) {
     let alguna = false;
     for (const pub of aEmpujar) {
       try {
-        await syncMeliStock(token, pub.meli_id, fila.stock_dep);
+        await syncMeliStock(token, pub.meli_id, fila.stock_publicado);
         alguna = true;
-        resultados.push({ ok: true, sku: fila.sku, meli_id: pub.meli_id, titulo: pub.titulo, antes: pub.stock_meli, ahora: fila.stock_dep });
+        resultados.push({ ok: true, sku: fila.sku, meli_id: pub.meli_id, titulo: pub.titulo, antes: pub.stock_meli, ahora: fila.stock_publicado });
       } catch (err) {
         resultados.push({ ok: false, sku: fila.sku, meli_id: pub.meli_id, titulo: pub.titulo, antes: pub.stock_meli, error: err.message });
       }
@@ -131,7 +137,7 @@ async function empujar(token, supabase, filas, todas = false) {
 
     // El espejo del CRM sólo se mueve si MELI aceptó al menos una: si no, mentiría.
     if (alguna) {
-      await supabase.from('productos').update({ stock_meli: fila.stock_dep }).eq('sku', fila.sku);
+      await supabase.from('productos').update({ stock_meli: fila.stock_publicado }).eq('sku', fila.sku);
     }
   }
 

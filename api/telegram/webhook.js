@@ -1,5 +1,6 @@
 // api/telegram/webhook.js
 const { getSupabase } = require('../_supabase');
+const { unidadesDeDeposito, unidadesPorVenta } = require('../_packs');
 
 const MENU = `🏍️ <b>Martinez Motos Bot</b>\n\n` +
   `<b>Consultas:</b>\n` +
@@ -130,7 +131,9 @@ async function ejecutarVenta(supabase, accion) {
   const cantidad = accion.cantidad || 1;
   const precio = accion.precio || producto.precio;
   const total = precio * cantidad;
-  const nuevoStock = Math.max(0, producto.stock_dep - cantidad);
+  // `cantidad` son unidades vendidas; el depósito se mueve en unidades sueltas.
+  const upv = unidadesPorVenta(producto);
+  const nuevoStock = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
 
   const ventaId = 'V' + Date.now();
   const hoy = new Date().toISOString().slice(0, 10);
@@ -161,7 +164,7 @@ async function ejecutarVenta(supabase, accion) {
     `📦 ${producto.nombre} x${cantidad}\n` +
     `💰 Total: $${total.toLocaleString('es-AR')}\n` +
     `💳 Pago: ${accion.metodoPago || 'efectivo'}\n` +
-    `📊 Stock restante: ${nuevoStock} uds` +
+    `📊 Stock restante: ${nuevoStock} uds${upv > 1 ? ` (${Math.floor(nuevoStock / upv)} × ${upv})` : ''}` +
     (nuevoStock <= producto.alerta_min ? '\n⚠️ <b>Stock bajo mínimo</b>' : '');
 }
 
@@ -220,7 +223,7 @@ async function ejecutarDevolucion(supabase, accion) {
   if (!producto) return `❌ No encontré el producto "${accion.producto || accion.sku}".`;
 
   const cantidad = accion.cantidad || 1;
-  const nuevoStock = producto.stock_dep + cantidad;
+  const nuevoStock = producto.stock_dep + unidadesDeDeposito(cantidad, producto);
 
   await supabase.from('productos').update({
     stock_dep: nuevoStock,

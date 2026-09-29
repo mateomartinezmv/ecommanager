@@ -4,6 +4,7 @@
 const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
 const { meliIdsDe } = require('./_meliIds');
+const { packsDisponibles } = require('./_packs');
 
 const SHOPIFY_SHOP = 'martinez-motos.myshopify.com';
 
@@ -66,7 +67,9 @@ async function syncShopifyStock(token, shopifyId, cantidad) {
 }
 
 // Suma stock_dep (y espeja stock_meli/stock_shopify) para cada ítem de una
-// importación que acaba de llegar. No lanza excepción por producto: acumula
+// importación que acaba de llegar. Las cantidades de la importación son
+// unidades sueltas (así vienen las cajas del proveedor); lo que se publica son
+// los packs completos que salen de ese depósito. No lanza excepción por producto: acumula
 // errores/no-encontrados para que un SKU con problemas no bloquee al resto.
 async function applyImportArrival(supabase, items) {
   const aplicados = [];
@@ -87,7 +90,7 @@ async function applyImportArrival(supabase, items) {
 
   const { data: productos, error } = await supabase
     .from('productos')
-    .select('sku, stock_dep, meli_id, meli_ids, shopify_id')
+    .select('sku, stock_dep, unidades_por_venta, meli_id, meli_ids, shopify_id')
     .in('sku', skus);
   if (error) throw error;
 
@@ -103,20 +106,21 @@ async function applyImportArrival(supabase, items) {
     if (!p) { noEncontrados.push(sku); continue; }
 
     const nuevoStock = (p.stock_dep || 0) + qty;
+    const nuevoStockPublicado = packsDisponibles(nuevoStock, p);
 
     const { error: updErr } = await supabase.from('productos').update({
       stock_dep: nuevoStock,
-      stock_meli: nuevoStock,
-      stock_shopify: nuevoStock,
+      stock_meli: nuevoStockPublicado,
+      stock_shopify: nuevoStockPublicado,
     }).eq('sku', sku);
     if (updErr) { errores.push({ sku, error: updErr.message }); continue; }
 
-    aplicados.push({ sku, sumado: qty, nuevoStock });
+    aplicados.push({ sku, sumado: qty, nuevoStock, nuevoStockPublicado });
 
     if (meliIdsDe(p).length) {
       try {
         if (!meliToken) meliToken = await getMeliToken();
-        const r = await syncMeliStockProducto(meliToken, p, nuevoStock);
+        const r = await syncMeliStockProducto(meliToken, p, nuevoStockPublicado);
         for (const e of r.errores) errores.push({ sku, error: `MELI ${e.meliId}: ${e.error}` });
       } catch (err) {
         errores.push({ sku, error: 'MELI: ' + err.message });
@@ -126,7 +130,7 @@ async function applyImportArrival(supabase, items) {
     if (p.shopify_id) {
       try {
         if (!shopifyToken) shopifyToken = await getShopifyToken();
-        await syncShopifyStock(shopifyToken, p.shopify_id, nuevoStock);
+        await syncShopifyStock(shopifyToken, p.shopify_id, nuevoStockPublicado);
       } catch (err) {
         errores.push({ sku, error: 'Shopify: ' + err.message });
       }

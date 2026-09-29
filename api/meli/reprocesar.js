@@ -4,6 +4,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
+const { unidadesDeDeposito, packsDisponibles } = require('../_packs');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
@@ -122,9 +123,10 @@ module.exports = async (req, res) => {
       const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
       if (ventaExistente) { log.push(`ℹ️ Venta ${ventaId} ya existe`); resultados.push({ item: meliItemId, estado: 'ya_existe', ventaId }); continue; }
 
-      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
-      await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockDep, stock_shopify: nuevoStockDep, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
-      log.push(`✅ Stock: ${nuevoStockDep}`);
+      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
+      const nuevoStockPublicado = packsDisponibles(nuevoStockDep, producto);
+      await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockPublicado, stock_shopify: nuevoStockPublicado, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
+      log.push(`✅ Stock: ${nuevoStockDep} uds en depósito → ${nuevoStockPublicado} publicadas`);
 
       const comisionItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100

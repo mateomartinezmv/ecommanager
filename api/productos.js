@@ -9,6 +9,7 @@ const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
 const { syncMeliStockProducto, syncShopifyStock } = require('./_stockSync');
 const { parseMeliIds } = require('./_meliIds');
+const { packsDisponibles, parseUnidadesPorVenta } = require('./_packs');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -30,14 +31,18 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
       const p = req.body;
+      // stock_dep va en unidades sueltas del depósito; lo publicado son packs.
+      const unidadesPorVenta = parseUnidadesPorVenta(p.unidadesPorVenta);
+      const packs = packsDisponibles(p.stockDep || 0, { unidades_por_venta: unidadesPorVenta });
       const { data, error } = await supabase.from('productos').insert({
         sku: p.sku, nombre: p.nombre,
         grupo: p.grupo?.trim() || null,
         subgrupo: p.subgrupo?.trim() || null,
         tipo: p.tipo || 'nuevo',
+        unidades_por_venta: unidadesPorVenta,
         stock_dep: p.stockDep || 0,
-        stock_meli: p.stockMeli || 0,
-        stock_shopify: p.stockShopify || 0,
+        stock_meli: unidadesPorVenta > 1 ? packs : (p.stockMeli || 0),
+        stock_shopify: unidadesPorVenta > 1 ? packs : (p.stockShopify || 0),
         costo: p.costo || 0, precio: p.precio,
         alerta_min: p.alertaMin || 5,
         // meli_id lo deriva el trigger a partir de meli_ids[1].
@@ -57,12 +62,18 @@ module.exports = async (req, res) => {
       // Obtener producto anterior para comparar stock
       const { data: anterior } = await supabase
         .from('productos')
-        .select('stock_dep, stock_meli, stock_shopify, meli_id, meli_ids, shopify_id')
+        .select('stock_dep, stock_meli, stock_shopify, unidades_por_venta, meli_id, meli_ids, shopify_id')
         .eq('sku', sku)
         .single();
 
-      // stock_dep es la fuente de verdad — stock_meli y stock_shopify siempre lo siguen
+      // stock_dep es la fuente de verdad, en unidades sueltas del depósito.
+      // Lo que se publica (y lo que espejan stock_meli/stock_shopify) son los
+      // packs completos que salen de ese stock.
       const stockCanon = p.stockDep;
+      const unidadesPorVenta = parseUnidadesPorVenta(
+        p.unidadesPorVenta !== undefined ? p.unidadesPorVenta : anterior?.unidades_por_venta
+      );
+      const stockPublicado = packsDisponibles(stockCanon, { unidades_por_venta: unidadesPorVenta });
 
       const { data, error } = await supabase.from('productos').update({
         sku: p.sku,  // permite cambiar el SKU
@@ -70,9 +81,10 @@ module.exports = async (req, res) => {
         grupo: p.grupo?.trim() || null,
         subgrupo: p.subgrupo?.trim() || null,
         tipo: p.tipo || 'nuevo',
+        unidades_por_venta: unidadesPorVenta,
         stock_dep: stockCanon,
-        stock_meli: stockCanon,
-        stock_shopify: stockCanon,
+        stock_meli: stockPublicado,
+        stock_shopify: stockPublicado,
         costo: p.costo, precio: p.precio,
         alerta_min: p.alertaMin,
         // meli_id lo deriva el trigger a partir de meli_ids[1].
@@ -85,7 +97,11 @@ module.exports = async (req, res) => {
 
       const shopifyId = p.shopifyId || anterior?.shopify_id;
       const forzarSync = p.forzarSync === true;
-      const stockCambio = !anterior || anterior.stock_dep !== stockCanon;
+      // Cambiar las unidades por venta mueve lo publicado aunque el depósito
+      // no se toque (16 sueltas pasan de 16 publicadas a 8 pares).
+      const stockCambio = !anterior
+        || anterior.stock_dep !== stockCanon
+        || (anterior.unidades_por_venta ?? 1) !== unidadesPorVenta;
 
       // Se sincroniza si cambió el stock, si se sumó alguna publicación nueva
       // o si se forzó. `data` ya trae meli_ids normalizado por el trigger.
@@ -95,9 +111,9 @@ module.exports = async (req, res) => {
       if (parseMeliIds(data.meli_ids).length && (forzarSync || stockCambio || hayPublicacionNueva)) {
         try {
           const token = await getMeliToken();
-          const r = await syncMeliStockProducto(token, data, stockCanon);
+          const r = await syncMeliStockProducto(token, data, stockPublicado);
           if (r.sincronizadas.length) {
-            console.log(`✅ Stock MELI sincronizado: ${r.sincronizadas.join(', ')} → ${stockCanon}`);
+            console.log(`✅ Stock MELI sincronizado: ${r.sincronizadas.join(', ')} → ${stockPublicado}`);
           }
           for (const e of r.errores) {
             console.error(`❌ Error sincronizando stock MELI ${e.meliId}:`, e.error);
@@ -111,8 +127,8 @@ module.exports = async (req, res) => {
       if (shopifyId && (forzarSync || stockCambio || (!anterior?.shopify_id && shopifyId))) {
         try {
           const token = await getShopifyToken();
-          await syncShopifyStock(token, shopifyId, stockCanon);
-          console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${stockCanon}`);
+          await syncShopifyStock(token, shopifyId, stockPublicado);
+          console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${stockPublicado}`);
         } catch (shopErr) {
           console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
         }

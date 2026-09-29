@@ -7,6 +7,7 @@ const { getMeliToken } = require('../_meliToken');
 const { meliIdsDe } = require('../_meliIds');
 const { syncMeliStockProducto } = require('../_stockSync');
 const { getShopifyToken } = require('../_shopifyToken');
+const { unidadesDeDeposito, packsDisponibles } = require('../_packs');
 
 const SHOP = 'martinez-motos.myshopify.com';
 
@@ -29,15 +30,18 @@ async function procesarOrden(order, supabase, log) {
     }
     if (log) log.push(`✅ Producto: ${producto.sku} - ${producto.nombre}`);
 
-    const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+    // `cantidad` viene en unidades vendidas (packs); el depósito se lleva
+    // unidades_por_venta unidades por cada una.
+    const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
+    const nuevoStockPublicado = packsDisponibles(nuevoStockDep, producto);
 
     await supabase.from('productos').update({
       stock_dep: nuevoStockDep,
-      stock_meli: nuevoStockDep,
-      stock_shopify: nuevoStockDep,
+      stock_meli: nuevoStockPublicado,
+      stock_shopify: nuevoStockPublicado,
       updated_at: new Date().toISOString(),
     }).eq('sku', producto.sku);
-    if (log) log.push(`✅ Stock: ${nuevoStockDep}`);
+    if (log) log.push(`✅ Stock: ${nuevoStockDep} uds en depósito → ${nuevoStockPublicado} publicadas`);
 
     const ventaId = `V_SHOP_${order.id}_${variantId}`;
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
@@ -71,9 +75,9 @@ async function procesarOrden(order, supabase, log) {
     if (meliIdsDe(producto).length) {
       try {
         const token = await getMeliToken();
-        const r = await syncMeliStockProducto(token, producto, nuevoStockDep);
+        const r = await syncMeliStockProducto(token, producto, nuevoStockPublicado);
         if (r.sincronizadas.length) {
-          const ok = `✅ MELI sync: ${r.sincronizadas.join(', ')} → ${nuevoStockDep}`;
+          const ok = `✅ MELI sync: ${r.sincronizadas.join(', ')} → ${nuevoStockPublicado}`;
           console.log(ok); if (log) log.push(ok);
         }
         for (const err of r.errores) {

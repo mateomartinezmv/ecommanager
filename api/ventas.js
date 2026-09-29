@@ -8,6 +8,7 @@ const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { meliIdsDe } = require('./_meliIds');
 const { syncMeliStockProducto } = require('./_stockSync');
+const { unidadesDeDeposito, unidadesPorVenta } = require('./_packs');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -48,8 +49,9 @@ module.exports = async (req, res) => {
         .single();
       if (prodErr || !producto) throw new Error('Producto no encontrado: ' + v.sku);
 
-      // 2. Calcular nuevo stock
-      const nuevoStockDep = Math.max(0, producto.stock_dep - v.cantidad);
+      // 2. Calcular nuevo stock. `cantidad` viene en unidades vendidas (packs):
+      // un par de sliders es 1 de cantidad y 2 unidades del depósito.
+      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(v.cantidad, producto));
       const nuevoStockMeli = v.canal === 'meli'
         ? Math.max(0, producto.stock_meli - v.cantidad)
         : producto.stock_meli;
@@ -153,8 +155,8 @@ module.exports = async (req, res) => {
         .single();
 
       if (producto) {
-        // 3. Restaurar stock
-        const stockDepRestaurado = producto.stock_dep + venta.cantidad;
+        // 3. Restaurar stock (el depósito vuelve en unidades sueltas)
+        const stockDepRestaurado = producto.stock_dep + unidadesDeDeposito(venta.cantidad, producto);
         const stockMeliRestaurado = venta.canal === 'meli'
           ? producto.stock_meli + venta.cantidad
           : producto.stock_meli;
@@ -165,7 +167,7 @@ module.exports = async (req, res) => {
           updated_at: new Date().toISOString(),
         }).eq('sku', venta.sku);
 
-        console.log(`🔄 Stock restaurado: ${venta.sku} depósito +${venta.cantidad} → ${stockDepRestaurado}`);
+        console.log(`🔄 Stock restaurado: ${venta.sku} depósito +${unidadesDeDeposito(venta.cantidad, producto)} uds (${venta.cantidad} × ${unidadesPorVenta(producto)}) → ${stockDepRestaurado}`);
 
         // 4. Si era MELI → restaurar el stock en TODAS sus publicaciones
         if (venta.canal === 'meli' && meliIdsDe(producto).length) {

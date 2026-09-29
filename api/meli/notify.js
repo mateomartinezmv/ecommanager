@@ -5,6 +5,7 @@ const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId, meliIdsDe } = require('../_meliIds');
 const { syncMeliStockProducto } = require('../_stockSync');
+const { unidadesDeDeposito } = require('../_packs');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const {
   obtenerShipment, ordenesDelShipment, sincronizarEnviosDeOrden,
@@ -173,7 +174,9 @@ async function handleOrder(resource) {
       .from('ventas').select('id').eq('id', ventaId).single();
 
     if (!ventaExistente) {
-      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+      // MELI vende packs (1 par de sliders = cantidad 1); el depósito pierde
+      // unidades_por_venta unidades por cada uno.
+      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
       const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
 
       await supabase.from('productos').update({
@@ -186,7 +189,7 @@ async function handleOrder(resource) {
       // quedan mostrando stock de más: hay que bajarlas a mano.
       if (meliIdsDe(producto).length > 1) {
         try {
-          const r = await syncMeliStockProducto(token, producto, nuevoStockDep);
+          const r = await syncMeliStockProducto(token, producto, nuevoStockMeli);
           for (const e of r.errores) {
             console.error(`❌ Stock MELI ${e.meliId}: ${e.error}`);
           }

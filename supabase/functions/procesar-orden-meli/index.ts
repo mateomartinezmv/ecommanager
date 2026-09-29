@@ -3,6 +3,15 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// Productos que se venden de a pack (sliders de a par): el depósito guarda
+// unidades sueltas y MELI vende packs, así que cada unidad vendida descuenta
+// `unidades_por_venta` del depósito.
+function unidadesPorVenta(producto: any): number {
+  const n = Number(producto?.unidades_por_venta)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1
+}
+
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const MELI_CLIENT_ID = Deno.env.get('MELI_CLIENT_ID')!
@@ -305,7 +314,7 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
       skuFinal = skuAuto
       nombreFinal = nombreItem
     } else {
-      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad)
+      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad * unidadesPorVenta(producto))
       const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad)
       await supabase.from('productos').update({
         stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli,

@@ -33,6 +33,7 @@ const {
   limpiarDescripcion,
 } = require('../_meliPublicaciones');
 const { redactarAngulos, redactarDescripcion } = require('../_angulosIA');
+const { packsDisponibles } = require('../_packs');
 
 const LOTE = 20;               // multiget de MELI
 const MAX_POR_PUBLICADA = 5;   // tope de publicaciones nuevas por request
@@ -108,7 +109,7 @@ module.exports = async (req, res) => {
     if (req.method === 'GET') {
       const { data: productos, error } = await supabase
         .from('productos')
-        .select('sku, nombre, stock_dep, precio, meli_id, meli_ids, discontinuado')
+        .select('sku, nombre, stock_dep, unidades_por_venta, precio, meli_id, meli_ids, discontinuado')
         .order('nombre');
       if (error) throw error;
 
@@ -130,7 +131,7 @@ module.exports = async (req, res) => {
         return {
           sku: p.sku,
           nombre: p.nombre,
-          stock: p.stock_dep || 0,
+          stock: packsDisponibles(p.stock_dep, p),
           precio: p.precio || 0,
           publicaciones,
           activas: activas.length,
@@ -158,7 +159,7 @@ module.exports = async (req, res) => {
 
     const { data: producto, error: errProd } = await supabase
       .from('productos')
-      .select('sku, nombre, stock_dep, meli_id, meli_ids')
+      .select('sku, nombre, stock_dep, unidades_por_venta, meli_id, meli_ids')
       .eq('sku', sku)
       .single();
     if (errProd || !producto) return res.status(404).json({ ok: false, error: `No existe el producto ${sku} en el CRM.` });
@@ -233,7 +234,8 @@ module.exports = async (req, res) => {
 
       if (!pedidos.length) return res.status(400).json({ ok: false, error: 'No llegó ningún título para publicar.' });
 
-      const stock = Math.max(0, Number(producto.stock_dep) || 0);
+      // Se publica en packs: los sliders se venden de a par.
+      const stock = packsDisponibles(producto.stock_dep, producto);
       const resultados = [];
 
       for (const pedido of pedidos) {
@@ -327,7 +329,7 @@ module.exports = async (req, res) => {
     );
 
     const descripcion = await obtenerDescripcion(token, origen.meli_id);
-    const stock = Math.max(0, Number(producto.stock_dep) || 0);
+    const stock = packsDisponibles(producto.stock_dep, producto);
 
     let angulos = [];
     let iaError = null;

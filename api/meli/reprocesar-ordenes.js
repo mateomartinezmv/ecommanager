@@ -5,6 +5,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
+const { unidadesDeDeposito } = require('../_packs');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -92,7 +93,7 @@ module.exports = async (req, res) => {
 
         // Descontar stock solo si está pagada
         if (estadoMeli === 'paid') {
-          const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad);
+          const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
           const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
           await supabase.from('productos').update({
             stock_dep: nuevoStockDep,

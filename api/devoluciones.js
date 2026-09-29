@@ -8,6 +8,7 @@ const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { meliIdsDe } = require('./_meliIds');
 const { syncMeliStockProducto } = require('./_stockSync');
+const { unidadesDeDeposito, packsDisponibles } = require('./_packs');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -60,18 +61,21 @@ module.exports = async (req, res) => {
       // Obtener producto para saber stock actual y sus publicaciones
       const { data: producto, error: prodErr } = await supabase
         .from('productos')
-        .select('stock_dep, meli_id, meli_ids, shopify_id')
+        .select('stock_dep, unidades_por_venta, meli_id, meli_ids, shopify_id')
         .eq('sku', dev.sku)
         .single();
       if (prodErr || !producto) throw new Error('Producto no encontrado: ' + dev.sku);
 
-      const nuevoStock = producto.stock_dep + dev.cantidad;
+      // La devolución vuelve en unidades vendidas (packs): un par devuelto
+      // repone 2 unidades sueltas al depósito.
+      const nuevoStock = producto.stock_dep + unidadesDeDeposito(dev.cantidad, producto);
+      const nuevoStockPublicado = packsDisponibles(nuevoStock, producto);
 
       // Actualizar stock en DB
       await supabase.from('productos').update({
         stock_dep: nuevoStock,
-        stock_meli: nuevoStock,
-        stock_shopify: nuevoStock,
+        stock_meli: nuevoStockPublicado,
+        stock_shopify: nuevoStockPublicado,
         updated_at: new Date().toISOString(),
       }).eq('sku', dev.sku);
 
@@ -88,9 +92,9 @@ module.exports = async (req, res) => {
       if (meliIdsDe(producto).length) {
         try {
           const token = await getMeliToken();
-          const r = await syncMeliStockProducto(token, producto, nuevoStock);
+          const r = await syncMeliStockProducto(token, producto, nuevoStockPublicado);
           if (r.sincronizadas.length) {
-            console.log(`✅ Stock MELI restaurado: ${r.sincronizadas.join(', ')} → ${nuevoStock}`);
+            console.log(`✅ Stock MELI restaurado: ${r.sincronizadas.join(', ')} → ${nuevoStockPublicado}`);
           }
           for (const e of r.errores) console.warn(`⚠️ MELI sync warning (${e.meliId}):`, e.error);
         } catch (meliErr) {

@@ -192,10 +192,19 @@ module.exports = async (req, res) => {
     // ── 1. All products ──────────────────────────────────────────────────────
     const { data: productos, error: prodErr } = await supabase
       .from('productos')
-      .select('sku, nombre, grupo, subgrupo, stock_dep, tipo, fecha_publicacion, alerta_min, created_at')
+      .select('sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at')
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
+
+    // Todo el módulo razona en UNIDADES DE DEPÓSITO: el stock, las llegadas de
+    // importaciones y la cantidad sugerida a pedir están en cajas sueltas. Las
+    // ventas y devoluciones, en cambio, vienen en unidades vendidas (un par de
+    // sliders es cantidad 1), así que se convierten acá para que la velocidad
+    // de demanda quede en la misma moneda que el stock.
+    const upvBySku = {};
+    for (const p of (productos || [])) upvBySku[p.sku] = p.unidades_por_venta || 1;
+    const aUnidades = (sku, cantidad) => (Number(cantidad) || 0) * (upvBySku[sku] || 1);
 
     // ── 2. Sales velocity: last DEMAND_WINDOW_DAYS, ALL channels, exclude cancelled ──
     const today = new Date();
@@ -221,11 +230,12 @@ module.exports = async (req, res) => {
     const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }, historial completo
 
     for (const v of ventas) {
+      const uds = aUnidades(v.sku, v.cantidad);
       if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
-      dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + v.cantidad;
+      dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + uds;
 
       if (v.fecha < sinceStr) continue; // fuera de la ventana de demanda: solo aporta a la reconstrucción
-      soldBySku[v.sku] = (soldBySku[v.sku] || 0) + v.cantidad;
+      soldBySku[v.sku] = (soldBySku[v.sku] || 0) + uds;
       if (!firstDateBySku[v.sku] || v.fecha < firstDateBySku[v.sku]) firstDateBySku[v.sku] = v.fecha;
       if (!lastDateBySku[v.sku]  || v.fecha > lastDateBySku[v.sku])  lastDateBySku[v.sku]  = v.fecha;
     }
@@ -245,9 +255,10 @@ module.exports = async (req, res) => {
     for (const d of (devoluciones || [])) {
       const fecha = (d.recibida_at || '').slice(0, 10);
       if (!fecha || !d.cantidad) continue;
-      if (fecha >= sinceStr) returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + d.cantidad;
+      const uds = aUnidades(d.sku, d.cantidad);
+      if (fecha >= sinceStr) returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + uds;
       if (!returnsBySku[d.sku]) returnsBySku[d.sku] = [];
-      returnsBySku[d.sku].push({ fecha, qty: d.cantidad });
+      returnsBySku[d.sku].push({ fecha, qty: uds });
     }
 
     // ── 2c. Llegadas de importaciones ya recibidas, para reconstruir el stock
@@ -448,9 +459,13 @@ module.exports = async (req, res) => {
       );
 
       const targetUnits   = Math.max(reorderPointUnits, alertaMin);
-      const cantidadSugerida = dailyVelocity > 0
+      const crudaSugerida = dailyVelocity > 0
         ? Math.max(0, Math.ceil(targetUnits - stock - qty_en_transito))
         : Math.max(0, Math.ceil(alertaMin - stock - qty_en_transito));
+      // Los productos de a par se piden de a par: media unidad sobrante no se
+      // puede vender, así que la sugerencia se redondea al pack completo.
+      const upv = upvBySku[p.sku] || 1;
+      const cantidadSugerida = upv > 1 ? Math.ceil(crudaSugerida / upv) * upv : crudaSugerida;
       // Math.ceil (no Math.round): mejor sugerir de más por redondeo que quedar
       // corto. No modelamos MOQ por proveedor porque hoy no aplica (pedidos chicos).
 
@@ -490,6 +505,7 @@ module.exports = async (req, res) => {
         grupo:                      p.grupo || '',
         subgrupo:                   p.subgrupo || '',
         stock:                      stock,
+        unidades_por_venta:         upvBySku[p.sku] || 1,
         alerta_min:                 alertaMin,
         total_sold:                 totalSold,
         active_days:                totalSold > 0 ? activeDays : null,

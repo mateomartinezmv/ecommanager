@@ -1498,7 +1498,7 @@ function normProducto(p) {
   return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -4736,6 +4736,9 @@ function renderVentas() {
     (v.comprador||'').toLowerCase().includes(q) ||
     (v.cliente||'').toLowerCase().includes(q) ||
     (v.ordenMeli||'').toLowerCase().includes(q) ||
+    // MELI muestra el pack_id como "Venta #", así que hay que poder buscar por ese
+    // número además del id de la orden.
+    (v.packId||'').toLowerCase().includes(q) ||
     (v.producto||'').toLowerCase().includes(q) ||
     (v.sku||'').toLowerCase().includes(q)
   );
@@ -4753,7 +4756,7 @@ function renderVentas() {
     <tr${dentroDeCarrito ? ' style="background:var(--bg-tertiary)"' : ''}>
       <td>${dentroDeCarrito
         ? `<span style="color:var(--text-muted);font-size:11px;padding-left:14px">↳ ${v.sku}</span>`
-        : `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${v.ordenMeli || v.id.slice(-6)}</span>`}</td>
+        : `<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)${v.packId ? ';border-bottom:1px dotted var(--text-muted);cursor:help' : ''}"${v.packId ? ` title="Orden ${v.ordenMeli}&#10;En el panel de MELI figura como Venta #${v.packId}"` : ''}>${v.ordenMeli || v.id.slice(-6)}</span>`}</td>
       <td>${dentroDeCarrito ? '' : v.fecha}</td>
       <td>${dentroDeCarrito ? '' : canalBadge(v.canal)}${tipoEnvioLabel ? `${dentroDeCarrito ? '' : '<br>'}<span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
@@ -5720,6 +5723,9 @@ function _getVentasFiltradas() {
     (v.comprador||'').toLowerCase().includes(q) ||
     (v.cliente||'').toLowerCase().includes(q) ||
     (v.ordenMeli||'').toLowerCase().includes(q) ||
+    // MELI muestra el pack_id como "Venta #", así que hay que poder buscar por ese
+    // número además del id de la orden.
+    (v.packId||'').toLowerCase().includes(q) ||
     (v.producto||'').toLowerCase().includes(q) ||
     (v.sku||'').toLowerCase().includes(q)
   );

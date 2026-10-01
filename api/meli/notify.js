@@ -207,6 +207,9 @@ async function handleOrder(resource) {
         canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id),
+        // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
+        // venta por el número que figura en pantalla no la encuentra.
+        pack_id: order.pack_id ? String(order.pack_id) : null,
         comprador: order.buyer?.nickname || '',
         sku: producto.sku,
         producto: producto.nombre,

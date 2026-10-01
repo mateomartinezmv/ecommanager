@@ -7109,13 +7109,17 @@ async function renderAdsAnuncios() {
 function pintarAdsStats() {
   const t = adsState.totales;
   if (!t) return;
+  // Las tarjetas muestran el total que MELI le pone a la campaña — es lo que figura en su
+  // panel y lo que factura. La suma de los anuncios puede quedar corta (gasto de anuncios
+  // que ya no están en la campaña) y eso se explica aparte, en el aviso de reconciliación.
+  const c = t.campana || t;
   const gananciaClase = t.ganancia >= 0 ? 'green' : 'red';
   document.getElementById('ads-stats').innerHTML = `
-    <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(t.inversion)}</div><div class="stat-label">Inversión en ads</div></div>
-    <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(t.facturacion)}</div><div class="stat-label">Facturación atribuida</div></div>
-    <div class="stat-card blue"><div class="stat-icon">📈</div><div class="stat-value">${t.roas.toFixed(2)}x</div><div class="stat-label">ROAS de la campaña</div></div>
-    <div class="stat-card purple"><div class="stat-icon">📦</div><div class="stat-value">${t.unidades}</div><div class="stat-label">Unidades vendidas</div></div>
-    <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${t.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${t.impresiones.toLocaleString('es-AR')} impresiones</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(c.inversion)}</div><div class="stat-label">Inversión en ads</div></div>
+    <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(c.facturacion)}</div><div class="stat-label">Facturación atribuida</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📈</div><div class="stat-value">${c.roas.toFixed(2)}x</div><div class="stat-label">ROAS de la campaña</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📦</div><div class="stat-value">${c.unidades}</div><div class="stat-label">Unidades vendidas</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${c.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${c.impresiones.toLocaleString('es-AR')} impresiones</div></div>
     <div class="stat-card ${gananciaClase}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
   `;
 }
@@ -7126,6 +7130,26 @@ function pintarAdsAviso() {
   if (!t) { cont.innerHTML = ''; return; }
 
   const avisos = [];
+
+  // Reconciliación contra el panel de MELI. Sin esto, la tabla suma distinto que la
+  // campaña y no hay forma de saber si falta un anuncio o si el cálculo está mal.
+  if (t.diferencia) {
+    const d = t.diferencia;
+    avisos.push(`<div style="background:rgba(59,130,246,0.10);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+      📊 <b>La campaña gastó ${fmt(d.inversion)} más de lo que suman sus anuncios</b>
+      (${fmt(t.campana.inversion)} contra ${fmt(t.inversion)}${d.clics ? `, y ${d.clics.toLocaleString('es-AR')} clics de diferencia` : ''}).
+      Es gasto de anuncios que estuvieron en la campaña durante el período pero ya no están en ella.
+      Las tarjetas de arriba muestran el total de la campaña, que es el que coincide con el panel de MELI;
+      la tabla sólo puede abrir los anuncios que MELI todavía devuelve.
+      ${d.facturacion ? `<br>Facturación sin atribuir a un anuncio listado: ${fmt(d.facturacion)}.` : ''}
+    </div>`);
+  }
+  if (t.truncado) {
+    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+      ⚠️ La campaña tiene ${t.truncado.total} anuncios y se muestran los ${t.truncado.mostrados} de mayor gasto.
+    </div>`);
+  }
+
   const botonVincular = (a, meliId) =>
     `<button class="btn btn-ghost btn-sm" style="padding:1px 8px;font-size:11px;margin-left:6px"
       onclick="abrirVincularAnuncio('${a.ad_group_id}'${meliId ? `, '${escHtml(meliId)}'` : ''})">🔗 Vincular</button>`;
@@ -7284,7 +7308,37 @@ function pintarAdsTabla() {
           <td style="text-align:center">${semaforo[a.estado] || ''}</td>
         </tr>`;
       }).join('')}</tbody>
+      ${pieAdsTabla(filas)}
     </table>`;
+}
+
+/** Fila de totales de lo que se está viendo: con el filtro puesto, el subtotal es el dato. */
+function pieAdsTabla(filas) {
+  const s = (c) => filas.reduce((a, f) => a + (f[c] || 0), 0);
+  const inv = s('inversion'), fact = s('facturacion'), impr = s('impresiones'), clics = s('clics');
+  const conCosto = filas.filter(f => f.ganancia != null);
+  const etiqueta = adsState.filtroEstado === 'todos'
+    ? `Total · ${filas.length} anuncios`
+    : `Subtotal ${adsState.filtroEstado} · ${filas.length} de ${adsState.anuncios.length}`;
+  const ganancia = conCosto.reduce((a, f) => a + f.ganancia, 0);
+
+  return `<tfoot><tr style="border-top:2px solid var(--border);font-weight:600;background:var(--surface2)">
+    <td>${etiqueta}</td>
+    <td style="text-align:right">${impr.toLocaleString('es-AR')}</td>
+    <td style="text-align:right">${clics.toLocaleString('es-AR')}</td>
+    <td style="text-align:right">${impr > 0 ? ((clics / impr) * 100).toFixed(2) + '%' : '—'}</td>
+    <td style="text-align:right">${clics > 0 ? fmt(inv / clics) : '—'}</td>
+    <td style="text-align:right">${fmt(inv)}</td>
+    <td style="text-align:right">${s('unidades')}</td>
+    <td style="text-align:right">${fmt(fact)}</td>
+    <td style="text-align:right">${inv > 0 ? (fact / inv).toFixed(2) + 'x' : '—'}</td>
+    <td></td>
+    <td style="text-align:right">${fact > 0 ? ((inv / fact) * 100).toFixed(1) + '%' : '—'}</td>
+    <td></td>
+    <td></td>
+    <td style="text-align:right;color:${ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${conCosto.length ? fmt(ganancia) : '—'}</td>
+    <td></td>
+  </tr></tfoot>`;
 }
 
 // --- Vinculación manual anuncio ↔ producto ------------------------------------

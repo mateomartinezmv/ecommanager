@@ -37,6 +37,13 @@ const METRICS_ADS = 'clicks,prints,cost,cpc,ctr,total_amount,units_quantity,roas
 const COMISION_DEFAULT = 15;
 
 const CONCURRENCIA = 6;
+const PAGINA = 200;
+// Tope de seguridad: cada ad group dispara una llamada extra para traer sus publicaciones,
+// así que una campaña enorme no puede entrar entera en el tiempo de un lambda.
+const MAX_AD_GROUPS = 600;
+
+// Métricas de la campaña (este endpoint las toma en minúsculas).
+const METRICS_CAMPANA = 'clicks,prints,cost,cpc,ctr,units_quantity,total_amount,acos,roas';
 
 const num = v => (v === null || v === undefined ? 0 : parseFloat(v) || 0);
 const ent = v => (v === null || v === undefined ? 0 : parseInt(v, 10) || 0);
@@ -76,23 +83,67 @@ module.exports = async (req, res) => {
     }
 
     // ── 1. Los ad groups de la campaña, con sus métricas del período ──────────────
-    const urlGrupos = `${API}/advertising/${ctx.siteId}/advertisers/${ctx.advertiserId}/product_ads/ad_groups/search`
+    // filters[campaign_id] (singular) trae todos los ítems que ESTUVIERON en la campaña
+    // durante el rango. filters[campaigns] devuelve sólo los que siguen en ella hoy, y
+    // entonces el gasto de un anuncio que se sacó a mitad de semana desaparece de la suma
+    // aunque MELI lo siga contando en el total de la campaña.
+    const urlGrupos = (offset) =>
+      `${API}/advertising/${ctx.siteId}/advertisers/${ctx.advertiserId}/product_ads/ad_groups/search`
       + `?date_from=${rango.desde}&date_to=${rango.hasta}`
       + `&metrics=${METRICS_AD_GROUP}&metrics_summary=true`
-      + `&limit=800&offset=0&sort=desc&sort_by=cost`
-      + `&${encodeURIComponent('filters[campaigns]')}=${encodeURIComponent(campaignId)}`;
+      + `&limit=${PAGINA}&offset=${offset}&sort=desc&sort_by=cost`
+      + `&${encodeURIComponent('filters[campaign_id]')}=${encodeURIComponent(campaignId)}`;
 
-    const grupos = await adsGet(urlGrupos, ctx.headers);
-    if (!grupos.ok) {
-      return res.json({
-        ok: false,
-        error: `Error ${grupos.status} al pedir los anuncios de la campaña`,
-        periodo: { desde: rango.desde, hasta: rango.hasta },
-        detalle: grupos.body,
-      });
+    const crudos = [];
+    let offset = 0;
+    let total = null;
+    let truncado = false;
+
+    // Paginar hasta agotar: una campaña con muchos anuncios no entra en una página, y lo
+    // que no se pida queda fuera de los totales sin que se note.
+    while (offset === 0 || offset < total) {
+      const pagina = await adsGet(urlGrupos(offset), ctx.headers);
+      if (!pagina.ok) {
+        return res.json({
+          ok: false,
+          error: `Error ${pagina.status} al pedir los anuncios de la campaña`,
+          periodo: { desde: rango.desde, hasta: rango.hasta },
+          detalle: pagina.body,
+        });
+      }
+      const lote = pagina.body.results || [];
+      crudos.push(...lote);
+      total = pagina.body.paging?.total ?? crudos.length;
+      offset += PAGINA;
+      if (!lote.length) break;
+      if (crudos.length >= MAX_AD_GROUPS) { truncado = true; break; }
     }
 
-    const crudos = grupos.body.results || [];
+    // ── 1b. El total que MELI le pone a la campaña ────────────────────────────────
+    // Es la cifra que el vendedor ve en el panel de Ads y la que factura, así que manda
+    // sobre la suma de los anuncios. Si las dos no coinciden, el hueco se muestra en vez
+    // de taparse: casi siempre es gasto de anuncios que ya no están en la campaña.
+    // Es una comodidad, no la tabla: si falla, la pestaña igual tiene que cargar.
+    let campanaRes = { ok: false, body: {} };
+    try {
+      campanaRes = await adsGet(
+        `${API}/advertising/${ctx.siteId}/product_ads/campaigns/${encodeURIComponent(campaignId)}`
+        + `?date_from=${rango.desde}&date_to=${rango.hasta}&metrics=${METRICS_CAMPANA}`,
+        ctx.headers
+      );
+    } catch (e) {
+      console.error('ads-anuncios: no se pudo leer el total de la campaña:', e.message);
+    }
+    const mc = campanaRes.ok ? (campanaRes.body.metrics || campanaRes.body) : null;
+    const campana = mc ? {
+      nombre: campanaRes.body.name || null,
+      impresiones: ent(mc.prints),
+      clics: ent(mc.clicks),
+      inversion: r2(num(mc.cost)),
+      facturacion: r2(num(mc.total_amount)),
+      unidades: ent(mc.units_quantity),
+      roas: num(mc.cost) > 0 ? r2(num(mc.total_amount) / num(mc.cost)) : 0,
+    } : null;
 
     // ── 2. Las publicaciones detrás de cada ad group ──────────────────────────────
     // El search de ad groups no devuelve los item_ids, y sin ellos no hay forma de
@@ -273,7 +324,23 @@ module.exports = async (req, res) => {
       anuncios_con_costo: conCosto.length,
       anuncios_sin_vincular: filas.filter(f => f.sin_vincular && !f.sku_sin_vincular).length,
       anuncios_sku_sin_vincular: filas.filter(f => f.sku_sin_vincular).length,
+      truncado: truncado ? { mostrados: filas.length, total } : null,
     };
+
+    // Lo que la campaña gastó y no aparece en ningún anuncio de la lista. Se informa
+    // siempre que sea más del 1%: es plata real y el ROAS de la campaña depende de ella.
+    if (campana) {
+      const dif = {
+        inversion: r2(campana.inversion - totales.inversion),
+        clics: campana.clics - totales.clics,
+        facturacion: r2(campana.facturacion - totales.facturacion),
+        unidades: campana.unidades - totales.unidades,
+      };
+      const relevante = campana.inversion > 0 &&
+        Math.abs(dif.inversion) / campana.inversion > 0.01;
+      totales.campana = campana;
+      totales.diferencia = relevante ? dif : null;
+    }
 
     // ── 7. Snapshot opcional ──────────────────────────────────────────────────────
     // Sólo tiene sentido para un día puntual: con un rango, las métricas vienen agregadas

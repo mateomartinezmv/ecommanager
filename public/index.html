@@ -379,6 +379,10 @@
           <span class="search-icon">🔍</span>
           <input type="text" id="envios-search" placeholder="Buscar tracking, comprador, producto..." oninput="renderEnvios()" style="width:260px">
         </div>
+        <div class="search-bar">
+          <span class="search-icon">📍</span>
+          <input type="text" id="envios-direccion" placeholder="Buscar por dirección / destino..." title="Filtra por la dirección del envío (sin importar tildes)" oninput="renderEnvios()" style="width:240px">
+        </div>
         <select id="envios-transportista" onchange="renderEnvios()" style="padding:7px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px;cursor:pointer">
           <option value="">Todos los transportistas</option>
           <option value="enviosuy">EnviosUy</option>
@@ -423,7 +427,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Zona</th><th>Costo envío</th><th>Colecta</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Orden</th><th>Comprador</th><th>Producto</th><th>Tracking</th><th>Transportista</th><th>Destino</th><th>Zona</th><th>Costo envío</th><th>Colecta</th><th>Fecha despacho</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="envios-tbody"></tbody>
         </table>
         <div id="envios-empty" class="empty-state" style="display:none"><div class="empty-icon">🚚</div><p>No hay envíos registrados.</p></div>
@@ -4863,6 +4867,9 @@ const TIPO_ENVIO_ICONS = { flex: '⚡', meli_envios: '📦', otros: '🚚' };
 
 function renderEnvios() {
   const q = (document.getElementById('envios-search')?.value || '').toLowerCase();
+  // Búsqueda por dirección: se normaliza igual que las zonas, así "Bulevar Artigas"
+  // encuentra "Bvar. Artigas" escrito con o sin tildes y "Punta de Rieles" = "Punta Rieles".
+  const dirQ = dirNormalizar(document.getElementById('envios-direccion')?.value || '');
   const tFilter = document.getElementById('envios-transportista')?.value || '';
   const tipoFilter = document.getElementById('envios-tipo')?.value || '';
   const zonaFilter = document.getElementById('envios-zona')?.value || '';
@@ -4876,6 +4883,15 @@ function renderEnvios() {
     (e.producto||'').toLowerCase().includes(q) ||
     (e.orden||'').toLowerCase().includes(q)
   );
+  if (dirQ) {
+    // Cada palabra tiene que aparecer en la dirección, en cualquier orden:
+    // "artigas 1500" matchea "Bvar. Artigas 1500, La Comercial".
+    const terminos = dirQ.split(' ').filter(Boolean);
+    envios = envios.filter(e => {
+      const dir = dirNormalizar(e.direccion);
+      return terminos.every(t => dir.includes(t));
+    });
+  }
   if (tFilter) envios = envios.filter(e => e.transportista === tFilter);
   if (tipoFilter) envios = envios.filter(e => tipoEnvioDeTransportista(e.transportista) === tipoFilter);
   if (zonaFilter) envios = envios.filter(e => String(e.zona || '') === zonaFilter);
@@ -4894,6 +4910,7 @@ function renderEnvios() {
       <td>${e.producto || '—'}</td>
       <td>${e.tracking ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${e.tracking}</span>` : '—'}</td>
       <td>${TIPO_ENVIO_ICONS[tipo]} ${transportistas[e.transportista] || e.transportista}</td>
+      <td>${e.direccion ? `<span title="${e.direccion.replace(/"/g, '&quot;')}" style="font-size:12px">${e.direccion.length > 38 ? e.direccion.slice(0, 38) + '…' : e.direccion}</span>` : '—'}</td>
       <td>${e.zona ? `<span style="font-weight:700;color:var(--accent)">Zona ${e.zona}</span>` : '—'}</td>
       <td>${(e.costo > 0 || e.colecta) ? `<span style="color:var(--yellow);font-weight:600">${fmt((e.costo||0) + (e.colecta ? 75 : 0))}</span>` : '—'}</td>
       <td>${(e.transportista === 'enviosuy' || e.transportista === 'gestionpost') ? `

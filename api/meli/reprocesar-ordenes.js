@@ -109,6 +109,7 @@ module.exports = async (req, res) => {
           fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
           orden_meli: String(order.id),
           pack_id: order.pack_id ? String(order.pack_id) : null,
+          meli_item_id: meliItemId,
           comprador: order.buyer?.nickname || '',
           sku: producto.sku,
           producto: producto.nombre,

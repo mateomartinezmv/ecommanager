@@ -210,6 +210,9 @@ async function handleOrder(resource) {
         // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
         // venta por el número que figura en pantalla no la encuentra.
         pack_id: order.pack_id ? String(order.pack_id) : null,
+        // Un SKU puede tener varias publicaciones: sin esto no queda registro de
+        // cuál vendió, porque la venta guarda el nombre interno del producto.
+        meli_item_id: meliItemId,
         comprador: order.buyer?.nickname || '',
         sku: producto.sku,
         producto: producto.nombre,

@@ -33,6 +33,12 @@ que probó convertir. Desempates, en este orden:
 - Los extensores de espejo con rosca (`EXT-ESP-*`) no están en MELI y quedan afuera.
 - Un SKU que ya está en la tienda no se duplica. Si está cargado sin `Variant SKU`,
   se le completa el SKU (caso `ALERONFINOSNK`).
+- Un producto que ya está en la tienda se puede reemplazar por su publicación de
+  MELI (lista `SUSTITUCIONES`, caso `HP-DF028`). **El handle no cambia**: Shopify
+  reconoce el producto por el handle, no por el SKU, así que conservarlo es lo que
+  hace que la importación actualice el producto en vez de crear otro, y de paso
+  mantiene la URL y el SEO ya ganados. Proveedor, categoría, tipo, tags y peso se
+  respetan tal cual estaban; el resto se reescribe con lo que hay en MELI.
 - Un color nuevo de un producto que ya existe entra como variante de ese handle, no
   como producto aparte (`DOM04`, `PUNYELLOW`).
 - Los títulos vienen del ángulo ganador; el cuerpo se redacta en el formato de las
@@ -52,6 +58,10 @@ python3 informe-cruce-shopify-meli.py      # → informe-cruce.csv
 mismo handle*. Las fotos de los productos nuevos apuntan al CDN de MELI
 (`http2.mlstatic.com`); Shopify las descarga y las republica en su propio CDN
 durante la importación.
+
+Al reemplazar un producto conviene revisar la galería en el admin después de
+importar: el importador no siempre borra las imágenes viejas que ya no están en el
+CSV, y pueden quedar colgadas junto a las nuevas.
 
 ## Para rehacerlo con datos frescos
 

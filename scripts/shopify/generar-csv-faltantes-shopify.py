@@ -33,6 +33,8 @@ FOTOS = {
  'MLU1510978678': ['D_759800-MLU118416535763_092026-O.jpg','D_643762-MLU118415915825_092026-O.jpg','D_846086-MLU116856912686_092026-O.jpg','D_767606-MLU118415915829_092026-O.jpg','D_636911-MLU116857293462_092026-O.jpg'],
  'MLU700264541': ['D_772232-MLU117582405873_092026-O.jpg','D_810622-MLU117582405897_092026-O.jpg','D_638693-MLU117583020857_092026-O.jpg','D_929192-MLU116101044982_092026-O.jpg','D_976777-MLU116100488818_092026-O.jpg'],
  'MLU700273387': ['D_635311-MLU116100483764_092026-O.jpg','D_978129-MLU116101039726_092026-O.jpg','D_928999-MLU117582400539_092026-O.jpg','D_758896-MLU116100716830_092026-O.jpg','D_786892-MLU116100716848_092026-O.jpg','D_901048-MLU117582400601_092026-O.jpg','D_685517-MLU116100805382_092026-O.jpg'],
+ # Las 3 publicaciones activas de HP-DF028 comparten esta unica foto.
+ 'MLU698507115': ['D_611413-MLU114822255004_082026-O.jpg'],
 }
 def fotos(item_id):
     return [M + f for f in FOTOS[item_id]]
@@ -213,6 +215,34 @@ NUEVOS = [
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Productos que ya estan en la tienda y se reemplazan por lo que hay en MELI.
+#
+# El handle NO cambia: la importacion de Shopify matchea por handle, asi que
+# conservarlo es lo que hace que actualice el producto en vez de crear otro, y
+# ademas mantiene la URL y el SEO ya ganados. Se reemplaza todo lo demas.
+# ─────────────────────────────────────────────────────────────────────────────
+SUSTITUCIONES = [
+  {
+    'handle': 'parabrisas-polleritas-45cm',
+    'sku': 'HP-DF028',
+    'angulo': 'MLU698507115',   # 2 ventas: el angulo con mas ventas de los 4 del SKU
+    'ventas': 2,
+    # Titulo tal cual lo tiene MELI, incluido el "Criuser" (asi esta escrito en
+    # la publicacion y en el CRM).
+    'title': 'Parabrisas Universal 45cm Para Moto Chopper Custom Criuser Transparente',
+    'precio': '3190.00',
+    'costo': '969.00',
+    'qty': 2,
+    'seo_title': 'Parabrisas 45cm Moto Chopper Custom Cruiser | Martínez Motos',
+    'seo_desc': 'Parabrisas universal de 45 cm en acrílico para moto chopper, custom y cruiser. Compatible con Harley, Shadow, Intruder y Drag Star. Envío a todo Uruguay.',
+    'body': cuerpo(
+      'Parabrisas universal tipo burbuja de 45 cm de alto × 40 cm de ancho, fabricado en acrílico de alta resistencia en color translúcido. Los herrajes vienen con acabado cromado. Incluye el kit de instalación completo.',
+      'Protegerte del viento, la lluvia y los insectos: desvía el flujo de aire directo al pecho y al casco, reduce la fatiga en viajes largos y mejora la aerodinámica de la moto. Es compatible con Harley-Davidson (varios modelos), Honda Magna, Shadow y Spirit, Suzuki Intruder, Yamaha Drag Star y la gran mayoría de modelos chopper, custom o touring.',
+      'Se fija con los herrajes incluidos, sin perforaciones ni modificaciones en la moto. Antes de comprar verificá el diámetro de la horquilla o del manillar donde van los soportes.'),
+  },
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Variantes nuevas dentro de handles que ya existen en la tienda
 # ─────────────────────────────────────────────────────────────────────────────
 VARIANTES_EXTRA = [
@@ -242,7 +272,60 @@ def main():
             r['Variant SKU'] = 'ALERONFINOSNK'
             arreglos += 1
 
-    # ── 2. Variantes nuevas en handles existentes ───────────────────────────
+    # ── 2. Productos reemplazados por su publicacion de MELI ────────────────
+    # Se conserva el handle (es lo que Shopify usa para reconocer el producto) y
+    # se reescribe el resto. Las filas sobrantes de la galeria vieja se eliminan.
+    sustituidos = []
+    for s in SUSTITUCIONES:
+        bloque = [i for i, r in enumerate(filas) if r['Handle'] == s['handle']]
+        primera = bloque[0]
+        vieja = filas[primera]
+        imgs = fotos(s['angulo'])
+
+        fila = vacia()
+        fila.update({
+            'Handle': s['handle'],
+            'Title': s['title'],
+            'Body (HTML)': s['body'],
+            # Lo que no describe al producto en si se respeta tal cual estaba:
+            # proveedor, categoria, tipo, tags y peso los maneja la tienda.
+            'Vendor': vieja['Vendor'],
+            'Product Category': vieja['Product Category'],
+            'Type': vieja['Type'],
+            'Tags': vieja['Tags'],
+            'Published': 'true',
+            'Option1 Name': vieja['Option1 Name'] or 'Title',
+            'Option1 Value': vieja['Option1 Value'] or 'Default Title',
+            'Variant SKU': s['sku'],
+            'Variant Grams': vieja['Variant Grams'] or '0.0',
+            'Variant Inventory Tracker': 'shopify',
+            'Variant Inventory Qty': str(s['qty']),
+            'Variant Inventory Policy': 'deny',
+            'Variant Fulfillment Service': 'manual',
+            'Variant Price': s['precio'],
+            'Variant Requires Shipping': 'true',
+            'Variant Taxable': 'true',
+            'Image Src': imgs[0],
+            'Image Position': '1',
+            'Gift Card': 'false',
+            'SEO Title': s['seo_title'],
+            'SEO Description': s['seo_desc'],
+            'Variant Image': imgs[0],
+            'Variant Weight Unit': vieja['Variant Weight Unit'] or 'kg',
+            'Cost per item': s['costo'],
+            'Status': 'active',
+        })
+        nuevas = [fila]
+        for n, url in enumerate(imgs[1:], start=2):
+            extra = vacia()
+            extra.update({'Handle': s['handle'], 'Image Src': url, 'Image Position': str(n)})
+            nuevas.append(extra)
+
+        filas[primera:bloque[-1] + 1] = nuevas
+        sustituidos.append((s['sku'], vieja['Title'], s['title'],
+                            len(bloque), len(nuevas), vieja['Variant Price'], s['precio']))
+
+    # ── 3. Variantes nuevas en handles existentes ───────────────────────────
     # Se insertan justo despues de la ultima variante de ese handle; las fotos
     # del color nuevo van al final del bloque de imagenes del producto.
     for v in VARIANTES_EXTRA:
@@ -279,7 +362,7 @@ def main():
 
         filas[ultima_variante + 1:ultima_variante + 1] = nuevas
 
-    # ── 3. Productos nuevos ─────────────────────────────────────────────────
+    # ── 4. Productos nuevos ─────────────────────────────────────────────────
     for p in NUEVOS:
         # Las fotos del producto son las del angulo ganador de cada variante,
         # en orden de variante y sin repetir.
@@ -348,11 +431,14 @@ def main():
     skus_nuevos = ([v['sku'] for p in NUEVOS for v in p['variantes']]
                    + [v['sku'] for v in VARIANTES_EXTRA])
     print(f'{SALIDA}')
-    print(f'  filas: {len(filas)} (originales 165 + {len(filas) - 165} nuevas)')
+    print(f'  filas: {len(filas)}')
     print(f'  productos nuevos: {len(NUEVOS)} handles')
     print(f'  variantes nuevas en handles existentes: {len(VARIANTES_EXTRA)}')
     print(f'  SKUs agregados ({len(skus_nuevos)}): {", ".join(sorted(skus_nuevos))}')
     print(f'  SKU completado en filas existentes: {arreglos} (ALERONFINOSNK)')
+    for sku, antes, despues, f_antes, f_desp, p_antes, p_desp in sustituidos:
+        print(f'  reemplazado {sku}: "{antes}" -> "{despues}"')
+        print(f'      filas {f_antes} -> {f_desp} · precio {p_antes} -> {p_desp}')
 
 
 if __name__ == '__main__':

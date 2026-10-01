@@ -11,6 +11,7 @@ SOP-CEL-ESP-001,Soporte Celular Moto Universal Espejo Negro Ajustable,agregado,3
 SOP-CEL-MAN-001,Soporte Celular Moto Universal Manillar Negro Ajustable,agregado,3,MLU700273387,1,2,empate 1-1 con MLU1504441600; desempata por venta mas reciente (30/09 vs 28/09)
 DOM04,Puños Domino Para Moto Manubrio Goma Antideslizante Verde,agregado como variante,3,MLU1510939608,0,0,color nuevo del handle punos-domino-para-moto-manubrio-goma-antideslizante
 PUNYELLOW,Puños Universales Antideslizantes Con Contrapesos Anticaídas Dorado,agregado como variante,3,MLU1510978678,0,0,color nuevo del handle punos-universales-antideslizantes-con-contrapesos-anticaidas
+HP-DF028,Parabrisas Universal 45cm para Moto Chopper Custom Criuser,reemplazado por MELI,4,MLU698507115,2,3,"la ficha de Shopify era la de la publicacion pausada MLU1228725646 (pollerita, $2690, 6 fotos): se reemplazo por el angulo con mas ventas. Se conserva el handle parabrisas-polleritas-45cm para que la importacion actualice el producto y no cree otro"
 ALERONFINOSNK,Espejos Moto Tipo Alerón Finos Universales Naked Y Otras,SKU completado,3,MLU1327525424,18,18,el producto ya estaba en Shopify (handle espejos-moto-tipo-aleron-finos-...) con Variant SKU vacio: se completo en vez de crear un duplicado
 EXT-ESP-10F-10F-001,Extensor Espejo Moto Rosca 10mm Int/Ext Horario Universal,ignorado (sin MELI),0,,0,0,"extensor con rosca, sin publicacion en MELI: ignorado por pedido"
 EXT-ESP-10F-10R-001,Extensor Espejo Moto Rosca 10mm Int Hor / Ext Antihor,ignorado (sin MELI),0,,0,0,"extensor con rosca, sin publicacion en MELI: ignorado por pedido"
@@ -47,3 +48,7 @@ MLU698483829,Casco Integral Agv K3 Sv,paused,0
 MLU698509027,Campera Cuero Moto Agvsport Pistera,paused,0
 MLU698522097,Campera Puffer Nike Negra Unisex,paused,0
 MLU699762377,Pantalón Moto Protecciones 4 Estaciones Torque Revo,paused,0
+
+Publicaciones con SKU del CRM que productos.meli_ids no tiene enlazadas
+Item MELI,Titulo,SKU en MELI,Estado,Vendidos
+MLU1228725646,Parabrisas Universal Para Moto Pollerita 45cm,HP-DF028,paused,1

@@ -19,6 +19,9 @@ CRUCE = [
  ('DOM04','Puños Domino Para Moto Manubrio Goma Antideslizante Verde','agregado como variante',3,'MLU1510939608',0,0,'color nuevo del handle punos-domino-para-moto-manubrio-goma-antideslizante'),
  ('PUNYELLOW','Puños Universales Antideslizantes Con Contrapesos Anticaídas Dorado','agregado como variante',3,'MLU1510978678',0,0,'color nuevo del handle punos-universales-antideslizantes-con-contrapesos-anticaidas'),
 
+ # ── Ya estaba en Shopify pero con otro contenido: se reemplazo por el de MELI ──
+ ('HP-DF028','Parabrisas Universal 45cm para Moto Chopper Custom Criuser','reemplazado por MELI',4,'MLU698507115',2,3,'la ficha de Shopify era la de la publicacion pausada MLU1228725646 (pollerita, $2690, 6 fotos): se reemplazo por el angulo con mas ventas. Se conserva el handle parabrisas-polleritas-45cm para que la importacion actualice el producto y no cree otro'),
+
  # ── Ya estaba en Shopify pero sin SKU: se completo, no se duplico ──
  ('ALERONFINOSNK','Espejos Moto Tipo Alerón Finos Universales Naked Y Otras','SKU completado',3,'MLU1327525424',18,18,'el producto ya estaba en Shopify (handle espejos-moto-tipo-aleron-finos-...) con Variant SKU vacio: se completo en vez de crear un duplicado'),
 
@@ -66,6 +69,12 @@ SIN_SKU = [
  ('MLU699762377','Pantalón Moto Protecciones 4 Estaciones Torque Revo','paused',0),
 ]
 
+# Publicaciones que llevan un SKU del CRM en MELI pero que productos.meli_ids no
+# tiene enlazadas: una venta por ahi no resuelve a ningun producto del CRM.
+SIN_ENLAZAR = [
+ ('MLU1228725646','Parabrisas Universal Para Moto Pollerita 45cm','HP-DF028','paused',1),
+]
+
 
 def main():
     with open('informe-cruce.csv', 'w', encoding='utf-8', newline='') as f:
@@ -77,10 +86,16 @@ def main():
         w.writerow(['Publicaciones de MELI sin SKU del CRM (no cruzables)'])
         w.writerow(['Item MELI','Titulo','Estado','Vendidos'])
         w.writerows(SIN_SKU)
+        w.writerow([])
+        w.writerow(['Publicaciones con SKU del CRM que productos.meli_ids no tiene enlazadas'])
+        w.writerow(['Item MELI','Titulo','SKU en MELI','Estado','Vendidos'])
+        w.writerows(SIN_ENLAZAR)
 
     agregados = sum(1 for r in CRUCE if r[2].startswith('agregado'))
+    reemplazados = sum(1 for r in CRUCE if r[2].startswith('reemplazado'))
     print(f'informe-cruce.csv · {len(CRUCE)} SKUs del CRM evaluados, '
-          f'{agregados} agregados, {len(SIN_SKU)} publicaciones sin SKU')
+          f'{agregados} agregados, {reemplazados} reemplazados, '
+          f'{len(SIN_SKU)} publicaciones sin SKU, {len(SIN_ENLAZAR)} sin enlazar')
 
 
 if __name__ == '__main__':

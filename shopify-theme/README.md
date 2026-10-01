@@ -134,3 +134,65 @@ el envío se cobra aparte y la ganancia sigue siendo mejor que la de MELI.
 La excepción es **cuotas sin interés**: ahí el costo financiero ya se come el margen y el 10%
 encima lo da vuelta. El precio de lista tiene que ser el precio financiado, y el contado el
 descuento sobre ese.
+
+## Descuento automático al elegir la forma de pago
+
+El cliente nunca tipea un código. En el carrito elige "Transferencia o efectivo"
+y el total baja al instante.
+
+| Archivo | Rol |
+|---|---|
+| `snippets/precio-contado-carrito.liquid` | el selector + el JS |
+| `sections/main-cart-footer.liquid` | +1 línea: `{% render 'precio-contado-carrito' %}` dentro de `div.cart__blocks` |
+
+Mecanismo: `POST /cart/update.js` con `{attributes: {...}, discount: 'CONTADO10'}`.
+El parámetro `discount` existe desde mayo 2025, y `cart.total_price` es el total
+*después* de descuentos, así que el precio baja en el carrito y no solo en el checkout.
+El atributo `Forma de pago` queda en la orden, así que ves en el admin qué eligió.
+
+Requiere que exista el código **CONTADO10** (10%, todos los productos, sin mínimo).
+
+### Dos límites que hay que tener presentes
+
+**`{discount: ''}` borra TODOS los descuentos del carrito.** Al elegir "tarjeta" se
+limpia cualquier otro código que el cliente tuviera puesto. Mientras no corras otra
+promo por código en la web, no molesta.
+
+**El código es visible en el HTML.** Cualquiera que mire el fuente lo puede usar sin
+elegir transferencia. No es grave (el 10% es justamente para quien paga así), pero
+significa que esto **no es un candado**: hay que mirar el medio de pago de la orden
+antes de despachar. El candado de verdad necesita dos Shopify Functions
+(descuento + ocultar medios de pago), que corren en plan Basic pero van dentro de una
+app custom desplegada con Shopify CLI.
+
+### Por qué el precio exhibido NO se redondea
+
+`paso_pesos = 0` en `precio-contado.liquid`, a propósito. El descuento del checkout es
+10% exacto; si la ficha redondeara a múltiplos de $10 ($1.490 → $1.340) se exhibiría
+$1 menos de lo que se cobra ($1.341). Lo exhibido tiene que ser lo cobrado.
+
+### OJO: el carrito de esta tienda es un drawer
+
+`settings_data.json` tiene `"cart_type": "drawer"`. El selector está en
+`main-cart-footer.liquid`, que es la página `/cart` — con drawer activo, el cliente
+llega ahí solo si hace clic en "ver carrito". Para que lo vea en el camino principal,
+una de dos:
+
+- **Theme settings → Cart → cart type = `page`.** Un desplegable. Se pierde el drawer
+  (y sus upsells, timer y barra de envío gratis, que están configurados).
+- **Meterlo también en el drawer:** `snippets/cart-drawer.liquid` son 53KB y
+  `sections/cart-drawer.liquid` 95KB. Se puede, pero es el archivo más complejo del
+  theme y una actualización de Shrine se lo lleva.
+
+## Tests
+
+`tests/` corre los snippets contra un motor Liquid real con los precios de la tienda:
+
+```bash
+npm install liquidjs
+node tests/test-producto.js   # ficha y grilla
+node tests/test-carrito.js    # selector del carrito
+```
+
+Ahí salió el bug del redondeo: el código daba por sentado que `divided_by` trunca con
+enteros (cierto en Shopify, pero implícito) y devolvía el precio sin redondear.

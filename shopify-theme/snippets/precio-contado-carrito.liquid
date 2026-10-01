@@ -1,0 +1,132 @@
+{%- comment -%}
+  precio-contado-carrito.liquid - Martinez Motos
+
+  Selector de forma de pago en el carrito. Al elegir transferencia o efectivo,
+  aplica el codigo de descuento con /cart/update.js y el total baja ahi mismo;
+  al elegir tarjeta, lo quita. El cliente nunca tipea un codigo.
+
+  OJO: {discount: ''} limpia TODOS los descuentos del carrito. Si alguna vez
+  corres otra promo por codigo en la web, esto la borra al elegir tarjeta.
+
+  El codigo y el porcentaje se cambian en las dos lineas de abajo.
+{%- endcomment -%}
+
+{%- liquid
+  assign pct = 10
+  if settings.precio_contado_pct != blank
+    assign pct = settings.precio_contado_pct
+  endif
+
+  assign codigo = 'CONTADO10'
+  if settings.precio_contado_codigo != blank
+    assign codigo = settings.precio_contado_codigo
+  endif
+
+  assign attr_key = 'Forma de pago'
+  assign val_contado = 'Transferencia o efectivo'
+  assign val_tarjeta = 'Tarjeta o cuotas'
+  assign elegido = cart.attributes[attr_key]
+  assign es_contado = false
+  if elegido == val_contado
+    assign es_contado = true
+  endif
+
+  assign base = cart.original_total_price
+  assign factor = 100 | minus: pct
+  assign contado = base | times: factor | divided_by: 100 | floor
+  assign ahorro = base | minus: contado
+-%}
+
+{%- if cart.item_count > 0 and pct > 0 and base > 0 -%}
+  <div
+    class="pago-contado"
+    data-pago-contado
+    data-codigo="{{ codigo | escape }}"
+    data-attr="{{ attr_key | escape }}"
+    data-val-contado="{{ val_contado | escape }}"
+    data-val-tarjeta="{{ val_tarjeta | escape }}"
+  >
+    <p class="pago-contado__titulo">¿Cómo vas a pagar?</p>
+
+    <label class="pago-contado__opcion{% if es_contado %} pago-contado__opcion--activa{% endif %}">
+      <input
+        type="radio"
+        name="pago-contado-opcion"
+        value="contado"
+        {% if es_contado %}checked{% endif %}
+      >
+      <span class="pago-contado__texto">
+        <span class="pago-contado__nombre">Transferencia o efectivo</span>
+        <span class="pago-contado__detalle">
+          {{ contado | money }} &middot; ahorrás {{ ahorro | money }} ({{ pct }}%)
+        </span>
+      </span>
+    </label>
+
+    <label class="pago-contado__opcion{% unless es_contado %} pago-contado__opcion--activa{% endunless %}">
+      <input
+        type="radio"
+        name="pago-contado-opcion"
+        value="tarjeta"
+        {% unless es_contado %}checked{% endunless %}
+      >
+      <span class="pago-contado__texto">
+        <span class="pago-contado__nombre">Tarjeta, débito o cuotas</span>
+        <span class="pago-contado__detalle">{{ base | money }}</span>
+      </span>
+    </label>
+
+    <p class="pago-contado__nota" data-pago-contado-estado>
+      {%- if es_contado -%}
+        Descuento aplicado. Al finalizar la compra, pagá con transferencia o efectivo.
+      {%- else -%}
+        Elegí transferencia o efectivo y el total baja {{ pct }}%.
+      {%- endif -%}
+    </p>
+  </div>
+
+  <script>
+    (function () {
+      var box = document.querySelector('[data-pago-contado]');
+      if (!box || box.dataset.listo) return;
+      box.dataset.listo = '1';
+
+      var estado = box.querySelector('[data-pago-contado-estado]');
+      var raiz = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+
+      box.addEventListener('change', function (ev) {
+        var input = ev.target;
+        if (!input || input.name !== 'pago-contado-opcion') return;
+
+        var contado = input.value === 'contado';
+        var attrs = {};
+        attrs[box.dataset.attr] = contado ? box.dataset.valContado : box.dataset.valTarjeta;
+
+        box.setAttribute('aria-busy', 'true');
+        if (estado) estado.textContent = 'Actualizando el total...';
+
+        fetch(raiz + 'cart/update.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            attributes: attrs,
+            discount: contado ? box.dataset.codigo : ''
+          })
+        })
+          .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(function () {
+            window.location.reload();
+          })
+          .catch(function () {
+            box.removeAttribute('aria-busy');
+            if (estado) {
+              estado.textContent = 'No pudimos actualizar el total. Recargá la página y probá de nuevo.';
+            }
+          });
+      });
+    })();
+  </script>
+{%- endif -%}

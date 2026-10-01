@@ -3,24 +3,24 @@
 
   Muestra, debajo del precio de lista, el precio pagando con transferencia o efectivo.
 
-  Uso (sin los espacios de mas):
-    render 'precio-contado', product: product, destacado: true
-    render 'precio-contado', product: card_product, compacto: true
-    render 'precio-contado', variant: variant
-
   Parametros (todos opcionales):
     product      - el producto; se usa la variante seleccionada
     variant      - una variante concreta (tiene prioridad sobre product)
-    pct_override - sobreescribe el % del theme editor para este render
+    pct_override - sobreescribe el porcentaje para este render
     destacado    - true: recuadro resaltado (ficha de producto)
-    compacto     - true: una linea chica, sin leyenda larga (grilla de coleccion)
+    compacto     - true: una linea chica (grilla de coleccion)
 
-  Para excluir un producto del descuento:
-    metafield booleano custom.sin_precio_contado = true
+  Para cambiar el 10%: editar la linea "assign pct = 10" de abajo,
+  o crear el theme setting precio_contado_pct (ver README del repo).
+
+  paso_pesos = 0 -> sin redondeo, a proposito: el precio exhibido tiene que ser
+  exactamente el que cobra el descuento del checkout (10% justo). Poniendo 10
+  redondea a multiplos de $10, pero entonces se exhibe menos de lo que se cobra.
+
+  Para excluir un producto: metafield booleano custom.sin_precio_contado = true
 {%- endcomment -%}
 
 {%- liquid
-  # ---- Porcentaje: param > theme editor > 10 por defecto ----
   assign pct = 10
   if settings.precio_contado_pct != blank
     assign pct = settings.precio_contado_pct
@@ -29,7 +29,11 @@
     assign pct = pct_override
   endif
 
-  # ---- Precio base, en centavos ----
+  assign paso_pesos = 0
+  if settings.precio_contado_redondeo != blank
+    assign paso_pesos = settings.precio_contado_redondeo
+  endif
+
   assign base = 0
   assign varia = false
   if variant != blank
@@ -43,7 +47,6 @@
     endif
   endif
 
-  # ---- Exclusiones ----
   assign excluido = false
   if product != blank and product.metafields.custom.sin_precio_contado.value == true
     assign excluido = true
@@ -58,22 +61,21 @@
     assign factor = 100 | minus: pct
     assign exacto = base | times: factor | divided_by: 100 | floor
 
-    # Redondeo "prolijo" hacia abajo (por defecto, múltiplos de $10)
-    assign paso_pesos = 10
-    if settings.precio_contado_redondeo != blank
-      assign paso_pesos = settings.precio_contado_redondeo
-    endif
     assign paso = paso_pesos | times: 100
     assign contado = exacto
     if paso > 0
       assign contado = exacto | divided_by: paso | floor | times: paso
     endif
 
-    # Si el redondeo se comió más de 1% del precio (productos baratos), usar el exacto
     assign perdida = exacto | minus: contado
     assign tope = base | divided_by: 100 | floor
     if perdida > tope or contado <= 0
       assign contado = exacto
+    endif
+
+    assign monto = contado | money
+    if settings.currency_code_enabled
+      assign monto = contado | money_with_currency
     endif
 
     assign leyenda = 'pagando con transferencia o efectivo'
@@ -89,17 +91,15 @@
       assign clases = clases | append: ' precio-contado--compacto'
     endif
   -%}
-
+  {{ 'precio-contado.css' | asset_url | stylesheet_tag }}
   <div class="{{ clases }}">
-    <span class="precio-contado__monto">{% if varia %}desde {% endif %}{{ contado | money }}</span>
+    <span class="precio-contado__monto">{% if varia %}desde {% endif %}{{ monto }}</span>
     <span class="precio-contado__label">
       {%- if compacto -%}
         contado
       {%- else -%}
-        {{ leyenda }} &middot; {{ pct }}% off
-        {%- if settings.precio_contado_link != blank %}
-          <a class="precio-contado__link" href="{{ settings.precio_contado_link }}">Ver cómo</a>
-        {%- endif -%}
+        {{ leyenda }} &middot; {{ pct }}% OFF
+        {%- if settings.precio_contado_link != blank %} <a class="precio-contado__link" href="{{ settings.precio_contado_link }}">Ver como</a>{% endif -%}
       {%- endif -%}
     </span>
   </div>

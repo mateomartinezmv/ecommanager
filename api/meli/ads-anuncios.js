@@ -140,6 +140,9 @@ module.exports = async (req, res) => {
       const ctr  = impresiones > 0 ? (clics / impresiones) * 100 : 0;
       const cpc  = clics > 0 ? inversion / clics : 0;
       const cvr  = clics > 0 ? (unidades / clics) * 100 : 0;
+      // ACOS = qué porcentaje de lo facturado se fue en publicidad. Es el inverso del
+      // ROAS y el número con el que MELI configura las campañas por objetivo.
+      const acos = facturacion > 0 ? (inversion / facturacion) * 100 : 0;
 
       // Precio realmente cobrado: la facturación atribuida sobre las unidades vendidas.
       // Cae por debajo del precio de lista cuando hubo descuento, que es lo que importa
@@ -158,8 +161,7 @@ module.exports = async (req, res) => {
         variantes: itemIds.length,
         permalink: ads[0]?.permalink || null,
         impresiones, clics, inversion, facturacion, unidades,
-        ctr: r2(ctr), cpc: r2(cpc), cvr: r2(cvr), roas: r2(roas),
-        acos: r2(num(m.acos)),
+        ctr: r2(ctr), cpc: r2(cpc), cvr: r2(cvr), roas: r2(roas), acos: r2(acos),
         tacos: r2(num(m.tacos)),
         sov: r2(num(m.sov)),
         unidades_organicas: ent(m.organic_units_quantity),
@@ -186,7 +188,9 @@ module.exports = async (req, res) => {
         // El corazón de la tabla: por debajo de este ROAS el anuncio destruye plata.
         fila.roas_breakeven = margen > 0 ? r2(1 / margen) : null;
         fila.cpa_max = r2(contribucion);
-        fila.cpc_max = r2(contribucion * (cvr / 100));
+        // El CPC máximo sale de la conversión del período. Sin ventas no hay conversión
+        // medida, y un "$0" se leería como "no pujes", que no es lo que dice el dato.
+        fila.cpc_max = unidades > 0 ? r2(contribucion * (cvr / 100)) : null;
         fila.ganancia = r2(contribucion * unidades - inversion);
         fila.estado = fila.roas_breakeven == null ? 'sin_margen'
           : roas === 0 && inversion === 0 ? 'sin_datos'
@@ -240,7 +244,7 @@ module.exports = async (req, res) => {
         f.margen = r2(margen * 100);
         f.roas_breakeven = margen > 0 ? r2(1 / margen) : null;
         f.cpa_max = r2(contribucion);
-        f.cpc_max = r2(contribucion * (f.cvr / 100));
+        f.cpc_max = f.unidades > 0 ? r2(contribucion * (f.cvr / 100)) : null;
         f.ganancia = r2(contribucion * f.unidades - f.inversion);
         f.estado = f.roas_breakeven == null ? 'sin_margen'
           : f.roas >= f.roas_breakeven * 1.15 ? 'ganando'

@@ -20,40 +20,49 @@ let fallos = 0;
 const chk = (ok, msg) => { if (!ok) fallos++; console.log((ok ? 'OK  ' : 'MAL ') + msg); };
 const igual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+console.log('--- los dos sentidos ---');
 let r = run(entrada('Transferencia o efectivo'));
-chk(igual(ocultados(r), ['Tarjeta de crédito']), 'contado -> oculta solo la tarjeta: ' + JSON.stringify(ocultados(r)));
+chk(igual(ocultados(r), ['Tarjeta de crédito']),
+    'contado -> oculta la tarjeta: ' + JSON.stringify(ocultados(r)));
 
 r = run(entrada('Tarjeta o cuotas'));
-chk(r.operations.length === 0, 'eligio tarjeta -> no oculta nada');
+chk(igual(ocultados(r), ['Efectivo (solo retiros en el local)', 'Transferencia Bancaria']),
+    'tarjeta -> oculta transferencia y efectivo: ' + JSON.stringify(ocultados(r)));
 
-r = run(entrada(null));
-chk(r.operations.length === 0, 'sin atributo -> no oculta nada');
+console.log('\n--- sin eleccion: "Comprar ahora" saltea el carrito ---');
+for (const [nombre, val] of [['sin atributo', null], ['atributo vacio', ''], ['valor desconocido', 'Pagar despues']]) {
+  r = run(entrada(val));
+  chk(r.operations.length === 0, nombre + ' -> no oculta nada (el cliente nunca eligio)');
+}
 
-r = run(entrada(''));
-chk(r.operations.length === 0, 'atributo vacio -> no oculta nada');
-
-// Wallet nuevo que nadie agrego a ninguna lista: la lista blanca lo tapa solo.
+console.log('\n--- wallets nuevos caen del lado tarjeta solos ---');
 const conWallet = METODOS.concat([
   { id: 'gid://shopify/PaymentCustomizationPaymentMethod/4', name: 'Mercado Pago' },
   { id: 'gid://shopify/PaymentCustomizationPaymentMethod/5', name: 'Apple Pay' },
 ]);
 r = run(entrada('Transferencia o efectivo', conWallet));
 chk(igual(ocultados(r, conWallet), ['Apple Pay', 'Mercado Pago', 'Tarjeta de crédito']),
-    'wallets nuevos quedan ocultos sin tocar la funcion: ' + JSON.stringify(ocultados(r, conWallet)));
+    'contado -> tambien los oculta: ' + JSON.stringify(ocultados(r, conWallet)));
+r = run(entrada('Tarjeta o cuotas', conWallet));
+chk(igual(ocultados(r, conWallet), ['Efectivo (solo retiros en el local)', 'Transferencia Bancaria']),
+    'tarjeta -> los deja disponibles: ' + JSON.stringify(ocultados(r, conWallet)));
 
-// Fail-open: si renombraron todo, NO dejar el checkout sin medios de pago.
-const renombrados = [
-  { id: 'gid://shopify/PaymentCustomizationPaymentMethod/9', name: 'Deposito bancario' },
-  { id: 'gid://shopify/PaymentCustomizationPaymentMethod/8', name: 'Tarjeta' },
-];
-r = run(entrada('Transferencia o efectivo', renombrados));
-chk(r.operations.length === 0, 'ningun metodo matchea la lista blanca -> no oculta nada (fail-open)');
+console.log('\n--- fail-open: nunca dejar el checkout sin medios de pago ---');
+const soloTarjeta = [METODOS[0]];
+chk(run(entrada('Transferencia o efectivo', soloTarjeta)).operations.length === 0,
+    'contado pero solo hay tarjeta -> no oculta nada');
+const soloContado = [METODOS[1], METODOS[2]];
+chk(run(entrada('Tarjeta o cuotas', soloContado)).operations.length === 0,
+    'tarjeta pero solo hay transferencia/efectivo -> no oculta nada');
+const renombrados = [{ id: 'x', name: 'Deposito bancario' }, { id: 'y', name: 'Tarjeta' }];
+chk(run(entrada('Transferencia o efectivo', renombrados)).operations.length === 0,
+    'ningun medio reconocido como contado -> no oculta nada');
+chk(run(entrada('Transferencia o efectivo', [])).operations.length === 0,
+    'sin metodos en el input -> no oculta nada');
 
-r = run(entrada('Transferencia o efectivo', []));
-chk(r.operations.length === 0, 'sin metodos en el input -> no oculta nada');
-
-r = run(entrada('TRANSFERENCIA O EFECTIVO'));
-chk(r.operations.length === 1, 'el match no depende de mayusculas');
+console.log('\n--- varios ---');
+chk(run(entrada('TRANSFERENCIA O EFECTIVO')).operations.length === 1, 'no depende de mayusculas');
+chk(run(entrada('Tarjeta, debito o cuotas')).operations.length === 2, 'tolera variantes del texto de tarjeta');
 
 console.log(fallos === 0 ? '\nTODO OK' : `\n${fallos} FALLOS`);
 process.exit(fallos === 0 ? 0 : 1);

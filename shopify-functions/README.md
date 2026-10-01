@@ -37,9 +37,12 @@ Hace falta cuenta de Shopify Partner y el CLI. **No scaffoldees a mano**: dejá 
 el CLI genere la extensión (el TOML y el build cambian según la versión del CLI) y
 después reemplazá solamente los dos archivos de `src/`.
 
+Requisitos: **Node.js 22.12+**, **Git 2.28+** y el CLI (`npm install -g @shopify/cli@latest`).
+Paso a paso detallado para Windows en [DEPLOY.md](DEPLOY.md).
+
 ```bash
 # 1. Crear la app (una sola vez). Elegí la plantilla de React Router.
-npm init @shopify/app@latest -- --name martinez-motos-pagos
+shopify app init
 cd martinez-motos-pagos
 
 # 2. Generar la extensión. Cuando pregunte el lenguaje, elegí JavaScript.

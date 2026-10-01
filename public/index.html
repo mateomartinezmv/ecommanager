@@ -682,6 +682,11 @@
           <option value="90">Últimos 90 días</option>
           <option value="custom">Personalizado...</option>
         </select>
+        <select id="ads-estado" onchange="onAdsFiltroEstado()" style="width:auto;padding:8px 14px">
+          <option value="todos">Todos los anuncios</option>
+          <option value="activos">Sólo activos</option>
+          <option value="pausados">Sólo pausados</option>
+        </select>
         <button class="btn btn-ghost btn-sm" onclick="renderAds(true)">🔄 Actualizar</button>
         <button class="btn btn-ghost btn-sm" onclick="exportAdsCSV()">📊 CSV</button>
       </div>
@@ -701,8 +706,8 @@
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">📣 Anuncios de la campaña</span>
-          <span style="font-size:11px;color:var(--text-muted)">
-            ROAS BE = ROAS de equilibrio · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo del breakeven
+          <span style="font-size:11px;color:var(--text-muted)" id="ads-tabla-leyenda">
+            ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo
           </span>
         </div>
         <div id="ads-tabla"></div>
@@ -1180,6 +1185,39 @@
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-pago-transportista')">Cancelar</button>
       <button class="btn btn-primary" onclick="registrarPagoTransportista()">Registrar pago</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: VINCULAR ANUNCIO DE ADS CON UN PRODUCTO DEL CRM -->
+<div class="modal-overlay" id="modal-vincular-anuncio">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">🔗 Vincular anuncio con un producto</div>
+    <input type="hidden" id="vinc-ad-group">
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group">
+        <label class="form-label">Anuncio</label>
+        <div id="vinc-anuncio" style="font-size:13px;color:var(--text-dim);line-height:1.5"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Publicación de MELI a vincular *</label>
+        <select id="vinc-meli-id"></select>
+        <small style="font-size:11px;color:var(--text-muted)">
+          Si el anuncio agrupa variantes, elegí la publicación que corresponde a este SKU. Podés repetir para las demás.
+        </small>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Producto del CRM *</label>
+        <select id="vinc-sku"></select>
+        <small style="font-size:11px;color:var(--text-muted)">
+          El MLU se agrega a “IDs de MELI” del producto; no pisa la publicación principal.
+        </small>
+      </div>
+      <div id="vinc-error" style="display:none;font-size:12px;color:var(--red)"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-vincular-anuncio')">Cancelar</button>
+      <button class="btn btn-primary" id="vinc-btn" onclick="confirmarVincularAnuncio()">Vincular</button>
     </div>
   </div>
 </div>
@@ -6957,7 +6995,28 @@ let adsState = {
   totales: null,
   campanasCargadas: false,
   orden: { campo: 'inversion', dir: 'desc' },
+  filtroEstado: 'todos',   // todos | activos | pausados
 };
+
+// Columnas de la tabla. `campo` es por lo que ordena y `tipo` cómo compara: las de texto
+// van alfabéticas y las numéricas de mayor a menor, con los vacíos siempre al final.
+const ADS_COLUMNAS = [
+  { campo: 'titulo',         label: 'Producto',    tipo: 'texto', align: 'left' },
+  { campo: 'impresiones',    label: 'Impres.' },
+  { campo: 'clics',          label: 'Clics' },
+  { campo: 'ctr',            label: 'CTR' },
+  { campo: 'cpc',            label: 'CPC' },
+  { campo: 'inversion',      label: 'Inversión' },
+  { campo: 'unidades',       label: 'Vtas' },
+  { campo: 'facturacion',    label: 'Facturación' },
+  { campo: 'roas',           label: 'ROAS' },
+  { campo: 'roas_breakeven', label: 'ROAS BE' },
+  { campo: 'acos',           label: 'ACOS' },
+  { campo: 'margen',         label: 'Margen' },
+  { campo: 'cpc_max',        label: 'CPC máx' },
+  { campo: 'ganancia',       label: 'Ganancia' },
+  { campo: 'estado',         label: 'Estado', tipo: 'texto', align: 'center' },
+];
 
 function adsRango() {
   const periodo = document.getElementById('ads-periodo').value;
@@ -7067,12 +7126,19 @@ function pintarAdsAviso() {
   if (!t) { cont.innerHTML = ''; return; }
 
   const avisos = [];
+  const botonVincular = (a, meliId) =>
+    `<button class="btn btn-ghost btn-sm" style="padding:1px 8px;font-size:11px;margin-left:6px"
+      onclick="abrirVincularAnuncio('${a.ad_group_id}'${meliId ? `, '${escHtml(meliId)}'` : ''})">🔗 Vincular</button>`;
+
   if (t.anuncios_sku_sin_vincular) {
-    const lista = adsState.anuncios.filter(a => a.sku_sin_vincular)
-      .map(a => `${escHtml(a.sku)} (${escHtml(a.item_id_faltante || a.item_ids[0] || '')})`).join(', ');
+    const lista = adsState.anuncios.filter(a => a.sku_sin_vincular).map(a => {
+      const mlu = a.item_id_faltante || a.item_ids[0] || '';
+      return `<li style="margin-top:4px">${escHtml(a.sku)} (${escHtml(mlu)})${botonVincular(a, mlu)}</li>`;
+    }).join('');
     avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
       🔗 <b>${t.anuncios_sku_sin_vincular} anuncio(s) con SKU conocido pero MLU sin vincular.</b>
-      El producto ya está en el CRM; falta cargar ese MLU en “IDs de MELI” del producto en Stock para que el margen salga solo: ${lista}
+      El producto ya está en el CRM; falta enganchar ese MLU para que el margen salga solo.
+      <ul style="margin:6px 0 0 18px">${lista}</ul>
     </div>`);
   }
   if (t.anuncios_sin_vincular) {
@@ -7080,7 +7146,7 @@ function pintarAdsAviso() {
       .map(a => {
         const sku = a.sku_publicacion ? ` · SKU en MELI: <b>${escHtml(a.sku_publicacion)}</b>` : ' · la publicación no tiene SKU cargado';
         const link = a.permalink ? ` <a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--accent)">ver publicación ↗</a>` : '';
-        return `<li style="margin-top:4px">${escHtml(a.titulo)}${sku}${link}</li>`;
+        return `<li style="margin-top:4px">${escHtml(a.titulo)}${sku}${link}${a.item_ids.length ? botonVincular(a) : ''}</li>`;
       }).join('');
     avisos.push(`<div style="background:rgba(239,68,68,0.10);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;font-size:13px">
       ⚠️ <b>${t.anuncios_sin_vincular} anuncio(s) sin producto en el CRM.</b> Sin costo no hay margen ni ROAS de equilibrio.
@@ -7092,26 +7158,72 @@ function pintarAdsAviso() {
 
 function ordenarAds(campo) {
   const o = adsState.orden;
-  o.dir = o.campo === campo && o.dir === 'desc' ? 'asc' : 'desc';
-  o.campo = campo;
+  // Primer click en una columna nueva: de mayor a menor en números, A→Z en texto. Es lo
+  // que uno quiere ver primero en cada caso.
+  const col = ADS_COLUMNAS.find(c => c.campo === campo);
+  if (o.campo === campo) {
+    o.dir = o.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    o.campo = campo;
+    o.dir = col?.tipo === 'texto' ? 'asc' : 'desc';
+  }
   pintarAdsTabla();
+}
+
+function onAdsFiltroEstado() {
+  adsState.filtroEstado = document.getElementById('ads-estado').value;
+  pintarAdsTabla();
+}
+
+/** Anuncios que pasan el filtro de estado (ACTIVE / PAUSED viene de MELI). */
+function adsFiltrados() {
+  const f = adsState.filtroEstado;
+  if (f === 'todos') return adsState.anuncios;
+  return adsState.anuncios.filter(a => {
+    const activo = String(a.status || '').toUpperCase() === 'ACTIVE';
+    return f === 'activos' ? activo : !activo;
+  });
 }
 
 function pintarAdsTabla() {
   const { campo, dir } = adsState.orden;
-  const filas = [...adsState.anuncios].sort((a, b) => {
-    const va = a[campo] ?? -Infinity, vb = b[campo] ?? -Infinity;
-    return dir === 'desc' ? vb - va : va - vb;
+  const col = ADS_COLUMNAS.find(c => c.campo === campo);
+  const signo = dir === 'desc' ? -1 : 1;
+
+  const filas = [...adsFiltrados()].sort((a, b) => {
+    const va = a[campo], vb = b[campo];
+    if (col?.tipo === 'texto') {
+      return signo * String(va || '').localeCompare(String(vb || ''), 'es');
+    }
+    // Los vacíos (sin costo, sin ventas) van siempre al fondo, se ordene como se ordene:
+    // mezclados arriba tapan justo las filas que importa mirar.
+    const na = va === null || va === undefined, nb = vb === null || vb === undefined;
+    if (na && nb) return 0;
+    if (na) return 1;
+    if (nb) return -1;
+    return signo * (va - vb);
   });
 
-  if (!filas.length) {
+  if (!adsState.anuncios.length) {
     document.getElementById('ads-tabla').innerHTML =
       '<div class="empty-state"><div class="empty-icon">📣</div><p>La campaña no tiene anuncios con datos en el período.</p></div>';
     return;
   }
+  if (!filas.length) {
+    document.getElementById('ads-tabla').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">🔍</div><p>Ningún anuncio ${adsState.filtroEstado === 'activos' ? 'activo' : 'pausado'} en el período.</p></div>`;
+    return;
+  }
 
-  const th = (label, c, align = 'right') =>
-    `<th style="text-align:${align};cursor:pointer;white-space:nowrap" onclick="ordenarAds('${c}')">${label}${campo === c ? (dir === 'desc' ? ' ↓' : ' ↑') : ''}</th>`;
+  // Flecha en todas las columnas: tenue la del orden disponible, marcada la del activo.
+  const th = (c) => {
+    const activa = campo === c.campo;
+    const flecha = activa ? (dir === 'desc' ? '↓' : '↑') : '↕';
+    const color = activa ? 'var(--accent)' : 'var(--text-muted)';
+    return `<th style="text-align:${c.align || 'right'};cursor:pointer;white-space:nowrap;${activa ? 'color:var(--accent)' : ''}"
+      onclick="ordenarAds('${c.campo}')" title="Ordenar por ${c.label}">${c.label}
+      <span style="color:${color};opacity:${activa ? 1 : 0.45}">${flecha}</span></th>`;
+  };
 
   const semaforo = {
     ganando:   '<span class="badge badge-green">🟢 Rentable</span>',
@@ -7124,28 +7236,17 @@ function pintarAdsTabla() {
 
   document.getElementById('ads-tabla').innerHTML = `
     <table>
-      <thead><tr>
-        <th>Producto</th>
-        ${th('Impres.', 'impresiones')}
-        ${th('Clics', 'clics')}
-        ${th('CTR', 'ctr')}
-        ${th('CPC', 'cpc')}
-        ${th('Inversión', 'inversion')}
-        ${th('Vtas', 'unidades')}
-        ${th('Facturación', 'facturacion')}
-        ${th('ROAS', 'roas')}
-        ${th('ROAS BE', 'roas_breakeven')}
-        ${th('Margen', 'margen')}
-        ${th('CPC máx', 'cpc_max')}
-        ${th('Ganancia', 'ganancia')}
-        <th style="text-align:center">Estado</th>
-      </tr></thead>
+      <thead><tr>${ADS_COLUMNAS.map(th).join('')}</tr></thead>
       <tbody>${filas.map(a => {
         const be = a.roas_breakeven;
         // El CPC actual contra el techo: es la palanca concreta para subir o bajar la puja.
         const cpcColor = a.cpc_max == null ? 'var(--text-muted)'
           : a.cpc <= a.cpc_max ? 'var(--green)' : 'var(--red)';
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
+        const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';
+        // El ACOS de equilibrio es el margen: por encima de él la venta no paga el anuncio.
+        const acosColor = a.margen == null ? 'var(--text)' : a.acos === 0 ? 'var(--text-muted)'
+          : a.acos <= a.margen ? 'var(--green)' : 'var(--red)';
         const titulo = a.permalink
           ? `<a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(a.titulo)} ↗</a>`
           : escHtml(a.titulo);
@@ -7157,9 +7258,12 @@ function pintarAdsTabla() {
               <div>
                 <div style="font-weight:500;font-size:13px">${titulo}</div>
                 <div style="font-size:11px;color:var(--text-muted)">
+                  ${pausado ? '<span style="color:var(--yellow)">⏸ pausado</span> · ' : ''}
                   ${a.sku ? `SKU ${escHtml(a.sku)}` : '<span style="color:var(--red)">sin vincular</span>'}
                   ${a.variantes > 1 ? ` · ${a.variantes} variantes` : ''}
                   ${a.costo != null ? ` · costo ${fmt(a.costo)}` : ''}
+                  ${a.item_ids.length ? `<button class="btn btn-ghost btn-sm" style="padding:1px 7px;font-size:10px;margin-left:6px"
+                      onclick="abrirVincularAnuncio('${a.ad_group_id}')">${a.sku && !a.sku_sin_vincular ? '🔗 IDs' : '🔗 Vincular'}</button>` : ''}
                 </div>
               </div>
             </div>
@@ -7173,6 +7277,7 @@ function pintarAdsTabla() {
           <td style="text-align:right">${fmt(a.facturacion)}</td>
           <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
           <td style="text-align:right">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
+          <td style="text-align:right;color:${acosColor}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right;color:${cpcColor}">${a.cpc_max != null ? fmt(a.cpc_max) : '—'}</td>
           <td style="text-align:right;font-weight:600;color:${a.ganancia == null ? 'var(--text-muted)' : a.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${a.ganancia != null ? fmt(a.ganancia) : '—'}</td>
@@ -7182,11 +7287,72 @@ function pintarAdsTabla() {
     </table>`;
 }
 
+// --- Vinculación manual anuncio ↔ producto ------------------------------------
+// Cuando la publicación no tiene SKU cargado en MELI no hay forma automática de saber de
+// qué producto es. Acá se elige a mano y el MLU queda guardado en el producto, así la
+// próxima vez el margen sale solo.
+
+function abrirVincularAnuncio(adGroupId, meliIdSugerido) {
+  const a = adsState.anuncios.find(x => x.ad_group_id === String(adGroupId));
+  if (!a) return;
+
+  document.getElementById('vinc-ad-group').value = a.ad_group_id;
+  document.getElementById('vinc-anuncio').innerHTML = `
+    <b>${escHtml(a.titulo)}</b><br>
+    ${a.variantes} publicación(es) en el anuncio
+    ${a.sku_publicacion ? ` · SKU en MELI: <b>${escHtml(a.sku_publicacion)}</b>` : ' · sin SKU cargado en MELI'}
+    ${a.permalink ? ` · <a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--accent)">ver en MELI ↗</a>` : ''}`;
+
+  const selMeli = document.getElementById('vinc-meli-id');
+  selMeli.innerHTML = a.item_ids.map(id => `<option value="${escHtml(id)}">${escHtml(id)}</option>`).join('');
+  if (meliIdSugerido) selMeli.value = meliIdSugerido;
+
+  // El SKU que trae la publicación, o el que ya tenga el anuncio, viene preseleccionado.
+  const preferido = a.sku || a.sku_publicacion;
+  const selSku = document.getElementById('vinc-sku');
+  selSku.innerHTML = [...db.productos]
+    .sort((x, y) => String(x.nombre || '').localeCompare(String(y.nombre || ''), 'es'))
+    .map(p => `<option value="${escHtml(p.sku)}">${escHtml(p.sku)} — ${escHtml(p.nombre || '')}</option>`)
+    .join('');
+  if (preferido && db.productos.some(p => p.sku === preferido)) selSku.value = preferido;
+
+  document.getElementById('vinc-error').style.display = 'none';
+  openModal('modal-vincular-anuncio');
+}
+
+async function confirmarVincularAnuncio() {
+  const sku = document.getElementById('vinc-sku').value;
+  const meliId = document.getElementById('vinc-meli-id').value;
+  const err = document.getElementById('vinc-error');
+  const btn = document.getElementById('vinc-btn');
+  if (!sku || !meliId) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Vinculando...';
+  err.style.display = 'none';
+
+  try {
+    await api('POST', '/meli/vincular-publicacion', { sku, meli_id: meliId });
+    // El catálogo en memoria quedó viejo: sin recargarlo la tabla seguiría mostrando el
+    // anuncio como huérfano aunque ya esté vinculado.
+    db.productos = (await api('GET', '/productos')).map(normProducto);
+    closeModal('modal-vincular-anuncio');
+    await renderAdsAnuncios();
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Vincular';
+  }
+}
+
 function exportAdsCSV() {
-  if (!adsState.anuncios.length) return alert('No hay anuncios para exportar.');
-  const cols = ['titulo', 'sku', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
-    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'margen', 'cpa_max', 'cpc_max', 'ganancia', 'estado'];
-  const filas = adsState.anuncios.map(a => cols.map(c => {
+  if (!adsFiltrados().length) return alert('No hay anuncios para exportar.');
+  const cols = ['titulo', 'sku', 'status', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
+    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen', 'cpa_max', 'cpc_max', 'ganancia', 'estado'];
+  // Exporta lo que se está viendo: si hay filtro de activos, el CSV lo respeta.
+  const filas = adsFiltrados().map(a => cols.map(c => {
     const v = a[c];
     return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
   }).join(','));

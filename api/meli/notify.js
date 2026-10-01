@@ -3,8 +3,8 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
-const { buscarProductoPorMeliId, meliIdsDe } = require('../_meliIds');
-const { syncMeliStockProducto } = require('../_stockSync');
+const { buscarProductoPorMeliId } = require('../_meliIds');
+const { sincronizarStock, resumenSync } = require('../_stockSync');
 const { unidadesDeDeposito } = require('../_packs');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const {
@@ -177,26 +177,11 @@ async function handleOrder(resource) {
       // MELI vende packs (1 par de sliders = cantidad 1); el depósito pierde
       // unidades_por_venta unidades por cada uno.
       const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
 
-      await supabase.from('productos').update({
-        stock_dep: nuevoStockDep,
-        stock_meli: nuevoStockMeli,
-        updated_at: new Date().toISOString(),
-      }).eq('sku', producto.sku);
-
-      // MELI sólo descuenta la publicación que vendió. Si el SKU tiene otras,
-      // quedan mostrando stock de más: hay que bajarlas a mano.
-      if (meliIdsDe(producto).length > 1) {
-        try {
-          const r = await syncMeliStockProducto(token, producto, nuevoStockMeli);
-          for (const e of r.errores) {
-            console.error(`❌ Stock MELI ${e.meliId}: ${e.error}`);
-          }
-        } catch (err) {
-          console.error('❌ Error sincronizando publicaciones hermanas:', err.message);
-        }
-      }
+      // MELI sólo descuenta la publicación que vendió: las hermanas y Shopify
+      // quedan mostrando stock de más si no se las baja acá.
+      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+      console.log('📉 Venta MELI:', resumenSync(producto.sku, sync));
 
       const comisionItem = totalDeduction !== null
         ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100

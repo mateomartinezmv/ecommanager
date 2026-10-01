@@ -4,7 +4,8 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
-const { unidadesDeDeposito, packsDisponibles } = require('../_packs');
+const { unidadesDeDeposito } = require('../_packs');
+const { sincronizarStock, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
@@ -124,9 +125,8 @@ module.exports = async (req, res) => {
       if (ventaExistente) { log.push(`ℹ️ Venta ${ventaId} ya existe`); resultados.push({ item: meliItemId, estado: 'ya_existe', ventaId }); continue; }
 
       const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-      const nuevoStockPublicado = packsDisponibles(nuevoStockDep, producto);
-      await supabase.from('productos').update({ stock_dep: nuevoStockDep, stock_meli: nuevoStockPublicado, stock_shopify: nuevoStockPublicado, updated_at: new Date().toISOString() }).eq('sku', producto.sku);
-      log.push(`✅ Stock: ${nuevoStockDep} uds en depósito → ${nuevoStockPublicado} publicadas`);
+      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+      log.push(`✅ Stock: ${resumenSync(producto.sku, sync)}`);
 
       const comisionItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100

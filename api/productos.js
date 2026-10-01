@@ -5,9 +5,7 @@
 // DELETE /api/productos?sku=XX → eliminar
 
 const { getSupabase } = require('./_supabase');
-const { getMeliToken } = require('./_meliToken');
-const { getShopifyToken } = require('./_shopifyToken');
-const { syncMeliStockProducto, syncShopifyStock } = require('./_stockSync');
+const { sincronizarStock, resumenSync } = require('./_stockSync');
 const { parseMeliIds } = require('./_meliIds');
 const { packsDisponibles, parseUnidadesPorVenta } = require('./_packs');
 
@@ -41,8 +39,10 @@ module.exports = async (req, res) => {
         tipo: p.tipo || 'nuevo',
         unidades_por_venta: unidadesPorVenta,
         stock_dep: p.stockDep || 0,
-        stock_meli: unidadesPorVenta > 1 ? packs : (p.stockMeli || 0),
-        stock_shopify: unidadesPorVenta > 1 ? packs : (p.stockShopify || 0),
+        // El espejo siempre sale del depósito, nunca de lo que mande el cliente:
+        // las tres columnas tienen que nacer iguales.
+        stock_meli: packs,
+        stock_shopify: packs,
         costo: p.costo || 0, precio: p.precio,
         alerta_min: p.alertaMin || 5,
         // meli_id lo deriva el trigger a partir de meli_ids[1].
@@ -95,7 +95,6 @@ module.exports = async (req, res) => {
       }).eq('sku', sku).select().single();
       if (error) throw error;
 
-      const shopifyId = p.shopifyId || anterior?.shopify_id;
       const forzarSync = p.forzarSync === true;
       // Cambiar las unidades por venta mueve lo publicado aunque el depósito
       // no se toque (16 sueltas pasan de 16 publicadas a 8 pares).
@@ -108,30 +107,14 @@ module.exports = async (req, res) => {
       const idsAntes = new Set(parseMeliIds(anterior?.meli_ids ?? anterior?.meli_id));
       const hayPublicacionNueva = parseMeliIds(data.meli_ids).some((id) => !idsAntes.has(id));
 
-      if (parseMeliIds(data.meli_ids).length && (forzarSync || stockCambio || hayPublicacionNueva)) {
-        try {
-          const token = await getMeliToken();
-          const r = await syncMeliStockProducto(token, data, stockPublicado);
-          if (r.sincronizadas.length) {
-            console.log(`✅ Stock MELI sincronizado: ${r.sincronizadas.join(', ')} → ${stockPublicado}`);
-          }
-          for (const e of r.errores) {
-            console.error(`❌ Error sincronizando stock MELI ${e.meliId}:`, e.error);
-          }
-        } catch (meliErr) {
-          console.error('❌ Error sincronizando stock MELI:', meliErr.message);
-        }
-      }
-
-      // Sincronizar stock Shopify si stock_dep cambió, si se enlazó un shopify_id nuevo, o se forzó
-      if (shopifyId && (forzarSync || stockCambio || (!anterior?.shopify_id && shopifyId))) {
-        try {
-          const token = await getShopifyToken();
-          await syncShopifyStock(token, shopifyId, stockPublicado);
-          console.log(`✅ Stock Shopify sincronizado: variant ${shopifyId} → ${stockPublicado}`);
-        } catch (shopErr) {
-          console.error('❌ Error sincronizando stock Shopify:', shopErr.message);
-        }
+      // Se republica si cambió el stock, si se sumó una publicación nueva o si
+      // se forzó. sincronizarStock vuelve a escribir stock_dep con el mismo
+      // valor que ya guardó el update de arriba: es idempotente y deja las tres
+      // columnas y los dos canales en el mismo número.
+      if (forzarSync || stockCambio || hayPublicacionNueva) {
+        const sync = await sincronizarStock(supabase, data, stockCanon);
+        console.log('✏️ Ajuste manual:', resumenSync(data.sku, sync));
+        return res.json({ ...data, sync });
       }
 
       return res.json(data);

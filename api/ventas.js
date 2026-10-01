@@ -5,9 +5,7 @@
 // DELETE /api/ventas?id=XX → cancelar (restaura stock, elimina envío, registra cancelación)
 
 const { getSupabase } = require('./_supabase');
-const { getMeliToken } = require('./_meliToken');
-const { meliIdsDe } = require('./_meliIds');
-const { syncMeliStockProducto } = require('./_stockSync');
+const { sincronizarStock, resumenSync } = require('./_stockSync');
 const { unidadesDeDeposito, unidadesPorVenta } = require('./_packs');
 
 module.exports = async (req, res) => {
@@ -52,9 +50,6 @@ module.exports = async (req, res) => {
       // 2. Calcular nuevo stock. `cantidad` viene en unidades vendidas (packs):
       // un par de sliders es 1 de cantidad y 2 unidades del depósito.
       const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(v.cantidad, producto));
-      const nuevoStockMeli = v.canal === 'meli'
-        ? Math.max(0, producto.stock_meli - v.cantidad)
-        : producto.stock_meli;
 
       // 3. Guardar la venta
       const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
@@ -85,28 +80,20 @@ module.exports = async (req, res) => {
       }).select().single();
       if (ventaErr) throw ventaErr;
 
-      // 4. Actualizar stock en Supabase
-      await supabase.from('productos').update({
-        stock_dep: nuevoStockDep,
-        stock_meli: nuevoStockMeli,
-        updated_at: new Date().toISOString(),
-      }).eq('sku', v.sku);
+      // 4. Bajar el depósito y publicar el espejo en los dos canales.
+      // La venta descuenta del mismo depósito venga del canal que venga: una
+      // venta de mostrador también tiene que bajarle el stock a MELI y a
+      // Shopify, o siguen ofreciendo mercadería que ya no está.
+      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+      console.log('📉 Venta:', resumenSync(v.sku, sync));
 
-      // 5. Si es venta MELI → actualizar el stock de TODAS sus publicaciones
-      if (v.canal === 'meli' && meliIdsDe(producto).length) {
-        try {
-          const token = await getMeliToken();
-          const r = await syncMeliStockProducto(token, producto, nuevoStockMeli);
-          if (r.sincronizadas.length) {
-            console.log(`✅ Stock MELI actualizado: ${r.sincronizadas.join(', ')} → ${nuevoStockMeli}`);
-          }
-          for (const e of r.errores) console.warn(`⚠️ MELI error (${e.meliId}):`, e.error);
-        } catch (meliErr) {
-          console.error('❌ No se pudo actualizar stock en MELI:', meliErr.message);
-        }
-      }
-
-      return res.json({ venta, nuevoStockDep, nuevoStockMeli });
+      return res.json({
+        venta,
+        nuevoStockDep: sync.stockDep,
+        nuevoStockMeli: sync.stockPublicado,
+        nuevoStockShopify: sync.stockPublicado,
+        sync,
+      });
     }
 
     if (req.method === 'PUT') {
@@ -155,33 +142,12 @@ module.exports = async (req, res) => {
         .single();
 
       if (producto) {
-        // 3. Restaurar stock (el depósito vuelve en unidades sueltas)
+        // 3. Devolver la mercadería al depósito (vuelve en unidades sueltas) y
+        // republicar el espejo en los dos canales.
         const stockDepRestaurado = producto.stock_dep + unidadesDeDeposito(venta.cantidad, producto);
-        const stockMeliRestaurado = venta.canal === 'meli'
-          ? producto.stock_meli + venta.cantidad
-          : producto.stock_meli;
+        const sync = await sincronizarStock(supabase, producto, stockDepRestaurado);
 
-        await supabase.from('productos').update({
-          stock_dep: stockDepRestaurado,
-          stock_meli: stockMeliRestaurado,
-          updated_at: new Date().toISOString(),
-        }).eq('sku', venta.sku);
-
-        console.log(`🔄 Stock restaurado: ${venta.sku} depósito +${unidadesDeDeposito(venta.cantidad, producto)} uds (${venta.cantidad} × ${unidadesPorVenta(producto)}) → ${stockDepRestaurado}`);
-
-        // 4. Si era MELI → restaurar el stock en TODAS sus publicaciones
-        if (venta.canal === 'meli' && meliIdsDe(producto).length) {
-          try {
-            const token = await getMeliToken();
-            const r = await syncMeliStockProducto(token, producto, stockMeliRestaurado);
-            if (r.sincronizadas.length) {
-              console.log(`✅ Stock MELI restaurado: ${r.sincronizadas.join(', ')} → ${stockMeliRestaurado}`);
-            }
-            for (const e of r.errores) console.warn(`⚠️ MELI stock restore warning (${e.meliId}):`, e.error);
-          } catch (meliErr) {
-            console.error('❌ Error restaurando stock MELI:', meliErr.message);
-          }
-        }
+        console.log(`🔄 Stock restaurado: +${unidadesDeDeposito(venta.cantidad, producto)} uds (${venta.cantidad} × ${unidadesPorVenta(producto)}) · ${resumenSync(venta.sku, sync)}`);
       }
 
       // 5. Eliminar envío asociado si existe

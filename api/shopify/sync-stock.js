@@ -1,78 +1,77 @@
 // api/shopify/sync-stock.js
-// POST /api/shopify/sync-stock          → sincroniza todos los productos
-// POST /api/shopify/sync-stock { sku }  → sincroniza solo ese producto
+// POST /api/shopify/sync-stock          → repasa todos los productos vivos
+// POST /api/shopify/sync-stock { sku }  → sólo ese producto
+//
+// Red de seguridad: deja Shopify (y de paso MELI) en el número que dice el
+// depósito. En el día a día no hace falta correrlo —cada venta, devolución e
+// importación ya sincroniza sola—, pero sirve después de una importación de
+// CSV, de un cambio a mano en el admin de Shopify o para auditar que los tres
+// números coinciden.
+//
+// Los productos sin shopify_id no se saltean: sincronizarStock los busca por
+// SKU en Shopify y guarda el enlace. Los que no existan en la tienda (los
+// extensores, por ejemplo) quedan listados como omitidos.
 
-const { getShopifyToken } = require('../_shopifyToken');
 const { getSupabase } = require('../_supabase');
-const { packsDisponibles } = require('../_packs');
+const { sincronizarStock, resumenSync } = require('../_stockSync');
 
 module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const SHOP = 'martinez-motos.myshopify.com';
-
   try {
-    const token = await getShopifyToken();
     const supabase = getSupabase();
     const skuFiltro = req.body?.sku || null;
 
-    // Obtener productos con shopify_id (todos o solo el indicado)
-    let query = supabase.from('productos').select('sku, nombre, shopify_id, stock_dep, unidades_por_venta').not('shopify_id', 'is', null);
+    let query = supabase
+      .from('productos')
+      .select('sku, nombre, shopify_id, stock_dep, unidades_por_venta, meli_id, meli_ids')
+      .eq('discontinuado', false);
     if (skuFiltro) query = query.eq('sku', skuFiltro);
-    const { data: productos, error } = await query;
 
+    const { data: productos, error } = await query.order('sku');
     if (error) throw error;
     if (!productos.length) return res.json({ ok: true, mensaje: 'No hay productos para sincronizar' });
 
-    // Obtener location_id desde inventory_levels del primer producto
-    const firstVariantRes = await fetch(`https://${SHOP}/admin/api/2024-01/variants/${productos[0].shopify_id}.json`, {
-      headers: { 'X-Shopify-Access-Token': token },
-    });
-    const firstVariant = await firstVariantRes.json();
-    const firstInventoryItemId = firstVariant.variant?.inventory_item_id;
-    if (!firstInventoryItemId) throw new Error('No se pudo obtener inventory_item_id');
-
-    const levelsRes = await fetch(`https://${SHOP}/admin/api/2024-01/inventory_levels.json?inventory_item_ids=${firstInventoryItemId}`, {
-      headers: { 'X-Shopify-Access-Token': token },
-    });
-    const levelsData = await levelsRes.json();
-    const locationId = levelsData.inventory_levels?.[0]?.location_id;
-    if (!locationId) throw new Error('No se encontró location_id');
-
-    const resultados = [];
-    const errores = [];
+    const sincronizados = [];
+    const omitidos = [];
+    const fallos = [];
 
     for (const p of productos) {
-      try {
-        const variantRes = await fetch(`https://${SHOP}/admin/api/2024-01/variants/${p.shopify_id}.json`, {
-          headers: { 'X-Shopify-Access-Token': token },
+      const sync = await sincronizarStock(supabase, p, p.stock_dep);
+      console.log('🔁', resumenSync(p.sku, sync));
+
+      if (sync.error) { fallos.push({ sku: p.sku, error: sync.error }); continue; }
+
+      if (sync.shopify.sincronizada) {
+        sincronizados.push({
+          sku: p.sku,
+          stock: sync.stockPublicado,
+          enlazado: sync.shopify.enlazado || undefined,
         });
-        const variantData = await variantRes.json();
-        if (!variantData.variant) throw new Error('Variant no encontrado');
+      } else if (/no existe en Shopify/.test(sync.shopify.error || '')) {
+        omitidos.push({ sku: p.sku, motivo: 'no está en Shopify' });
+      } else {
+        fallos.push({ sku: p.sku, error: `Shopify: ${sync.shopify.error}` });
+      }
 
-        const inventoryItemId = variantData.variant.inventory_item_id;
-        // Shopify vende packs; el depósito guarda unidades sueltas.
-        const stockPublicado = packsDisponibles(p.stock_dep, p);
-
-        const setRes = await fetch(`https://${SHOP}/admin/api/2024-01/inventory_levels/set.json`, {
-          method: 'POST',
-          headers: { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ location_id: locationId, inventory_item_id: inventoryItemId, available: stockPublicado }),
-        });
-        const setData = await setRes.json();
-        if (setData.errors) throw new Error(JSON.stringify(setData.errors));
-
-        await supabase.from('productos').update({ stock_shopify: stockPublicado }).eq('sku', p.sku);
-        resultados.push({ sku: p.sku, stock: stockPublicado });
-        console.log(`✅ ${p.sku} → ${stockPublicado}`);
-      } catch (err) {
-        errores.push({ sku: p.sku, error: err.message });
-        console.error(`❌ ${p.sku}:`, err.message);
+      for (const e of sync.meli.errores) {
+        fallos.push({ sku: p.sku, error: `MELI${e.meliId ? ` ${e.meliId}` : ''}: ${e.error}` });
       }
     }
 
-    res.json({ ok: true, sincronizados: resultados.length, errores: errores.length, detalle: resultados, fallos: errores });
-
+    res.json({
+      ok: true,
+      sincronizados: sincronizados.length,
+      omitidos: omitidos.length,
+      errores: fallos.length,
+      detalle: sincronizados,
+      sinShopify: omitidos,
+      fallos,
+    });
   } catch (err) {
     console.error('Error en sync-stock:', err);
     res.status(500).json({ error: err.message });

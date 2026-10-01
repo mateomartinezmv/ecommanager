@@ -259,7 +259,10 @@ async function ejecutarNuevoProducto(supabase, accion) {
     grupo: accion.grupo || null,
     subgrupo: accion.subgrupo || null,
     stock_dep: accion.stock || 0,
-    stock_meli: 0,
+    // El espejo nace igual al depósito; sin publicaciones todavía no se empuja
+    // a ningún lado, pero las tres columnas arrancan coherentes.
+    stock_meli: accion.stock || 0,
+    stock_shopify: accion.stock || 0,
     costo: accion.costo || 0,
     precio: accion.precio || 0,
     alerta_min: 3,

@@ -99,6 +99,39 @@ necesita instalar compiladores de C++ aparte.
 
 ---
 
+## Si el paso 5 falla con `pnpm` no se reconoce
+
+```
+Error coming from 'pnpm install'
+"pnpm" no se reconoce como un comando interno o externo
+```
+
+El CLI eligió **pnpm** como gestor de paquetes y no lo tenés instalado. La
+extensión ya quedó generada; lo único que falló fue bajar las dependencias.
+
+```powershell
+npm install -g pnpm
+pnpm --version
+```
+
+Después, parado en la carpeta de la app:
+
+```powershell
+cd $HOME\Documents\martinez-motos-pagos
+pnpm install
+```
+
+Verificá que la extensión esté:
+
+```powershell
+dir extensions\ocultar-tarjeta-contado\src
+```
+
+Si lista los archivos `cart_payment_methods_transform_run.*`, seguí al paso 6 sin
+volver a generar nada. Si la carpeta no existe, recién ahí repetí el paso 5.
+
+---
+
 ## Paso 6 — Reemplazar los dos archivos
 
 Se generó la carpeta:

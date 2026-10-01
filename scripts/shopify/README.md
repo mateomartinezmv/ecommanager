@@ -63,6 +63,25 @@ Al reemplazar un producto conviene revisar la galería en el admin después de
 importar: el importador no siempre borra las imágenes viejas que ya no están en el
 CSV, y pueden quedar colgadas junto a las nuevas.
 
+## Pendiente del lado de MELI
+
+Estas correcciones no se pueden hacer con las herramientas que usa este script
+(`pg_net` sólo tiene GET/POST/DELETE y la API de MELI actualiza publicaciones con
+`PUT /items/{id}`). Hay que hacerlas desde el panel de MELI o agregando un endpoint
+que haga el PUT.
+
+| Publicación | Qué corregir |
+|---|---|
+| `MLU698507115` | el título dice `Criuser`, va `Cruiser` (en el CRM y en el CSV ya está bien) |
+| `MLU1245773482` | `SELLER_SKU` dice `SEÑAL02`, el SKU del CRM es `HP-Z0533` |
+| `MLU1038770042` | `SELLER_SKU` dice `PUNORANG`, el SKU del CRM es `PUNORGANG` |
+| `MLU1504441880`, `MLU1504441882` | `SELLER_SKU` dice `MAN-78-V3-PLA-001`, que no existe en el CRM; son ángulos de `MAN-78-V3-NEG-001` |
+
+Ninguna rompe nada hoy: el CRM resuelve las ventas por `productos.meli_ids`, no por
+la etiqueta `SELLER_SKU` de MELI, y las cuatro publicaciones están enlazadas. Sólo
+confunden a quien mire la publicación, y a «Importar desde MELI», que sí lee esa
+etiqueta.
+
 ## Para rehacerlo con datos frescos
 
 Los datos de MELI están fijos en los scripts (fotos y ventas al 2026-10-01). Para

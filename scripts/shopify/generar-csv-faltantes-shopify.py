@@ -227,9 +227,10 @@ SUSTITUCIONES = [
     'sku': 'HP-DF028',
     'angulo': 'MLU698507115',   # 2 ventas: el angulo con mas ventas de los 4 del SKU
     'ventas': 2,
-    # Titulo tal cual lo tiene MELI, incluido el "Criuser" (asi esta escrito en
-    # la publicacion y en el CRM).
-    'title': 'Parabrisas Universal 45cm Para Moto Chopper Custom Criuser Transparente',
+    # El titulo es el de MELI con "Cruiser" bien escrito: la publicacion y el CRM
+    # lo tenian como "Criuser". En el CRM ya quedo corregido; en MELI hay que
+    # corregirlo a mano o desde la app (la API pide PUT /items/{id}).
+    'title': 'Parabrisas Universal 45cm Para Moto Chopper Custom Cruiser Transparente',
     'precio': '3190.00',
     'costo': '969.00',
     'qty': 2,

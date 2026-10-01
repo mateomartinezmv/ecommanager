@@ -4,6 +4,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { sincronizarStock, resumenSync } = require('../_stockSync');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
 
@@ -94,12 +95,8 @@ module.exports = async (req, res) => {
         // Descontar stock solo si está pagada
         if (estadoMeli === 'paid') {
           const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-          const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad);
-          await supabase.from('productos').update({
-            stock_dep: nuevoStockDep,
-            stock_meli: nuevoStockMeli,
-            updated_at: new Date().toISOString(),
-          }).eq('sku', producto.sku);
+          const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+          console.log('📉 Reproceso:', resumenSync(producto.sku, sync));
         }
 
         // Insertar venta

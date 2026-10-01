@@ -63,12 +63,28 @@ Al reemplazar un producto conviene revisar la galería en el admin después de
 importar: el importador no siempre borra las imágenes viejas que ya no están en el
 CSV, y pueden quedar colgadas junto a las nuevas.
 
+> **El stock del CSV pisa el de Shopify.** `Variant Inventory Qty` no es
+> informativo: al importar, Shopify deja el inventario en ese número. La primera
+> versión de este script copiaba la columna del export tal cual en los productos
+> que ya existían, y al importarlo el guardabarros `HP-DB004-B` quedó en 0
+> teniendo 11. Ahora el stock de todas las filas sale de `STOCK_CRM`, que es un
+> volcado de `productos.stock_dep`. Si pasa tiempo entre que se genera el CSV y
+> se importa, conviene refrescar esa tabla o correr después
+> `POST /api/shopify/sync-stock`, que deja Shopify en lo que diga el CRM.
+
 ## Pendiente del lado de MELI
 
-Estas correcciones no se pueden hacer con las herramientas que usa este script
-(`pg_net` sólo tiene GET/POST/DELETE y la API de MELI actualiza publicaciones con
-`PUT /items/{id}`). Hay que hacerlas desde el panel de MELI o agregando un endpoint
-que haga el PUT.
+Se corrigen con `api/meli/corregir-sku.js`:
+
+```
+GET  /api/meli/corregir-sku                              → lista lo desalineado
+POST /api/meli/corregir-sku { "todos": true }            → corrige todos los SKU
+POST /api/meli/corregir-sku { "meliId": "MLU698507115", "titulo": "…" }
+```
+
+El endpoint escribe el SKU en los dos lados que MELI usa (`seller_custom_field` y
+el atributo `SELLER_SKU`), porque corregir uno solo deja el panel mostrando el
+viejo según por dónde se lo mire.
 
 | Publicación | Qué corregir |
 |---|---|

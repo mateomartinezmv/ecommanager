@@ -123,7 +123,10 @@ module.exports = async (req, res) => {
           sku,
           nombre: item.title,
           stock_dep: item.available_quantity,
+          // Las tres columnas nacen del mismo número: stock_meli y stock_shopify
+          // son el espejo del depósito, no cuentas aparte.
           stock_meli: item.available_quantity,
+          stock_shopify: item.available_quantity,
           costo: 0,
           precio: item.price,
           alerta_min: 3,

@@ -136,8 +136,14 @@ async function empujar(token, supabase, filas, todas = false) {
     }
 
     // El espejo del CRM sólo se mueve si MELI aceptó al menos una: si no, mentiría.
+    // Se escriben las dos columnas: esta pantalla no toca stock_dep, así que el
+    // número que le corresponde a Shopify es el mismo, y dejar sólo stock_meli
+    // las separaría sin motivo.
     if (alguna) {
-      await supabase.from('productos').update({ stock_meli: fila.stock_publicado }).eq('sku', fila.sku);
+      await supabase.from('productos').update({
+        stock_meli: fila.stock_publicado,
+        stock_shopify: fila.stock_publicado,
+      }).eq('sku', fila.sku);
     }
   }
 

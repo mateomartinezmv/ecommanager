@@ -3,11 +3,9 @@
 // GET  /api/shopify/notify?orden=ID  → reprocesar manualmente una orden
 
 const { getSupabase } = require('../_supabase');
-const { getMeliToken } = require('../_meliToken');
-const { meliIdsDe } = require('../_meliIds');
-const { syncMeliStockProducto } = require('../_stockSync');
+const { sincronizarStock, resumenSync } = require('../_stockSync');
 const { getShopifyToken } = require('../_shopifyToken');
-const { unidadesDeDeposito, packsDisponibles } = require('../_packs');
+const { unidadesDeDeposito } = require('../_packs');
 
 const SHOP = 'martinez-motos.myshopify.com';
 
@@ -33,15 +31,13 @@ async function procesarOrden(order, supabase, log) {
     // `cantidad` viene en unidades vendidas (packs); el depósito se lleva
     // unidades_por_venta unidades por cada una.
     const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-    const nuevoStockPublicado = packsDisponibles(nuevoStockDep, producto);
 
-    await supabase.from('productos').update({
-      stock_dep: nuevoStockDep,
-      stock_meli: nuevoStockPublicado,
-      stock_shopify: nuevoStockPublicado,
-      updated_at: new Date().toISOString(),
-    }).eq('sku', producto.sku);
-    if (log) log.push(`✅ Stock: ${nuevoStockDep} uds en depósito → ${nuevoStockPublicado} publicadas`);
+    // Shopify ya se descontó solo la unidad que vendió, pero con packs su cuenta
+    // no coincide con la nuestra (vende 1 par y el depósito pierde 2), así que
+    // igual se le fija el valor que corresponde. MELI no se enteró de nada.
+    const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+    const nuevoStockPublicado = sync.stockPublicado;
+    if (log) log.push(`✅ Stock: ${sync.stockDep} uds en depósito → ${nuevoStockPublicado} publicadas`);
 
     const ventaId = `V_SHOP_${order.id}_${variantId}`;
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
@@ -71,23 +67,11 @@ async function procesarOrden(order, supabase, log) {
     console.log(`✅ Venta Shopify registrada: orden ${order.id}, ${producto.nombre} x${cantidad}`);
     if (log) log.push(`✅ Venta registrada: ${ventaId}`);
 
-    // ── Sync → MELI ──
-    if (meliIdsDe(producto).length) {
-      try {
-        const token = await getMeliToken();
-        const r = await syncMeliStockProducto(token, producto, nuevoStockPublicado);
-        if (r.sincronizadas.length) {
-          const ok = `✅ MELI sync: ${r.sincronizadas.join(', ')} → ${nuevoStockPublicado}`;
-          console.log(ok); if (log) log.push(ok);
-        }
-        for (const err of r.errores) {
-          const w = `⚠️ MELI sync error (${err.meliId}): ${err.error}`;
-          console.warn(w); if (log) log.push(w);
-        }
-      } catch (meliErr) {
-        const e = `❌ Error sync MELI: ${meliErr.message}`; console.error(e); if (log) log.push(e);
-      }
-    }
+    // El empuje a MELI y a Shopify ya lo hizo sincronizarStock; acá sólo se
+    // deja constancia de cómo salió.
+    const linea = resumenSync(producto.sku, sync);
+    console.log('📉 Venta Shopify:', linea);
+    if (log) log.push(linea);
 
     resultados.push({ variant: variantId, estado: 'registrada', ventaId, sku: producto.sku });
   }

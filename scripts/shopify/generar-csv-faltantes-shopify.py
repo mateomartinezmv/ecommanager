@@ -39,6 +39,43 @@ FOTOS = {
 def fotos(item_id):
     return [M + f for f in FOTOS[item_id]]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Stock de depósito del CRM (productos.stock_dep ÷ unidades_por_venta), al
+# 2026-10-01. Es LA fuente del Variant Inventory Qty de todas las filas.
+#
+# El export de Shopify trae su propia columna de stock, y la primera versión de
+# este script la dejaba pasar tal cual en los productos que ya existían. Importar
+# ese CSV pisa el inventario real de Shopify con el número viejo del export: así
+# el guardabarros HP-DB004-B quedó en 0 teniendo 11. Nunca copiar el stock del
+# export: o sale del CRM, o la fila no se toca.
+# ─────────────────────────────────────────────────────────────────────────────
+STOCK_CRM = {
+ '2004-107': 4, 'ALERONFINOSNK': 7, 'AP-SLANTED01': 0, 'AP-TAILBOXLED': 0,
+ 'AP-TAILBOXSQ': 3, 'AP-YOSHIMURA01': 2, 'CPJ-62001': 2, 'DFB-002': 0,
+ 'DOM00': 13, 'DOM01': 10, 'DOM02': 10, 'DOM03': 5, 'DOM04': 5,
+ 'ESP-CIR-001': 5, 'FSB-002': 7, 'FSB-003': 1, 'GZTYJ-41046N': 0,
+ 'GZTYJ-41046R': 0, 'HP-CB0381': 4, 'HP-CB0382': 6, 'HP-CB0383': 3,
+ 'HP-CB0384': 3, 'HP-CB0385': 7, 'HP-DB004-B': 11, 'HP-DF028': 2,
+ 'HP-EXHAUST-A': 0, 'HP-EXHAUST-GBLACK': 0, 'HP-EXHAUST-GSILVER': 1,
+ 'HP-HS010': 7, 'HP-MG072': 3, 'HP-Q0211': 11, 'HP-Q0212': 10,
+ 'HP-Q0213': 9, 'HP-Q035B1': 0, 'HP-Q035B2': 4, 'HP-Q035B3': 0,
+ 'HP-SH-5003-L': 29, 'HP-Z0533': 1, 'HP-ZJ039': 0, 'HS-30006': 20,
+ 'HSJ-20121': 25, 'MAN-78-V2-NEG-001': 5, 'MAN-78-V2-PLA-001': 5,
+ 'MAN-78-V3-NEG-001': 5, 'PATENTE1': 11, 'POSAPIE1': 0, 'PUNBLACK': 22,
+ 'PUNORGANG': 0, 'PUNRED': 0, 'PUNYELLOW': 5, 'SBJ-10078': 2,
+ 'SENAL01': 0, 'SOP-CEL-ESP-001': 92, 'SOP-CEL-MAN-001': 97, 'YTLY-30': 20,
+}
+# El SKU del señalero lleva eñe; se escribe aparte para no depender del encoding.
+STOCK_CRM['SE\u00d1AL01'] = 0
+
+
+def stock_de(sku, por_defecto=None):
+    """Stock del CRM para un SKU. None si el CRM no lo conoce."""
+    if sku in STOCK_CRM:
+        return STOCK_CRM[sku]
+    return por_defecto
+
+
 CAT_CARROCERIA = 'Vehículos y recambios > Piezas y accesorios para vehículos > Piezas para vehículos motorizados > Piezas de bastidor y carrocería para vehículos motorizados'
 CAT_ESCAPE     = 'Vehículos y recambios > Piezas y accesorios para vehículos > Piezas para vehículos motorizados > Tubos de escape para vehículos motorizados'
 CAT_ESPEJO     = 'Vehículos y recambios > Piezas y accesorios para vehículos > Piezas para vehículos motorizados > Espejos para vehículos motorizados'
@@ -273,6 +310,24 @@ def main():
             r['Variant SKU'] = 'ALERONFINOSNK'
             arreglos += 1
 
+    # ── 1b. Stock del CRM en TODAS las filas de variante ────────────────────
+    # El export trae el stock que Shopify tenia el dia que se exporto. Reimportarlo
+    # pisa el inventario real con ese numero viejo. Se reescribe con el del CRM,
+    # que es la fuente de verdad; el SKU que el CRM no conoce se deja como estaba.
+    stock_reescrito = 0
+    sin_stock_en_crm = []
+    for r in filas:
+        sku = r['Variant SKU'].strip()
+        if not sku:
+            continue
+        valor = stock_de(sku)
+        if valor is None:
+            sin_stock_en_crm.append(sku)
+            continue
+        if r['Variant Inventory Qty'] != str(valor):
+            r['Variant Inventory Qty'] = str(valor)
+            stock_reescrito += 1
+
     # ── 2. Productos reemplazados por su publicacion de MELI ────────────────
     # Se conserva el handle (es lo que Shopify usa para reconocer el producto) y
     # se reescribe el resto. Las filas sobrantes de la galeria vieja se eliminan.
@@ -300,7 +355,7 @@ def main():
             'Variant SKU': s['sku'],
             'Variant Grams': vieja['Variant Grams'] or '0.0',
             'Variant Inventory Tracker': 'shopify',
-            'Variant Inventory Qty': str(s['qty']),
+            'Variant Inventory Qty': str(stock_de(s['sku'], s['qty'])),
             'Variant Inventory Policy': 'deny',
             'Variant Fulfillment Service': 'manual',
             'Variant Price': s['precio'],
@@ -343,7 +398,7 @@ def main():
             'Variant SKU': v['sku'],
             'Variant Grams': '0.0',
             'Variant Inventory Tracker': 'shopify',
-            'Variant Inventory Qty': str(v['qty']),
+            'Variant Inventory Qty': str(stock_de(v['sku'], v['qty'])),
             'Variant Inventory Policy': 'deny',
             'Variant Fulfillment Service': 'manual',
             'Variant Price': v['precio'],
@@ -399,7 +454,7 @@ def main():
                 'Variant SKU': v['sku'],
                 'Variant Grams': '0.0',
                 'Variant Inventory Tracker': 'shopify',
-                'Variant Inventory Qty': str(v['qty']),
+                'Variant Inventory Qty': str(stock_de(v['sku'], v['qty'])),
                 'Variant Inventory Policy': 'deny',
                 'Variant Fulfillment Service': 'manual',
                 'Variant Price': v['precio'],
@@ -437,6 +492,9 @@ def main():
     print(f'  variantes nuevas en handles existentes: {len(VARIANTES_EXTRA)}')
     print(f'  SKUs agregados ({len(skus_nuevos)}): {", ".join(sorted(skus_nuevos))}')
     print(f'  SKU completado en filas existentes: {arreglos} (ALERONFINOSNK)')
+    print(f'  stock reescrito con el del CRM: {stock_reescrito} filas')
+    if sin_stock_en_crm:
+        print(f'  SKUs que el CRM no conoce (stock sin tocar): {", ".join(sorted(set(sin_stock_en_crm)))}')
     for sku, antes, despues, f_antes, f_desp, p_antes, p_desp in sustituidos:
         print(f'  reemplazado {sku}: "{antes}" -> "{despues}"')
         print(f'      filas {f_antes} -> {f_desp} · precio {p_antes} -> {p_desp}')

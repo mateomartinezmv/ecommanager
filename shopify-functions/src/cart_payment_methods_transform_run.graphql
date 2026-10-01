@@ -1,0 +1,11 @@
+query CartPaymentMethodsTransformRunInput {
+  cart {
+    attribute(key: "Forma de pago") {
+      value
+    }
+  }
+  paymentMethods {
+    id
+    name
+  }
+}

@@ -190,30 +190,78 @@ Te pide confirmar. Al terminar dice que la versión se publicó.
 
 ---
 
-## Paso 10 — Instalar la app en Martinez Motos
+## Paso 10 — Instalar la app en la tienda
 
-```powershell
-shopify app dev
+`shopify app dev --store=...` **no sirve**: solo funciona con tiendas de
+desarrollo, y Martinez Motos es una tienda real. Falla con:
+
+```
+Could not find store for domain martinez-motos.myshopify.com in organization Martinez Motos.
 ```
 
-Te muestra un link de instalación en la terminal. Abrilo, elegí
-**martinez-motos.myshopify.com** e instalá. Después cortá el comando con `Ctrl+C`.
+La doc manda a la tarjeta "Distribution" del Dev Dashboard, pero en la interfaz
+nueva esa tarjeta no existe. El camino que funciona:
+
+1. Abrir la app en el Dev Dashboard, **Panel general**.
+2. Bajar hasta la tarjeta **Instalaciones** → botón **Instalar app**.
+3. Aunque el texto diga "tienda en desarrollo", el selector igual ofrece la
+   tienda real de la organización. Elegirla e instalar, aceptando los permisos.
 
 ---
 
 ## Paso 11 — Activarla
 
-**Deployar no la enciende.** Hay que crear una *payment customization* que apunte a
+Deployar no la enciende: hay que crear una *payment customization* que apunte a
 la función.
 
-Según qué haya generado tu versión del CLI, esto se hace desde una página de admin
-dentro de tu app (abrila en el admin de Shopify, en Apps) o corriendo una mutation.
-Cuando llegues acá, mandame una captura de lo que ves en la app y te digo
-exactamente dónde hacer clic.
+`shopify app graphiql --store=...` tampoco sirve, por lo mismo que `app dev`: el
+CLI no ve la tienda. Y `shopify app execute` limita las mutations a dev stores.
 
-Esto no lo puedo hacer yo por API: `PaymentCustomizationInput.functionHandle` está
-*"scoped to your app ID"*, así que sólo la puede ejecutar la app dueña de la
-función, no el conector con el que trabajo.
+La salida es el **client credentials grant**, el mismo que usa `_shopifyToken.js`
+del CRM: la app ya esta instalada en la tienda, asi que puede pedir un token con
+sus propias credenciales sin intervencion del comerciante. Token valido 24 horas.
+
+El Client ID y el Secret estan en el Dev Dashboard → Configuracion de la app →
+Credenciales.
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$shop = "martinez-motos.myshopify.com"
+$clientId = "PEGAR_EL_CLIENT_ID"
+
+$secure = Read-Host "Pega el Secreto del cliente y Enter" -AsSecureString
+$bstr   = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+$secret = [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+
+$tok = Invoke-RestMethod -Method Post -Uri "https://$shop/admin/oauth/access_token" -Body @{ grant_type="client_credentials"; client_id=$clientId; client_secret=$secret }
+$token = $tok.access_token
+"Token OK, vence en $($tok.expires_in) segundos."
+```
+
+> El `Read-Host -AsSecureString` evita que el secreto quede escrito en pantalla o
+> en el historial de PowerShell. Vive solo en la memoria de esa ventana.
+
+```powershell
+$mutation = @'
+mutation {
+  paymentCustomizationCreate(paymentCustomization: {functionHandle: "ocultar-tarjeta-contado", title: "Ocultar tarjeta con precio contado", enabled: true}) {
+    paymentCustomization { id title enabled }
+    userErrors { field message }
+  }
+}
+'@
+
+$body = @{ query = $mutation } | ConvertTo-Json -Compress
+$resp = Invoke-RestMethod -Method Post -Uri "https://$shop/admin/api/2025-10/graphql.json" -Headers @{ "X-Shopify-Access-Token" = $token } -ContentType "application/json" -Body $body
+$resp | ConvertTo-Json -Depth 10
+```
+
+Respuesta esperada: un `id`, `enabled: true` y `userErrors` vacio.
+
+**Activada el 1/10/2026:** `gid://shopify/PaymentCustomization/131104955`
+
+Para desactivarla sin desinstalar nada, misma receta con
+`paymentCustomizationUpdate` y `enabled: false`.
 
 ---
 

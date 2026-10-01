@@ -1,0 +1,106 @@
+{%- comment -%}
+  precio-contado.liquid - Martinez Motos
+
+  Muestra, debajo del precio de lista, el precio pagando con transferencia o efectivo.
+
+  Uso (sin los espacios de mas):
+    render 'precio-contado', product: product, destacado: true
+    render 'precio-contado', product: card_product, compacto: true
+    render 'precio-contado', variant: variant
+
+  Parametros (todos opcionales):
+    product      - el producto; se usa la variante seleccionada
+    variant      - una variante concreta (tiene prioridad sobre product)
+    pct_override - sobreescribe el % del theme editor para este render
+    destacado    - true: recuadro resaltado (ficha de producto)
+    compacto     - true: una linea chica, sin leyenda larga (grilla de coleccion)
+
+  Para excluir un producto del descuento:
+    metafield booleano custom.sin_precio_contado = true
+{%- endcomment -%}
+
+{%- liquid
+  # ---- Porcentaje: param > theme editor > 10 por defecto ----
+  assign pct = 10
+  if settings.precio_contado_pct != blank
+    assign pct = settings.precio_contado_pct
+  endif
+  if pct_override != blank
+    assign pct = pct_override
+  endif
+
+  # ---- Precio base, en centavos ----
+  assign base = 0
+  assign varia = false
+  if variant != blank
+    assign base = variant.price
+  elsif product != blank
+    if compacto and product.price_varies
+      assign base = product.price_min
+      assign varia = true
+    else
+      assign base = product.selected_or_first_available_variant.price
+    endif
+  endif
+
+  # ---- Exclusiones ----
+  assign excluido = false
+  if product != blank and product.metafields.custom.sin_precio_contado.value == true
+    assign excluido = true
+  endif
+  if product != blank and product.available == false
+    assign excluido = true
+  endif
+-%}
+
+{%- if base > 0 and pct > 0 and excluido == false -%}
+  {%- liquid
+    assign factor = 100 | minus: pct
+    assign exacto = base | times: factor | divided_by: 100
+
+    # Redondeo "prolijo" hacia abajo (por defecto, múltiplos de $10)
+    assign paso_pesos = 10
+    if settings.precio_contado_redondeo != blank
+      assign paso_pesos = settings.precio_contado_redondeo
+    endif
+    assign paso = paso_pesos | times: 100
+    assign contado = exacto
+    if paso > 0
+      assign contado = exacto | divided_by: paso | times: paso
+    endif
+
+    # Si el redondeo se comió más de 1% del precio (productos baratos), usar el exacto
+    assign perdida = exacto | minus: contado
+    assign tope = base | divided_by: 100
+    if perdida > tope or contado <= 0
+      assign contado = exacto
+    endif
+
+    assign leyenda = 'pagando con transferencia o efectivo'
+    if settings.precio_contado_texto != blank
+      assign leyenda = settings.precio_contado_texto
+    endif
+
+    assign clases = 'precio-contado'
+    if destacado
+      assign clases = clases | append: ' precio-contado--destacado'
+    endif
+    if compacto
+      assign clases = clases | append: ' precio-contado--compacto'
+    endif
+  -%}
+
+  <div class="{{ clases }}">
+    <span class="precio-contado__monto">{% if varia %}desde {% endif %}{{ contado | money }}</span>
+    <span class="precio-contado__label">
+      {%- if compacto -%}
+        contado
+      {%- else -%}
+        {{ leyenda }} &middot; {{ pct }}% off
+        {%- if settings.precio_contado_link != blank %}
+          <a class="precio-contado__link" href="{{ settings.precio_contado_link }}">Ver cómo</a>
+        {%- endif -%}
+      {%- endif -%}
+    </span>
+  </div>
+{%- endif -%}

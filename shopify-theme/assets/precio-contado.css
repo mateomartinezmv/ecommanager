@@ -1,0 +1,47 @@
+/* precio-contado.css — Martínez Motos
+   Pegar al final de assets/base.css, o subir como asset y cargarlo en theme.liquid con:
+   {{ 'precio-contado.css' | asset_url | stylesheet_tag }}
+   Las variables --color-foreground / --inputs-radius son de Dawn y sus derivados.
+   En un theme que no las tenga, reemplazar por colores fijos. */
+
+.precio-contado {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+  font-size: 1.4rem;
+  line-height: 1.35;
+}
+
+.precio-contado__monto {
+  font-weight: 600;
+  color: rgb(var(--color-foreground, 18 18 18));
+  white-space: nowrap;
+}
+
+.precio-contado__label {
+  color: rgba(var(--color-foreground, 18 18 18), 0.72);
+}
+
+.precio-contado__link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+/* Ficha de producto: recuadro para que no se pierda debajo del precio grande */
+.precio-contado--destacado {
+  margin-top: 0.8rem;
+  padding: 0.8rem 1.2rem;
+  border: 0.1rem solid rgba(var(--color-foreground, 18 18 18), 0.15);
+  border-radius: var(--inputs-radius, 0.4rem);
+  background: rgba(var(--color-foreground, 18 18 18), 0.04);
+}
+
+/* Grilla de colección: chico y en una línea */
+.precio-contado--compacto {
+  margin-top: 0.2rem;
+  font-size: 1.2rem;
+  gap: 0.3rem;
+}

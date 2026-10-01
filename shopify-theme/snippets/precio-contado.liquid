@@ -56,7 +56,7 @@
 {%- if base > 0 and pct > 0 and excluido == false -%}
   {%- liquid
     assign factor = 100 | minus: pct
-    assign exacto = base | times: factor | divided_by: 100
+    assign exacto = base | times: factor | divided_by: 100 | floor
 
     # Redondeo "prolijo" hacia abajo (por defecto, múltiplos de $10)
     assign paso_pesos = 10
@@ -66,12 +66,12 @@
     assign paso = paso_pesos | times: 100
     assign contado = exacto
     if paso > 0
-      assign contado = exacto | divided_by: paso | times: paso
+      assign contado = exacto | divided_by: paso | floor | times: paso
     endif
 
     # Si el redondeo se comió más de 1% del precio (productos baratos), usar el exacto
     assign perdida = exacto | minus: contado
-    assign tope = base | divided_by: 100
+    assign tope = base | divided_by: 100 | floor
     if perdida > tope or contado <= 0
       assign contado = exacto
     endif

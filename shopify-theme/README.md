@@ -33,30 +33,28 @@ nombre `precio-contado` → pegar el contenido de `snippets/precio-contado.liqui
 
 Abrir `assets/base.css` y pegar al final el contenido de `assets/precio-contado.css`.
 
-### 3. Mostrarlo en la ficha de producto
+### 3. Mostrarlo (ficha de producto + grilla, de una sola vez)
 
-En `sections/main-product.liquid`, buscar el bloque del precio (`when 'price'`). Queda así:
+En `snippets/price.liquid`, **justo antes del `</div>` final** (el que cierra `div.price`):
 
 ```liquid
-{%- when 'price' -%}
-  <div class="no-js-hidden" id="price-{{ section.id }}" role="status" {{ block.shopify_attributes }}>
-    {%- render 'price', product: product, use_variant: true, show_badges: true, price_class: 'price--large' -%}
+  {%- endif -%}
+  {%- if main_price -%}
     {%- render 'precio-contado', product: product, destacado: true -%}
-  </div>
+  {%- elsif hide_currency_code -%}
+    {%- render 'precio-contado', product: product, compacto: true -%}
+  {%- endif -%}
+</div>
 ```
 
-> **Importante:** la línea nueva va **adentro** del `<div id="price-...">`. Dawn re-renderiza
-> ese div cuando el cliente cambia de variante, así que el precio contado se actualiza solo.
-> Si queda afuera, se congela en el precio de la primera variante.
-
-### 4. Mostrarlo en la grilla de colecciones (opcional)
-
-En `snippets/card-product.liquid`, después del `render 'price'`:
-
-```liquid
-{%- render 'price', product: card_product, price_class: '', show_compare_at_price: true -%}
-{%- render 'precio-contado', product: card_product, compacto: true -%}
-```
+> **Por qué acá y no en `main-product.liquid` / `card-product.liquid`:** el bloque tiene que
+> quedar **adentro** del elemento de precio. El theme re-renderiza ese elemento cuando el
+> cliente cambia de variante (y los swatches de las tarjetas lo actualizan por JS); si el
+> bloque queda como hermano, se congela mostrando el precio de la primera variante.
+>
+> `main_price` lo pasa el bloque de precio de la ficha de producto (versión destacada).
+> `hide_currency_code` lo pasan las tarjetas de producto (versión compacta). Los line items
+> del carrito no usan este snippet, usan `item.final_line_price`.
 
 ### 5. Controles en el theme editor
 
@@ -122,7 +120,7 @@ cancelar. Si la web crece, hay apps de "descuento por medio de pago" que lo cier
 
 Números reales del CRM (tabla `ventas`, 491 ventas MELI):
 
-| Canal | Lo que entra de cada $100 |
+| Canal | Lo que entra de cada $100 (UYU) |
 |---|---|
 | Mercado Libre (precio lleno) | **$85,30** — comisión 14,7% |
 | Web, tarjeta 1 pago | ~$94 |

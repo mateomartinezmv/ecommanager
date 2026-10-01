@@ -31,6 +31,8 @@
     "api/cron/sync-envios.js": { "maxDuration": 60 },
     "api/meli/ads.js": { "maxDuration": 30 },
     "api/meli/ads-historico.js": { "maxDuration": 10 },
+    "api/meli/ads-campanas.js": { "maxDuration": 30 },
+    "api/meli/ads-anuncios.js": { "maxDuration": 60 },
     "api/meli/opiniones.js": { "maxDuration": 60 },
     "api/meli/angulos.js": { "maxDuration": 60 },
     "api/meli/diagnostico.js": { "maxDuration": 60 },

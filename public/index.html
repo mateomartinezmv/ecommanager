@@ -210,6 +210,7 @@
     <a class="nav-item" href="/reposicion.html" style="text-decoration:none"><span class="icon">📅</span><span>Reposición</span></a>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
+    <div class="nav-item" onclick="goPage('ads')"><span class="icon">📣</span><span>Ads MELI</span></div>
     <div class="nav-item" onclick="goPage('opiniones')"><span class="icon">⭐</span><span>Opiniones</span></div>
     <div class="nav-item" onclick="goPage('angulos')"><span class="icon">🎯</span><span>Ángulos de venta</span></div>
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
@@ -664,6 +665,48 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ADS MELI: una campaña abierta producto por producto, con el ROAS de equilibrio -->
+  <div id="page-ads" class="page">
+    <div class="topbar">
+      <div class="page-title">📣 Ads MELI</div>
+      <div class="topbar-actions">
+        <select id="ads-campana" onchange="renderAdsAnuncios()" style="width:auto;max-width:280px;padding:8px 14px">
+          <option value="">Cargando campañas...</option>
+        </select>
+        <select id="ads-periodo" onchange="onAdsPeriodoChange()" style="width:auto;padding:8px 14px">
+          <option value="7">Últimos 7 días</option>
+          <option value="30" selected>Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+          <option value="custom">Personalizado...</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="renderAds(true)">🔄 Actualizar</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportAdsCSV()">📊 CSV</button>
+      </div>
+    </div>
+    <div id="ads-panel-fechas" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 28px;gap:12px;align-items:center;flex-wrap:wrap" class="topbar">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim)">📅 Rango</span>
+      <input type="date" id="ads-desde" style="width:150px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <span style="color:var(--text-muted)">→</span>
+      <input type="date" id="ads-hasta" style="width:150px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim);margin-left:12px">Comisión MELI</span>
+      <input type="number" id="ads-comision" value="15" min="0" max="50" step="0.5" style="width:80px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <span style="color:var(--text-muted);font-size:13px">%</span>
+    </div>
+    <div class="content">
+      <div class="cards-grid" id="ads-stats"></div>
+      <div id="ads-aviso" style="margin-bottom:16px"></div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">📣 Anuncios de la campaña</span>
+          <span style="font-size:11px;color:var(--text-muted)">
+            ROAS BE = ROAS de equilibrio · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo del breakeven
+          </span>
+        </div>
+        <div id="ads-tabla"></div>
+      </div>
     </div>
   </div>
 
@@ -2108,6 +2151,7 @@ function goPage(page) {
   if (page === 'informacion') renderInformacion();
   if (page === 'opiniones') renderOpiniones();
   if (page === 'angulos') renderAngulos();
+  if (page === 'ads') renderAds();
 }
 
 // =====================
@@ -6898,6 +6942,261 @@ async function renderCanceladas() {
     console.error('Error cargando canceladas:', e);
     document.getElementById('canceladas-stats').innerHTML = `<div style="color:var(--red);padding:20px">Error: ${e.message}</div>`;
   }
+}
+
+// =====================
+// ADS MELI
+// =====================
+// La pestaña replica el panel de Mercado Ads (una fila por producto, con sus variantes
+// agrupadas) y le agrega las columnas que MELI no puede calcular porque no conoce el
+// costo: margen de contribución, ROAS de equilibrio, CPC máximo y ganancia real.
+
+let adsState = {
+  campanas: [],
+  anuncios: [],
+  totales: null,
+  campanasCargadas: false,
+  orden: { campo: 'inversion', dir: 'desc' },
+};
+
+function adsRango() {
+  const periodo = document.getElementById('ads-periodo').value;
+  if (periodo === 'custom') {
+    const desde = document.getElementById('ads-desde').value;
+    const hasta = document.getElementById('ads-hasta').value;
+    if (desde && hasta) return `desde=${desde}&hasta=${hasta}`;
+  }
+  return `dias=${periodo === 'custom' ? 30 : periodo}`;
+}
+
+function onAdsPeriodoChange() {
+  const custom = document.getElementById('ads-periodo').value === 'custom';
+  const panel = document.getElementById('ads-panel-fechas');
+  panel.style.display = custom ? 'flex' : 'none';
+  if (custom) {
+    const hoy = new Date();
+    const hace30 = new Date(hoy.getTime() - 29 * 86400000);
+    if (!document.getElementById('ads-desde').value) {
+      document.getElementById('ads-desde').value = hace30.toISOString().slice(0, 10);
+      document.getElementById('ads-hasta').value = hoy.toISOString().slice(0, 10);
+    }
+  }
+  renderAds(true);
+}
+
+async function renderAds(forzar = false) {
+  const sel = document.getElementById('ads-campana');
+
+  if (!adsState.campanasCargadas || forzar) {
+    sel.innerHTML = '<option value="">Cargando campañas...</option>';
+    try {
+      const r = await api('GET', `/meli/ads-campanas?${adsRango()}`);
+      if (!r.ok) {
+        sel.innerHTML = '<option value="">—</option>';
+        document.getElementById('ads-tabla').innerHTML = `
+          <div class="empty-state"><div class="empty-icon">📣</div>
+          <p>${escHtml(r.mensaje || r.error || 'No se pudieron traer las campañas.')}</p></div>`;
+        document.getElementById('ads-stats').innerHTML = '';
+        return;
+      }
+      // Las que gastaron primero: son las que importa mirar.
+      adsState.campanas = (r.campanas || []).sort((a, b) => b.inversion - a.inversion);
+      adsState.campanasCargadas = true;
+      const previa = sel.value;
+      sel.innerHTML = adsState.campanas.map(c =>
+        `<option value="${c.id}">${escHtml(c.nombre)} — ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</option>`
+      ).join('') || '<option value="">Sin campañas</option>';
+      if (previa && adsState.campanas.some(c => c.id === previa)) sel.value = previa;
+    } catch (e) {
+      sel.innerHTML = '<option value="">—</option>';
+      document.getElementById('ads-tabla').innerHTML =
+        `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
+      return;
+    }
+  }
+
+  await renderAdsAnuncios();
+}
+
+async function renderAdsAnuncios() {
+  const campaignId = document.getElementById('ads-campana').value;
+  const tabla = document.getElementById('ads-tabla');
+  if (!campaignId) {
+    tabla.innerHTML = '<div class="empty-state"><div class="empty-icon">📣</div><p>Elegí una campaña.</p></div>';
+    return;
+  }
+
+  tabla.innerHTML = '<div class="empty-state"><p>Cargando anuncios...</p></div>';
+  const comision = document.getElementById('ads-comision').value || 15;
+
+  try {
+    const r = await api('GET', `/meli/ads-anuncios?campaign_id=${encodeURIComponent(campaignId)}&${adsRango()}&comision=${comision}`);
+    if (!r.ok) {
+      tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
+        <p>${escHtml(r.mensaje || r.error || 'MELI no devolvió datos.')}</p></div>`;
+      return;
+    }
+    adsState.anuncios = r.anuncios || [];
+    adsState.totales = r.totales;
+    adsState.periodo = r.periodo;
+    pintarAdsStats();
+    pintarAdsAviso();
+    pintarAdsTabla();
+  } catch (e) {
+    tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
+  }
+}
+
+function pintarAdsStats() {
+  const t = adsState.totales;
+  if (!t) return;
+  const gananciaClase = t.ganancia >= 0 ? 'green' : 'red';
+  document.getElementById('ads-stats').innerHTML = `
+    <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(t.inversion)}</div><div class="stat-label">Inversión en ads</div></div>
+    <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(t.facturacion)}</div><div class="stat-label">Facturación atribuida</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📈</div><div class="stat-value">${t.roas.toFixed(2)}x</div><div class="stat-label">ROAS de la campaña</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📦</div><div class="stat-value">${t.unidades}</div><div class="stat-label">Unidades vendidas</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${t.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${t.impresiones.toLocaleString('es-AR')} impresiones</div></div>
+    <div class="stat-card ${gananciaClase}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
+  `;
+}
+
+function pintarAdsAviso() {
+  const t = adsState.totales;
+  const cont = document.getElementById('ads-aviso');
+  if (!t) { cont.innerHTML = ''; return; }
+
+  const avisos = [];
+  if (t.anuncios_sku_sin_vincular) {
+    const lista = adsState.anuncios.filter(a => a.sku_sin_vincular)
+      .map(a => `${escHtml(a.sku)} (${escHtml(a.item_id_faltante || a.item_ids[0] || '')})`).join(', ');
+    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+      🔗 <b>${t.anuncios_sku_sin_vincular} anuncio(s) con SKU conocido pero MLU sin vincular.</b>
+      El producto ya está en el CRM; falta cargar ese MLU en “IDs de MELI” del producto en Stock para que el margen salga solo: ${lista}
+    </div>`);
+  }
+  if (t.anuncios_sin_vincular) {
+    const lista = adsState.anuncios.filter(a => a.sin_vincular && !a.sku_sin_vincular)
+      .map(a => {
+        const sku = a.sku_publicacion ? ` · SKU en MELI: <b>${escHtml(a.sku_publicacion)}</b>` : ' · la publicación no tiene SKU cargado';
+        const link = a.permalink ? ` <a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--accent)">ver publicación ↗</a>` : '';
+        return `<li style="margin-top:4px">${escHtml(a.titulo)}${sku}${link}</li>`;
+      }).join('');
+    avisos.push(`<div style="background:rgba(239,68,68,0.10);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;font-size:13px">
+      ⚠️ <b>${t.anuncios_sin_vincular} anuncio(s) sin producto en el CRM.</b> Sin costo no hay margen ni ROAS de equilibrio.
+      <ul style="margin:6px 0 0 18px">${lista}</ul>
+    </div>`);
+  }
+  cont.innerHTML = avisos.join('');
+}
+
+function ordenarAds(campo) {
+  const o = adsState.orden;
+  o.dir = o.campo === campo && o.dir === 'desc' ? 'asc' : 'desc';
+  o.campo = campo;
+  pintarAdsTabla();
+}
+
+function pintarAdsTabla() {
+  const { campo, dir } = adsState.orden;
+  const filas = [...adsState.anuncios].sort((a, b) => {
+    const va = a[campo] ?? -Infinity, vb = b[campo] ?? -Infinity;
+    return dir === 'desc' ? vb - va : va - vb;
+  });
+
+  if (!filas.length) {
+    document.getElementById('ads-tabla').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">📣</div><p>La campaña no tiene anuncios con datos en el período.</p></div>';
+    return;
+  }
+
+  const th = (label, c, align = 'right') =>
+    `<th style="text-align:${align};cursor:pointer;white-space:nowrap" onclick="ordenarAds('${c}')">${label}${campo === c ? (dir === 'desc' ? ' ↓' : ' ↑') : ''}</th>`;
+
+  const semaforo = {
+    ganando:   '<span class="badge badge-green">🟢 Rentable</span>',
+    al_filo:   '<span class="badge badge-yellow">🟡 Al filo</span>',
+    perdiendo: '<span class="badge badge-red">🔴 Pierde</span>',
+    sin_costo: '<span class="badge badge-gray">Sin costo</span>',
+    sin_margen:'<span class="badge badge-red">Margen ≤ 0</span>',
+    sin_datos: '<span class="badge badge-gray">Sin datos</span>',
+  };
+
+  document.getElementById('ads-tabla').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Producto</th>
+        ${th('Impres.', 'impresiones')}
+        ${th('Clics', 'clics')}
+        ${th('CTR', 'ctr')}
+        ${th('CPC', 'cpc')}
+        ${th('Inversión', 'inversion')}
+        ${th('Vtas', 'unidades')}
+        ${th('Facturación', 'facturacion')}
+        ${th('ROAS', 'roas')}
+        ${th('ROAS BE', 'roas_breakeven')}
+        ${th('Margen', 'margen')}
+        ${th('CPC máx', 'cpc_max')}
+        ${th('Ganancia', 'ganancia')}
+        <th style="text-align:center">Estado</th>
+      </tr></thead>
+      <tbody>${filas.map(a => {
+        const be = a.roas_breakeven;
+        // El CPC actual contra el techo: es la palanca concreta para subir o bajar la puja.
+        const cpcColor = a.cpc_max == null ? 'var(--text-muted)'
+          : a.cpc <= a.cpc_max ? 'var(--green)' : 'var(--red)';
+        const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
+        const titulo = a.permalink
+          ? `<a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(a.titulo)} ↗</a>`
+          : escHtml(a.titulo);
+        return `
+        <tr>
+          <td style="min-width:260px">
+            <div style="display:flex;gap:10px;align-items:center">
+              ${a.thumbnail ? `<img src="${escHtml(a.thumbnail)}" style="width:38px;height:38px;object-fit:contain;border-radius:6px;background:var(--surface2)">` : ''}
+              <div>
+                <div style="font-weight:500;font-size:13px">${titulo}</div>
+                <div style="font-size:11px;color:var(--text-muted)">
+                  ${a.sku ? `SKU ${escHtml(a.sku)}` : '<span style="color:var(--red)">sin vincular</span>'}
+                  ${a.variantes > 1 ? ` · ${a.variantes} variantes` : ''}
+                  ${a.costo != null ? ` · costo ${fmt(a.costo)}` : ''}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align:right">${a.impresiones.toLocaleString('es-AR')}</td>
+          <td style="text-align:right">${a.clics.toLocaleString('es-AR')}</td>
+          <td style="text-align:right">${a.ctr.toFixed(2)}%</td>
+          <td style="text-align:right">${fmt(a.cpc)}</td>
+          <td style="text-align:right">${fmt(a.inversion)}</td>
+          <td style="text-align:right">${a.unidades}</td>
+          <td style="text-align:right">${fmt(a.facturacion)}</td>
+          <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
+          <td style="text-align:right">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
+          <td style="text-align:right">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
+          <td style="text-align:right;color:${cpcColor}">${a.cpc_max != null ? fmt(a.cpc_max) : '—'}</td>
+          <td style="text-align:right;font-weight:600;color:${a.ganancia == null ? 'var(--text-muted)' : a.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${a.ganancia != null ? fmt(a.ganancia) : '—'}</td>
+          <td style="text-align:center">${semaforo[a.estado] || ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+function exportAdsCSV() {
+  if (!adsState.anuncios.length) return alert('No hay anuncios para exportar.');
+  const cols = ['titulo', 'sku', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
+    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'margen', 'cpa_max', 'cpc_max', 'ganancia', 'estado'];
+  const filas = adsState.anuncios.map(a => cols.map(c => {
+    const v = a[c];
+    return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
+  }).join(','));
+  const csv = [cols.join(','), ...filas].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ads-${adsState.periodo?.desde || 'periodo'}_${adsState.periodo?.hasta || ''}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 async function init() {

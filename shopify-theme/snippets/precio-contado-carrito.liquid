@@ -27,6 +27,13 @@
   assign factor = 100 | minus: pct
   assign contado = base | times: factor | divided_by: 100 | floor
   assign ahorro = base | minus: contado
+
+  # Un name distinto por instancia: el drawer esta en el DOM de todas las paginas,
+  # asi que en /cart conviven dos selectores y los radios se pisarian entre si.
+  assign grupo = 'a'
+  if drawer
+    assign grupo = 'drawer'
+  endif
 -%}
 
 {%- if cart.item_count > 0 and pct > 0 and base > 0 -%}
@@ -39,11 +46,12 @@
     data-val-tarjeta="{{ val_tarjeta | escape }}"
     data-quiere="{% if quiere_contado %}contado{% else %}tarjeta{% endif %}"
     data-aplicado="{% if aplicado %}true{% else %}false{% endif %}"
+    data-grupo="pago-contado-{{ grupo }}"
   >
     <p class="pago-contado__titulo">¿Cómo vas a pagar?</p>
 
     <label class="pago-contado__opcion{% if quiere_contado %} pago-contado__opcion--activa{% endif %}">
-      <input type="radio" name="pago-contado-opcion" value="contado"{% if quiere_contado %} checked{% endif %}>
+      <input type="radio" name="pago-contado-{{ grupo }}" value="contado"{% if quiere_contado %} checked{% endif %}>
       <span class="pago-contado__texto">
         <span class="pago-contado__nombre">Transferencia o efectivo</span>
         <span class="pago-contado__detalle">
@@ -53,7 +61,7 @@
     </label>
 
     <label class="pago-contado__opcion{% unless quiere_contado %} pago-contado__opcion--activa{% endunless %}">
-      <input type="radio" name="pago-contado-opcion" value="tarjeta"{% unless quiere_contado %} checked{% endunless %}>
+      <input type="radio" name="pago-contado-{{ grupo }}" value="tarjeta"{% unless quiere_contado %} checked{% endunless %}>
       <span class="pago-contado__texto">
         <span class="pago-contado__nombre">Tarjeta, débito o cuotas</span>
         <span class="pago-contado__detalle">{{ base | money }}</span>
@@ -73,24 +81,27 @@
 
   <script>
     (function () {
-      var box = document.querySelector('[data-pago-contado]');
-      if (!box || box.dataset.listo) return;
-      box.dataset.listo = '1';
+      // El drawer del carrito existe en el DOM de todas las paginas, asi que en
+      // /cart puede haber DOS selectores a la vez. Hay que enlazar todos: con
+      // querySelector (singular) el segundo quedaba sin responder al clic.
+      var cajas = document.querySelectorAll('[data-pago-contado]');
+      if (!cajas.length) return;
 
-      var estado = box.querySelector('[data-pago-contado-estado]');
       var raiz = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
-      var CLAVE = 'precio-contado-reintento';
+      var CLAVE_REINTENTO = 'precio-contado-reintento';
+      var CLAVE_ABRIR = 'precio-contado-abrir-drawer';
 
-      function memo(accion, valor) {
+      function memo(accion, clave, valor) {
         try {
-          if (accion === 'get') return window.sessionStorage.getItem(CLAVE);
-          if (accion === 'set') window.sessionStorage.setItem(CLAVE, valor);
-          if (accion === 'del') window.sessionStorage.removeItem(CLAVE);
+          if (accion === 'get') return window.sessionStorage.getItem(clave);
+          if (accion === 'set') window.sessionStorage.setItem(clave, valor);
+          if (accion === 'del') window.sessionStorage.removeItem(clave);
         } catch (e) {}
         return null;
       }
 
-      function aplicar(contado) {
+      function aplicar(box, contado) {
+        var estado = box.querySelector('[data-pago-contado-estado]');
         var attrs = {};
         attrs[box.dataset.attr] = contado ? box.dataset.valContado : box.dataset.valTarjeta;
 
@@ -110,6 +121,11 @@
             return r.json();
           })
           .then(function () {
+            // Si el clic salio del drawer, dejar marcado que hay que volver a
+            // abrirlo: la recarga lo cierra y el cliente perdia de vista el carrito.
+            if (box.closest && box.closest('cart-drawer')) {
+              memo('set', CLAVE_ABRIR, '1');
+            }
             window.location.reload();
           })
           .catch(function () {
@@ -120,29 +136,44 @@
           });
       }
 
-      box.addEventListener('change', function (ev) {
-        var input = ev.target;
-        if (!input || input.name !== 'pago-contado-opcion') return;
-        memo('del');
-        aplicar(input.value === 'contado');
-      });
+      for (var i = 0; i < cajas.length; i++) {
+        (function (box) {
+          if (box.dataset.listo) return;
+          box.dataset.listo = '1';
+          box.addEventListener('change', function (ev) {
+            var input = ev.target;
+            if (!input || input.name !== box.dataset.grupo) return;
+            memo('del', CLAVE_REINTENTO);
+            aplicar(box, input.value === 'contado');
+          });
+        })(cajas[i]);
+      }
+
+      // Reabrir el drawer despues de la recarga.
+      if (memo('get', CLAVE_ABRIR)) {
+        memo('del', CLAVE_ABRIR);
+        var drawer = document.querySelector('cart-drawer');
+        if (drawer && typeof drawer.open === 'function') drawer.open();
+      }
 
       // Autocorreccion: el cliente pidio contado pero el descuento no quedo puesto
-      // (codigo vencido, carrito viejo, fallo de red). Se reintenta una sola vez por
-      // sesion para no entrar en un bucle de recargas si el codigo no existe.
-      var quiereContado = box.dataset.quiere === 'contado';
-      var aplicado = box.dataset.aplicado === 'true';
+      // (codigo vencido, carrito viejo, fallo de red). Una sola vez por sesion,
+      // para no entrar en un bucle de recargas si el codigo no existe.
+      var primera = cajas[0];
+      var quiereContado = primera.dataset.quiere === 'contado';
+      var aplicado = primera.dataset.aplicado === 'true';
 
       if (quiereContado && aplicado) {
-        memo('del');
+        memo('del', CLAVE_REINTENTO);
       } else if (quiereContado && !aplicado) {
-        if (memo('get')) {
-          if (estado) {
-            estado.textContent = 'No pudimos aplicar el descuento. Avisanos y lo resolvemos.';
+        if (memo('get', CLAVE_REINTENTO)) {
+          for (var j = 0; j < cajas.length; j++) {
+            var e = cajas[j].querySelector('[data-pago-contado-estado]');
+            if (e) e.textContent = 'No pudimos aplicar el descuento. Avisanos y lo resolvemos.';
           }
         } else {
-          memo('set', '1');
-          aplicar(true);
+          memo('set', CLAVE_REINTENTO, '1');
+          aplicar(primera, true);
         }
       }
     })();

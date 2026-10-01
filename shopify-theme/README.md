@@ -171,7 +171,41 @@ app custom desplegada con Shopify CLI.
 10% exacto; si la ficha redondeara a múltiplos de $10 ($1.490 → $1.340) se exhibiría
 $1 menos de lo que se cobra ($1.341). Lo exhibido tiene que ser lo cobrado.
 
-### OJO: el carrito de esta tienda es un drawer
+### El selector en el drawer
+
+El drawer de Shrine acepta un bloque **Custom Liquid** (`snippets/cart-drawer.liquid`
+lo renderiza en las lineas 539 y 820, con una opcion `position` body/footer). Asi
+que el selector entra ahi desde el editor de temas, sin tocar los 53KB del drawer:
+
+1. Editor de temas → seccion **Cart drawer** → **Agregar bloque** → **Custom Liquid**
+2. Position: **footer**, arrastrarlo arriba del bloque Subtotals
+3. Contenido:
+   ```liquid
+   {% render 'precio-contado-carrito', drawer: true %}
+   ```
+
+El `drawer: true` no es decorativo: le da a los radios un `name` distinto. El drawer
+esta en el DOM de **todas** las paginas, asi que en `/cart` conviven dos instancias
+del selector y sin eso los radios de una pisarian a los de la otra.
+
+Por lo mismo el JS enlaza con `querySelectorAll`, no `querySelector`: con el
+singular, la segunda instancia no respondia al clic.
+
+Al elegir, la pagina recarga (es la unica forma confiable de refrescar los totales
+en cualquier theme). Si el clic salio del drawer, queda una marca en sessionStorage
+y el drawer se vuelve a abrir solo despues de la recarga.
+
+### Nota: el placeholder de "Ahorros"
+
+El bloque Subtotals del drawer trae configurado `-[ahorros]`, pero Shrine reemplaza
+el token **`[savings]`** (`snippets/cart-drawer.liquid:577`). Con `[ahorros]` se
+imprime el texto literal. No se notaba porque la fila de ahorros solo aparece cuando
+hay descuento, y antes nunca habia uno. Se arregla en el editor de temas, campo
+"savings right text" del bloque Subtotals.
+
+### Si preferis el carrito como pagina
+
+### Alternativa: cart_type = page
 
 `settings_data.json` tiene `"cart_type": "drawer"`. El selector está en
 `main-cart-footer.liquid`, que es la página `/cart` — con drawer activo, el cliente

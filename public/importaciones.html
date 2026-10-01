@@ -35,7 +35,7 @@
   }
 
   #sidebar {
-    width: 220px; min-height: 100vh;
+    width: 220px; height: 100vh;
     background: var(--surface); border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     position: fixed; top: 0; left: 0; bottom: 0; z-index: 100;
@@ -43,7 +43,17 @@
   .logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
   .logo-title { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
   .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
-  nav { flex: 1; padding: 12px 0; }
+  /* Sólo scrollea la lista; el logo y el pie quedan fijos. min-height:0 es lo que deja
+     que el hijo flex se encoja y recorte de verdad. */
+  nav {
+    flex: 1; min-height: 0; padding: 12px 0;
+    overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  nav::-webkit-scrollbar { width: 8px; }
+  nav::-webkit-scrollbar-track { background: transparent; }
+  nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  nav::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
   .nav-section { padding: 6px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
   .nav-item {
     display: flex; align-items: center; gap: 10px; padding: 9px 20px;

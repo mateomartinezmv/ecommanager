@@ -113,5 +113,42 @@ console.log('\n--- el drawer se re-renderiza: el listener tiene que sobrevivir -
   chk(d.querySelector('.cart-drawer__footer .total').textContent === '$2.061,00', 'y actualiza el total');
 }
 
+// ---------------------------------------------------------------
+console.log('\n--- EL BUG DE "A VECES": la pagina carga con el carrito VACIO ---');
+{
+  // Carrito vacio: el bloque del selector no renderiza. El <script> SI, porque
+  // ahora vive fuera del if; antes tampoco renderizaba y no quedaba listener.
+  const vacio = `<!doctype html><html><body>
+    <cart-drawer><div id="CartDrawer"><div class="drawer__inner"><div class="drawer__footer"></div></div></div></cart-drawer>
+  </body></html>`;
+  const frescoHTML = pagina('contado', 'true', 'Descuento aplicado.', '$621,00');
+  const { d, pedidos } = montar(vacio, { sections: { 'cart-drawer': frescoHTML } });
+
+  chk(d.querySelector('[data-pago-contado]') === null, 'arranca sin selector (carrito vacio)');
+
+  // El cliente agrega un producto: Shrine re-renderiza el drawer con innerHTML.
+  // Los <script> insertados asi NO se ejecutan.
+  d.querySelector('.drawer__footer').innerHTML =
+    caja('tarjeta', 'false', 'Elegí transferencia o efectivo.') +
+    '<div class="cart-drawer__footer"><p class="total">$690,00</p></div>';
+
+  d.querySelector('input[value="contado"]').click();
+  await esperar();
+
+  chk(pedidos.length === 1, 'el selector responde igual: el listener ya estaba puesto');
+  chk(d.querySelector('.cart-drawer__footer .total').textContent === '$621,00', 'y actualiza el total');
+}
+
+// ---------------------------------------------------------------
+console.log('\n--- un error adentro no puede tumbar el resto del JS ---');
+{
+  const { w, errores } = montar(
+    pagina('contado', 'false', 'Aplicando el descuento...', '$690,00'),
+    null  // respuesta rota: data.sections no existe
+  );
+  chk(!errores.some((e) => /is not a function|undefined/i.test(e)),
+      'con una respuesta rota no explota sin control');
+}
+
 console.log(fallos === 0 ? '\nTODO OK' : `\n${fallos} FALLOS`);
 process.exit(fallos === 0 ? 0 : 1);

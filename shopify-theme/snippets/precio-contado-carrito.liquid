@@ -78,7 +78,15 @@
       {%- endif -%}
     </p>
   </div>
+{%- endif -%}
 
+  {%- comment -%}
+    El script va FUERA del if a proposito. Si la pagina carga con el carrito
+    vacio el bloque de arriba no renderiza, y si el script viviera adentro no se
+    ejecutaria nunca: despues el cliente agrega un producto, Shrine re-renderiza
+    el drawer con innerHTML (los <script> insertados asi no corren) y el selector
+    quedaba sin listener. Afuera, el listener se engancha siempre.
+  {%- endcomment -%}
   <script>
     (function () {
       // Delegacion en document, a proposito. El drawer de Shrine se re-renderiza
@@ -237,11 +245,15 @@
         }
       }
 
+      function alCargarSeguro() {
+        // Nada de lo de aca puede tumbar el resto del JS de la pagina.
+        try { alCargar(); } catch (e) {}
+      }
+
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', alCargar);
+        document.addEventListener('DOMContentLoaded', alCargarSeguro);
       } else {
-        alCargar();
+        alCargarSeguro();
       }
     })();
   </script>
-{%- endif -%}

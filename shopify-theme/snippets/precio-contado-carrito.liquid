@@ -81,11 +81,13 @@
 
   <script>
     (function () {
-      // El drawer del carrito existe en el DOM de todas las paginas, asi que en
-      // /cart puede haber DOS selectores a la vez. Hay que enlazar todos: con
-      // querySelector (singular) el segundo quedaba sin responder al clic.
-      var cajas = document.querySelectorAll('[data-pago-contado]');
-      if (!cajas.length) return;
+      // Delegacion en document, a proposito. El drawer de Shrine se re-renderiza
+      // con innerHTML cuando cambia el carrito, y los <script> insertados asi NO
+      // se ejecutan: enganchar el listener a cada caja dejaba el selector mudo
+      // apenas agregabas un producto. El listener en document sobrevive a
+      // cualquier re-render, haya o no corrido este script de nuevo.
+      if (window.__precioContadoListo) return;
+      window.__precioContadoListo = true;
 
       var raiz = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
       var CLAVE_REINTENTO = 'precio-contado-reintento';
@@ -103,7 +105,9 @@
       function aplicar(box, contado) {
         var estado = box.querySelector('[data-pago-contado-estado]');
         var attrs = {};
-        attrs[box.dataset.attr] = contado ? box.dataset.valContado : box.dataset.valTarjeta;
+        attrs[box.getAttribute('data-attr')] = contado
+          ? box.getAttribute('data-val-contado')
+          : box.getAttribute('data-val-tarjeta');
 
         box.setAttribute('aria-busy', 'true');
         if (estado) estado.textContent = 'Actualizando el total...';
@@ -113,7 +117,7 @@
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({
             attributes: attrs,
-            discount: contado ? box.dataset.codigo : ''
+            discount: contado ? box.getAttribute('data-codigo') : ''
           })
         })
           .then(function (r) {
@@ -121,8 +125,7 @@
             return r.json();
           })
           .then(function () {
-            // Si el clic salio del drawer, dejar marcado que hay que volver a
-            // abrirlo: la recarga lo cierra y el cliente perdia de vista el carrito.
+            // La recarga cierra el drawer; dejar marcado que hay que reabrirlo.
             if (box.closest && box.closest('cart-drawer')) {
               memo('set', CLAVE_ABRIR, '1');
             }
@@ -136,45 +139,50 @@
           });
       }
 
-      for (var i = 0; i < cajas.length; i++) {
-        (function (box) {
-          if (box.dataset.listo) return;
-          box.dataset.listo = '1';
-          box.addEventListener('change', function (ev) {
-            var input = ev.target;
-            if (!input || input.name !== box.dataset.grupo) return;
-            memo('del', CLAVE_REINTENTO);
-            aplicar(box, input.value === 'contado');
-          });
-        })(cajas[i]);
-      }
-
-      // Reabrir el drawer despues de la recarga.
-      if (memo('get', CLAVE_ABRIR)) {
-        memo('del', CLAVE_ABRIR);
-        var drawer = document.querySelector('cart-drawer');
-        if (drawer && typeof drawer.open === 'function') drawer.open();
-      }
-
-      // Autocorreccion: el cliente pidio contado pero el descuento no quedo puesto
-      // (codigo vencido, carrito viejo, fallo de red). Una sola vez por sesion,
-      // para no entrar en un bucle de recargas si el codigo no existe.
-      var primera = cajas[0];
-      var quiereContado = primera.dataset.quiere === 'contado';
-      var aplicado = primera.dataset.aplicado === 'true';
-
-      if (quiereContado && aplicado) {
+      document.addEventListener('change', function (ev) {
+        var input = ev.target;
+        if (!input || input.type !== 'radio') return;
+        if (!input.name || input.name.indexOf('pago-contado-') !== 0) return;
+        var box = input.closest ? input.closest('[data-pago-contado]') : null;
+        if (!box) return;
         memo('del', CLAVE_REINTENTO);
-      } else if (quiereContado && !aplicado) {
-        if (memo('get', CLAVE_REINTENTO)) {
-          for (var j = 0; j < cajas.length; j++) {
-            var e = cajas[j].querySelector('[data-pago-contado-estado]');
-            if (e) e.textContent = 'No pudimos aplicar el descuento. Avisanos y lo resolvemos.';
-          }
-        } else {
-          memo('set', CLAVE_REINTENTO, '1');
-          aplicar(primera, true);
+        aplicar(box, input.value === 'contado');
+      });
+
+      function alCargar() {
+        if (memo('get', CLAVE_ABRIR)) {
+          memo('del', CLAVE_ABRIR);
+          var drawer = document.querySelector('cart-drawer');
+          if (drawer && typeof drawer.open === 'function') drawer.open();
         }
+
+        var caja = document.querySelector('[data-pago-contado]');
+        if (!caja) return;
+
+        var quiereContado = caja.getAttribute('data-quiere') === 'contado';
+        var aplicado = caja.getAttribute('data-aplicado') === 'true';
+
+        if (quiereContado && aplicado) {
+          memo('del', CLAVE_REINTENTO);
+        } else if (quiereContado && !aplicado) {
+          // Pidio contado pero el descuento no quedo puesto. Una sola vez por
+          // sesion, para no entrar en un bucle de recargas si el codigo no existe.
+          if (memo('get', CLAVE_REINTENTO)) {
+            var notas = document.querySelectorAll('[data-pago-contado-estado]');
+            for (var i = 0; i < notas.length; i++) {
+              notas[i].textContent = 'No pudimos aplicar el descuento. Avisanos y lo resolvemos.';
+            }
+          } else {
+            memo('set', CLAVE_REINTENTO, '1');
+            aplicar(caja, true);
+          }
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', alCargar);
+      } else {
+        alCargar();
       }
     })();
   </script>

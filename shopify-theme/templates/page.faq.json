@@ -39,7 +39,7 @@
             "icon": "local_shipping",
             "filled_icon": false,
             "open": false,
-            "row_content": "<p><strong>Envío gratis</strong> en compras desde $1.200. Por debajo de ese monto se cobra el costo del envío en el checkout.</p><p>Comprando antes de las 16 h, en <strong>Montevideo llega en el día</strong>. Al interior se despacha por agencia y suele llegar en 1 a 3 días hábiles.</p>",
+            "row_content": "<p><strong>Envío gratis</strong> en compras desde $990. Por debajo de ese monto se cobra el costo del envío en el checkout.</p><p>Comprando antes de las 16 h, en <strong>Montevideo llega en el día</strong>. Al interior se despacha por agencia y suele llegar en 1 a 3 días hábiles.</p><p>Si lo necesitás en el momento, en Montevideo tenemos <strong>envío FLASH por PedidosYa en 1 a 2 horas</strong>, con un costo adicional que ves en el checkout.</p>",
             "page": ""
           }
         },
@@ -61,7 +61,7 @@
             "icon": "two_wheeler",
             "filled_icon": false,
             "open": false,
-            "row_content": "<p>Escribinos por WhatsApp al <strong>091 014 716</strong> con la marca, el modelo y el año de tu moto. Te confirmamos la compatibilidad antes de que compres.</p>",
+            "row_content": "<p>Escribinos por WhatsApp al <strong>092 085 878</strong> con la marca, el modelo y el año de tu moto. Te confirmamos la compatibilidad antes de que compres.</p>",
             "page": ""
           }
         },

@@ -259,8 +259,8 @@ premium de Shrine y se pueden mover o apagar desde el editor.
 | `mm-footer-info.liquid` | Local, atención, envíos y pagos | Grupo del footer |
 
 Datos duros que viven en los snippets (si cambian, hay que editarlos): WhatsApp
-`59891014716`, dirección Pedro Celestino Bauzá 4264, umbral de envío gratis `$1.200`,
-`martinezmotos.uy@gmail.com`.
+`59892085878` (092 085 878, el teléfono de la empresa), dirección Pedro Celestino
+Bauzá 4264, umbral de envío gratis `$990`, `martinezmotos.uy@gmail.com`.
 
 ## Cambios por plantilla
 
@@ -282,6 +282,22 @@ Datos duros que viven en los snippets (si cambian, hay que editarlos): WhatsApp
 - **Header**: el ticker arranca con el 10% contado y suma el retiro en el local; íconos en
   español; se quitaron los selectores de país e idioma (la tienda es solo UY/español).
 - **Footer**: franja de datos de contacto, menú de ayuda, políticas visibles y marca.
+
+## `config/settings_data.json`
+
+Se toca sólo para lo que no vive en una plantilla:
+
+- `goal` del bloque *progress bar* del carrito: **990** (antes 1200). Si no se cambia acá,
+  la barra del carrito promete envío gratis a partir de otro monto que el resto del sitio.
+- `sale_badge_text`: `-[percentage]` (antes `SAVE [percentage]`, en inglés, y sale en todas
+  las tarjetas de producto con descuento).
+- `product_cards_custom_badges_list`, `cart_timer_text`, `cart_progress_message` y
+  `cart_progress_success_message`: traducidos.
+
+Este archivo es grande y contiene los tokens de licencia de Shrine, así que no se
+transcribe a mano: se sube con `stagedUploadsCreate` + `curl` y después
+`themeFilesUpsert` con `body: { type: URL }`. El ETag que devuelve Google Storage es el
+MD5 del archivo, así que sirve para confirmar que llegó íntegro.
 
 ## Cosas que no son del tema
 

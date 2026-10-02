@@ -104,7 +104,7 @@
           "type": "product_emoji-benefits",
           "name": "Beneficios",
           "settings": {
-            "benefits": "<p>💸 <strong>10% off</strong> pagando por transferencia o efectivo</p><p>🏪 <strong>Retiro gratis</strong> en nuestro local de Belvedere</p><p>🚚 <strong>Envío gratis</strong> en compras desde $1.200</p><p>🔄 Si llega fallado, <strong>te lo cambiamos</strong></p>",
+            "benefits": "<p>💸 <strong>10% off</strong> pagando por transferencia o efectivo</p><p>🏪 <strong>Retiro gratis</strong> en nuestro local de Belvedere</p><p>🚚 <strong>Envío gratis</strong> en compras desde $990</p><p>🔄 Si llega fallado, <strong>te lo cambiamos</strong></p>",
             "margin_top": 6,
             "margin_bottom": 18
           },
@@ -258,7 +258,7 @@
             "icon": "local_shipping",
             "filled_icon": false,
             "open": false,
-            "row_content": "<p><strong>Envío gratis</strong> en compras desde $1.200. Comprando antes de las 16 h, en Montevideo llega en el día; al interior va por agencia.</p><p>También podés <strong>retirarlo sin costo</strong> en Pedro Celestino Bauzá 4264, Belvedere, Montevideo.</p>",
+            "row_content": "<p><strong>Envío gratis</strong> en compras desde $990. Comprando antes de las 16 h, en Montevideo llega en el día; al interior va por agencia.</p><p>Si lo necesitás ya, en Montevideo también tenemos <strong>envío FLASH por PedidosYa en 1 a 2 horas</strong>.</p><p>También podés <strong>retirarlo sin costo</strong> en Pedro Celestino Bauzá 4264, Belvedere, Montevideo.</p>",
             "page": ""
           }
         },
@@ -269,7 +269,7 @@
             "icon": "two_wheeler",
             "filled_icon": false,
             "open": false,
-            "row_content": "<p>Escribinos por WhatsApp al <strong>091 014 716</strong> con la marca, el modelo y el año de tu moto y te confirmamos la compatibilidad antes de que compres.</p>",
+            "row_content": "<p>Escribinos por WhatsApp al <strong>092 085 878</strong> con la marca, el modelo y el año de tu moto y te confirmamos la compatibilidad antes de que compres.</p>",
             "page": ""
           }
         },

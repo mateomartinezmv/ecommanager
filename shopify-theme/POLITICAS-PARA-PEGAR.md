@@ -11,7 +11,7 @@ van redactadas acá para copiar y pegar en:
 
 > Leelas antes de publicarlas y ajustá plazos o condiciones si algo no coincide con cómo
 > trabajás. Están escritas en base a lo que me contaste (cambio si llega fallado, envío
-> gratis desde $1.200, retiro en el local) más el derecho de retracto de 5 días que exige
+> gratis desde $990, retiro en el local) más el derecho de retracto de 5 días que exige
 > la Ley 17.250 para ventas a distancia en Uruguay. No es asesoramiento legal.
 
 ---
@@ -21,7 +21,7 @@ van redactadas acá para copiar y pegar en:
 ### Cambios y devoluciones
 
 Queremos que el accesorio que compraste te sirva. Si algo no está bien, escribinos a
-**martinezmotos.uy@gmail.com** o por WhatsApp al **091 014 716** y lo resolvemos.
+**martinezmotos.uy@gmail.com** o por WhatsApp al **092 085 878** y lo resolvemos.
 
 #### Si el producto llega fallado o dañado
 
@@ -59,9 +59,9 @@ Bauzá 4264, Belvedere, Montevideo.
 
 ### Envíos y retiros
 
-#### Envío gratis desde $1.200
+#### Envío gratis desde $990
 
-Todas las compras de **$1.200 o más** tienen envío sin costo. Por debajo de ese monto, el
+Todas las compras de **$990 o más** tienen envío sin costo. Por debajo de ese monto, el
 costo del envío se calcula y se muestra en el checkout antes de que pagues.
 
 #### Montevideo
@@ -83,7 +83,7 @@ efectivo, además te queda el 10% de descuento.
 #### Seguimiento
 
 Cuando despachamos tu pedido te mandamos un mail con la confirmación. Si querés saber en qué
-anda, escribinos por WhatsApp al **091 014 716** y te contamos.
+anda, escribinos por WhatsApp al **092 085 878** y te contamos.
 
 #### Si tu pedido no llega
 

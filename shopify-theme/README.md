@@ -191,9 +191,15 @@ del selector y sin eso los radios de una pisarian a los de la otra.
 Por lo mismo el JS enlaza con `querySelectorAll`, no `querySelector`: con el
 singular, la segunda instancia no respondia al clic.
 
-Al elegir, la pagina recarga (es la unica forma confiable de refrescar los totales
-en cualquier theme). Si el clic salio del drawer, queda una marca en sessionStorage
-y el drawer se vuelve a abrir solo despues de la recarga.
+Al elegir **no se recarga la pagina**: se usa la Section Rendering API
+(`sections` en el body de `/cart/update.js`) y se reemplazan en el lugar solo dos
+piezas, `[data-pago-contado]` y `.cart-drawer__footer` (los totales). No se toca
+`<cart-drawer>` ni `.drawer__inner`, que es donde vive el estado de abierto, asi
+que el drawer queda abierto y el cambio se ve al instante.
+
+Si por lo que sea la seccion no vuelve en la respuesta, cae a recargar la pagina,
+que siempre funciona. En ese camino queda una marca en sessionStorage para reabrir
+el drawer despues de la recarga.
 
 ### Nota: el placeholder de "Ahorros"
 

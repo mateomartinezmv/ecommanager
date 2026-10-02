@@ -84,14 +84,22 @@
       // Delegacion en document, a proposito. El drawer de Shrine se re-renderiza
       // con innerHTML cuando cambia el carrito, y los <script> insertados asi NO
       // se ejecutan: enganchar el listener a cada caja dejaba el selector mudo
-      // apenas agregabas un producto. El listener en document sobrevive a
-      // cualquier re-render, haya o no corrido este script de nuevo.
+      // apenas agregabas un producto.
       if (window.__precioContadoListo) return;
       window.__precioContadoListo = true;
 
       var raiz = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
       var CLAVE_REINTENTO = 'precio-contado-reintento';
       var CLAVE_ABRIR = 'precio-contado-abrir-drawer';
+
+      // Que se refresca de cada seccion. Solo estas piezas cambian al pasar de
+      // contado a tarjeta, asi que se reemplazan en el lugar con la Section
+      // Rendering API en vez de recargar la pagina. Importante no tocar
+      // <cart-drawer> ni .drawer__inner: ahi vive el estado de abierto/cerrado.
+      var PIEZAS = [
+        { seccion: 'cart-drawer', raiz: 'cart-drawer', partes: ['[data-pago-contado]', '.cart-drawer__footer'] },
+        { seccion: 'main-cart-footer', raiz: '#main-cart-footer', partes: ['[data-pago-contado]', '.js-contents'] }
+      ];
 
       function memo(accion, clave, valor) {
         try {
@@ -102,6 +110,41 @@
         return null;
       }
 
+      function seccionesPresentes() {
+        var out = [];
+        for (var i = 0; i < PIEZAS.length; i++) {
+          if (document.querySelector(PIEZAS[i].raiz)) out.push(PIEZAS[i]);
+        }
+        return out;
+      }
+
+      // Dos fases: primero se resuelve todo, recien despues se toca el DOM. Si
+      // algo falta, no se reemplaza nada y queda la pagina entera consistente
+      // para el fallback, en vez de un DOM a medio actualizar.
+      function planear(secciones, html) {
+        var pares = [];
+        for (var i = 0; i < secciones.length; i++) {
+          var def = secciones[i];
+          var crudo = html && html[def.seccion];
+          if (!crudo) return null;
+
+          var doc = new DOMParser().parseFromString(crudo, 'text/html');
+          var fresca = doc.querySelector(def.raiz) || doc.body;
+          var viva = document.querySelector(def.raiz);
+          if (!viva) return null;
+
+          for (var j = 0; j < def.partes.length; j++) {
+            var frescos = fresca.querySelectorAll(def.partes[j]);
+            var vivos = viva.querySelectorAll(def.partes[j]);
+            if (!frescos.length || frescos.length !== vivos.length) return null;
+            for (var k = 0; k < vivos.length; k++) {
+              pares.push([vivos[k], frescos[k].outerHTML]);
+            }
+          }
+        }
+        return pares.length ? pares : null;
+      }
+
       function aplicar(box, contado) {
         var estado = box.querySelector('[data-pago-contado-estado]');
         var attrs = {};
@@ -109,26 +152,40 @@
           ? box.getAttribute('data-val-contado')
           : box.getAttribute('data-val-tarjeta');
 
+        var enDrawer = !!(box.closest && box.closest('cart-drawer'));
+        var secciones = seccionesPresentes();
+        var nombres = [];
+        for (var i = 0; i < secciones.length; i++) nombres.push(secciones[i].seccion);
+
         box.setAttribute('aria-busy', 'true');
         if (estado) estado.textContent = 'Actualizando el total...';
+
+        var cuerpo = {
+          attributes: attrs,
+          discount: contado ? box.getAttribute('data-codigo') : ''
+        };
+        if (nombres.length) {
+          cuerpo.sections = nombres.join(',');
+          cuerpo.sections_url = window.location.pathname;
+        }
 
         return fetch(raiz + 'cart/update.js', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({
-            attributes: attrs,
-            discount: contado ? box.getAttribute('data-codigo') : ''
-          })
+          body: JSON.stringify(cuerpo)
         })
           .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
           })
-          .then(function () {
-            // La recarga cierra el drawer; dejar marcado que hay que reabrirlo.
-            if (box.closest && box.closest('cart-drawer')) {
-              memo('set', CLAVE_ABRIR, '1');
+          .then(function (data) {
+            var pares = planear(secciones, data && data.sections);
+            if (pares) {
+              for (var i = 0; i < pares.length; i++) pares[i][0].outerHTML = pares[i][1];
+              return;
             }
+            // No se pudo refrescar en el lugar: recargar, que siempre funciona.
+            if (enDrawer) memo('set', CLAVE_ABRIR, '1');
             window.location.reload();
           })
           .catch(function () {
@@ -150,6 +207,7 @@
       });
 
       function alCargar() {
+        // Solo para el camino de fallback: si hubo recarga, reabrir el drawer.
         if (memo('get', CLAVE_ABRIR)) {
           memo('del', CLAVE_ABRIR);
           var drawer = document.querySelector('cart-drawer');

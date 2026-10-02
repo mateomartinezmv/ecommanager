@@ -1,0 +1,79 @@
+{%- comment -%}
+  Banda de contacto / cierre - Martinez Motos
+  {% render 'mm-contacto' %}
+{%- endcomment -%}
+
+{%- assign mm_wa = '59891014716' -%}
+
+<style>
+  .mm-cta {
+    max-width: 140rem;
+    margin-inline: auto;
+    padding: 4rem 3.2rem;
+    border-radius: 16px;
+    background: linear-gradient(54deg, #b30000 14%, #690e0e 85%);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2.8rem;
+    flex-wrap: wrap;
+  }
+  .mm-cta__txt { max-width: 62rem; }
+  .mm-cta__txt h2 {
+    margin: 0 0 0.8rem;
+    color: #fff;
+    font-size: clamp(2.2rem, 3.6vw, 3rem);
+    line-height: 1.15;
+  }
+  .mm-cta__txt p { margin: 0; font-size: 1.55rem; line-height: 1.5; color: rgba(255, 255, 255, 0.88); }
+  .mm-cta__acciones { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .mm-cta__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    min-height: 5rem;
+    padding: 0 2.4rem;
+    border-radius: 999px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .mm-cta__btn--wa { background: #fff; color: #b30000; }
+  .mm-cta__btn--tel {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+  }
+  @media screen and (max-width: 749px) {
+    .mm-cta { padding: 3.2rem 2rem; border-radius: 0; }
+    .mm-cta__acciones { width: 100%; }
+    .mm-cta__btn { width: 100%; }
+  }
+</style>
+
+<section class="mm-cta">
+  <div class="mm-cta__txt">
+    <h2>¿Dudás si le sirve a tu moto?</h2>
+    <p>
+      Escribinos el modelo y el año y te decimos si es compatible antes de que compres.
+      Contestamos en el día, de lunes a sábado.
+    </p>
+  </div>
+  <div class="mm-cta__acciones">
+    <a
+      class="mm-cta__btn mm-cta__btn--wa"
+      href="https://wa.me/{{ mm_wa }}?text={{ 'Hola! Quiero saber si un accesorio le sirve a mi moto.' | url_encode }}"
+      target="_blank"
+      rel="noopener"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20zm4.5-5.8c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.4.1-.5l.6-.7c.1-.2.1-.3 0-.5l-.7-1.7c-.1-.3-.3-.3-.5-.3h-.5c-.2 0-.5.1-.7.4-.3.3-.9 1-.9 2.2 0 1.3.9 2.5 1 2.7.1.2 1.7 2.7 4.2 3.7 2.1.8 2.5.7 3 .6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.2-.1-.3-.1z"/>
+      </svg>
+      Escribir por WhatsApp
+    </a>
+    <a class="mm-cta__btn mm-cta__btn--tel" href="tel:+59891014716">091 014 716</a>
+  </div>
+</section>

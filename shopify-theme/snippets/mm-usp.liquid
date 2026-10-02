@@ -1,0 +1,112 @@
+{%- comment -%}
+  Tira de 4 beneficios - Martinez Motos
+  {% render 'mm-usp' %}            -> version completa (portada)
+  {% render 'mm-usp', compacto: true %} -> version chica (producto / coleccion / carrito)
+{%- endcomment -%}
+
+<style>
+  .mm-usp {
+    max-width: 140rem;
+    margin-inline: auto;
+    padding-inline: 2rem;
+    display: grid;
+    gap: 1.6rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .mm-usp__item {
+    display: flex;
+    gap: 1.4rem;
+    align-items: flex-start;
+    padding: 2rem;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid rgba(18, 18, 18, 0.08);
+    box-shadow: 0 2px 8px rgba(18, 18, 18, 0.04);
+  }
+  .mm-usp__ico {
+    flex: 0 0 auto;
+    width: 4.2rem;
+    height: 4.2rem;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: rgba(179, 0, 0, 0.08);
+    color: #b30000;
+  }
+  .mm-usp__t {
+    margin: 0 0 0.4rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0;
+  }
+  .mm-usp__d {
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1.45;
+    opacity: 0.72;
+  }
+  .mm-usp--compacto { gap: 1.2rem; }
+  .mm-usp--compacto .mm-usp__item { padding: 1.4rem; }
+  .mm-usp--compacto .mm-usp__ico { width: 3.4rem; height: 3.4rem; border-radius: 10px; }
+  .mm-usp--compacto .mm-usp__t { font-size: 1.4rem; }
+  .mm-usp--compacto .mm-usp__d { font-size: 1.25rem; }
+  @media screen and (max-width: 989px) {
+    .mm-usp { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media screen and (max-width: 579px) {
+    .mm-usp { grid-template-columns: 1fr; gap: 1rem; padding-inline: 1.6rem; }
+    .mm-usp__item { padding: 1.4rem; align-items: center; }
+    .mm-usp__ico { width: 3.6rem; height: 3.6rem; }
+  }
+</style>
+
+<ul class="mm-usp{% if compacto %} mm-usp--compacto{% endif %}" role="list">
+  <li class="mm-usp__item">
+    <span class="mm-usp__ico" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M19 5L5 19"/><circle cx="7.5" cy="7.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/>
+      </svg>
+    </span>
+    <div>
+      <p class="mm-usp__t">10% off pagando contado</p>
+      <p class="mm-usp__d">Elegís “Transferencia o efectivo” en el carrito y el descuento se aplica solo.</p>
+    </div>
+  </li>
+
+  <li class="mm-usp__item">
+    <span class="mm-usp__ico" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+        <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.7"/><circle cx="17" cy="18" r="1.7"/>
+      </svg>
+    </span>
+    <div>
+      <p class="mm-usp__t">Envío gratis desde $1.200</p>
+      <p class="mm-usp__d">Comprando antes de las 16 h, en Montevideo llega en el día.</p>
+    </div>
+  </li>
+
+  <li class="mm-usp__item">
+    <span class="mm-usp__ico" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+        <path d="M4 9l1.6-4h12.8L20 9M4 9h16v10H4zM9 19v-5h6v5"/>
+      </svg>
+    </span>
+    <div>
+      <p class="mm-usp__t">Retiro gratis en el local</p>
+      <p class="mm-usp__d">Pedro Celestino Bauzá 4264, Belvedere, Montevideo.</p>
+    </div>
+  </li>
+
+  <li class="mm-usp__item">
+    <span class="mm-usp__ico" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">
+        <path d="M12 3l7 3v5.5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/>
+      </svg>
+    </span>
+    <div>
+      <p class="mm-usp__t">Cambio asegurado</p>
+      <p class="mm-usp__d">Si el producto llega fallado, lo cambiamos por uno nuevo.</p>
+    </div>
+  </li>
+</ul>

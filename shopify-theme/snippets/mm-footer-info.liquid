@@ -1,0 +1,80 @@
+{%- comment -%}
+  Franja de informacion sobre el footer - Martinez Motos
+  {% render 'mm-footer-info' %}
+{%- endcomment -%}
+
+{%- assign mm_wa = '59891014716' -%}
+
+<style>
+  .mm-finfo {
+    max-width: 140rem;
+    margin-inline: auto;
+    padding-inline: 2rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3.2rem;
+  }
+  .mm-finfo__col h3 {
+    margin: 0 0 1.2rem;
+    font-size: 1.3rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.6;
+  }
+  .mm-finfo__col p,
+  .mm-finfo__col li { font-size: 1.45rem; line-height: 1.6; margin: 0 0 0.6rem; }
+  .mm-finfo__col ul { list-style: none; padding: 0; margin: 0; }
+  .mm-finfo__col a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(18, 18, 18, 0.2); }
+  .mm-finfo__col a:hover { border-bottom-color: #b30000; color: #b30000; }
+  .mm-finfo__wa {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-top: 0.8rem;
+    padding: 1rem 1.8rem;
+    border-radius: 999px;
+    background: #b30000;
+    color: #fff !important;
+    font-weight: 700;
+    font-size: 1.4rem;
+    text-decoration: none;
+    border: 0 !important;
+  }
+  .mm-finfo__wa:hover { background: #dd1d1d; color: #fff !important; }
+  @media screen and (max-width: 749px) {
+    .mm-finfo { grid-template-columns: 1fr; gap: 2.4rem; padding-inline: 1.6rem; }
+  }
+</style>
+
+<div class="mm-finfo">
+  <div class="mm-finfo__col">
+    <h3>Nuestro local</h3>
+    <p>Pedro Celestino Bauzá 4264<br>Belvedere, Montevideo</p>
+    <p>Podés retirar tu pedido sin costo.</p>
+  </div>
+
+  <div class="mm-finfo__col">
+    <h3>Atención</h3>
+    <p>De lunes a sábado contestamos todas las consultas en el día.</p>
+    <ul>
+      <li><a href="mailto:martinezmotos.uy@gmail.com">martinezmotos.uy@gmail.com</a></li>
+      <li><a href="tel:+59891014716">091 014 716</a></li>
+    </ul>
+    <a
+      class="mm-finfo__wa"
+      href="https://wa.me/{{ mm_wa }}"
+      target="_blank"
+      rel="noopener"
+    >Escribir por WhatsApp</a>
+  </div>
+
+  <div class="mm-finfo__col">
+    <h3>Envíos y pagos</h3>
+    <ul>
+      <li>Envío gratis en compras desde $1.200</li>
+      <li>Comprando antes de las 16 h, en Montevideo llega en el día</li>
+      <li>10% off pagando por transferencia o efectivo</li>
+      <li>Tarjeta de crédito y débito disponibles</li>
+    </ul>
+  </div>
+</div>

@@ -1,0 +1,74 @@
+{
+  "sections": {
+    "main-collection-banner": {
+      "type": "main-collection-banner",
+      "settings": {
+        "show_collection_description": true,
+        "show_collection_image": true,
+        "color_scheme": "background-1"
+      }
+    },
+    "main-collection-product-grid": {
+      "type": "main-collection-product-grid",
+      "custom_css": [],
+      "settings": {
+        "products_per_page": 24,
+        "columns_desktop": 4,
+        "stretch_cards": true,
+        "columns_mobile": "2",
+        "image_ratio": "square",
+        "show_secondary_image": true,
+        "badges": "regular",
+        "show_vendor": false,
+        "show_rating": false,
+        "enable_quick_add": true,
+        "button_funcionality": "add-to-cart",
+        "enable_filtering": true,
+        "filter_type": "horizontal",
+        "facets_vertical_open_rows": "first",
+        "facets_price_color": "accent-1",
+        "facets_price_price_position": "top",
+        "facets_price_btn_style": "outline",
+        "facets_price_btn_border_width": 3,
+        "active_buttons_text": "[value]",
+        "active_buttons_text_color": "text",
+        "active_buttons_bg_type": "overlay",
+        "active_buttons_bg_color": "text",
+        "active_buttons_bg_opacity": 4,
+        "active_buttons_border_width": 1,
+        "active_buttons_border_color": "text",
+        "active_buttons_border_opacity": 40,
+        "facets_drawer_open_mode": "accordion",
+        "facets_drawer_sticky_button": "after_scrolling",
+        "facets_drawer_sticky_button_color": "accent-1",
+        "facets_drawer_sticky_button_text_color": "#ffffff",
+        "facets_drawer_sticky_button_bg_color": "#b30000",
+        "facets_drawer_sticky_button_radius": 100,
+        "enable_sorting": true,
+        "padding_top": 0,
+        "padding_bottom": 36
+      }
+    },
+    "mm_usp": {
+      "type": "custom-liquid",
+      "name": "Beneficios",
+      "settings": {
+        "custom_liquid": "{% render 'mm-usp', compacto: true %}",
+        "color_scheme": "background-2",
+        "padding_top": 40,
+        "padding_bottom": 40
+      }
+    },
+    "mm_contacto": {
+      "type": "custom-liquid",
+      "name": "Consultas",
+      "settings": {
+        "custom_liquid": "{% render 'mm-contacto' %}",
+        "color_scheme": "background-1",
+        "padding_top": 40,
+        "padding_bottom": 56
+      }
+    }
+  },
+  "order": ["main-collection-banner", "main-collection-product-grid", "mm_usp", "mm_contacto"]
+}

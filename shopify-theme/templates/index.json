@@ -1,0 +1,399 @@
+{
+  "sections": {
+    "mm_hero": {
+      "type": "custom-liquid",
+      "name": "Hero portada",
+      "settings": {
+        "custom_liquid": "{% render 'mm-hero' %}",
+        "color_scheme": "background-1",
+        "padding_top": 0,
+        "padding_bottom": 0
+      }
+    },
+    "mm_usp": {
+      "type": "custom-liquid",
+      "name": "Beneficios",
+      "settings": {
+        "custom_liquid": "{% render 'mm-usp' %}",
+        "color_scheme": "background-2",
+        "padding_top": 40,
+        "padding_bottom": 40
+      }
+    },
+    "featured_collection_yQjPfb": {
+      "type": "featured-collection",
+      "name": "Mas vendidos",
+      "settings": {
+        "title": "Los más elegidos",
+        "heading_size": "h2",
+        "description": "<p>Lo que más sale del local y de nuestras ventas en Mercado Libre.</p>",
+        "show_description": true,
+        "description_style": "body",
+        "color_scheme": "background-1",
+        "collection": "esenciales-en-tu-moto",
+        "products_to_show": 8,
+        "stretch_cards": true,
+        "show_view_all": true,
+        "view_all_style": "solid",
+        "cards_color_scheme": "background-1",
+        "image_ratio": "square",
+        "show_secondary_image": true,
+        "badges": "regular",
+        "show_vendor": false,
+        "show_rating": false,
+        "enable_quick_add": true,
+        "button_funcionality": "add-to-cart",
+        "columns_desktop": 4,
+        "slider_desktop": false,
+        "desktop_spacing": 24,
+        "columns_mobile": "2",
+        "slider_mobile": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 48,
+        "padding_bottom": 24
+      }
+    },
+    "collection_list_LdVerM": {
+      "type": "collection-list",
+      "name": "Categorias",
+      "blocks": {
+        "cat_mas_vendidos": {
+          "type": "featured_collection",
+          "settings": { "collection": "esenciales-en-tu-moto", "custom_title": "" }
+        },
+        "cat_espejos": {
+          "type": "featured_collection",
+          "settings": { "collection": "espejos", "custom_title": "" }
+        },
+        "cat_escapes": {
+          "type": "featured_collection",
+          "settings": { "collection": "escapes", "custom_title": "" }
+        },
+        "cat_proteccion": {
+          "type": "featured_collection",
+          "settings": { "collection": "proteccion-para-tu-moto", "custom_title": "" }
+        },
+        "cat_viajeros": {
+          "type": "featured_collection",
+          "settings": { "collection": "para-viajeros", "custom_title": "" }
+        },
+        "cat_accesorios": {
+          "type": "featured_collection",
+          "settings": { "collection": "accesorios-para-tu-moto", "custom_title": "" }
+        }
+      },
+      "block_order": [
+        "cat_mas_vendidos",
+        "cat_espejos",
+        "cat_escapes",
+        "cat_proteccion",
+        "cat_viajeros",
+        "cat_accesorios"
+      ],
+      "settings": {
+        "title": "Comprá por categoría",
+        "heading_size": "h2",
+        "color_scheme": "background-1",
+        "image_ratio": "square",
+        "show_view_all": false,
+        "custom_styling": false,
+        "card_style": "standard",
+        "cards_color_scheme": "background-1",
+        "card_text_alignment": "left",
+        "cards_corner_radius": 12,
+        "card_title_position": "over-bottom",
+        "cards_title_overlay_color": "#000000",
+        "cards_title_overlay_opacity": 45,
+        "cards_title_over_color": "#ffffff",
+        "cards_desktop_title_size": 22,
+        "cards_mobile_title_size": 16,
+        "cards_show_arrow": true,
+        "desktop_page_width": "normal",
+        "columns_desktop": 3,
+        "desktop_spacing": 24,
+        "slider_desktop": false,
+        "mobile_full_page": false,
+        "columns_mobile_int": 2,
+        "mobile_spacing": 12,
+        "slider_mobile": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 24,
+        "padding_bottom": 48
+      }
+    },
+    "mm_como_comprar": {
+      "type": "custom-liquid",
+      "name": "Como comprar y pagar",
+      "settings": {
+        "custom_liquid": "{% render 'mm-como-comprar' %}",
+        "color_scheme": "background-2",
+        "padding_top": 64,
+        "padding_bottom": 64
+      }
+    },
+    "featured_collection_rFhiEV": {
+      "type": "featured-collection",
+      "name": "Todo el catalogo",
+      "settings": {
+        "title": "Todo el catálogo",
+        "heading_size": "h2",
+        "description": "",
+        "show_description": false,
+        "color_scheme": "background-1",
+        "collection": "todos-los-productos",
+        "products_to_show": 8,
+        "stretch_cards": true,
+        "show_view_all": true,
+        "view_all_style": "solid",
+        "cards_color_scheme": "background-1",
+        "image_ratio": "square",
+        "show_secondary_image": true,
+        "badges": "regular",
+        "show_vendor": false,
+        "show_rating": false,
+        "enable_quick_add": true,
+        "button_funcionality": "add-to-cart",
+        "columns_desktop": 4,
+        "slider_desktop": false,
+        "desktop_spacing": 24,
+        "columns_mobile": "2",
+        "slider_mobile": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 48,
+        "padding_bottom": 48
+      }
+    },
+    "facebook_testimonials_CBL4Vp": {
+      "type": "facebook-testimonials",
+      "name": "Opiniones",
+      "blocks": {
+        "column_WNWLVd": {
+          "type": "column",
+          "settings": {
+            "post_author": "José Elias",
+            "post_author_verified": false,
+            "post_time": "Hace 2 d",
+            "post_text": "<p>Compré unos espejos alerón para mi Honda CB, 10 puntos!</p>",
+            "post_reactions": "like, love",
+            "post_reactions_text": "6",
+            "post_comments_text": "3 comentarios"
+          }
+        },
+        "column_W6ng3B": {
+          "type": "column",
+          "settings": {
+            "post_author": "Miriam",
+            "post_author_verified": false,
+            "post_time": "Hace 1 sem",
+            "post_text": "<p>Le compré a mi marido para su moto y llegó todo en orden, bien de bien.</p>",
+            "post_reactions": "like",
+            "post_reactions_text": "2",
+            "post_comments_text": ""
+          }
+        },
+        "column_YkReyC": {
+          "type": "column",
+          "settings": {
+            "post_author": "Manuu",
+            "post_author_verified": false,
+            "post_time": "Hace 18 h",
+            "post_text": "<p>Hace unos días compré un portamatrículas y unos señaleros, llegó en el día.</p>",
+            "post_reactions": "love, care",
+            "post_reactions_text": "3",
+            "post_comments_text": "1 comentario",
+            "comment_2_author": "Martinez Motos",
+            "comment_2_author_avatar": "shopify://shop_images/DEFINITIVO_0b61e411-be6d-47c4-b3ca-43fb5578e4c7.png",
+            "comment_2_author_verified": false,
+            "comment_2_time": "Hace 3 h",
+            "comment_2_text": "<p>Gracias por la compra!!</p>"
+          }
+        }
+      },
+      "block_order": ["column_WNWLVd", "column_W6ng3B", "column_YkReyC"],
+      "settings": {
+        "title": "Lo que dicen nuestros clientes",
+        "heading_size": "h2",
+        "text": "",
+        "color_scheme": "background-1",
+        "columns_desktop": 3,
+        "slider_desktop": false,
+        "desktop_spacing": 24,
+        "slider_mobile": true,
+        "mobile_dots_position": "under",
+        "mobile_arrows_position": "hidden",
+        "post_bg_color": "#ffffff",
+        "post_text_color": "#101010",
+        "comments_bg_color": "#f0f2f5",
+        "separators_color": "#a4b0be",
+        "post_border_color": "#dfdfdf",
+        "border_width": 1,
+        "like_label": "Me gusta",
+        "comment_label": "Comentar",
+        "reply_label": "Responder",
+        "share_label": "Compartir",
+        "padding_top": 48,
+        "padding_bottom": 48
+      }
+    },
+    "6aa09428-a417-429d-9159-a4e8afd49590": {
+      "type": "icon-bar",
+      "name": "Por que comprarnos",
+      "blocks": {
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-1": {
+          "type": "column",
+          "settings": {
+            "icon": "workspace_premium",
+            "filled_icon": false,
+            "title": "Reputación comprobable",
+            "text": "<p>Más de <strong>490 ventas</strong> y reputación verde en Mercado Libre. Somos los mismos acá.</p>"
+          }
+        },
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-2": {
+          "type": "column",
+          "settings": {
+            "icon": "storefront",
+            "filled_icon": false,
+            "title": "Local a la calle",
+            "text": "<p>Estamos en <strong>Belvedere, Montevideo</strong>. Podés pasar, ver el producto y retirarlo sin costo.</p>"
+          }
+        },
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-3": {
+          "type": "column",
+          "settings": {
+            "icon": "package_2",
+            "filled_icon": false,
+            "title": "Cambios sin drama",
+            "text": "<p>Si tu producto <strong>llega fallado</strong>, lo cambiamos por uno nuevo en excelente estado.</p>"
+          }
+        },
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-4": {
+          "type": "column",
+          "settings": {
+            "icon": "savings",
+            "filled_icon": false,
+            "title": "Mejor precio pagando contado",
+            "text": "<p><strong>10% off</strong> por transferencia o efectivo, y <strong>envío gratis</strong> desde $1.200.</p>"
+          }
+        }
+      },
+      "block_order": [
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-1",
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-2",
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-3",
+        "template--21507361505575__6aa09428-a417-429d-9159-a4e8afd49590-column-4"
+      ],
+      "settings": {
+        "title": "Por qué comprarnos",
+        "heading_size": "h2",
+        "text": "",
+        "color_scheme": "background-2",
+        "icon_layout": "vertical",
+        "icon_size": "medium",
+        "icon_color": "accent-1",
+        "cards_color_scheme": "background-1",
+        "columns_desktop": 4,
+        "slider_desktop": false,
+        "desktop_spacing": 24,
+        "columns_mobile": "2",
+        "slider_mobile": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 56,
+        "padding_bottom": 56
+      }
+    },
+    "1788477045e035e1d4": {
+      "type": "_blocks",
+      "blocks": {
+        "ai_gen_block_a353605_ajgHKG": {
+          "type": "ai_gen_block_a353605",
+          "settings": {
+            "title": "Visitá nuestro local",
+            "address": "Pedro Celestino Bauzá 4264, Belvedere, Montevideo. Retirás tu pedido sin costo.",
+            "map_embed_url": "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3273.7926120857055!2d-56.227729999999994!3d-34.861438!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x95a1d51cf739b343%3A0x2dc2b88e5d4ab935!2sMartinez%20Motos!5e0!3m2!1ses!2suy!4v1788477271865!5m2!1ses!2suy",
+            "desktop_width_percent": 100,
+            "text_alignment": "center",
+            "section_padding": 40,
+            "content_spacing": 24,
+            "title_spacing": 12,
+            "border_radius": 12,
+            "map_height": 380,
+            "mobile_map_height": 280,
+            "map_border_radius": 12,
+            "map_border_thickness": 1,
+            "map_border_color": "#e0e0e0",
+            "background_color": "#ffffff",
+            "text_color": "#121212",
+            "title_size": 30,
+            "address_size": 16
+          },
+          "blocks": {}
+        }
+      },
+      "block_order": ["ai_gen_block_a353605_ajgHKG"],
+      "settings": {}
+    },
+    "mm_contacto": {
+      "type": "custom-liquid",
+      "name": "Consultas",
+      "settings": {
+        "custom_liquid": "{% render 'mm-contacto' %}",
+        "color_scheme": "background-1",
+        "padding_top": 24,
+        "padding_bottom": 56
+      }
+    },
+    "image_banner_iPmLFw": {
+      "type": "image-banner",
+      "name": "Banner anterior (desactivado)",
+      "disabled": true,
+      "blocks": {
+        "heading_w4GGtY": {
+          "type": "heading",
+          "settings": {
+            "title": "Accedé a todo el catálogo",
+            "heading_size": "h1",
+            "alignment": "left",
+            "mobile_alignment": "mobile-left"
+          },
+          "blocks": {}
+        },
+        "buttons_r3Grpg": {
+          "type": "buttons",
+          "settings": {
+            "button_label_1": "Ver Todo",
+            "button_link_1": "shopify://collections/all",
+            "button_style_secondary_1": true
+          },
+          "blocks": {}
+        }
+      },
+      "block_order": ["heading_w4GGtY", "buttons_r3Grpg"],
+      "settings": {
+        "image": "shopify://shop_images/ducati-panigale-v4-s-2020-5k-2880x1800-2793.jpg",
+        "image_overlay_opacity": 50,
+        "image_height": "medium",
+        "desktop_content_position": "middle-center",
+        "desktop_content_alignment": "center",
+        "color_scheme": "background-1",
+        "mobile_content_alignment": "center"
+      }
+    }
+  },
+  "order": [
+    "mm_hero",
+    "mm_usp",
+    "featured_collection_yQjPfb",
+    "collection_list_LdVerM",
+    "mm_como_comprar",
+    "featured_collection_rFhiEV",
+    "facebook_testimonials_CBL4Vp",
+    "6aa09428-a417-429d-9159-a4e8afd49590",
+    "1788477045e035e1d4",
+    "mm_contacto",
+    "image_banner_iPmLFw"
+  ]
+}

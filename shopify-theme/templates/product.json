@@ -1,0 +1,331 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "title": {
+          "type": "product_title",
+          "settings": {
+            "uppercase_title": false,
+            "desktop_size": 39,
+            "alignment": "left",
+            "mobile_size": 28,
+            "mobile_alignment": "mobile-left",
+            "margin_top": 0,
+            "margin_bottom": 0
+          },
+          "blocks": {}
+        },
+        "a6eb81db-40e4-43e0-972f-32db010a4a56": {
+          "type": "rating-stars",
+          "settings": {
+            "visibility": "always-display",
+            "rating": 4.6,
+            "star_color": "#ffcc00",
+            "bg_stars_style": "full",
+            "bg_star_color": "#ececec",
+            "label": "+490 ventas y reputación verde en Mercado Libre",
+            "size": 16,
+            "alignment": "flex-start",
+            "scroll_id": "",
+            "margin_top": 6,
+            "margin_bottom": 9
+          },
+          "blocks": {}
+        },
+        "price": {
+          "type": "product_price",
+          "settings": {
+            "price_layout": "price-first",
+            "price_color": "accent-1",
+            "compare_price_color": "text",
+            "regular_price_size": 25,
+            "sale_price_size": 20,
+            "compare_price_size": 16,
+            "displayed_badge": "sale",
+            "sale_badge_color": "accent-2",
+            "icon_scale": 140,
+            "icon_1": "redeem",
+            "filled_icon_1": false,
+            "icon_2": "check_circle",
+            "filled_icon_2": false,
+            "margin_top": 6,
+            "margin_bottom": 12
+          },
+          "blocks": {}
+        },
+        "product_product_variant_picker_block_mbNfkR": {
+          "type": "product_product-variant-picker-block",
+          "name": "Variant picker",
+          "settings": {
+            "picker_types": "pills, pills, pills",
+            "custom_labels": "",
+            "skip_unavailable": false,
+            "append": "option_1_label_container",
+            "swatches_size": "medium",
+            "swatches_custom_colors": "disabled",
+            "full_width_dropdowns": false,
+            "breaks_style": "normal",
+            "margin_top": 12,
+            "margin_bottom": 12
+          },
+          "blocks": {}
+        },
+        "buy_buttons": {
+          "type": "product_buy-buttons",
+          "settings": {
+            "show_dynamic_checkout": false,
+            "skip_cart": false,
+            "atc_append": "left",
+            "atc_append_heights": "original",
+            "uppercase_text": true,
+            "icon_scale": 120,
+            "icon_spacing": 10,
+            "atc_custom_label": "AGREGAR AL CARRITO",
+            "display_price": false,
+            "price_position": "left",
+            "price_separator": "•",
+            "enable_custom_color": false,
+            "enable_secondary_btn": false,
+            "margin_top": 18,
+            "margin_bottom": 18
+          },
+          "blocks": {
+            "product_atc_quantity_selector_BgYJJy": {
+              "type": "product_atc-quantity-selector",
+              "name": "Quantity selector",
+              "settings": {},
+              "blocks": {}
+            }
+          },
+          "block_order": ["product_atc_quantity_selector_BgYJJy"]
+        },
+        "mm_beneficios": {
+          "type": "product_emoji-benefits",
+          "name": "Beneficios",
+          "settings": {
+            "benefits": "<p>💸 <strong>10% off</strong> pagando por transferencia o efectivo</p><p>🏪 <strong>Retiro gratis</strong> en nuestro local de Belvedere</p><p>🚚 <strong>Envío gratis</strong> en compras desde $1.200</p><p>🔄 Si llega fallado, <strong>te lo cambiamos</strong></p>",
+            "margin_top": 6,
+            "margin_bottom": 18
+          },
+          "blocks": {}
+        },
+        "e0a0b690-50df-4ca4-acfd-ce2980696cce": {
+          "type": "product_shipping-checkpoints",
+          "settings": {
+            "visibility": "always-display",
+            "top_text_1": "<strong>[start_date]</strong>",
+            "bottom_text_1": "Compraste",
+            "icon_1": "add_shopping_cart",
+            "filled_icon_1": false,
+            "min_days_1": 0,
+            "max_days_1": 0,
+            "top_text_2": "<strong>[start_date]</strong>",
+            "bottom_text_2": "Despachamos tu pedido",
+            "icon_2": "local_shipping",
+            "filled_icon_2": false,
+            "min_days_2": 1,
+            "max_days_2": 1,
+            "top_text_3": "<strong>[start_date] - [end_date]</strong>",
+            "bottom_text_3": "Llega a tu casa",
+            "icon_3": "redeem",
+            "filled_icon_3": false,
+            "min_days_3": 1,
+            "max_days_3": 3,
+            "top_text_4": "",
+            "bottom_text_4": "",
+            "icon_4": "",
+            "filled_icon_4": false,
+            "date_format": "dd_mm",
+            "days_labels": "Lun, Mar, Mié, Jue, Vie, Sáb, Dom",
+            "months_labels": "Ene, Feb, Mar, Abr, May, Jun, Jul, Ago, Set, Oct, Nov, Dic",
+            "days_to_skip": "Sunday",
+            "dates_to_skip": "",
+            "color_scheme": "background-2",
+            "margin_top": 18,
+            "margin_bottom": 18
+          },
+          "blocks": {}
+        },
+        "description": {
+          "type": "product_description",
+          "settings": {
+            "margin_top": 18,
+            "margin_bottom": 18
+          },
+          "blocks": {}
+        },
+        "e7a28cbe-03cb-4c9d-a2c4-0e3e76ffb3e5": {
+          "type": "product_sticky-atc",
+          "settings": {
+            "function": "add_to_cart",
+            "display_when": "after_scroll",
+            "button_label": "Agregar al carrito",
+            "enable_custom_btn_color": false,
+            "color_scheme": "background-1",
+            "star_color": "#ffcc00",
+            "stars_label": "",
+            "picker_type": "combined",
+            "desktop_show_image": true,
+            "desktop_show_title": true,
+            "desktop_rating_stars": false,
+            "desktop_show_price": true,
+            "desktop_show_sale_badge": true,
+            "desktop_variant_picker": true,
+            "desktop_full_button_width": false,
+            "desktop_show_price_in_button": false,
+            "desktop_transparent_bg": false,
+            "mobile_show_image": true,
+            "mobile_show_title": false,
+            "mobile_rating_stars": false,
+            "mobile_show_price": true,
+            "mobile_show_sale_badge": false,
+            "mobile_variant_picker": false,
+            "mobile_full_button_width": true,
+            "mobile_show_price_in_button": false,
+            "mobile_transparent_bg": false
+          },
+          "blocks": {}
+        }
+      },
+      "block_order": [
+        "title",
+        "a6eb81db-40e4-43e0-972f-32db010a4a56",
+        "price",
+        "product_product_variant_picker_block_mbNfkR",
+        "buy_buttons",
+        "mm_beneficios",
+        "e0a0b690-50df-4ca4-acfd-ce2980696cce",
+        "description",
+        "e7a28cbe-03cb-4c9d-a2c4-0e3e76ffb3e5"
+      ],
+      "custom_css": [],
+      "settings": {
+        "display_id": false,
+        "enable_sticky_info": true,
+        "color_scheme": "background-1",
+        "pattern_bg": "none",
+        "display_variant_image_first": false,
+        "disable_prepend": true,
+        "hide_variants": false,
+        "variant_image_filtering": "none",
+        "image_zoom": "lightbox",
+        "thumbnails_ratio": "square",
+        "arrows_color_scheme": "inverse",
+        "transparent_arrows": false,
+        "dots_color_scheme": "inverse",
+        "video_player": "play_btn",
+        "media_size": "medium",
+        "media_position": "left",
+        "gallery_layout": "thumbnail_slider",
+        "desktop_thumbnails_position": "bottom",
+        "desktop_thumbnails_count": 5,
+        "constrain_to_viewport": true,
+        "media_fit": "contain",
+        "desktop_arrows_position": "hidden",
+        "mobile_media_corner_radius": 0,
+        "mobile_spacing_pixels": 0,
+        "mobile_arrows_position": "sides",
+        "mobile_pagination": "dots_overlay",
+        "mobile_thumbnails_position": "hidden",
+        "trust_badge_position": "top-right",
+        "trust_badge_size": "medium",
+        "mobile_padding_top": 0,
+        "mobile_padding_bottom": 16,
+        "desktop_padding_top": 32,
+        "desktop_padding_bottom": 32
+      }
+    },
+    "mm_producto_faq": {
+      "type": "collapsible-content",
+      "name": "Preguntas frecuentes",
+      "blocks": {
+        "faq_pago": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "Cómo pago y cómo obtengo el 10% off",
+            "icon": "payments",
+            "filled_icon": false,
+            "open": true,
+            "row_content": "<p>Agregás el producto al carrito y ahí elegís <strong>“Transferencia o efectivo”</strong>. El 10% se descuenta solo del subtotal, antes de pagar, así ves el precio final exacto.</p><p>Si preferís pagar con <strong>tarjeta de crédito o débito</strong>, elegís esa opción y abonás el precio de lista.</p>",
+            "page": ""
+          }
+        },
+        "faq_envio": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "Envíos y retiro en el local",
+            "icon": "local_shipping",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p><strong>Envío gratis</strong> en compras desde $1.200. Comprando antes de las 16 h, en Montevideo llega en el día; al interior va por agencia.</p><p>También podés <strong>retirarlo sin costo</strong> en Pedro Celestino Bauzá 4264, Belvedere, Montevideo.</p>",
+            "page": ""
+          }
+        },
+        "faq_compatible": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Le sirve a mi moto?",
+            "icon": "two_wheeler",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Escribinos por WhatsApp al <strong>091 014 716</strong> con la marca, el modelo y el año de tu moto y te confirmamos la compatibilidad antes de que compres.</p>",
+            "page": ""
+          }
+        },
+        "faq_cambios": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "Cambios y garantía",
+            "icon": "package_2",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Si el producto <strong>llega fallado</strong>, gestionamos el cambio por uno nuevo en excelente estado. Avisanos dentro de los primeros días de recibirlo y lo resolvemos.</p>",
+            "page": ""
+          }
+        }
+      },
+      "block_order": ["faq_pago", "faq_envio", "faq_compatible", "faq_cambios"],
+      "settings": {
+        "caption": "Antes de comprar",
+        "heading_size": "h2",
+        "color_scheme": "background-2",
+        "image_ratio": "adapt",
+        "desktop_layout": "image_second",
+        "padding_top": 48,
+        "padding_bottom": 48
+      }
+    },
+    "related-products": {
+      "type": "related-products",
+      "settings": {
+        "title": "Probablemente te interese...",
+        "heading_size": "h2",
+        "products_to_show": 8,
+        "stretch_cards": true,
+        "columns_desktop": 4,
+        "color_scheme": "background-1",
+        "image_ratio": "square",
+        "show_secondary_image": true,
+        "show_vendor": false,
+        "show_rating": false,
+        "enable_quick_add": true,
+        "button_funcionality": "add-to-cart",
+        "columns_mobile": "2",
+        "padding_top": 48,
+        "padding_bottom": 24
+      }
+    },
+    "mm_usp": {
+      "type": "custom-liquid",
+      "name": "Beneficios",
+      "settings": {
+        "custom_liquid": "{% render 'mm-usp', compacto: true %}",
+        "color_scheme": "background-1",
+        "padding_top": 16,
+        "padding_bottom": 48
+      }
+    }
+  },
+  "order": ["main", "mm_producto_faq", "related-products", "mm_usp"]
+}

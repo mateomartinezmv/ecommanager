@@ -1,0 +1,73 @@
+{
+  "sections": {
+    "cart-items": {
+      "type": "main-cart-items",
+      "settings": {
+        "padding_top": 0,
+        "padding_bottom": 24
+      }
+    },
+    "cart-footer": {
+      "type": "main-cart-footer",
+      "blocks": {
+        "dec6ac13-eef3-4b4c-900a-e550eb977500": {
+          "type": "discount_field",
+          "disabled": true,
+          "settings": {}
+        },
+        "subtotal": {
+          "type": "subtotal",
+          "settings": {}
+        },
+        "buttons": {
+          "type": "buttons",
+          "settings": {}
+        }
+      },
+      "block_order": ["dec6ac13-eef3-4b4c-900a-e550eb977500", "subtotal", "buttons"],
+      "settings": {}
+    },
+    "featured-collection": {
+      "type": "featured-collection",
+      "settings": {
+        "title": "Sumá uno más y llegá al envío gratis",
+        "heading_size": "h2",
+        "description": "<p>Desde $1.200 el envío va sin costo.</p>",
+        "show_description": true,
+        "description_style": "body",
+        "color_scheme": "background-1",
+        "collection": "esenciales-en-tu-moto",
+        "products_to_show": 4,
+        "stretch_cards": true,
+        "show_view_all": true,
+        "view_all_style": "solid",
+        "image_ratio": "square",
+        "show_secondary_image": false,
+        "badges": "regular",
+        "show_vendor": false,
+        "show_rating": false,
+        "enable_quick_add": true,
+        "button_funcionality": "add-to-cart",
+        "columns_desktop": 4,
+        "slider_desktop": false,
+        "columns_mobile": "2",
+        "slider_mobile": false,
+        "mobile_dots_position": "hidden",
+        "mobile_arrows_position": "hidden",
+        "padding_top": 48,
+        "padding_bottom": 24
+      }
+    },
+    "mm_usp": {
+      "type": "custom-liquid",
+      "name": "Beneficios",
+      "settings": {
+        "custom_liquid": "{% render 'mm-usp', compacto: true %}",
+        "color_scheme": "background-2",
+        "padding_top": 40,
+        "padding_bottom": 40
+      }
+    }
+  },
+  "order": ["cart-items", "cart-footer", "featured-collection", "mm_usp"]
+}

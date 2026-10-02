@@ -236,3 +236,68 @@ node tests/test-carrito.js    # selector del carrito
 
 Ahí salió el bug del redondeo: el código daba por sentado que `divided_by` trunca con
 enteros (cierto en Shopify, pero implícito) y devolvía el precio sin redondear.
+
+---
+
+# Rediseño 2026 (tema `REDISEÑO 2026 - Shrine Pro 1.6.1`)
+
+Copia de `PRECIO CONTADO v4` reconstruida para convertir más, respetando la paleta
+(rojo `#b30000` / `#dd1d1d`, negro `#121212`, gris `#f3f3f3`), Poppins + Harmonia Sans,
+radio 12 y ancho 1400.
+
+## Módulos propios (snippets)
+
+Se renderizan desde secciones `custom-liquid`, así que no dependen de ninguna sección
+premium de Shrine y se pueden mover o apagar desde el editor.
+
+| Snippet | Qué es | Dónde se usa |
+| --- | --- | --- |
+| `mm-hero.liquid` | Hero sin imagen (degradado de marca). Titular + 2 CTA + 3 pruebas sociales | Portada |
+| `mm-usp.liquid` | 4 beneficios. `compacto: true` para la versión chica | Portada, producto, colección, carrito, categorías |
+| `mm-como-comprar.liquid` | 3 pasos + explicación del 10% contado + medios de pago | Portada |
+| `mm-contacto.liquid` | Banda roja con CTA de WhatsApp y teléfono | Portada, colección, FAQ |
+| `mm-footer-info.liquid` | Local, atención, envíos y pagos | Grupo del footer |
+
+Datos duros que viven en los snippets (si cambian, hay que editarlos): WhatsApp
+`59891014716`, dirección Pedro Celestino Bauzá 4264, umbral de envío gratis `$1.200`,
+`martinezmotos.uy@gmail.com`.
+
+## Cambios por plantilla
+
+- **Portada**: hero nuevo (el `image-banner` del Ducati queda guardado y desactivado),
+  USP, más vendidos (4 col / 2 en celular, quick add), 6 categorías en grilla, cómo
+  comprar, catálogo, opiniones, por qué comprarnos (2 columnas en celular, antes 1),
+  mapa del local y banda de contacto.
+- **Producto**: el *variant picker* estaba **arriba del título**; ahora el orden es
+  título → estrellas → precio → variantes → comprar → beneficios → tiempos de envío →
+  descripción. Se apagó el botón secundario "Comprar" porque salteaba el carrito, que es
+  donde vive la elección de forma de pago (y por lo tanto el 10%). Textos del sticky ATC y
+  de los tiempos de envío pasados a español, fechas en formato dd/mm. Abajo: FAQ en
+  acordeón, relacionados con quick add y la tira de beneficios.
+- **Colección**: imagen y descripción de la colección visibles, 24 productos, 4 col / 2 en
+  celular, quick add, ratio cuadrado, beneficios y CTA de contacto al final.
+- **Carrito**: cross-sell apuntado al envío gratis en lugar de "You may also like", y se
+  quitó el newsletter en inglés.
+- **Categorías** (`list-collections`) y **FAQ** (`page.faq`) en español, con contenido real.
+- **Header**: el ticker arranca con el 10% contado y suma el retiro en el local; íconos en
+  español; se quitaron los selectores de país e idioma (la tienda es solo UY/español).
+- **Footer**: franja de datos de contacto, menú de ayuda, políticas visibles y marca.
+
+## Cosas que no son del tema
+
+- Menú principal con desplegable **Productos** y las 6 categorías + Preguntas frecuentes.
+- Página `/pages/preguntas-frecuentes` creada con la plantilla `page.faq`.
+- Descripciones en las 7 colecciones e imagen en las 3 que no tenían.
+- Políticas de cambios y de envíos: ver `POLITICAS-PARA-PEGAR.md` (hay que pegarlas a mano,
+  la app no tiene permiso `write_legal_policies`).
+
+## Validación
+
+`node tests/test-mm.js` no existe en el repo porque liquidjs no está instalado acá; los
+cinco snippets se renderizaron con liquidjs (tags balanceados, sin Liquid sin resolver, con
+y sin `compacto`, y con `shop.enabled_payment_types` vacío) antes de subirlos. Los archivos
+se subieron con `themeFilesUpsert` y se verificó MD5 idéntico al local en los 5 snippets y
+en `templates/index.json`.
+
+**No pude ver el sitio renderizado**: el proxy de este entorno bloquea `martinezmotos.com`,
+así que la revisión visual queda de tu lado con el link de vista previa.

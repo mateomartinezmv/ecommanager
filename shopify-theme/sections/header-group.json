@@ -1,0 +1,209 @@
+{
+  "name": "t:sections.header.name",
+  "type": "header",
+  "sections": {
+    "2c2ec774-3430-481f-b927-e9c035b9d24e": {
+      "type": "horizontal-ticker",
+      "blocks": {
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-2": {
+          "type": "text",
+          "settings": {
+            "title": "10% OFF PAGANDO POR TRANSFERENCIA O EFECTIVO"
+          }
+        },
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-0": {
+          "type": "text",
+          "settings": {
+            "title": "ENVÍOS SIN COSTO CON COMPRAS MAYORES A 1.200$"
+          }
+        },
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-1": {
+          "type": "text",
+          "settings": {
+            "title": "COMPRANDO ANTES DE LAS 16HS, LLEGA EN EL DÍA A MONTEVIDEO"
+          }
+        },
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-3": {
+          "type": "text",
+          "settings": {
+            "title": "RETIRÁS GRATIS EN NUESTRO LOCAL DE BELVEDERE"
+          }
+        }
+      },
+      "block_order": [
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-2",
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-0",
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-1",
+        "sections-18060430639399_2c2ec774-3430-481f-b927-e9c035b9d24e-1679250655d32e639c-3"
+      ],
+      "settings": {
+        "display_id": false,
+        "visibility": "always-display",
+        "speed": 1.5,
+        "direction": "normal",
+        "stop_on_hover": false,
+        "mobile_spacing": 60,
+        "desktop_spacing": 100,
+        "color_scheme": "accent-1",
+        "pattern_bg": "none",
+        "mobile_text_size": 14,
+        "desktop_text_size": 16,
+        "italic_text": false,
+        "uppercase_text": false,
+        "bold_text": true,
+        "hidden_products": "",
+        "enable_specific_display": false,
+        "displayed_products": "",
+        "mobile_padding_top": 8,
+        "mobile_padding_bottom": 8,
+        "desktop_padding_top": 12,
+        "desktop_padding_bottom": 12
+      }
+    },
+    "header": {
+      "type": "header",
+      "blocks": {
+        "HeaderDrawer": {
+          "type": "header-drawer",
+          "static": true,
+          "settings": {
+            "test_mode": false,
+            "sticky_header_footer": true
+          },
+          "blocks": {
+            "Header": {
+              "type": "header-drawer_header",
+              "static": true,
+              "settings": {
+                "color_scheme": "background-1",
+                "alignment": "left",
+                "min_height": 66,
+                "padding_y": 10,
+                "padding_x": 20,
+                "separator_opacity": 10,
+                "drop_shadow": false,
+                "close_btn_offset": 10,
+                "close_btn_size": 30,
+                "close_btn_bg_opacity": 5,
+                "close_btn_radius": 15,
+                "close_btn_x_size": 65,
+                "close_btn_x_thickness": 1.5,
+                "menu_title": "Menú",
+                "title_size": 22,
+                "title_font": "headings",
+                "subtitle": "Accesorios para tu moto",
+                "subtitle_size": 14,
+                "subtitle_font": "body",
+                "subtitle_spacing": 2,
+                "image_position": "side",
+                "image_width": 30,
+                "image_height": 34,
+                "image_spacing": 10
+              },
+              "blocks": {}
+            },
+            "Body": {
+              "type": "header-drawer_body",
+              "static": true,
+              "settings": {
+                "color_scheme": "background-1",
+                "padding_y": 10,
+                "padding_x": 16
+              },
+              "blocks": {
+                "header_drawer_menu_RDW7Vc": {
+                  "type": "header-drawer_menu",
+                  "name": "Menu",
+                  "settings": {
+                    "menu": "main-menu",
+                    "font": "body",
+                    "active_highlight": "none",
+                    "font_size": 16,
+                    "padding_y": 12,
+                    "padding_x": 18,
+                    "separator_opacity": 3,
+                    "nested_open_mode": "accordion",
+                    "nested_accordion_icon": "caret",
+                    "nested_font_size": 15,
+                    "nested_padding_y": 8,
+                    "nested_padding_x": 28,
+                    "margin_top": 16,
+                    "margin_bottom": 16
+                  },
+                  "blocks": {}
+                }
+              },
+              "block_order": ["header_drawer_menu_RDW7Vc"]
+            },
+            "Footer": {
+              "type": "header-drawer_footer",
+              "static": true,
+              "settings": {
+                "color_scheme": "background-1",
+                "padding_y": 10,
+                "padding_x": 16,
+                "separator_opacity": 0,
+                "drop_shadow": false
+              },
+              "blocks": {},
+              "block_order": []
+            }
+          },
+          "block_order": []
+        }
+      },
+      "settings": {
+        "sticky_header_type": "on-scroll-up",
+        "show_line_separator": true,
+        "color_scheme": "background-1",
+        "icons_thickness": 1.5,
+        "icons_opacity": 100,
+        "text_icons_size": 15,
+        "text_icons_mobile_size": 13,
+        "text_icons_font": "body",
+        "menu_icon": "style_1",
+        "menu_icon_text": "MENÚ",
+        "search_icon": "style_1",
+        "search_icon_text": "BUSCAR",
+        "account_icon": "style_1",
+        "account_icon_text": "CUENTA",
+        "cart_icon": "bag_2",
+        "cart_icon_text": "CARRITO",
+        "logo_link": "/",
+        "logo_position": "top-center",
+        "mobile_logo_position": "center",
+        "menu": "main-menu",
+        "menu_position": "left",
+        "menu_type_desktop": "dropdown",
+        "highlight_active_link": true,
+        "highlighted_link_color_scheme": "accent-1",
+        "desktop_menu_font_size": 14,
+        "desktop_menu_font": "body",
+        "products_mega_menu_links": "",
+        "products_mega_menu_display_collection_products": true,
+        "products_mega_menu_display_collection_images": true,
+        "enable_country_selector": false,
+        "enable_language_selector": false,
+        "display_search": true,
+        "margin_bottom": 0,
+        "padding_top": 16,
+        "padding_bottom": 16
+      }
+    },
+    "page_scroll_progress_DEaM6P": {
+      "type": "page-scroll-progress",
+      "name": "Page scroll progress",
+      "settings": {
+        "bar_height": 4,
+        "filled_color": "#b30000",
+        "corner_radius": 3,
+        "position": "top"
+      }
+    }
+  },
+  "order": [
+    "2c2ec774-3430-481f-b927-e9c035b9d24e",
+    "header",
+    "page_scroll_progress_DEaM6P"
+  ]
+}

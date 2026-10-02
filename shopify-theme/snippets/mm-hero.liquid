@@ -1,0 +1,160 @@
+{%- comment -%}
+  Hero de portada - Martinez Motos
+  Se usa desde una seccion "custom-liquid":  {% render 'mm-hero' %}
+  No depende de ninguna imagen: carga instantaneo (mejor LCP en movil).
+{%- endcomment -%}
+
+{%- assign mm_wa = settings.mm_whatsapp | default: '59891014716' -%}
+
+<style>
+  .mm-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    margin-inline: auto;
+    max-width: 140rem;
+    padding: 5.6rem 2.4rem 5.2rem;
+    background:
+      radial-gradient(120% 140% at 12% 8%, rgba(179, 0, 0, 0.92) 0%, rgba(105, 14, 14, 0.95) 42%, rgba(18, 18, 18, 1) 100%);
+    color: #fff;
+    isolation: isolate;
+  }
+  .mm-hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 22px);
+    opacity: 0.6;
+  }
+  .mm-hero__inner { max-width: 72rem; }
+  .mm-hero__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 1.2rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.7rem 1.4rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    margin: 0 0 2rem;
+  }
+  .mm-hero h1 {
+    font-size: clamp(3.2rem, 7vw, 5.6rem);
+    line-height: 1.04;
+    margin: 0 0 1.6rem;
+    letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .mm-hero h1 em {
+    display: block;
+    font-style: normal;
+    color: #ffd7d7;
+  }
+  .mm-hero__sub {
+    font-size: clamp(1.5rem, 2.2vw, 1.8rem);
+    line-height: 1.5;
+    margin: 0 0 2.8rem;
+    color: rgba(255, 255, 255, 0.88);
+    max-width: 56rem;
+  }
+  .mm-hero__cta { display: flex; flex-wrap: wrap; gap: 1.2rem; }
+  .mm-hero__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+    min-height: 5.2rem;
+    padding: 0 2.8rem;
+    border-radius: 999px;
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  }
+  .mm-hero__btn--primary {
+    background: #fff;
+    color: #b30000;
+    box-shadow: 0 1rem 2.4rem rgba(0, 0, 0, 0.28);
+  }
+  .mm-hero__btn--primary:hover { transform: translateY(-2px); }
+  .mm-hero__btn--ghost {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+  }
+  .mm-hero__btn--ghost:hover { background: rgba(255, 255, 255, 0.18); }
+  .mm-hero__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem 2rem;
+    margin: 3.2rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 1.4rem;
+    color: rgba(255, 255, 255, 0.82);
+  }
+  .mm-hero__chips li { display: flex; align-items: center; gap: 0.7rem; }
+  .mm-hero__chips svg { flex: 0 0 auto; }
+  @media screen and (max-width: 749px) {
+    .mm-hero { border-radius: 0; padding: 4rem 2rem 3.6rem; }
+    .mm-hero__btn { width: 100%; }
+    .mm-hero__chips { gap: 1rem; flex-direction: column; }
+  }
+</style>
+
+<section class="mm-hero">
+  <div class="mm-hero__inner">
+    <p class="mm-hero__eyebrow">Accesorios para tu moto &middot; Montevideo</p>
+
+    <h1>
+      Todo lo que tu moto necesita
+      <em>con 10% off pagando contado</em>
+    </h1>
+
+    <p class="mm-hero__sub">
+      Pagando por <strong>transferencia o efectivo</strong> te llevás un 10% de descuento en todo
+      el catálogo. Envío sin costo desde $1.200 y retiro gratis en nuestro local de Belvedere.
+    </p>
+
+    <div class="mm-hero__cta">
+      <a class="mm-hero__btn mm-hero__btn--primary" href="{{ routes.all_products_collection_url }}">
+        Ver catálogo
+      </a>
+      <a
+        class="mm-hero__btn mm-hero__btn--ghost"
+        href="https://wa.me/{{ mm_wa }}?text={{ 'Hola! Tengo una consulta sobre un accesorio.' | url_encode }}"
+        target="_blank"
+        rel="noopener"
+      >
+        Consultar por WhatsApp
+      </a>
+    </div>
+
+    <ul class="mm-hero__chips">
+      <li>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 3l2.6 5.6 6.1.8-4.5 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.3 9.4l6.1-.8L12 3z" fill="#ffd166"/>
+        </svg>
+        +490 ventas en Mercado Libre
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" aria-hidden="true">
+          <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" stroke-linejoin="round"/>
+          <circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>
+        </svg>
+        Llega en el día a Montevideo
+      </li>
+      <li>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" aria-hidden="true">
+          <path d="M4 9l1.6-4h12.8L20 9M4 9h16v10H4zM9 19v-5h6v5" stroke-linejoin="round"/>
+        </svg>
+        Local a la calle, atención personal
+      </li>
+    </ul>
+  </div>
+</section>

@@ -1,0 +1,161 @@
+{%- comment -%}
+  "Como comprar y pagar" - Martinez Motos
+  {% render 'mm-como-comprar' %}
+  Explica el 10% contado (que es la ventaja real del sitio frente a Mercado Libre)
+  y baja la ansiedad de pago mostrando los medios disponibles.
+{%- endcomment -%}
+
+<style>
+  .mm-pago { max-width: 140rem; margin-inline: auto; padding-inline: 2rem; }
+  .mm-pago__head { text-align: center; max-width: 62rem; margin: 0 auto 3.6rem; }
+  .mm-pago__head h2 {
+    margin: 0 0 1rem;
+    font-size: clamp(2.4rem, 4vw, 3.4rem);
+    line-height: 1.15;
+  }
+  .mm-pago__head p { margin: 0; font-size: 1.6rem; line-height: 1.5; opacity: 0.75; }
+  .mm-pago__pasos {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.6rem;
+    margin: 0 0 3.2rem;
+    padding: 0;
+    list-style: none;
+    counter-reset: mmpaso;
+  }
+  .mm-pago__paso {
+    position: relative;
+    padding: 2.6rem 2rem 2rem;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid rgba(18, 18, 18, 0.08);
+  }
+  .mm-pago__paso::before {
+    counter-increment: mmpaso;
+    content: counter(mmpaso);
+    position: absolute;
+    top: -1.6rem;
+    left: 2rem;
+    width: 3.2rem;
+    height: 3.2rem;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(54deg, #b30000 14%, #690e0e 85%);
+  }
+  .mm-pago__paso h3 { margin: 0.6rem 0 0.6rem; font-size: 1.7rem; line-height: 1.25; }
+  .mm-pago__paso p { margin: 0; font-size: 1.4rem; line-height: 1.5; opacity: 0.75; }
+  .mm-pago__destacado {
+    display: flex;
+    gap: 1.6rem;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    text-align: center;
+    padding: 2rem 2.4rem;
+    border-radius: 14px;
+    background: rgba(179, 0, 0, 0.06);
+    border: 1px dashed rgba(179, 0, 0, 0.35);
+    margin: 0 0 3.2rem;
+    font-size: 1.5rem;
+    line-height: 1.5;
+  }
+  .mm-pago__destacado strong { color: #b30000; }
+  .mm-pago__medios { text-align: center; }
+  .mm-pago__medios h3 {
+    font-size: 1.3rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin: 0 0 1.4rem;
+  }
+  .mm-pago__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    justify-content: center;
+    margin: 0 0 1.6rem;
+    padding: 0;
+    list-style: none;
+  }
+  .mm-pago__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.8rem 1.4rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid rgba(18, 18, 18, 0.12);
+    font-size: 1.35rem;
+    font-weight: 600;
+  }
+  .mm-pago__chip--ok { border-color: rgba(179, 0, 0, 0.4); color: #b30000; }
+  .mm-pago__iconos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    justify-content: center;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .mm-pago__iconos svg { width: 3.8rem; height: auto; }
+  @media screen and (max-width: 749px) {
+    .mm-pago { padding-inline: 1.6rem; }
+    .mm-pago__pasos { grid-template-columns: 1fr; gap: 2.4rem; }
+    .mm-pago__destacado { text-align: left; justify-content: flex-start; }
+  }
+</style>
+
+<div class="mm-pago">
+  <div class="mm-pago__head">
+    <h2>Cómo comprar y pagar</h2>
+    <p>Tres pasos. Sin cuenta, sin vueltas y con el descuento aplicándose solo.</p>
+  </div>
+
+  <ol class="mm-pago__pasos">
+    <li class="mm-pago__paso">
+      <h3>Elegí tus productos</h3>
+      <p>Agregá al carrito todo lo que necesites. Desde $1.200 el envío ya es gratis.</p>
+    </li>
+    <li class="mm-pago__paso">
+      <h3>Marcá cómo vas a pagar</h3>
+      <p>En el carrito elegís “Transferencia o efectivo” y el 10% se descuenta al instante del subtotal.</p>
+    </li>
+    <li class="mm-pago__paso">
+      <h3>Confirmá y listo</h3>
+      <p>Completás tus datos, elegís envío o retiro en el local y te avisamos cuando sale tu pedido.</p>
+    </li>
+  </ol>
+
+  <p class="mm-pago__destacado">
+    <span>
+      <strong>¿Por qué conviene pagar contado?</strong>
+      Porque te ahorrás el 10% del total. El descuento se aplica en el carrito, antes de pagar,
+      así ves el precio final exacto desde el principio.
+    </span>
+  </p>
+
+  <div class="mm-pago__medios">
+    <h3>Medios de pago</h3>
+    <ul class="mm-pago__chips">
+      <li class="mm-pago__chip mm-pago__chip--ok">Transferencia bancaria &middot; 10% off</li>
+      <li class="mm-pago__chip mm-pago__chip--ok">Efectivo en el local &middot; 10% off</li>
+      <li class="mm-pago__chip">Tarjeta de crédito y débito</li>
+    </ul>
+    {%- assign medios = shop.enabled_payment_types -%}
+    {%- if medios.size > 0 -%}
+      <ul class="mm-pago__iconos" role="list">
+        {%- for medio in medios -%}
+          <li>
+            <span class="visually-hidden">{{ medio | replace: '_', ' ' | capitalize }}</span>
+            {{ medio | payment_type_svg_tag: class: 'icon icon--full-color' }}
+          </li>
+        {%- endfor -%}
+      </ul>
+    {%- endif -%}
+  </div>
+</div>

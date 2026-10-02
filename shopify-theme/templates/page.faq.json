@@ -1,0 +1,134 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-page",
+      "settings": {
+        "padding_top": 36,
+        "padding_bottom": 0
+      }
+    },
+    "9c121ec4-42cd-4c8e-82a2-935e073db7d7": {
+      "type": "collapsible-content",
+      "blocks": {
+        "faq_contado": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Cómo obtengo el 10% de descuento?",
+            "icon": "savings",
+            "filled_icon": false,
+            "open": true,
+            "row_content": "<p>Agregás los productos al carrito y ahí elegís <strong>“Transferencia o efectivo”</strong>. El 10% se descuenta solo del subtotal, antes de pagar, así ves el precio final exacto desde el principio.</p><p>El descuento vale para <strong>transferencia bancaria</strong> y para <strong>efectivo al retirar en el local</strong>. No se aplica a pagos con tarjeta.</p>",
+            "page": ""
+          }
+        },
+        "faq_tarjeta": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Puedo pagar con tarjeta?",
+            "icon": "credit_card",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Sí. En el carrito elegís <strong>“Tarjeta o cuotas”</strong> y abonás el precio de lista con crédito o débito.</p><p>Si ya habías marcado transferencia o efectivo, volvé al carrito y cambiá la opción: el descuento se quita y los medios de pago se habilitan de nuevo.</p>",
+            "page": ""
+          }
+        },
+        "faq_envios": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Cuánto cuesta el envío y cuánto demora?",
+            "icon": "local_shipping",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p><strong>Envío gratis</strong> en compras desde $1.200. Por debajo de ese monto se cobra el costo del envío en el checkout.</p><p>Comprando antes de las 16 h, en <strong>Montevideo llega en el día</strong>. Al interior se despacha por agencia y suele llegar en 1 a 3 días hábiles.</p>",
+            "page": ""
+          }
+        },
+        "faq_retiro": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Puedo retirarlo en el local?",
+            "icon": "storefront",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Sí, y es <strong>sin costo</strong>. Estamos en <strong>Pedro Celestino Bauzá 4264, Belvedere, Montevideo</strong>. Elegís “Retiro en el local” en el checkout y te avisamos cuando esté listo.</p><p>Si retirás y pagás en efectivo, también te queda el 10% de descuento.</p>",
+            "page": ""
+          }
+        },
+        "faq_compatible": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Cómo sé si le sirve a mi moto?",
+            "icon": "two_wheeler",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Escribinos por WhatsApp al <strong>091 014 716</strong> con la marca, el modelo y el año de tu moto. Te confirmamos la compatibilidad antes de que compres.</p>",
+            "page": ""
+          }
+        },
+        "faq_cambios": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Qué pasa si llega fallado?",
+            "icon": "package_2",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Lo <strong>cambiamos por uno nuevo</strong> en excelente estado. Avisanos apenas lo recibas, mandanos una foto y coordinamos el cambio.</p>",
+            "page": ""
+          }
+        },
+        "faq_meli": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Son los mismos de Mercado Libre?",
+            "icon": "verified",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Sí. Somos la misma tienda, con <strong>más de 490 ventas</strong> y reputación verde. Comprando acá te evitás la comisión de la plataforma, y por eso podemos darte el 10% pagando contado.</p>",
+            "page": ""
+          }
+        },
+        "faq_factura": {
+          "type": "collapsible-row-content",
+          "settings": {
+            "heading": "¿Emiten comprobante?",
+            "icon": "receipt_long",
+            "filled_icon": false,
+            "open": false,
+            "row_content": "<p>Sí. Recibís el comprobante de tu compra por mail apenas se confirma el pedido. Si necesitás otro tipo de documento, escribinos y lo coordinamos.</p>",
+            "page": ""
+          }
+        }
+      },
+      "block_order": [
+        "faq_contado",
+        "faq_tarjeta",
+        "faq_envios",
+        "faq_retiro",
+        "faq_compatible",
+        "faq_cambios",
+        "faq_meli",
+        "faq_factura"
+      ],
+      "settings": {
+        "caption": "Preguntas frecuentes",
+        "heading_size": "h1",
+        "color_scheme": "background-1",
+        "image_ratio": "adapt",
+        "desktop_layout": "image_second",
+        "padding_top": 24,
+        "padding_bottom": 48
+      }
+    },
+    "mm_contacto": {
+      "type": "custom-liquid",
+      "name": "Consultas",
+      "settings": {
+        "custom_liquid": "{% render 'mm-contacto' %}",
+        "color_scheme": "background-2",
+        "padding_top": 48,
+        "padding_bottom": 56
+      }
+    }
+  },
+  "order": ["main", "9c121ec4-42cd-4c8e-82a2-935e073db7d7", "mm_contacto"]
+}

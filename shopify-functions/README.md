@@ -107,3 +107,29 @@ Pago o Apple Pay, quedan ocultos solos, sin tocar la función.
 **Fail-open.** Si ningún método matchea la lista blanca (los renombraste, los
 desactivaste), la función no oculta nada en vez de dejar el checkout sin ninguna
 forma de pagar. Hay un test para eso.
+
+## Por que el checkout no deja elegir libremente
+
+La pregunta vuelve siempre: *por que no mostramos los tres medios de pago y, si
+el cliente toca tarjeta, se le saca el codigo solo.* No se puede en Basic, y no
+es una limitacion de este codigo sino de como Shopify separo las APIs:
+
+| | Ve el medio de pago | Puede tocar el precio |
+|---|---|---|
+| Discount Function | no | si |
+| Payment Customization Function | si | no |
+
+Probado contra los schemas reales: en el input de `functions_order_discounts` no
+existen `cart.paymentMethod`, `paymentMethods` ni `cart.selectedPaymentOptions`.
+Lo unico que reacciona a la seleccion de pago y ademas puede aplicar o quitar un
+codigo son las **checkout UI extensions**, y esas son Shopify Plus:
+
+> "Checkout UI extensions for the information, shipping, and payment steps are
+> available only to stores on a Shopify Plus plan."
+
+Por eso la decision se toma en el carrito y el checkout solo muestra lo coherente
+con ella. Si el cliente se arrepiente, vuelve al carrito y cambia la opcion.
+
+Se evaluo la alternativa de usar el descuento como interruptor (sacar el chip
+CONTADO10 en el checkout hace volver la tarjeta) y se descarto: funciona, pero
+convierte un campo que el cliente no entiende en el control principal del precio.

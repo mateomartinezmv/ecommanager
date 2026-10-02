@@ -3,10 +3,6 @@ query CartPaymentMethodsTransformRunInput {
     attribute(key: "Forma de pago") {
       value
     }
-    discountApplications {
-      targetType
-      allocationMethod
-    }
   }
   paymentMethods {
     id

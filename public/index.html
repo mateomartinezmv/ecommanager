@@ -723,7 +723,9 @@
           <span class="table-title">📣 Anuncios de la campaña</span>
           <span style="font-size:11px;color:var(--text-muted)" id="ads-tabla-leyenda">
             ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo<br>
-            <b>Sin vender todavía (🔵 en prueba):</b> mirá CPC (contra su techo) e Inversión (contra lo que deja una venta). <code>~</code> = techo estimado con la conversión de la campaña. Pasá el mouse para el detalle.
+            <b>Sin vender todavía (🔵 en prueba):</b> <b>CPC</b> = lo que pagás por clic contra el máximo que podrías pagar y seguir ganando.
+            <b>Inversión</b> = lo gastado contra lo que deja una sola venta (🟢 ya se pagó · 🟡 una venta lo cubre · 🔴 ya quemó más de una venta sin vender).
+            <code>~</code> = techo estimado con la conversión de la campaña. Pasá el mouse por cualquier número para ver la cuenta.
           </span>
         </div>
         <div id="ads-tabla"></div>
@@ -7316,10 +7318,10 @@ function pintarAdsTabla() {
           : a.cpc <= techo ? 'var(--yellow)'          // al filo del techo
           : 'var(--red)';                             // cada clic cuesta más de lo que deja
         const cpcTitulo = techo == null ? ''
-          : `Techo ${fmt(techo)} por clic` +
+          : `Podés pagar hasta ${fmt(techo)} por clic y seguir ganando. Ahora pagás ${fmt(a.cpc)}.` +
             (a.cpc_max_es_estimado
-              ? ` · estimado con la conversión de la campaña (${(adsState.totales?.cvr_campana ?? 0).toFixed(2)}%), este anuncio todavía no vendió`
-              : ` · con su propia conversión (${a.cvr.toFixed(2)}%)`);
+              ? ` El techo es estimado: como este anuncio todavía no vendió, se usa la conversión de la campaña (${(adsState.totales?.cvr_campana ?? 0).toFixed(2)}% de los clics terminan en venta).`
+              : ` Calculado con su propia conversión: ${a.cvr.toFixed(2)}% de los clics terminan en venta.`);
 
         // Inversión contra la contribución ya recuperada. En positivo, el déficit se lee
         // como lo que es: cuántas ventas debe el anuncio para empatar.
@@ -7327,10 +7329,23 @@ function pintarAdsTabla() {
           : a.deficit <= 0 ? 'var(--green)'                   // ya se pagó
           : a.deficit <= a.contribucion ? 'var(--yellow)'     // menos de una venta de atraso
           : 'var(--red)';                                     // más de una venta quemada
+        // El tooltip cuenta la aritmética entera en vez de nombrar el resultado: "faltan N
+        // ventas" se lee como una carencia, cuando casi siempre dice lo contrario — que
+        // una sola venta cubre lo gastado y sobra.
+        const vts = (n) => `${n} ${n === 1 ? 'venta' : 'ventas'}`;
         const inversionTitulo = a.contribucion == null ? ''
           : a.deficit <= 0
-            ? `Ya se pagó · ${fmt(-a.deficit)} de ganancia`
-            : `Faltan ${a.ventas_para_empatar} venta(s) para empatar (${fmt(a.contribucion)} de contribución c/u)`;
+            ? `Ya se pagó solo. ${vts(a.unidades)} × ${fmt(a.contribucion)} que deja cada una `
+              + `− ${fmt(a.inversion)} de ads = ${fmt(-a.deficit)} de ganancia.`
+            : `Gastaste ${fmt(a.inversion)} en ads`
+              + (a.unidades
+                  ? ` y recuperaste ${fmt(a.contribucion * a.unidades)} con ${vts(a.unidades)}.`
+                  : ' y todavía no vendió.')
+              + ` Cada venta de este producto deja ${fmt(a.contribucion)} limpios,`
+              + ` así que con ${vts(a.ventas_para_empatar)}${a.unidades ? ' más' : ''} ya empatás`
+              + (a.ventas_para_empatar === 1
+                  ? ` y te sobran ${fmt(a.contribucion - a.deficit)}.`
+                  : '.');
 
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
         const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';

@@ -304,6 +304,40 @@ module.exports = async (req, res) => {
       }
     }
 
+    // ── 5b. Señales que no dependen de haber vendido ──────────────────────────────
+    // Un anuncio que todavía no vendió no tiene conversión propia, así que su CPC máximo
+    // queda indefinido y la fila entera no dice nada: ni ROAS, ni ACOS, ni ganancia.
+    // Como referencia se usa la conversión de la campaña — la mejor estimación
+    // disponible de cuántos clics necesita este catálogo para vender uno — y con eso el
+    // anuncio ya se puede juzgar antes de la primera venta.
+    const clicsTotales = filas.reduce((a, f) => a + f.clics, 0);
+    const unidadesTotales = filas.reduce((a, f) => a + f.unidades, 0);
+    const cvrCampana = clicsTotales > 0 ? (unidadesTotales / clicsTotales) * 100 : 0;
+
+    for (const f of filas) {
+      if (f.contribucion == null) continue;
+      const tieneVentas = f.unidades > 0;
+
+      f.cvr_referencia = r2(tieneVentas ? f.cvr : cvrCampana);
+      f.cpc_max_estimado = f.cvr_referencia > 0 ? r2(f.contribucion * (f.cvr_referencia / 100)) : null;
+      f.cpc_max_es_estimado = !tieneVentas;
+
+      // Cuánta contribución se gastó sin recuperarla todavía. Es la ganancia dada vuelta,
+      // pero en positivo se lee como lo que es: deuda que el anuncio tiene que pagar.
+      const deficit = r2(f.inversion - f.contribucion * f.unidades);
+      f.deficit = deficit;
+      f.ventas_para_empatar = deficit > 0 && f.contribucion > 0
+        ? Math.ceil(deficit / f.contribucion)
+        : 0;
+
+      // Un anuncio que todavía no vendió daba "perdiendo" por ROAS 0, aunque llevara tres
+      // clics y veinte pesos. Mientras no haya quemado ni una contribución entera, lo
+      // honesto es "en prueba": no perdió, falta muestra. Pasado ese punto sí perdió.
+      if (!tieneVentas && f.estado === 'perdiendo' && deficit <= f.contribucion) {
+        f.estado = 'en_prueba';
+      }
+    }
+
     // ── 6. Totales ────────────────────────────────────────────────────────────────
     const sum = (campo) => filas.reduce((a, f) => a + (f[campo] || 0), 0);
     const inversionTotal = sum('inversion');
@@ -325,6 +359,8 @@ module.exports = async (req, res) => {
       anuncios_sin_vincular: filas.filter(f => f.sin_vincular && !f.sku_sin_vincular).length,
       anuncios_sku_sin_vincular: filas.filter(f => f.sku_sin_vincular).length,
       truncado: truncado ? { mostrados: filas.length, total } : null,
+      // La conversión que se usa de referencia para los anuncios que todavía no vendieron.
+      cvr_campana: r2(cvrCampana),
     };
 
     // Lo que la campaña gastó y no aparece en ningún anuncio de la lista. Se informa

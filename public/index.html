@@ -722,7 +722,8 @@
         <div class="table-header">
           <span class="table-title">📣 Anuncios de la campaña</span>
           <span style="font-size:11px;color:var(--text-muted)" id="ads-tabla-leyenda">
-            ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo
+            ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo<br>
+            <b>Sin vender todavía (🔵 en prueba):</b> mirá CPC (contra su techo) e Inversión (contra lo que deja una venta). <code>~</code> = techo estimado con la conversión de la campaña. Pasá el mouse para el detalle.
           </span>
         </div>
         <div id="ads-tabla"></div>
@@ -7293,6 +7294,7 @@ function pintarAdsTabla() {
     ganando:   '<span class="badge badge-green">🟢 Rentable</span>',
     al_filo:   '<span class="badge badge-yellow">🟡 Al filo</span>',
     perdiendo: '<span class="badge badge-red">🔴 Pierde</span>',
+    en_prueba: '<span class="badge badge-blue">🔵 En prueba</span>',
     sin_costo: '<span class="badge badge-gray">Sin costo</span>',
     sin_margen:'<span class="badge badge-red">Margen ≤ 0</span>',
     sin_datos: '<span class="badge badge-gray">Sin datos</span>',
@@ -7303,9 +7305,33 @@ function pintarAdsTabla() {
       <thead><tr>${ADS_COLUMNAS.map(th).join('')}</tr></thead>
       <tbody>${filas.map(a => {
         const be = a.roas_breakeven;
-        // El CPC actual contra el techo: es la palanca concreta para subir o bajar la puja.
-        const cpcColor = a.cpc_max == null ? 'var(--text-muted)'
-          : a.cpc <= a.cpc_max ? 'var(--green)' : 'var(--red)';
+        // CPC e inversión son las dos señales que NO dependen de haber vendido: sirven
+        // para juzgar un anuncio nuevo, antes de que el ROAS exista.
+        //
+        // CPC contra su techo. Para los que todavía no vendieron el techo se estima con
+        // la conversión de la campaña, así la fila dice algo desde el primer clic.
+        const techo = a.cpc_max_estimado;
+        const cpcColor = techo == null ? 'var(--text-muted)'
+          : a.cpc <= techo * 0.8 ? 'var(--green)'     // margen de sobra para pujar
+          : a.cpc <= techo ? 'var(--yellow)'          // al filo del techo
+          : 'var(--red)';                             // cada clic cuesta más de lo que deja
+        const cpcTitulo = techo == null ? ''
+          : `Techo ${fmt(techo)} por clic` +
+            (a.cpc_max_es_estimado
+              ? ` · estimado con la conversión de la campaña (${(adsState.totales?.cvr_campana ?? 0).toFixed(2)}%), este anuncio todavía no vendió`
+              : ` · con su propia conversión (${a.cvr.toFixed(2)}%)`);
+
+        // Inversión contra la contribución ya recuperada. En positivo, el déficit se lee
+        // como lo que es: cuántas ventas debe el anuncio para empatar.
+        const inversionColor = a.contribucion == null ? 'var(--text)'
+          : a.deficit <= 0 ? 'var(--green)'                   // ya se pagó
+          : a.deficit <= a.contribucion ? 'var(--yellow)'     // menos de una venta de atraso
+          : 'var(--red)';                                     // más de una venta quemada
+        const inversionTitulo = a.contribucion == null ? ''
+          : a.deficit <= 0
+            ? `Ya se pagó · ${fmt(-a.deficit)} de ganancia`
+            : `Faltan ${a.ventas_para_empatar} venta(s) para empatar (${fmt(a.contribucion)} de contribución c/u)`;
+
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
         const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';
         // El ACOS de equilibrio es el margen: por encima de él la venta no paga el anuncio.
@@ -7335,15 +7361,17 @@ function pintarAdsTabla() {
           <td style="text-align:right">${a.impresiones.toLocaleString('es-AR')}</td>
           <td style="text-align:right">${a.clics.toLocaleString('es-AR')}</td>
           <td style="text-align:right">${a.ctr.toFixed(2)}%</td>
-          <td style="text-align:right">${fmt(a.cpc)}</td>
-          <td style="text-align:right">${fmt(a.inversion)}</td>
+          <td style="text-align:right;font-weight:600;color:${cpcColor}" title="${escHtml(cpcTitulo)}">${fmt(a.cpc)}</td>
+          <td style="text-align:right;font-weight:600;color:${inversionColor}" title="${escHtml(inversionTitulo)}">${fmt(a.inversion)}</td>
           <td style="text-align:right">${a.unidades}</td>
           <td style="text-align:right">${fmt(a.facturacion)}</td>
           <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
           <td style="text-align:right">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
           <td style="text-align:right;color:${acosColor}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
-          <td style="text-align:right;color:${cpcColor}">${a.cpc_max != null ? fmt(a.cpc_max) : '—'}</td>
+          <td style="text-align:right" title="${escHtml(cpcTitulo)}">${techo != null
+            ? (a.cpc_max_es_estimado ? `<span style="color:var(--text-muted)">~${fmt(techo)}</span>` : fmt(techo))
+            : '—'}</td>
           <td style="text-align:right;font-weight:600;color:${a.ganancia == null ? 'var(--text-muted)' : a.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${a.ganancia != null ? fmt(a.ganancia) : '—'}</td>
           <td style="text-align:center">${semaforo[a.estado] || ''}</td>
         </tr>`;
@@ -7444,7 +7472,9 @@ async function confirmarVincularAnuncio() {
 function exportAdsCSV() {
   if (!adsFiltrados().length) return alert('No hay anuncios para exportar.');
   const cols = ['titulo', 'sku', 'status', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
-    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen', 'cpa_max', 'cpc_max', 'ganancia', 'estado'];
+    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen', 'cpa_max', 'cpc_max',
+    'cpc_max_estimado', 'cpc_max_es_estimado', 'cvr_referencia', 'deficit', 'ventas_para_empatar',
+    'ganancia', 'estado'];
   // Exporta lo que se está viendo: si hay filtro de activos, el CSV lo respeta.
   const filas = adsFiltrados().map(a => cols.map(c => {
     const v = a[c];

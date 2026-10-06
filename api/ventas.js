@@ -7,6 +7,22 @@
 const { getSupabase } = require('./_supabase');
 const { sincronizarStock, resumenSync } = require('./_stockSync');
 const { unidadesDeDeposito, unidadesPorVenta } = require('./_packs');
+const { descripcionDePaquete } = require('./_meliPaquetes');
+
+// Las otras líneas del mismo ticket que siguen vivas: carrito de mostrador
+// (venta_grupo), carrito de MELI (pack_id) u orden MELI con varios ítems.
+async function lineasHermanas(supabase, venta) {
+  const campos = 'id, producto, cantidad';
+  let q = supabase.from('ventas').select(campos).neq('id', venta.id);
+
+  if (venta.venta_grupo) q = q.eq('venta_grupo', venta.venta_grupo);
+  else if (venta.pack_id) q = q.eq('pack_id', venta.pack_id);
+  else if (venta.canal === 'meli' && venta.orden_meli) q = q.eq('orden_meli', venta.orden_meli);
+  else return [];
+
+  const { data } = await q;
+  return (data || []).sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0));
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -150,16 +166,28 @@ module.exports = async (req, res) => {
         console.log(`🔄 Stock restaurado: +${unidadesDeDeposito(venta.cantidad, producto)} uds (${venta.cantidad} × ${unidadesPorVenta(producto)}) · ${resumenSync(venta.sku, sync)}`);
       }
 
-      // 5. Eliminar envío asociado si existe
+      // 5. Envío asociado. Un carrito viaja en un solo paquete y el envío queda
+      // colgado de una de sus líneas: si se cancela esa línea pero el resto
+      // sigue en pie, el paquete sigue saliendo — se repunta a otra línea en vez
+      // de borrarlo.
       const { data: envioAsociado } = await supabase
         .from('envios')
         .select('id')
         .eq('venta_id', id)
-        .single();
+        .maybeSingle();
 
       if (envioAsociado) {
-        await supabase.from('envios').delete().eq('id', envioAsociado.id);
-        console.log(`🗑️ Envío eliminado: ${envioAsociado.id}`);
+        const hermanas = await lineasHermanas(supabase, venta);
+        if (hermanas.length) {
+          await supabase.from('envios').update({
+            venta_id: hermanas[0].id,
+            producto: descripcionDePaquete(hermanas),
+          }).eq('id', envioAsociado.id);
+          console.log(`🔄 Envío ${envioAsociado.id} repuntado a ${hermanas[0].id} (el paquete sigue con ${hermanas.length} producto/s)`);
+        } else {
+          await supabase.from('envios').delete().eq('id', envioAsociado.id);
+          console.log(`🗑️ Envío eliminado: ${envioAsociado.id}`);
+        }
       }
 
       // 6. Registrar en ventas_canceladas

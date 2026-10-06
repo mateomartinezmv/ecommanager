@@ -7,6 +7,7 @@ const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
 const { sincronizarStock, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
@@ -100,6 +101,9 @@ module.exports = async (req, res) => {
     const costoEnvioFinal = esFlex ? (zonaEnvio ? (COSTOS_ENVIOSUY[zonaEnvio] ?? 0) : 0) : 0;
     const tipoEnvio = esFlex ? 'enviosuy' : 'mercado_envios';
 
+    // Un carrito de MELI son varias órdenes bajo un mismo pack y un solo envío.
+    const packId = packIdDeOrden(order);
+
     // Comisión desde fee_details
     const feeDetails = order.fee_details || [];
     const totalFee = feeDetails
@@ -136,7 +140,8 @@ module.exports = async (req, res) => {
       const { error: ventaErr } = await supabase.from('ventas').insert({
         id: ventaId, canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli: String(order.id), comprador: order.buyer?.nickname || '',
+        orden_meli: String(order.id), pack_id: packId, meli_item_id: meliItemId,
+        comprador: order.buyer?.nickname || '',
         sku: producto.sku, producto: producto.nombre,
         cantidad, precio_unit: precioUnit, comision: comisionItem,
         total: precioUnit * cantidad, estado: 'pagada',
@@ -145,21 +150,24 @@ module.exports = async (req, res) => {
       if (ventaErr) { log.push(`❌ Error venta: ${ventaErr.message}`); resultados.push({ item: meliItemId, error: ventaErr.message }); continue; }
       log.push(`✅ Venta registrada: ${ventaId}`);
 
-      if (shippingId) {
-        const envioId = `E_MELI_${order.id}_${meliItemId}`;
-        const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
-        if (!envioExistente) {
-          await supabase.from('envios').insert({
-            id: envioId, venta_id: ventaId, orden: String(order.id),
-            comprador: order.buyer?.nickname || '', producto: producto.nombre,
-            transportista: tipoEnvio,
-            tracking: null, fecha_despacho: null, estado: 'pendiente',
-            direccion: direccion || null, costo: costoEnvioFinal, zona: zonaEnvio,
-          });
-          log.push(`✅ Envío creado: ${tipoEnvio} | zona ${zonaEnvio ?? '?'} | $${costoEnvioFinal}`);
-        }
-      }
       resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision: comisionItem, tipoEnvio, zona: zonaEnvio, costo: costoEnvioFinal });
+    }
+
+    // El envío es del paquete, no del ítem: fuera del loop y uno solo.
+    if (shippingId) {
+      const ordenes = await ordenesDelPaquete(token, order, shippingId);
+      const r = await registrarEnvioDePaquete(supabase, {
+        order, packId, ordenes,
+        datos: {
+          comprador: order.buyer?.nickname || '',
+          transportista: tipoEnvio,
+          direccion: direccion || null,
+          costo: costoEnvioFinal,
+          zona: zonaEnvio,
+        },
+      });
+      if (r.creado) log.push(`✅ Envío creado: ${r.id} | ${tipoEnvio} | zona ${zonaEnvio ?? '?'} | $${costoEnvioFinal}`);
+      else if (r.id) log.push(`ℹ️ El paquete ya tenía envío (${r.id}) — no se duplica`);
     }
 
     return res.json({ ok: true, log, resultados });

@@ -4609,10 +4609,13 @@ function tipoEnvioVenta(v, enviosByVenta) {
 // Cada producto se guarda como una línea en `ventas` (hace falta para stock, envíos y
 // devoluciones), pero una compra real puede tener varias líneas:
 //   · carrito mostrador → las líneas comparten ventaGrupo
+//   · carrito MELI → MELI parte la compra en una orden por publicación y las ata
+//     con un mismo packId (es UNA compra, con UN envío)
 //   · orden MELI con varios ítems → las líneas comparten ordenMeli
 // Un ticket es esa compra completa, no cada línea suelta.
 function ticketKey(v) {
   if (v.ventaGrupo) return 'G:' + v.ventaGrupo;
+  if (v.canal === 'meli' && v.packId) return 'P:' + v.packId;
   if (v.canal === 'meli' && v.ordenMeli) return 'M:' + v.ordenMeli;
   return 'V:' + v.id;
 }

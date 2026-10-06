@@ -11,6 +11,7 @@ const {
   obtenerShipment, ordenesDelShipment, sincronizarEnviosDeOrden,
   estadoDesdeShipment, fechaDespachoDesdeShipment,
 } = require('../_meliEnvios');
+const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -138,6 +139,10 @@ async function handleOrder(resource) {
   const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
   const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0;
 
+  // Un carrito de MELI llega como varias órdenes atadas por el mismo pack: es
+  // UNA compra, con UN envío. El pack es lo que las une.
+  const packId = packIdDeOrden(order);
+
   // ── Comisión real: lo que MELI descuenta según el pago aprobado ──────────
   const approvedPayment = (order.payments || []).find((p) => p.status === 'approved');
   const netReceived = approvedPayment?.net_received_amount || 0;
@@ -193,8 +198,9 @@ async function handleOrder(resource) {
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id),
         // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
-        // venta por el número que figura en pantalla no la encuentra.
-        pack_id: order.pack_id ? String(order.pack_id) : null,
+        // venta por el número que figura en pantalla no la encuentra. Además es lo
+        // que ata las órdenes de un mismo carrito: una compra, un envío.
+        pack_id: packId,
         // Un SKU puede tener varias publicaciones: sin esto no queda registro de
         // cuál vendió, porque la venta guarda el nombre interno del producto.
         meli_item_id: meliItemId,
@@ -212,33 +218,35 @@ async function handleOrder(resource) {
     } else {
       console.log(`ℹ️ Venta ya existente: orden ${order.id} — omitiendo`);
     }
+  }
 
-    // Crear envío — corre siempre (idempotente), incluso si la venta ya existía,
-    // para no depender de que ambos pasos ocurran en la misma invocación del webhook.
-    if (shippingId) {
-      const envioId = 'E_MELI_' + order.id + '_' + item.item.id;
-      const { data: envioExistente } = await supabase
-        .from('envios').select('id').eq('id', envioId).single();
-
-      if (!envioExistente) {
-        await supabase.from('envios').insert({
-          id: envioId,
-          venta_id: ventaId,
-          orden: String(order.id),
-          comprador: order.buyer?.nickname || '',
-          producto: producto.nombre,
-          transportista,
-          tracking: shipData?.tracking_number || null,
-          fecha_despacho: fechaDespachoDesdeShipment(shipData),
-          // Si la orden se procesa tarde (reintento del webhook, reproceso
-          // manual) el paquete ya puede estar viajando: se guarda el estado real.
-          estado: estadoDesdeShipment(shipData) || 'pendiente',
-          direccion: direccion || null,
-          costo: costoEnvio,
-          zona: zonaFlex,
-        });
-        console.log(`✅ Envío creado: orden ${order.id} — ${transportista} $${costoEnvio}`);
-      }
+  // ── Un solo envío por paquete ───────────────────────────────────────────
+  // Fuera del loop a propósito: el envío es del paquete, no del ítem. Corre
+  // siempre (es idempotente), incluso si las ventas ya existían, para no
+  // depender de que todo ocurra en la misma invocación del webhook.
+  if (shippingId) {
+    const ordenes = await ordenesDelPaquete(token, order, shippingId);
+    const r = await registrarEnvioDePaquete(supabase, {
+      order,
+      packId,
+      ordenes,
+      datos: {
+        comprador: order.buyer?.nickname || '',
+        transportista,
+        tracking: shipData?.tracking_number || null,
+        fechaDespacho: fechaDespachoDesdeShipment(shipData),
+        // Si la orden se procesa tarde (reintento del webhook, reproceso
+        // manual) el paquete ya puede estar viajando: se guarda el estado real.
+        estado: estadoDesdeShipment(shipData) || 'pendiente',
+        direccion: direccion || null,
+        costo: costoEnvio,
+        zona: zonaFlex,
+      },
+    });
+    if (r.creado) {
+      console.log(`✅ Envío creado: ${r.id} (orden ${order.id}${packId ? `, pack ${packId}` : ''}) — ${transportista} $${costoEnvio}`);
+    } else if (r.id) {
+      console.log(`ℹ Envío ${r.id} ya existía para el paquete — no se duplica (orden ${order.id})`);
     }
   }
 }

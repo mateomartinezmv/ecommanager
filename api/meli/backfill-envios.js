@@ -13,6 +13,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -48,10 +49,11 @@ module.exports = async (req, res) => {
 
     let creados = 0, sinShipping = 0, errores = 0;
     const resultados = [];
+    // Las líneas de un carrito comparten paquete: alcanza con resolverlo una vez.
+    const paquetesHechos = new Set();
 
     for (const venta of faltantes) {
       const ordenId = venta.orden_meli;
-      const meliItemId = venta.id.split('_').pop();
       if (!ordenId) { errores++; continue; }
 
       try {
@@ -93,31 +95,37 @@ module.exports = async (req, res) => {
         const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
         const costo = esFlex ? (zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0) : 0;
 
-        log.push(`${dryRun ? '[DRY]' : '🔄'} ${venta.id}: crear envío ${transportista} | zona ${zona ?? 'N/D'} | $${costo}`);
+        // Un paquete, un envío: si esta venta viaja en un carrito ya resuelto
+        // (o que ya tenía envío) no se crea otro, sólo se completa el detalle.
+        const packId = packIdDeOrden(order);
+        const paquete = packId || String(ordenId);
+        if (paquetesHechos.has(paquete)) {
+          log.push(`ℹ ${venta.id}: viaja en el paquete ${paquete}, ya resuelto en esta corrida`);
+          continue;
+        }
+        paquetesHechos.add(paquete);
+
+        log.push(`${dryRun ? '[DRY]' : '🔄'} ${venta.id}: envío del paquete ${paquete} | ${transportista} | zona ${zona ?? 'N/D'} | $${costo}`);
 
         if (!dryRun) {
-          const envioId = venta.id.replace('V_MELI_', 'E_MELI_');
-          const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single();
-          if (!envioExistente) {
-            const { error: insErr } = await supabase.from('envios').insert({
-              id: envioId,
-              venta_id: venta.id,
-              orden: String(ordenId),
+          const ordenes = await ordenesDelPaquete(token, order, shippingId);
+          const r = await registrarEnvioDePaquete(supabase, {
+            order, packId, ordenes,
+            datos: {
               comprador: venta.comprador || order.buyer?.nickname || '',
-              producto: venta.producto,
               transportista,
-              tracking: null,
-              fecha_despacho: null,
-              estado: 'pendiente',
               direccion: direccion || null,
               costo,
               zona,
-            });
-            if (insErr) { log.push(`❌ Error insertando ${envioId}: ${insErr.message}`); errores++; continue; }
+            },
+          });
+          if (!r.creado) {
+            log.push(`ℹ Paquete ${paquete}: ya tenía envío${r.id ? ` (${r.id})` : ''} — no se duplica`);
+            continue;
           }
         }
 
-        resultados.push({ ventaId: venta.id, orden: ordenId, transportista, zona, costo });
+        resultados.push({ ventaId: venta.id, paquete, orden: ordenId, transportista, zona, costo });
         creados++;
       } catch (err) {
         log.push(`❌ Error procesando venta ${venta.id} (orden ${ordenId}): ${err.message}`);

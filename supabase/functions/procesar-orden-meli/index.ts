@@ -234,6 +234,97 @@ async function getDireccionEnvio(orderId: string, token: string): Promise<string
 }
 
 // =====================
+// UN PAQUETE = UN ENVÍO
+// =====================
+// MELI parte el carrito del comprador en una orden por publicación, todas
+// atadas por un mismo `pack_id` y un único shipment. El envío es del paquete:
+// uno solo, no uno por orden ni —mucho menos— uno por ítem.
+function packIdDeOrden(order: any): string | null {
+  return order?.pack_id ? String(order.pack_id) : null
+}
+
+// Todas las órdenes que viajan en el mismo paquete, según el propio shipment.
+async function ordenesDelPaquete(token: string, order: any, shipmentId: any): Promise<string[]> {
+  const ordenes = new Set<string>([String(order.id)])
+  if (shipmentId) {
+    try {
+      const res = await fetch(`https://api.mercadolibre.com/shipments/${shipmentId}/orders`, {
+        headers: { 'Authorization': `Bearer ${token}`, 'X-New-Domain': 'true' },
+      })
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        for (const o of data) if (o?.order_id) ordenes.add(String(o.order_id))
+      }
+    } catch (_) {}
+  }
+  return [...ordenes]
+}
+
+// Registra —o completa— el único envío del paquete. Es idempotente: si otra
+// orden del mismo carrito ya lo creó, sólo suma su producto a la descripción.
+async function registrarEnvioDePaquete(
+  order: any, packId: string | null, ordenes: string[], datos: any, log: string[]
+) {
+  const envioId = `E_MELI_${packId || order.id}`
+  const campos = 'id, producto, cantidad'
+
+  const porId = new Map<string, any>()
+  const { data: porOrden } = await supabase.from('ventas').select(campos).in('orden_meli', ordenes)
+  for (const f of porOrden || []) porId.set(f.id, f)
+  if (packId) {
+    const { data: porPack } = await supabase.from('ventas').select(campos).eq('pack_id', packId)
+    for (const f of porPack || []) porId.set(f.id, f)
+  }
+  const lineas = [...porId.values()].sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0))
+  // Sin ninguna línea registrada no hay nada que despachar todavía.
+  if (!lineas.length) return
+
+  const ventaIds = lineas.map((v: any) => v.id)
+  const producto = lineas.length === 1
+    ? lineas[0].producto
+    : lineas.map((v: any) => `${v.producto} x${v.cantidad}`).join(' + ')
+
+  // Los envíos viejos (uno por ítem) tienen otro id: tampoco hay que duplicarlos.
+  let existente: any = null
+  const { data: porIdEnvio } = await supabase.from('envios')
+    .select('id, producto, pack_id').eq('id', envioId).maybeSingle()
+  existente = porIdEnvio
+  if (!existente) {
+    const { data } = await supabase.from('envios').select('id, producto, pack_id')
+      .in('venta_id', ventaIds).order('created_at', { ascending: true })
+    existente = data?.[0] ?? null
+  }
+  if (!existente) {
+    const { data } = await supabase.from('envios').select('id, producto, pack_id')
+      .in('orden', ordenes).order('created_at', { ascending: true })
+    existente = data?.[0] ?? null
+  }
+
+  if (existente) {
+    const update: any = {}
+    if (producto && producto !== existente.producto) update.producto = producto
+    if (packId && !existente.pack_id) update.pack_id = packId
+    if (Object.keys(update).length) await supabase.from('envios').update(update).eq('id', existente.id)
+    log.push(`ℹ️ El paquete ya tenía envío (${existente.id}) — no se duplica`)
+    return
+  }
+
+  const { error } = await supabase.from('envios').insert({
+    id: envioId, venta_id: ventaIds[0], orden: String(order.id), pack_id: packId,
+    comprador: datos.comprador || '', producto,
+    transportista: datos.transportista,
+    tracking: null, fecha_despacho: null, estado: 'pendiente',
+    direccion: datos.direccion || null, costo: datos.costo ?? 0, zona: datos.zona ?? null,
+  })
+  // 23505 = otra orden del mismo carrito ganó la carrera: es justo lo que buscamos.
+  if (error && error.code !== '23505') {
+    log.push(`⚠️ Error creando envío ${envioId}: ${error.message}`)
+    return
+  }
+  log.push(`✅ Envío del paquete: ${envioId} | ${datos.transportista} | zona ${datos.zona ?? '?'} | $${datos.costo}`)
+}
+
+// =====================
 // PROCESAR ORDEN
 // =====================
 async function procesarOrden(orderId: string, log: string[]): Promise<any> {
@@ -266,6 +357,12 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     zonaFlex = detectarZonaDesdeShipData(neighborhood, routeName, direccion)
     log.push(`🗺️ Zona: ${zonaFlex ?? 'no detectada'} | barrio: "${neighborhood || '—'}" | ruta: "${routeName || '—'}"`)
   }
+
+  // Un carrito de MELI llega como varias órdenes bajo un mismo pack: es UNA
+  // compra, con UN envío.
+  const packId = packIdDeOrden(order)
+  const transportista = esFlex ? 'enviosuy' : 'mercado_envios'
+  const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0
 
   const resultados = []
 
@@ -329,10 +426,6 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
     const ventaId = `V_MELI_${order.id}_${meliItemId}`
     const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
 
-    // Todo Flex va por EnviosUy con costo de tabla por zona
-    const transportista = esFlex ? 'enviosuy' : 'mercado_envios'
-    const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0
-
     if (ventaExistente) {
       log.push(`ℹ️ Venta ${ventaId} ya existe`)
       resultados.push({ item: meliItemId, estado: 'ya_existe' })
@@ -341,6 +434,8 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
         id: ventaId, canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id),
+        pack_id: packId,
+        meli_item_id: meliItemId,
         comprador: order.buyer?.nickname || '',
         sku: skuFinal, producto: nombreFinal,
         cantidad, precio_unit: precioUnit,
@@ -352,36 +447,18 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
       log.push(`✅ Venta registrada: ${ventaId}`)
       resultados.push({ item: meliItemId, estado: 'registrada', ventaId })
     }
+  }
 
-    // Registrar envío con costo Flex automático
-    const envioId = `E_MELI_${order.id}_${meliItemId}`
-    const { data: envioExistente } = await supabase.from('envios').select('id').eq('id', envioId).single()
-
-    if (!envioExistente) {
-
-      const { error: envioErr } = await supabase.from('envios').insert({
-        id: envioId,
-        venta_id: ventaId,
-        orden: String(order.id),
-        comprador: order.buyer?.nickname || '',
-        producto: nombreFinal,
-        transportista,
-        tracking: null,
-        fecha_despacho: null,
-        estado: 'pendiente',
-        direccion: direccion || null,
-        costo: costoEnvio,
-        zona: zonaFlex,
-      })
-
-      if (envioErr) {
-        log.push(`⚠️ Error creando envío: ${envioErr.message}`)
-      } else {
-        log.push(`✅ Envío creado: zona ${zonaFlex ?? '?'} | ${transportista} | $${costoEnvio}`)
-      }
-    } else {
-      log.push(`ℹ️ Envío ${envioId} ya existe`)
-    }
+  // El envío va fuera del loop a propósito: es del paquete, no del ítem.
+  if (shipmentId) {
+    const ordenes = await ordenesDelPaquete(token, order, shipmentId)
+    await registrarEnvioDePaquete(order, packId, ordenes, {
+      comprador: order.buyer?.nickname || '',
+      transportista,
+      direccion,
+      costo: costoEnvio,
+      zona: zonaFlex,
+    }, log)
   }
 
   return resultados

@@ -389,8 +389,20 @@ async function apiFetch(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(path, opts);
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || r.statusText);
+
+  // Cuando Vercel corta una función por tiempo contesta un 504 con HTML, no con
+  // JSON: parsear a ciegas moría con un "Unexpected token '<'" que no explicaba
+  // nada. Leemos el texto y sólo intentamos el JSON si lo hay.
+  const texto = await r.text();
+  let data = {};
+  try { data = texto ? JSON.parse(texto) : {}; } catch { data = {}; }
+
+  if (!r.ok) {
+    if (r.status === 504) {
+      throw new Error('El servidor tardó demasiado y cortó la operación. El cambio puede haberse guardado igual: fijate cómo quedó en la lista.');
+    }
+    throw new Error(data.error || r.statusText || `HTTP ${r.status}`);
+  }
   return data;
 }
 
@@ -656,6 +668,10 @@ async function marcarLlegado(id) {
       }
     }
   } catch(e) {
+    // El servidor marca la llegada ANTES de tocar el stock, así que un error acá
+    // no quiere decir que no se haya guardado nada. Releemos del servidor para no
+    // dejar la fila mostrando "Ordenado" sobre una importación que ya está recibida.
+    await load();
     alert('Error: ' + e.message);
   }
 }

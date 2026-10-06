@@ -239,6 +239,30 @@ function resumenSync(sku, reporte) {
 
 // ───────────────────────────── Importaciones ─────────────────────────────
 
+// Cuántos SKU se sincronizan a la vez cuando llega una importación.
+//
+// Sincronizar un producto cuesta ~1,5 s (un PUT a cada publicación de MELI más
+// el empuje a Shopify). De a uno, una importación de seis SKU ya rozaba los 10 s
+// que Vercel le da a la función: la cortaba a mitad de camino, el navegador
+// recibía un 504 y la pantalla mostraba "Error" aunque el estado y el stock ya
+// estuvieran guardados. Peor todavía, los SKU que quedaban después del corte no
+// sumaban su stock y no había forma de reintentarlo (la importación ya figuraba
+// como recibida).
+//
+// De a cuatro, una importación de treinta SKU entra con margen. No se sube más
+// para no castigar el rate limit de MELI ni el de Shopify, que es el más
+// estrecho de los dos.
+const SKUS_EN_PARALELO = 4;
+
+// Corre `fn` sobre `items` de a `tamano` a la vez, respetando el orden de salida.
+async function enLotes(items, tamano, fn) {
+  const salidas = [];
+  for (let i = 0; i < items.length; i += tamano) {
+    salidas.push(...await Promise.all(items.slice(i, i + tamano).map(fn)));
+  }
+  return salidas;
+}
+
 // Suma stock_dep para cada ítem de una importación que acaba de llegar. Las
 // cantidades vienen en unidades sueltas (así llegan las cajas del proveedor).
 // No lanza por producto: acumula errores/no-encontrados para que un SKU con
@@ -269,17 +293,21 @@ async function applyImportArrival(supabase, items) {
   const porSku = {};
   for (const p of (productos || [])) porSku[p.sku] = p;
 
-  for (const sku of skus) {
-    const qty = qtyBySku[sku];
+  // `sincronizarStock` no lanza, así que el lote nunca se cae entero por un SKU.
+  const resultados = await enLotes(skus, SKUS_EN_PARALELO, async sku => {
     const p = porSku[sku];
-    if (!p) { noEncontrados.push(sku); continue; }
+    if (!p) return { sku, p };
 
-    const r = await sincronizarStock(supabase, p, (p.stock_dep || 0) + qty);
+    const r = await sincronizarStock(supabase, p, (p.stock_dep || 0) + qtyBySku[sku]);
     console.log('📦 Importación:', resumenSync(sku, r));
+    return { sku, p, r };
+  });
 
+  for (const { sku, p, r } of resultados) {
+    if (!p) { noEncontrados.push(sku); continue; }
     if (r.error) { errores.push({ sku, error: r.error }); continue; }
 
-    aplicados.push({ sku, sumado: qty, nuevoStock: r.stockDep, nuevoStockPublicado: r.stockPublicado });
+    aplicados.push({ sku, sumado: qtyBySku[sku], nuevoStock: r.stockDep, nuevoStockPublicado: r.stockPublicado });
     for (const e of r.meli.errores) errores.push({ sku, error: `MELI${e.meliId ? ` ${e.meliId}` : ''}: ${e.error}` });
     if (r.shopify.error) errores.push({ sku, error: `Shopify: ${r.shopify.error}` });
   }

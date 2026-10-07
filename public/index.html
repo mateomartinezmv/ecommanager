@@ -708,11 +708,11 @@
     </div>
     <div id="ads-panel-fechas" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 28px;gap:12px;align-items:center;flex-wrap:wrap" class="topbar">
       <span style="font-size:13px;font-weight:600;color:var(--text-dim)">📅 Rango</span>
-      <input type="date" id="ads-desde" style="width:150px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <input type="date" id="ads-desde" style="width:150px;padding:7px 10px" onchange="onAdsParametrosChange()">
       <span style="color:var(--text-muted)">→</span>
-      <input type="date" id="ads-hasta" style="width:150px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <input type="date" id="ads-hasta" style="width:150px;padding:7px 10px" onchange="onAdsParametrosChange()">
       <span style="font-size:13px;font-weight:600;color:var(--text-dim);margin-left:12px">Comisión MELI</span>
-      <input type="number" id="ads-comision" value="15" min="0" max="50" step="0.5" style="width:80px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <input type="number" id="ads-comision" value="15" min="0" max="50" step="0.5" style="width:80px;padding:7px 10px" onchange="onAdsParametrosChange()">
       <span style="color:var(--text-muted);font-size:13px">%</span>
     </div>
     <div class="content">
@@ -729,6 +729,26 @@
           </span>
         </div>
         <div id="ads-tabla"></div>
+      </div>
+
+      <!-- EL OTRO LADO DE LA PESTAÑA: lo que todavía no se anuncia -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header" style="flex-wrap:wrap;gap:10px">
+          <span class="table-title">💡 Sin anunciar, con margen para anunciarlo</span>
+          <span style="flex:1;min-width:280px;font-size:11px;color:var(--text-muted)">
+            Productos del CRM con publicación activa y stock que hoy <b>no tienen ningún anuncio corriendo</b>
+            en ninguna campaña. Ordenados por lo que pueden mover: ganancia estimada por venta × lo que el
+            producto ya vende solo por mes.<br>
+            <b>El que antes sí se anunció no se recomienda a ciegas:</b> se mira cómo le fue entonces
+            (MELI sirve 90 días; más atrás, el histórico que guarda el CRM) y si perdía plata se marca en rojo.
+          </span>
+          <button class="btn btn-ghost btn-sm" onclick="renderAdsOportunidades(true)">🔄 Recalcular</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportAdsOportunidadesCSV()">📊 CSV</button>
+        </div>
+        <div id="ads-oport-resumen"></div>
+        <div id="ads-oport-tabla">
+          <div class="empty-state"><div class="empty-icon">💡</div><p>Se calcula al abrir la pestaña, junto con la tabla de arriba.</p></div>
+        </div>
       </div>
     </div>
   </div>
@@ -7102,7 +7122,9 @@ async function renderAds(forzar = false) {
           <div class="empty-state"><div class="empty-icon">📣</div>
           <p>${escHtml(r.mensaje || r.error || 'No se pudieron traer las campañas.')}</p></div>`;
         document.getElementById('ads-stats').innerHTML = '';
-        return;
+        // La sección de abajo no depende de esta lista: se pide igual y, si MELI tampoco
+        // le contesta, muestra su propio motivo en vez de quedarse con el cartel de inicio.
+        return renderAdsOportunidades(forzar);
       }
       // Las que gastaron primero: son las que importa mirar.
       adsState.campanas = (r.campanas || []).sort((a, b) => b.inversion - a.inversion);
@@ -7116,11 +7138,20 @@ async function renderAds(forzar = false) {
       sel.innerHTML = '<option value="">—</option>';
       document.getElementById('ads-tabla').innerHTML =
         `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
-      return;
+      return renderAdsOportunidades(forzar);
     }
   }
 
   await renderAdsAnuncios();
+  // La sección de abajo no depende de la campaña elegida, así que se trae aparte y sin
+  // bloquear la tabla de arriba: es la consulta más pesada de la pestaña.
+  renderAdsOportunidades(forzar);
+}
+
+/** Cambió el rango o la comisión: las dos tablas de la pestaña se calculan con eso. */
+async function onAdsParametrosChange() {
+  await renderAdsAnuncios();
+  renderAdsOportunidades();
 }
 
 async function renderAdsAnuncios() {
@@ -7503,6 +7534,334 @@ function exportAdsCSV() {
   const a = document.createElement('a');
   a.href = url;
   a.download = `ads-${adsState.periodo?.desde || 'periodo'}_${adsState.periodo?.hasta || ''}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- Sin anunciar, con margen para anunciarlo ---------------------------------
+// La tabla de arriba dice qué hacer con lo que ya se anuncia. Esto dice qué falta: productos
+// con publicación activa y stock que hoy no tienen ningún anuncio corriendo, ordenados por
+// la plata que pueden mover.
+//
+// La sección NO depende de la campaña elegida —mira todas, porque un producto anunciado en
+// otra campaña igual se está anunciando— pero sí del período y de la comisión de arriba.
+
+let adsOportState = {
+  datos: null,
+  clave: null,              // período + comisión con los que se trajeron los datos
+  cargando: false,
+  orden: { campo: 'potencial_mes', dir: 'desc' },
+};
+
+const ADS_OPORT_COLUMNAS = [
+  { campo: 'nombre',              label: 'Producto',       tipo: 'texto', align: 'left' },
+  { campo: 'precio',              label: 'Precio' },
+  { campo: 'costo',               label: 'Costo' },
+  { campo: 'contribucion',        label: 'Deja/venta' },
+  { campo: 'margen',              label: 'Margen' },
+  { campo: 'roas_breakeven',      label: 'ROAS BE' },
+  { campo: 'cpc_max',             label: 'CPC máx' },
+  { campo: 'ganancia_por_venta',  label: 'Gana/venta' },
+  { campo: 'unidades_mes',        label: 'Vtas/mes' },
+  { campo: 'potencial_mes',       label: 'Potencial/mes' },
+  { campo: 'hist_inversion',      label: 'Antes en ads' },
+  { campo: 'motivo',              label: 'Por qué no', tipo: 'texto', align: 'center' },
+  { campo: 'recomendacion',       label: 'Qué hacer',  tipo: 'texto', align: 'center' },
+];
+
+// El CPC se lee para tipearlo como puja en MELI, y ahí los centavos cambian la cuenta:
+// redondeado a pesos, un techo de $1,60 se leería como $2 y se pujaría de más. La columna
+// usa fmt() como el resto de la pestaña y el tooltip da el número exacto.
+const fmtCpc = n => '$' + (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const ADS_OPORT_MOTIVO = {
+  pausado:          '<span class="badge badge-yellow">⏸ Pausado</span>',
+  salio_de_campana: '<span class="badge badge-purple">Salió de la campaña</span>',
+  nunca_anunciado:  '<span class="badge badge-gray">Nunca se anunció</span>',
+};
+
+const ADS_OPORT_RECOMENDACION = {
+  volver_a_anunciar: '<span class="badge badge-green">🟢 Volver a anunciar</span>',
+  vale_la_pena:      '<span class="badge badge-green">🟢 Vale la pena</span>',
+  para_probar:       '<span class="badge badge-blue">🔵 Para probar</span>',
+  no_paga_el_clic:   '<span class="badge badge-yellow">🟡 No paga el clic</span>',
+  ya_fallo:          '<span class="badge badge-red">🔴 Ya se probó y perdía</span>',
+};
+
+const ADS_OPORT_VEREDICTO = {
+  rentable:  { icono: '🟢', texto: 'era rentable' },
+  al_filo:   { icono: '🟡', texto: 'quedaba al filo' },
+  perdia:    { icono: '🔴', texto: 'perdía plata' },
+  no_vendio: { icono: '🔴', texto: 'no vendió nada' },
+};
+
+async function renderAdsOportunidades(forzar = false) {
+  const tabla = document.getElementById('ads-oport-tabla');
+  if (!tabla) return;
+
+  const comision = document.getElementById('ads-comision').value || 15;
+  const clave = `${adsRango()}|${comision}`;
+  // Cambiar de campaña no cambia esta tabla: con los datos ya traídos alcanza con repintar.
+  if (!forzar && adsOportState.datos && adsOportState.clave === clave) return pintarAdsOportunidades();
+  if (adsOportState.cargando) return;
+
+  adsOportState.cargando = true;
+  tabla.innerHTML = '<div class="empty-state"><p>Buscando productos sin anunciar...</p></div>';
+  document.getElementById('ads-oport-resumen').innerHTML = '';
+
+  try {
+    const r = await api('GET', `/meli/ads-oportunidades?${adsRango()}&comision=${comision}`);
+    if (!r.ok) {
+      adsOportState.datos = null;
+      tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
+        <p>${escHtml(r.mensaje || r.error || 'MELI no devolvió datos.')}</p></div>`;
+      return;
+    }
+    // Campos planos del histórico: la tabla ordena por columna y no puede bajar a un objeto.
+    r.oportunidades.forEach(o => {
+      o.hist_inversion = o.historico?.inversion ?? null;
+      o.hist_unidades  = o.historico?.unidades ?? null;
+      o.hist_roas      = o.historico?.roas ?? null;
+    });
+    adsOportState.datos = r;
+    adsOportState.clave = clave;
+    pintarAdsOportunidades();
+  } catch (e) {
+    adsOportState.datos = null;
+    tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
+  } finally {
+    adsOportState.cargando = false;
+  }
+}
+
+function ordenarAdsOport(campo) {
+  const o = adsOportState.orden;
+  const col = ADS_OPORT_COLUMNAS.find(c => c.campo === campo);
+  if (o.campo === campo) {
+    o.dir = o.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    o.campo = campo;
+    o.dir = col?.tipo === 'texto' ? 'asc' : 'desc';
+  }
+  pintarAdsOportunidades();
+}
+
+function pintarAdsOportunidades() {
+  pintarAdsOportResumen();
+  pintarAdsOportTabla();
+}
+
+function pintarAdsOportResumen() {
+  const d = adsOportState.datos;
+  const cont = document.getElementById('ads-oport-resumen');
+  if (!d) { cont.innerHTML = ''; return; }
+
+  const t = d.totales;
+  const ref = d.referencia;
+  const x = t.descartados;
+  const afuera = [
+    [x.anunciandose, 'ya se anuncian'],
+    [x.sin_margen, 'no dejan margen ni sin ads'],
+    [x.sin_costo, 'sin costo cargado en el CRM'],
+    [x.sin_stock, 'sin stock publicado'],
+    [x.sin_publicacion_activa, 'con la publicación pausada o cerrada'],
+    [x.sin_publicacion, 'sin publicación en MELI'],
+    [x.discontinuados, 'discontinuados'],
+  ].filter(([n]) => n > 0).map(([n, texto]) => `${n} ${texto}`).join(' · ');
+
+  const reparto = [
+    t.pausados ? `⏸ <b>${t.pausados}</b> está(n) en una campaña pero pausado(s): se reactiva(n) y listo` : '',
+    t.salieron ? `<b>${t.salieron}</b> se anunciaba(n) y salió/salieron de la campaña` : '',
+    t.nunca ? `<b>${t.nunca}</b> nunca se anunció/anunciaron` : '',
+  ].filter(Boolean).join(' · ');
+
+  // La referencia de la cuenta es la vara de todas las estimaciones de la tabla: sin ella,
+  // "podrías pagar hasta X por clic" no se puede contrastar contra nada.
+  const refTexto = ref.clics > 0
+    ? `Referencia del período: la cuenta paga <b>${fmt(ref.cpc)}</b> por clic y convierte el <b>${ref.cvr.toFixed(2)}%</b>,
+       así que una venta traída por ads cuesta <b>~${ref.cpa != null ? fmt(ref.cpa) : '—'}</b>
+       (${ref.clics.toLocaleString('es-AR')} clics y ${ref.unidades} ventas en ${ref.campanas} campaña(s)).`
+    : `<b>Sin clics en el período</b>, así que no hay con qué estimar el costo de una venta por ads:
+       la tabla muestra el margen de cada producto, pero sin compararlo contra el precio del clic.`;
+
+  cont.innerHTML = `
+    <div style="padding:14px 20px;border-bottom:1px solid var(--border);font-size:13px;background:var(--surface2)">
+      <div style="margin-bottom:6px">
+        💡 <b>${t.candidatos} producto(s) sin anunciar</b> con margen para hacerlo${t.candidatos > t.mostrados ? ` (se muestran los ${t.mostrados} de mayor potencial)` : ''}.
+        ${t.potencial_mes > 0 ? `Potencial estimado: <b style="color:var(--green)">${fmt(t.potencial_mes)}/mes</b>.` : ''}
+      </div>
+      ${reparto ? `<div style="margin-bottom:6px;color:var(--text-dim)">${reparto}</div>` : ''}
+      <div style="color:var(--text-dim)">${refTexto}</div>
+      <div style="color:var(--text-muted);font-size:12px;margin-top:6px">
+        Histórico mirado: ${d.periodo_historico.desde} → ${d.periodo_historico.hasta} en MELI
+        (${t.con_historico} de los candidatos ya estuvo anunciado), más lo que el CRM tenga guardado de antes.
+        ${afuera ? `<br>Quedaron afuera: ${afuera}.` : ''}
+      </div>
+      ${t.incompleto ? `<div style="margin-top:8px;color:var(--yellow)">
+        ⚠️ No se pudo leer entera ${t.incompleto.map(x => `<b>${escHtml(x.campana)}</b> (${escHtml(x.motivo)})`).join(', ')}:
+        algún producto puede figurar acá estando anunciado.
+      </div>` : ''}
+    </div>`;
+}
+
+function adsOportFilas() {
+  const d = adsOportState.datos;
+  if (!d) return [];
+  const { campo, dir } = adsOportState.orden;
+  const col = ADS_OPORT_COLUMNAS.find(c => c.campo === campo);
+  const signo = dir === 'desc' ? -1 : 1;
+
+  return [...d.oportunidades].sort((a, b) => {
+    const va = a[campo], vb = b[campo];
+    if (col?.tipo === 'texto') return signo * String(va || '').localeCompare(String(vb || ''), 'es');
+    // Vacíos siempre al fondo: un producto sin histórico no es "el peor histórico".
+    const na = va === null || va === undefined, nb = vb === null || vb === undefined;
+    if (na && nb) return 0;
+    if (na) return 1;
+    if (nb) return -1;
+    return signo * (va - vb);
+  });
+}
+
+function pintarAdsOportTabla() {
+  const d = adsOportState.datos;
+  const cont = document.getElementById('ads-oport-tabla');
+  if (!d) return;
+
+  if (!d.oportunidades.length) {
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div>
+      <p>No hay productos sin anunciar que den margen: todo lo que podía anunciarse ya está en una campaña.</p></div>`;
+    return;
+  }
+
+  const { campo, dir } = adsOportState.orden;
+  const th = (c) => {
+    const activa = campo === c.campo;
+    const flecha = activa ? (dir === 'desc' ? '↓' : '↑') : '↕';
+    const color = activa ? 'var(--accent)' : 'var(--text-muted)';
+    return `<th style="text-align:${c.align || 'right'};cursor:pointer;white-space:nowrap;${activa ? 'color:var(--accent)' : ''}"
+      onclick="ordenarAdsOport('${c.campo}')" title="Ordenar por ${c.label}">${c.label}
+      <span style="color:${color};opacity:${activa ? 1 : 0.45}">${flecha}</span></th>`;
+  };
+
+  cont.innerHTML = `
+    <table>
+      <thead><tr>${ADS_OPORT_COLUMNAS.map(th).join('')}</tr></thead>
+      <tbody>${adsOportFilas().map(o => {
+        const contribTitulo = `Precio ${fmt(o.precio)} − costo ${fmt(o.costo)} − comisión MELI ${o.comision_pct}% `
+          + `(${fmt(o.comision)}) = ${fmt(o.contribucion)} limpios por venta. `
+          + `Por debajo de ${o.roas_breakeven.toFixed(2)}x de ROAS, el anuncio se come esa diferencia.`;
+
+        // CPC máximo: el número con el que se puja. Sale de la conversión de referencia, que
+        // es la del propio producto cuando ya se anunció lo suficiente, y la de la cuenta si no.
+        const cpcTitulo = o.cpc_max == null
+          ? 'Sin conversión de referencia en el período no se puede estimar cuánto pagar por clic.'
+          : `Podés pagar hasta ${fmtCpc(o.cpc_max)} por clic y seguir ganando: ${fmt(o.contribucion)} que deja la venta `
+            + `× ${o.cvr_referencia.toFixed(2)}% de conversión `
+            + (o.cvr_origen === 'propio'
+                ? '(la que tuvo este producto cuando se anunciaba).'
+                : '(la de la cuenta: este producto no tiene clics suficientes propios).')
+            + ` La cuenta hoy paga ${fmtCpc(o.cpc_referencia)} por clic`
+            + (o.colchon_clic != null
+                ? `, así que te ${o.colchon_clic >= 0 ? 'sobran' : 'faltan'} ${fmtCpc(Math.abs(o.colchon_clic))} por clic.`
+                : '.');
+        const cpcColor = o.cpc_max == null || !o.cpc_referencia ? 'var(--text-muted)'
+          : o.cpc_max >= o.cpc_referencia * 1.25 ? 'var(--green)'
+          : o.cpc_max >= o.cpc_referencia ? 'var(--yellow)'
+          : 'var(--red)';
+
+        const gananciaTitulo = o.ganancia_por_venta == null
+          ? 'Sin clics en el período no hay con qué estimar el costo de una venta por ads.'
+          : `A ${fmtCpc(o.cpc_referencia)} el clic y con ${o.cvr_referencia.toFixed(2)}% de conversión, `
+            + `cada venta por ads costaría ~${fmt(o.cpa_estimado)}. El producto deja ${fmt(o.contribucion)}, `
+            + `así que quedarían ${fmt(o.ganancia_por_venta)} limpios por venta.`;
+
+        const potencialTitulo = o.potencial_mes > 0
+          ? `${fmt(o.ganancia_por_venta)} por venta × ${o.unidades_mes} ventas por mes que el producto ya hace solo `
+            + `en MELI = ${fmt(o.potencial_mes)}. No es una promesa de ventas nuevas: es la escala de lo que mueve `
+            + `el producto, para saber a cuál mirar primero.`
+          : o.unidades_meli_periodo === 0
+            ? 'Todavía no vendió nada en MELI en la ventana mirada, así que no hay demanda probada para escalar.'
+            : 'Al precio del clic de hoy este producto no deja ganancia por venta.';
+
+        // El histórico es el punto del pedido: antes de volver a anunciar algo, mirar cómo le fue.
+        const h = o.historico;
+        const v = h ? ADS_OPORT_VEREDICTO[o.veredicto_historico] : null;
+        const histTitulo = !h ? 'Nunca se anunció, o se anunció antes de lo que MELI y el CRM pueden mostrar.'
+          // Las fechas son la ventana mirada, no el día exacto en que arrancó el anuncio:
+          // decirlo al revés sería inventar una precisión que el dato no tiene.
+          : `Datos de ads entre ${h.desde || '?'} y ${h.hasta || '?'}: gastó ${fmt(h.inversion)}, `
+            + `facturó ${fmt(h.facturacion)} con ${h.unidades} venta(s) → ROAS ${h.roas.toFixed(2)}x `
+            + `contra el ROAS de equilibrio de hoy, ${o.roas_breakeven.toFixed(2)}x. `
+            + `Con el margen de hoy eso habría dejado ${fmt(h.ganancia)}. `
+            + `CPC de entonces ${fmt(h.cpc)} · conversión ${h.cvr.toFixed(2)}%`
+            + (h.campanas?.length ? ` · en ${h.campanas.join(', ')}` : '')
+            + (h.fuente === 'local' ? ' · del histórico guardado por el CRM.'
+               : h.fuente === 'ambas' ? ` · ${h.dias_locales} día(s) vienen del histórico del CRM, el resto de MELI.`
+               : ' · de los últimos 90 días de MELI.');
+        // Sin veredicto (hubo clics pero ningún peso gastado) no hay nada que juzgar.
+        const histColor = !h || !o.veredicto_historico ? 'var(--text-muted)'
+          : o.veredicto_historico === 'rentable' ? 'var(--green)'
+          : o.veredicto_historico === 'al_filo' ? 'var(--yellow)'
+          : 'var(--red)';
+
+        const titulo = o.permalink
+          ? `<a href="${escHtml(o.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(o.nombre)} ↗</a>`
+          : escHtml(o.nombre);
+
+        return `
+        <tr>
+          <td style="min-width:260px">
+            <div style="display:flex;gap:10px;align-items:center">
+              ${o.thumbnail ? `<img src="${escHtml(o.thumbnail)}" style="width:38px;height:38px;object-fit:contain;border-radius:6px;background:var(--surface2)">` : ''}
+              <div>
+                <div style="font-weight:500;font-size:13px">${titulo}</div>
+                <div style="font-size:11px;color:var(--text-muted)">
+                  SKU ${escHtml(o.sku)} · stock ${o.stock}
+                  ${o.publicaciones > 1 ? ` · ${o.publicaciones} publicaciones` : ''}
+                  ${o.grupo ? ` · ${escHtml(o.grupo)}` : ''}
+                  ${o.unidades_meli_periodo ? ` · ${o.unidades_meli_periodo} vendida(s) sin ads` : ''}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align:right">${fmt(o.precio)}</td>
+          <td style="text-align:right">${fmt(o.costo)}</td>
+          <td style="text-align:right;font-weight:600" title="${escHtml(contribTitulo)}">${fmt(o.contribucion)}</td>
+          <td style="text-align:right" title="${escHtml(contribTitulo)}">${o.margen.toFixed(1)}%</td>
+          <td style="text-align:right">${o.roas_breakeven.toFixed(2)}x</td>
+          <td style="text-align:right;font-weight:600;color:${cpcColor}" title="${escHtml(cpcTitulo)}">${o.cpc_max != null ? fmt(o.cpc_max) : '—'}</td>
+          <td style="text-align:right;color:${o.ganancia_por_venta == null ? 'var(--text-muted)' : o.ganancia_por_venta > 0 ? 'var(--green)' : 'var(--red)'}"
+              title="${escHtml(gananciaTitulo)}">${o.ganancia_por_venta != null ? fmt(o.ganancia_por_venta) : '—'}</td>
+          <td style="text-align:right">${o.unidades_mes}</td>
+          <td style="text-align:right;font-weight:600;color:${o.potencial_mes > 0 ? 'var(--green)' : 'var(--text-muted)'}"
+              title="${escHtml(potencialTitulo)}">${o.potencial_mes > 0 ? fmt(o.potencial_mes) : '—'}</td>
+          <td style="text-align:right;color:${histColor}" title="${escHtml(histTitulo)}">${h
+            ? `${v ? v.icono : ''} ${fmt(h.inversion)}<br><span style="font-size:11px;color:var(--text-muted)">${h.unidades} vta(s) · ROAS ${h.roas.toFixed(2)}x</span>`
+            : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td style="text-align:center">${ADS_OPORT_MOTIVO[o.motivo] || ''}</td>
+          <td style="text-align:center">${ADS_OPORT_RECOMENDACION[o.recomendacion] || ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>`;
+}
+
+function exportAdsOportunidadesCSV() {
+  const filas = adsOportFilas();
+  if (!filas.length) return alert('No hay oportunidades para exportar.');
+  const cols = ['sku', 'nombre', 'meli_id', 'permalink', 'stock', 'precio', 'costo', 'comision', 'contribucion',
+    'margen', 'roas_breakeven', 'cpc_max', 'cpc_referencia', 'cvr_referencia', 'cvr_origen', 'cpa_estimado',
+    'ganancia_por_venta', 'colchon_clic', 'unidades_meli_periodo', 'unidades_mes', 'potencial_mes',
+    'motivo', 'hist_inversion', 'hist_unidades', 'hist_roas', 'veredicto_historico', 'recomendacion'];
+  const linea = (o) => cols.map(c => {
+    const val = o[c];
+    return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : (val ?? '');
+  }).join(',');
+  const csv = [cols.join(','), ...filas.map(linea)].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ads-oportunidades-${adsOportState.datos?.periodo?.desde || 'periodo'}_${adsOportState.datos?.periodo?.hasta || ''}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

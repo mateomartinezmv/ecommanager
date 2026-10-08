@@ -3,13 +3,15 @@
   "version": "1.0.0",
   "description": "EcomManager - CRM gratuito para MELI y mostrador",
   "scripts": {
-    "dev": "http-server public -p 3000 -c-1"
+    "dev": "http-server public -p 3000 -c-1",
+    "test": "node --test \"tests/*.test.js\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
     "node-fetch": "^3.3.2"
   },
   "devDependencies": {
-    "http-server": "^14.1.1"
+    "http-server": "^14.1.1",
+    "playwright": "^1.56.1"
   }
 }

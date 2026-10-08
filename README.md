@@ -91,6 +91,19 @@ Después actualizalas en Vercel → Settings → Environment Variables
 
 ---
 
+## Tests
+
+```bash
+npm install
+npm test
+```
+
+Abren el CRM en un Chromium con la API mockeada y lo manejan como lo maneja el usuario, que es
+la única forma de verificar la lógica: el SPA es un solo `public/index.html` sin módulos que
+importar. Detalle en `tests/README.md`.
+
+---
+
 ## Gastos e ingresos extra (sección Finanzas)
 
 Para registrar lo que no entra por una venta: el packaging, el envío que pagás por un cambio

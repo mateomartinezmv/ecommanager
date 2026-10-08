@@ -30,10 +30,13 @@ ruido de los CDN que no cargan sin red se filtra en `erroresReales()`.
 | Archivo | Qué cubre |
 |---|---|
 | `finanzas.test.js` | Gastos e ingresos extra: totales por período, gráficos circulares por categoría, filtros, conversión USD→UYU con la cotización del día, el check del Literal E, el recálculo de la ganancia neta en Reportes, el ABM de categorías y la exportación a PDF. |
-| `sin-migracion.test.js` | El estado en el que la migración de `movimientos` todavía no se corrió en Supabase: el resto del CRM tiene que funcionar igual y la pantalla nueva tiene que explicar qué falta. |
+| `sin-migracion.test.js` | El estado en el que una migración todavía no se corrió en Supabase (la tabla `movimientos`, las columnas del motivo de descatalogado): el resto del CRM tiene que funcionar igual y la pantalla nueva tiene que explicar qué falta. |
+| `descatalogar.test.js` | Descatalogar productos: el motivo obligatorio y lo que queda guardado, que el producto salga de la lista y de los avisos de stock bajo, el filtro y el análisis de la pestaña ⛔, que editar el producto no lo reactive y que reactivar limpie el motivo. |
 
 ## Al agregar tests
 
 Los subtests de un archivo comparten la página y corren en orden: los de `finanzas.test.js`
-cargan movimientos y después verifican cómo cambian los totales. Si un test nuevo no depende
-de ese estado, conviene abrir su propio `abrirCRM()` en otro archivo.
+cargan movimientos y después verifican cómo cambian los totales, y los de
+`descatalogar.test.js` descatalogan productos y después miran el análisis que sale de eso. Si
+un test nuevo no depende de ese estado, conviene abrir su propio `abrirCRM()` en otro
+archivo.

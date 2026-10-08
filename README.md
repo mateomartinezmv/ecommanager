@@ -88,3 +88,52 @@ Como las credenciales fueron compartidas por chat, conviene regenerarlas:
 - **Supabase Service Key**: en Supabase → Settings → API → Reset keys
 
 Después actualizalas en Vercel → Settings → Environment Variables
+
+---
+
+## Tests
+
+```bash
+npm install
+npm test
+```
+
+Abren el CRM en un Chromium con la API mockeada y lo manejan como lo maneja el usuario, que es
+la única forma de verificar la lógica: el SPA es un solo `public/index.html` sin módulos que
+importar. Detalle en `tests/README.md`.
+
+---
+
+## Gastos e ingresos extra (sección Finanzas)
+
+Para registrar lo que no entra por una venta: el packaging, el envío que pagás por un cambio
+o una devolución, los rendimientos de la cuenta de Mercado Pago, un reintegro de MELI.
+
+**Antes de usarla hay que crear las tablas una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261008000000_add_movimientos.sql`
+3. **Run**
+
+Después de eso, en el menú lateral aparece **Finanzas → 💵 Gastos e ingresos**:
+
+- Cargás cada movimiento con fecha, categoría, concepto y monto (en UYU o en USD).
+- Las categorías las manejás vos con el botón **🏷️ Categorías**: podés agregar las que
+  quieras ("Envíos", "Packaging", "Comisiones bancarias"...) y elegirles el color con el que
+  aparecen en los gráficos. Vienen nueve cargadas de arranque.
+- Dos gráficos circulares muestran cómo se reparten los gastos y los ingresos del período.
+
+**Dónde impacta:**
+
+- En **Reportes** aparecen dos tarjetas nuevas (*Otros gastos* y *Otros ingresos*) y la
+  **ganancia neta** ya los incluye: `ventas − comisiones − costo productos − envíos −
+  costos fijos − otros gastos + otros ingresos`. El desglose de "Ganancia neta real (con ads)"
+  también los lista, y salen en el PDF.
+- El **margen %** se sigue midiendo contra los ingresos por ventas, para que no lo infle plata
+  que no viene de vender.
+- Un ingreso sólo suma al **tope del Literal E** si lo marcás con el check 🧾 del formulario.
+  Viene apagado: los rendimientos de Mercado Pago no son facturación por venta de bienes.
+
+> Los **costos fijos mensuales** (Vercel, BPS, IVA mínimo...) siguen cargándose en
+> *Información del negocio*: son una cuota mensual que se prorratea por período, no un
+> movimiento con fecha propia.

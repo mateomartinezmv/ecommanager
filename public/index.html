@@ -219,6 +219,8 @@
     <div class="nav-section">Compras</div>
     <a class="nav-item" href="/importaciones.html" style="text-decoration:none"><span class="icon">📥</span><span>Importaciones</span></a>
     <a class="nav-item" href="/reposicion.html" style="text-decoration:none"><span class="icon">📅</span><span>Reposición</span></a>
+    <div class="nav-section">Finanzas</div>
+    <div class="nav-item" onclick="goPage('finanzas')"><span class="icon">💵</span><span>Gastos e ingresos</span></div>
     <div class="nav-section">Análisis</div>
     <div class="nav-item" onclick="goPage('reportes')"><span class="icon">📈</span><span>Reportes</span></div>
     <div class="nav-item" onclick="goPage('ads')"><span class="icon">📣</span><span>Ads MELI</span></div>
@@ -551,6 +553,83 @@
         <div id="clientes-empty" class="empty-state" style="display:none">
           <div class="empty-icon">👥</div>
           <p>No hay clientes registrados aún.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FINANZAS: otros gastos y otros ingresos -->
+  <div id="page-finanzas" class="page">
+    <div class="topbar">
+      <div class="page-title">💵 Gastos e ingresos</div>
+      <div class="topbar-actions">
+        <select id="finanzas-periodo" onchange="onFinanzasPeriodoChange()" style="width:auto;padding:8px 14px">
+          <option value="7">Últimos 7 días</option>
+          <option value="30" selected>Últimos 30 días</option>
+          <option value="90">Últimos 90 días</option>
+          <option value="all">Todo el tiempo</option>
+          <option value="custom">Personalizado...</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="openModalCategoriaMov()">🏷️ Categorías</button>
+        <button class="btn btn-danger btn-sm" onclick="openModalMovimiento(null,'gasto')">− Gasto</button>
+        <button class="btn btn-primary btn-sm" onclick="openModalMovimiento(null,'ingreso')">+ Ingreso</button>
+      </div>
+    </div>
+    <div id="panel-finanzas-custom" style="display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:12px 28px;gap:12px;align-items:center;flex-wrap:wrap" class="topbar">
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim)">📅 Rango personalizado</span>
+      <input type="date" id="finanzas-desde" style="width:150px;padding:7px 10px" onchange="renderFinanzas()">
+      <span style="color:var(--text-muted)">→</span>
+      <input type="date" id="finanzas-hasta" style="width:150px;padding:7px 10px" onchange="renderFinanzas()">
+      <button class="btn btn-ghost btn-sm" onclick="setFinanzasRangoMesActual()">Este mes</button>
+    </div>
+    <div class="content">
+      <div id="finanzas-aviso"></div>
+      <div class="cards-grid" id="finanzas-stats"></div>
+      <div class="two-col">
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">📉 Gastos por categoría</span>
+            <span style="font-size:11px;color:var(--text-muted)">del período</span>
+          </div>
+          <div style="padding:20px" id="finanzas-donut-gastos"></div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">📈 Ingresos por categoría</span>
+            <span style="font-size:11px;color:var(--text-muted)">del período</span>
+          </div>
+          <div style="padding:20px" id="finanzas-donut-ingresos"></div>
+        </div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchFinanzasTab('all')" id="tab-fin-all">Todos</button>
+        <button class="tab" onclick="switchFinanzasTab('gasto')" id="tab-fin-gasto">− Gastos</button>
+        <button class="tab" onclick="switchFinanzasTab('ingreso')" id="tab-fin-ingreso">+ Ingresos</button>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">📋 Movimientos del período</span>
+          <span style="font-size:11px;color:var(--text-muted)">Los costos fijos mensuales se cargan en Información del negocio</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Categoría</th>
+              <th>Concepto</th>
+              <th>Importe original</th>
+              <th>En pesos</th>
+              <th>🧾</th>
+              <th>Notas</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="finanzas-tbody"></tbody>
+        </table>
+        <div id="finanzas-empty" class="empty-state" style="display:none">
+          <div class="empty-icon">💵</div>
+          <p>No hay movimientos cargados en el período.</p>
         </div>
       </div>
     </div>
@@ -1410,6 +1489,86 @@
 </div>
 
 <!-- MODAL: COSTO FIJO -->
+<div class="modal-overlay" id="modal-movimiento">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title" id="modal-movimiento-title">+ Nuevo movimiento</div>
+    <input type="hidden" id="mov-id">
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Tipo *</label>
+        <select id="mov-tipo" onchange="onMovTipoChange()">
+          <option value="gasto">− Gasto</option>
+          <option value="ingreso">+ Ingreso</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Fecha *</label><input type="date" id="mov-fecha"></div>
+      <div class="form-group form-full"><label class="form-label">Categoría *</label>
+        <select id="mov-categoria"></select>
+      </div>
+      <div class="form-group form-full"><label class="form-label">Concepto *</label>
+        <input type="text" id="mov-concepto" placeholder="ej: bolsas y burbuja, envío cambio orden 2000012345...">
+      </div>
+      <div class="form-group"><label class="form-label">Monto *</label><input type="number" id="mov-monto" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Moneda</label>
+        <select id="mov-moneda" onchange="onMovMonedaChange()">
+          <option value="UYU">UYU</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+      <div class="form-group form-full" id="mov-cotiz-aviso" style="display:none">
+        <div style="font-size:12px;color:var(--text-muted);background:var(--surface2);padding:10px 12px;border-radius:var(--radius)">
+          Se guarda convertido a pesos con la cotización de hoy (<strong id="mov-cotiz-valor"></strong>).
+          El monto en pesos queda fijo: si después cambia el dólar, este gasto sigue valiendo lo que costó.
+        </div>
+      </div>
+      <div class="form-group form-full" id="mov-facturacion-wrap" style="display:none">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-dim);cursor:pointer">
+          <input type="checkbox" id="mov-cuenta-facturacion" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;flex-shrink:0">
+          🧾 Este ingreso se factura (computa contra el tope del Literal E)
+        </label>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;padding-left:23px">
+          Dejalo sin marcar para cosas como los rendimientos de Mercado Pago, que no son facturación por venta de bienes.
+        </div>
+      </div>
+      <div class="form-group form-full"><label class="form-label">Notas</label><input type="text" id="mov-notas" placeholder="Opcional..."></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-movimiento')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveMovimiento()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-categoria-mov">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-title">🏷️ Categorías de gastos e ingresos</div>
+    <div id="cat-mov-lista" style="margin-bottom:18px"></div>
+    <div style="border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:13px;font-weight:600;color:var(--text-dim);margin-bottom:12px" id="cat-mov-form-title">+ Agregar categoría</div>
+      <input type="hidden" id="cat-mov-id">
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">Nombre *</label><input type="text" id="cat-mov-nombre" placeholder="ej: Packaging"></div>
+        <div class="form-group"><label class="form-label">Se usa para</label>
+          <select id="cat-mov-tipo">
+            <option value="ambos">Gastos e ingresos</option>
+            <option value="gasto">Sólo gastos</option>
+            <option value="ingreso">Sólo ingresos</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Color en el gráfico</label>
+          <input type="color" id="cat-mov-color" value="#64748b" style="height:40px;padding:4px;cursor:pointer">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end;gap:8px">
+          <button class="btn btn-primary" style="flex:1" onclick="saveCategoriaMov()" id="cat-mov-save-btn">Agregar</button>
+          <button class="btn btn-ghost" onclick="resetFormCategoriaMov()" id="cat-mov-cancel-btn" style="display:none">Cancelar</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-categoria-mov')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-costo-fijo">
   <div class="modal" style="max-width:480px">
     <div class="modal-title" id="modal-costo-fijo-title">+ Agregar costo fijo</div>
@@ -1436,7 +1595,7 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] } };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] }, movimientos: [], movCategorias: [], movimientosMeta: { cargada: false, error: null } };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
@@ -1476,6 +1635,18 @@ async function loadAll() {
     db.importaciones = importaciones;
     const devoluciones = await api('GET', '/devoluciones').catch(() => []);
     db.devoluciones = devoluciones.map(normDevolucion);
+    // Si la migración de movimientos todavía no se corrió en Supabase, el resto del CRM
+    // tiene que seguir funcionando igual: se guarda el error y la página de Finanzas lo avisa.
+    try {
+      const movs = await api('GET', '/movimientos');
+      db.movimientos = (movs.movimientos || []).map(normMovimiento);
+      db.movCategorias = (movs.categorias || []).map(normMovCategoria);
+      db.movimientosMeta = { cargada: true, error: null };
+    } catch (e) {
+      db.movimientos = [];
+      db.movCategorias = [];
+      db.movimientosMeta = { cargada: false, error: e.message };
+    }
   } catch(e) {
     console.error('Error cargando datos:', e);
     alert('⚠️ Error conectando con la base de datos: ' + e.message);
@@ -1512,6 +1683,19 @@ function normCliente(c) {
 }
 function normEnvio(e) {
   return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
+}
+function normMovimiento(m) {
+  return {
+    id: m.id, tipo: m.tipo, fecha: m.fecha, categoriaId: m.categoria_id || null,
+    concepto: m.concepto, monto: Number(m.monto) || 0, moneda: m.moneda || 'UYU',
+    cotizacion: m.cotizacion == null ? null : Number(m.cotizacion),
+    montoUyu: Number(m.monto_uyu) || 0,
+    cuentaFacturacion: !!m.cuenta_facturacion,
+    ventaId: m.venta_id || null, notas: m.notas || '', creado: m.created_at,
+  };
+}
+function normMovCategoria(c) {
+  return { id: c.id, nombre: c.nombre, tipo: c.tipo || 'ambos', color: c.color || '#64748b', orden: c.orden ?? 100 };
 }
 function normDevolucion(d) {
   return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
@@ -1608,6 +1792,10 @@ const FACT_METODOS = [
 // Canales presenciales: facturan o no según el método de pago. El resto factura siempre.
 const FACT_CANALES_POR_METODO = ['mostrador'];
 const FACT_CANAL_LABELS = { meli: '🟡 MELI', mostrador: '🏪 Mostrador', shopify: '🛍️ Shopify' };
+// Fuera del mapa de canales de ventas: los otros ingresos no son un canal, pero aparecen como
+// una fila más en el desglose de qué entra al tope. Se etiqueta aparte para que el recorrido
+// de FACT_CANAL_LABELS (que arma el desglose por canal de ventas) no lo tome como canal.
+const FACT_LABEL_OTROS = '💵 Otros ingresos';
 const FACT_NIVEL_COLOR = { ok: 'var(--green)', alerta: 'var(--yellow)', critico: '#fb923c', excedido: 'var(--red)' };
 const FACT_NIVEL_GRAD = {
   ok:       'linear-gradient(90deg,#166534,#22c55e)',
@@ -1711,14 +1899,25 @@ function calcFacturacion() {
   const facturadas = delEjercicio.filter(v => esVentaFacturada(v, cfg));
   const noFacturadas = delEjercicio.filter(v => !esVentaFacturada(v, cfg));
 
-  const facturadoAnio = facturadas.reduce((a, v) => a + (v.total || 0), 0);
+  // Otros ingresos marcados a mano como facturados (el check del formulario de movimientos).
+  // Lo normal es que no lo estén —los rendimientos de Mercado Pago no son venta de bienes—,
+  // pero si se marcan tienen que computar contra el tope igual que una venta.
+  const movsFacturados = db.movimientos.filter(m => {
+    if (m.tipo !== 'ingreso' || !m.cuentaFacturacion) return false;
+    const f = m.fecha || '';
+    return f.slice(0, 4) === String(anio) && f.slice(0, 7) >= desdeKey;
+  });
+  const otrosIngresosFacturados = movsFacturados.reduce((a, m) => a + m.montoUyu, 0);
+
+  const facturadoAnio = facturadas.reduce((a, v) => a + (v.total || 0), 0) + otrosIngresosFacturados;
   const noFacturadoAnio = noFacturadas.reduce((a, v) => a + (v.total || 0), 0);
 
   // Acumulado mes a mes del ejercicio
   const meses = [];
   for (let m = primerMes; m <= (anio === hoy.getFullYear() ? hoy.getMonth() + 1 : 12); m++) {
     const key = anio + '-' + String(m).padStart(2, '0');
-    const fact = facturadas.filter(v => (v.fecha || '').slice(0, 7) === key).reduce((a, v) => a + (v.total || 0), 0);
+    const fact = facturadas.filter(v => (v.fecha || '').slice(0, 7) === key).reduce((a, v) => a + (v.total || 0), 0)
+      + movsFacturados.filter(m => (m.fecha || '').slice(0, 7) === key).reduce((a, m) => a + m.montoUyu, 0);
     const noFact = noFacturadas.filter(v => (v.fecha || '').slice(0, 7) === key).reduce((a, v) => a + (v.total || 0), 0);
     meses.push({
       key,
@@ -1774,8 +1973,18 @@ function calcFacturacion() {
     }
   });
 
+  if (otrosIngresosFacturados > 0) {
+    desglose.push({
+      canal: 'otros',
+      detalle: `${movsFacturados.length} movimiento${movsFacturados.length === 1 ? '' : 's'} marcado${movsFacturados.length === 1 ? '' : 's'} como facturado${movsFacturados.length === 1 ? '' : 's'}`,
+      total: otrosIngresosFacturados,
+      factura: true,
+    });
+  }
+
   return {
     cfg, anio, topeAnual, topeAnualPleno, topeMensual, mesesEjercicio, mesesTranscurridos,
+    otrosIngresosFacturados,
     prorrateado: topeAnual !== topeAnualPleno,
     facturadoAnio, noFacturadoAnio, pctAnual, proyeccion,
     meses, mesActual, pctMes, desglose,
@@ -1857,7 +2066,7 @@ function renderFacturacionSection() {
 
   const filasDesglose = f.desglose.map(d => `
     <tr>
-      <td>${FACT_CANAL_LABELS[d.canal] || d.canal}</td>
+      <td>${d.canal === 'otros' ? FACT_LABEL_OTROS : (FACT_CANAL_LABELS[d.canal] || d.canal)}</td>
       <td style="color:var(--text-dim)">${d.detalle}</td>
       <td><strong>${fmt(d.total)}</strong></td>
       <td>${d.factura
@@ -1872,6 +2081,7 @@ function renderFacturacionSection() {
         Ejercicio ${f.anio} (${f.mesesEjercicio} ${f.mesesEjercicio === 1 ? 'mes' : 'meses'}${f.prorrateado ? ', tope prorrateado' : ''}) · ${cfg.topeUI.toLocaleString('es-UY')} UI × $${cfg.valorUI} = ${fmt(f.topeAnualPleno)} al año.
         Se computan las ventas de MELI y las de mostrador que <strong>no</strong> son en contado.
         El check 🧾 de la tabla de ventas manda sobre eso: lo que marques a mano ahí es lo que se cuenta acá.
+        Los otros ingresos (Gastos e ingresos) sólo suman si los marcaste como facturados.
       </p>
     </div>
 
@@ -2189,6 +2399,442 @@ function saveCotizacion() {
 }
 
 // =====================
+// FINANZAS: OTROS GASTOS Y OTROS INGRESOS
+// =====================
+// Movimientos puntuales que no vienen de una venta: el packaging, el envío que se paga por
+// un cambio, los rendimientos de la cuenta de Mercado Pago. A diferencia de los costos fijos
+// (que son mensuales y se prorratean), cada movimiento tiene su fecha y pesa sólo en el
+// período en el que cayó.
+
+// Totales de otros gastos/ingresos del último render de Reportes. renderAdsReporte y
+// actualizarAdsDesdesMELI los leen de acá para mostrar el desglose completo de la ganancia:
+// pasarlos como parámetros implicaría tocar los seis onclick que ya arrastran nueve.
+let desgloseOtrosMovs = { gastos: 0, ingresos: 0 };
+
+let finanzasTabFilter = 'all';
+let editandoCategoriaMov = null;
+
+const MOV_TIPO_LABEL = { gasto: '− Gasto', ingreso: '+ Ingreso' };
+const MOV_SIN_CATEGORIA = { id: null, nombre: 'Sin categoría', color: '#475569' };
+
+function movCategoria(id) {
+  return db.movCategorias.find(c => c.id === id) || MOV_SIN_CATEGORIA;
+}
+
+// Las categorías que corresponden a un lado del movimiento ('ambos' sirve a los dos).
+function movCategoriasDe(tipo) {
+  return db.movCategorias.filter(c => c.tipo === 'ambos' || c.tipo === tipo);
+}
+
+// Base de todo lo que suma esta sección en los reportes. Con desde === null entra todo.
+function movimientosEnRango(desde, hasta) {
+  if (desde === null || desde === undefined) return db.movimientos;
+  return db.movimientos.filter(m => m.fecha >= desde && m.fecha <= hasta);
+}
+
+function totalesMovimientos(movs) {
+  const gastos   = movs.filter(m => m.tipo === 'gasto').reduce((a, m) => a + m.montoUyu, 0);
+  const ingresos = movs.filter(m => m.tipo === 'ingreso').reduce((a, m) => a + m.montoUyu, 0);
+  return { gastos, ingresos, neto: ingresos - gastos, cantidad: movs.length };
+}
+
+// Totales por categoría, de mayor a menor: es lo que alimenta el gráfico circular.
+function movimientosPorCategoria(movs, tipo) {
+  const porCat = {};
+  movs.filter(m => m.tipo === tipo).forEach(m => {
+    const cat = movCategoria(m.categoriaId);
+    const key = cat.id || '__sin__';
+    if (!porCat[key]) porCat[key] = { label: cat.nombre, color: cat.color, valor: 0, cantidad: 0 };
+    porCat[key].valor += m.montoUyu;
+    porCat[key].cantidad += 1;
+  });
+  return Object.values(porCat).sort((a, b) => b.valor - a.valor);
+}
+
+// ── Gráfico circular ────────────────────────────────────────────────────────
+function donutPolar(cx, cy, r, grados) {
+  const rad = (grados - 90) * Math.PI / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+// Una porción del anillo: arco externo, salto al radio interno, arco de vuelta.
+function donutArco(cx, cy, rExt, rInt, desde, hasta) {
+  const largo = (hasta - desde) > 180 ? 1 : 0;
+  const [x1, y1] = donutPolar(cx, cy, rExt, desde);
+  const [x2, y2] = donutPolar(cx, cy, rExt, hasta);
+  const [x3, y3] = donutPolar(cx, cy, rInt, hasta);
+  const [x4, y4] = donutPolar(cx, cy, rInt, desde);
+  const n = v => v.toFixed(2);
+  return `M ${n(x1)} ${n(y1)} A ${rExt} ${rExt} 0 ${largo} 1 ${n(x2)} ${n(y2)} ` +
+         `L ${n(x3)} ${n(y3)} A ${rInt} ${rInt} 0 ${largo} 0 ${n(x4)} ${n(y4)} Z`;
+}
+
+// datos: [{ label, valor, color, cantidad }]. Devuelve el SVG + la leyenda con los importes.
+function renderDonut(datos, opts) {
+  opts = opts || {};
+  const total = datos.reduce((a, d) => a + d.valor, 0);
+  if (!datos.length || total <= 0) {
+    return `<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px">
+      ${opts.vacio || 'Sin movimientos en el período.'}
+    </div>`;
+  }
+
+  const CX = 90, CY = 90, R_EXT = 80, R_INT = 48;
+  let angulo = 0;
+  const porciones = datos.map(d => {
+    const grados = (d.valor / total) * 360;
+    // Una sola categoría ocupa el anillo completo: el arco de 360° degenera en un punto, así
+    // que en ese caso se dibuja con un círculo y su trazo en vez de con un path.
+    const forma = datos.length === 1
+      ? `<circle cx="${CX}" cy="${CY}" r="${(R_EXT + R_INT) / 2}" fill="none" stroke="${d.color}" stroke-width="${R_EXT - R_INT}"></circle>`
+      : `<path d="${donutArco(CX, CY, R_EXT, R_INT, angulo, angulo + grados)}" fill="${d.color}" stroke="var(--surface)" stroke-width="1.5"></path>`;
+    angulo += grados;
+    return `<g><title>${d.label}: ${fmt(d.valor)} (${((d.valor / total) * 100).toFixed(1)}%)</title>${forma}</g>`;
+  }).join('');
+
+  const leyenda = datos.map(d => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
+      <span style="width:10px;height:10px;border-radius:2px;background:${d.color};flex-shrink:0"></span>
+      <span style="flex:1;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.label}">${d.label}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--text)">${fmt(d.valor)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);width:46px;text-align:right">${((d.valor / total) * 100).toFixed(1)}%</span>
+    </div>`).join('');
+
+  return `
+    <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+      <svg viewBox="0 0 180 180" width="180" height="180" style="flex-shrink:0">
+        ${porciones}
+        <text x="${CX}" y="${CY - 4}" text-anchor="middle" style="font-size:16px;font-weight:700;fill:var(--text);font-family:'JetBrains Mono',monospace">${fmt(total)}</text>
+        <text x="${CX}" y="${CY + 13}" text-anchor="middle" style="font-size:9px;fill:var(--text-muted)">${opts.subtitulo || 'total'}</text>
+      </svg>
+      <div style="flex:1;min-width:200px">${leyenda}</div>
+    </div>`;
+}
+
+// ── Filtro de período ───────────────────────────────────────────────────────
+function getFinanzasFiltro() {
+  const val = document.getElementById('finanzas-periodo').value;
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (val === 'custom') {
+    return {
+      desde: document.getElementById('finanzas-desde').value || '2020-01-01',
+      hasta: document.getElementById('finanzas-hasta').value || hoy,
+      val,
+    };
+  }
+  if (val === 'all') return { desde: null, hasta: hoy, val };
+  const dias = parseInt(val);
+  return { desde: new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10), hasta: hoy, val };
+}
+
+function onFinanzasPeriodoChange() {
+  const val = document.getElementById('finanzas-periodo').value;
+  const panel = document.getElementById('panel-finanzas-custom');
+  panel.style.display = val === 'custom' ? 'flex' : 'none';
+  if (val === 'custom' && !document.getElementById('finanzas-desde').value) {
+    setFinanzasRangoMesActual();
+    return;
+  }
+  renderFinanzas();
+}
+
+function setFinanzasRangoMesActual() {
+  const hoy = new Date();
+  document.getElementById('finanzas-desde').value = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().slice(0, 10);
+  document.getElementById('finanzas-hasta').value = hoy.toISOString().slice(0, 10);
+  renderFinanzas();
+}
+
+function switchFinanzasTab(tab) {
+  finanzasTabFilter = tab;
+  ['all', 'gasto', 'ingreso'].forEach(t => {
+    document.getElementById('tab-fin-' + t).classList.toggle('active', t === tab);
+  });
+  renderFinanzas();
+}
+
+// ── Render de la página ─────────────────────────────────────────────────────
+function renderFinanzas() {
+  const aviso = document.getElementById('finanzas-aviso');
+  if (!db.movimientosMeta.cargada) {
+    aviso.innerHTML = `
+      <div style="margin-bottom:20px;padding:14px 16px;border-radius:var(--radius);border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px;line-height:1.6">
+        ⚠️ <strong>Falta crear las tablas en Supabase.</strong>
+        Corré el contenido de <code>supabase/migrations/20261008000000_add_movimientos.sql</code>
+        en el SQL Editor de tu proyecto y recargá la página.
+        ${db.movimientosMeta.error ? `<br><span style="color:var(--text-muted);font-size:12px">Detalle: ${db.movimientosMeta.error}</span>` : ''}
+      </div>`;
+  } else {
+    aviso.innerHTML = '';
+  }
+
+  const { desde, hasta, val } = getFinanzasFiltro();
+  const delPeriodo = movimientosEnRango(desde, hasta);
+  const t = totalesMovimientos(delPeriodo);
+  const periodoLabel = val === 'all' ? 'todo el tiempo' : val === 'custom' ? `${desde} → ${hasta}` : `${val} días`;
+  const facturables = delPeriodo.filter(m => m.tipo === 'ingreso' && m.cuentaFacturacion)
+    .reduce((a, m) => a + m.montoUyu, 0);
+
+  document.getElementById('finanzas-stats').innerHTML = `
+    <div class="stat-card red"><div class="stat-icon">📉</div><div class="stat-value">${fmt(t.gastos)}</div><div class="stat-label">Otros gastos (${periodoLabel})</div></div>
+    <div class="stat-card green"><div class="stat-icon">📈</div><div class="stat-value">${fmt(t.ingresos)}</div><div class="stat-label">Otros ingresos (${periodoLabel})</div></div>
+    <div class="stat-card ${t.neto >= 0 ? 'purple' : 'red'}"><div class="stat-icon">⚖️</div><div class="stat-value">${fmt(t.neto)}</div><div class="stat-label">Efecto neto en la ganancia</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🧾</div><div class="stat-value">${fmt(facturables)}</div><div class="stat-label">Ingresos que suman al tope Literal E</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">📋</div><div class="stat-value">${t.cantidad}</div><div class="stat-label">Movimientos cargados</div></div>
+  `;
+
+  document.getElementById('finanzas-donut-gastos').innerHTML =
+    renderDonut(movimientosPorCategoria(delPeriodo, 'gasto'), { subtitulo: 'gastos', vacio: 'Sin gastos cargados en el período.' });
+  document.getElementById('finanzas-donut-ingresos').innerHTML =
+    renderDonut(movimientosPorCategoria(delPeriodo, 'ingreso'), { subtitulo: 'ingresos', vacio: 'Sin ingresos cargados en el período.' });
+
+  const visibles = (finanzasTabFilter === 'all' ? delPeriodo : delPeriodo.filter(m => m.tipo === finanzasTabFilter))
+    .slice().sort((a, b) => b.fecha.localeCompare(a.fecha) || (b.creado || '').localeCompare(a.creado || ''));
+  const tbody = document.getElementById('finanzas-tbody');
+  const empty = document.getElementById('finanzas-empty');
+
+  if (!visibles.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = visibles.map(m => {
+    const cat = movCategoria(m.categoriaId);
+    const esGasto = m.tipo === 'gasto';
+    const color = esGasto ? 'var(--red)' : 'var(--green)';
+    const montoOriginal = m.moneda === 'USD'
+      ? `US$ ${m.monto.toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : fmt(m.monto);
+    return `
+      <tr>
+        <td><span style="font-family:'JetBrains Mono',monospace;font-size:12px">${m.fecha}</span></td>
+        <td><span style="color:${color};font-weight:600;font-size:12px">${MOV_TIPO_LABEL[m.tipo]}</span></td>
+        <td>
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="width:9px;height:9px;border-radius:2px;background:${cat.color};flex-shrink:0"></span>
+            <span style="font-size:12px">${cat.nombre}</span>
+          </span>
+        </td>
+        <td>${m.concepto}</td>
+        <td>${m.moneda === 'USD'
+              ? `<span style="font-family:'JetBrains Mono',monospace;font-size:12px">${montoOriginal}</span>
+                 <span style="font-size:10px;color:var(--text-muted)"> @ ${m.cotizacion}</span>`
+              : '—'}</td>
+        <td><span style="color:${color};font-weight:600">${esGasto ? '−' : '+'}${fmt(m.montoUyu)}</span></td>
+        <td>${m.tipo === 'ingreso'
+              ? (m.cuentaFacturacion ? '<span class="badge badge-green" style="font-size:10px">✔</span>' : '<span class="badge badge-gray" style="font-size:10px">—</span>')
+              : ''}</td>
+        <td style="color:var(--text-muted);font-size:12px">${m.notas || '—'}</td>
+        <td>
+          <button class="btn btn-ghost btn-sm" onclick="openModalMovimiento('${m.id}')" title="Editar">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteMovimiento('${m.id}')">🗑️</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+// ── Alta y edición de movimientos ───────────────────────────────────────────
+function poblarCategoriasMov(tipo, seleccionada) {
+  const sel = document.getElementById('mov-categoria');
+  const cats = movCategoriasDe(tipo);
+  sel.innerHTML = cats.length
+    ? cats.map(c => `<option value="${c.id}" ${c.id === seleccionada ? 'selected' : ''}>${c.nombre}</option>`).join('')
+    : '<option value="">— Creá una categoría primero —</option>';
+}
+
+function onMovTipoChange() {
+  const tipo = document.getElementById('mov-tipo').value;
+  poblarCategoriasMov(tipo, null);
+  // El tope del Literal E sólo puede crecer con un ingreso facturado, así que el check no
+  // tiene sentido del lado de los gastos.
+  document.getElementById('mov-facturacion-wrap').style.display = tipo === 'ingreso' ? 'block' : 'none';
+}
+
+function onMovMonedaChange() {
+  const esUSD = document.getElementById('mov-moneda').value === 'USD';
+  document.getElementById('mov-cotiz-aviso').style.display = esUSD ? 'block' : 'none';
+  document.getElementById('mov-cotiz-valor').textContent = '$' + getCotizacionUSD() + ' por USD';
+}
+
+function openModalMovimiento(id, tipoPorDefecto) {
+  const m = id ? db.movimientos.find(x => x.id === id) : null;
+  document.getElementById('modal-movimiento-title').textContent = m
+    ? 'Editar movimiento'
+    : (tipoPorDefecto === 'ingreso' ? '+ Nuevo ingreso' : '− Nuevo gasto');
+  document.getElementById('mov-id').value = m ? m.id : '';
+  document.getElementById('mov-tipo').value = m ? m.tipo : (tipoPorDefecto || 'gasto');
+  document.getElementById('mov-fecha').value = m ? m.fecha : new Date().toISOString().slice(0, 10);
+  document.getElementById('mov-concepto').value = m ? m.concepto : '';
+  document.getElementById('mov-monto').value = m ? m.monto : '';
+  document.getElementById('mov-moneda').value = m ? m.moneda : 'UYU';
+  document.getElementById('mov-notas').value = m ? m.notas : '';
+  document.getElementById('mov-cuenta-facturacion').checked = m ? m.cuentaFacturacion : false;
+  poblarCategoriasMov(m ? m.tipo : (tipoPorDefecto || 'gasto'), m ? m.categoriaId : null);
+  document.getElementById('mov-facturacion-wrap').style.display =
+    (m ? m.tipo : tipoPorDefecto) === 'ingreso' ? 'block' : 'none';
+  onMovMonedaChange();
+  openModal('modal-movimiento');
+}
+
+async function saveMovimiento() {
+  const id = document.getElementById('mov-id').value;
+  const tipo = document.getElementById('mov-tipo').value;
+  const moneda = document.getElementById('mov-moneda').value;
+  const body = {
+    tipo,
+    fecha: document.getElementById('mov-fecha').value,
+    categoriaId: document.getElementById('mov-categoria').value || null,
+    concepto: document.getElementById('mov-concepto').value.trim(),
+    monto: parseFloat(document.getElementById('mov-monto').value) || 0,
+    moneda,
+    // La cotización viaja al backend para quedar guardada junto al movimiento: así el monto
+    // en pesos es el del día de carga y no se recalcula nunca más.
+    cotizacion: moneda === 'USD' ? getCotizacionUSD() : null,
+    cuentaFacturacion: tipo === 'ingreso' && document.getElementById('mov-cuenta-facturacion').checked,
+    notas: document.getElementById('mov-notas').value.trim(),
+  };
+
+  if (!body.concepto) return alert('El concepto es obligatorio.');
+  if (!body.monto || body.monto <= 0) return alert('Ingresá un monto mayor a 0.');
+  if (!body.fecha) return alert('La fecha es obligatoria.');
+  if (!body.categoriaId) return alert('Elegí una categoría (podés crear una con el botón 🏷️ Categorías).');
+
+  try {
+    if (id) await api('PUT', `/movimientos?id=${encodeURIComponent(id)}`, body);
+    else await api('POST', '/movimientos', body);
+    closeModal('modal-movimiento');
+    await recargarMovimientos();
+  } catch (e) {
+    alert('❌ Error al guardar: ' + e.message);
+  }
+}
+
+async function deleteMovimiento(id) {
+  const m = db.movimientos.find(x => x.id === id);
+  if (!confirm(`¿Eliminar "${m ? m.concepto : id}"?`)) return;
+  try {
+    await api('DELETE', `/movimientos?id=${encodeURIComponent(id)}`);
+    await recargarMovimientos();
+  } catch (e) {
+    alert('❌ Error al eliminar: ' + e.message);
+  }
+}
+
+// Relee movimientos y categorías y repinta lo que depende de ellos. Reportes también, porque
+// la ganancia neta del período cambia con cada movimiento.
+async function recargarMovimientos() {
+  try {
+    const data = await api('GET', '/movimientos');
+    db.movimientos = (data.movimientos || []).map(normMovimiento);
+    db.movCategorias = (data.categorias || []).map(normMovCategoria);
+    db.movimientosMeta = { cargada: true, error: null };
+  } catch (e) {
+    db.movimientosMeta = { cargada: false, error: e.message };
+  }
+  if (document.getElementById('page-finanzas').classList.contains('active')) renderFinanzas();
+  if (document.getElementById('page-reportes').classList.contains('active')) renderReportes();
+}
+
+// ── Categorías ──────────────────────────────────────────────────────────────
+function openModalCategoriaMov() {
+  resetFormCategoriaMov();
+  renderListaCategoriasMov();
+  openModal('modal-categoria-mov');
+}
+
+function renderListaCategoriasMov() {
+  const cont = document.getElementById('cat-mov-lista');
+  if (!db.movCategorias.length) {
+    cont.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Todavía no hay categorías.</div>';
+    return;
+  }
+  const usos = db.movimientos.reduce((acc, m) => {
+    if (m.categoriaId) acc[m.categoriaId] = (acc[m.categoriaId] || 0) + 1;
+    return acc;
+  }, {});
+  const tipoLabel = { ambos: 'gastos e ingresos', gasto: 'sólo gastos', ingreso: 'sólo ingresos' };
+  cont.innerHTML = `
+    <table>
+      <thead><tr><th>Categoría</th><th>Se usa para</th><th>Movimientos</th><th>Acciones</th></tr></thead>
+      <tbody>
+        ${db.movCategorias.map(c => `
+          <tr>
+            <td>
+              <span style="display:inline-flex;align-items:center;gap:8px">
+                <span style="width:11px;height:11px;border-radius:3px;background:${c.color};flex-shrink:0"></span>
+                ${c.nombre}
+              </span>
+            </td>
+            <td style="color:var(--text-dim);font-size:12px">${tipoLabel[c.tipo] || c.tipo}</td>
+            <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${usos[c.id] || 0}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="editarCategoriaMov('${c.id}')">Editar</button>
+              <button class="btn btn-danger btn-sm" style="margin-left:4px" onclick="deleteCategoriaMov('${c.id}')">✕</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function resetFormCategoriaMov() {
+  editandoCategoriaMov = null;
+  document.getElementById('cat-mov-id').value = '';
+  document.getElementById('cat-mov-nombre').value = '';
+  document.getElementById('cat-mov-tipo').value = 'ambos';
+  document.getElementById('cat-mov-color').value = '#64748b';
+  document.getElementById('cat-mov-form-title').textContent = '+ Agregar categoría';
+  document.getElementById('cat-mov-save-btn').textContent = 'Agregar';
+  document.getElementById('cat-mov-cancel-btn').style.display = 'none';
+}
+
+function editarCategoriaMov(id) {
+  const c = db.movCategorias.find(x => x.id === id);
+  if (!c) return;
+  editandoCategoriaMov = id;
+  document.getElementById('cat-mov-id').value = id;
+  document.getElementById('cat-mov-nombre').value = c.nombre;
+  document.getElementById('cat-mov-tipo').value = c.tipo;
+  document.getElementById('cat-mov-color').value = c.color;
+  document.getElementById('cat-mov-form-title').textContent = 'Editar categoría';
+  document.getElementById('cat-mov-save-btn').textContent = 'Guardar';
+  document.getElementById('cat-mov-cancel-btn').style.display = 'inline-flex';
+}
+
+async function saveCategoriaMov() {
+  const id = document.getElementById('cat-mov-id').value;
+  const body = {
+    nombre: document.getElementById('cat-mov-nombre').value.trim(),
+    tipo: document.getElementById('cat-mov-tipo').value,
+    color: document.getElementById('cat-mov-color').value,
+  };
+  if (!body.nombre) return alert('El nombre de la categoría es obligatorio.');
+  try {
+    if (id) await api('PUT', `/movimientos?recurso=categoria&id=${encodeURIComponent(id)}`, body);
+    else await api('POST', '/movimientos?recurso=categoria', body);
+    await recargarMovimientos();
+    resetFormCategoriaMov();
+    renderListaCategoriasMov();
+  } catch (e) {
+    alert('❌ Error al guardar la categoría: ' + e.message);
+  }
+}
+
+async function deleteCategoriaMov(id) {
+  const c = db.movCategorias.find(x => x.id === id);
+  if (!confirm(`¿Eliminar la categoría "${c ? c.nombre : id}"?`)) return;
+  try {
+    await api('DELETE', `/movimientos?recurso=categoria&id=${encodeURIComponent(id)}`);
+    await recargarMovimientos();
+    renderListaCategoriasMov();
+  } catch (e) {
+    // El backend rechaza borrar una categoría con movimientos cargados y dice cuántos son.
+    alert('❌ ' + e.message);
+  }
+}
+
+// =====================
 // NAVIGATION
 // =====================
 function goPage(page) {
@@ -2202,6 +2848,7 @@ function goPage(page) {
   if (page === 'devoluciones') renderDevoluciones();
   if (page === 'envios') renderEnvios();
   if (page === 'reportes') renderReportes();
+  if (page === 'finanzas') renderFinanzas();
   if (page === 'transportistas') renderTransportistas();
   if (page === 'clientes') renderClientes();
   if (page === 'informacion') renderInformacion();
@@ -4967,7 +5614,15 @@ function renderReportes() {
   const costosFijosMensuales = getCostosFijosEnUYU();
   const factorPeriodo = val === 'all' ? 1 : (diasNum / 30);
   const costosFijosAjustados = parseFloat((costosFijosMensuales * factorPeriodo).toFixed(2));
-  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costosFijosAjustados;
+  // Otros gastos e ingresos del período (packaging, envíos por cambios, rendimientos de MP).
+  // Se cargan en la página Gastos e ingresos y pesan sólo en el período de su fecha.
+  const otrosMovs = totalesMovimientos(movimientosEnRango(desde, hasta));
+  desgloseOtrosMovs = { gastos: otrosMovs.gastos, ingresos: otrosMovs.ingresos };
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costosFijosAjustados
+                   - otrosMovs.gastos + otrosMovs.ingresos;
+  // El margen se sigue midiendo contra los ingresos por ventas: los otros ingresos suman a la
+  // ganancia pero no son facturación por vender, así que meterlos en el denominador infla el
+  // margen comercial y lo vuelve incomparable entre períodos.
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
   // Ventas = tickets (un carrito con varios productos es UNA venta), no líneas sueltas
   const totalVentas = contarTickets(ventasFiltradas);
@@ -4985,6 +5640,8 @@ function renderReportes() {
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
     <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(totalEnviosSinPagar)}</div><div class="stat-label">Envíos a pagar</div></div>
     <div class="stat-card red"><div class="stat-icon">🏢</div><div class="stat-value">${fmt(costosFijosAjustados)}</div><div class="stat-label">Costos fijos (${periodoLabel})</div></div>
+    <div class="stat-card red"><div class="stat-icon">🧾</div><div class="stat-value">${fmt(otrosMovs.gastos)}</div><div class="stat-label">Otros gastos (${periodoLabel})</div></div>
+    <div class="stat-card green"><div class="stat-icon">💵</div><div class="stat-value">${fmt(otrosMovs.ingresos)}</div><div class="stat-label">Otros ingresos (${periodoLabel})</div></div>
     <div class="stat-card purple"><div class="stat-icon">📈</div><div class="stat-value">${fmt(ganancia)}</div><div class="stat-label">Ganancia neta estimada</div></div>
     <div class="${parseFloat(margenPct) >= 30 ? 'stat-card green' : parseFloat(margenPct) >= 15 ? 'stat-card yellow' : 'stat-card red'}"><div class="stat-icon">%</div><div class="stat-value">${margenPct}%</div><div class="stat-label">Margen neto real</div></div>
   `;
@@ -5241,6 +5898,8 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
+              ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
+              ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
               − Gasto en Ads: ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
                 = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
@@ -5348,6 +6007,8 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
+              ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
+              ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
               − Gasto en Ads: ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
                 = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
@@ -6025,7 +6686,9 @@ function exportReportePDF() {
   const totalComisiones = ventasFiltradas.reduce((a,v) => a + (v.comision||0), 0);
   const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
   const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
-  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios;
+  const otrosPDF = totalesMovimientos(movimientosEnRango(desde, hasta));
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios
+                   - otrosPDF.gastos + otrosPDF.ingresos;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
   // Ventas = tickets: un carrito con varios productos cuenta como una sola venta
   const totalVentas = contarTickets(ventasFiltradas);
@@ -6050,7 +6713,10 @@ function exportReportePDF() {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const BG_HEAD = [17,17,17], BG_ROW = [28,28,38], TEXT_W = [245,245,245];
   const GREEN = [34,197,94], YELLOW = [245,158,11], RED = [239,68,68];
-  const periodoLabel = dias === 'all' ? 'Todo el tiempo' : `Últimos ${dias} días`;
+  const periodoPDF = document.getElementById('reporte-periodo').value;
+  const periodoLabel = periodoPDF === 'all' ? 'Todo el tiempo'
+    : periodoPDF === 'custom' ? `${desde} → ${hasta}`
+    : `Últimos ${periodoPDF} días`;
   const fechaHoy = new Date().toISOString().slice(0,10);
   const f2 = n => '$' + n.toLocaleString('es-AR', { minimumFractionDigits:2, maximumFractionDigits:2 });
 
@@ -6063,7 +6729,7 @@ function exportReportePDF() {
 
   let y = 28;
 
-  // KPI cards (2 rows × 4)
+  // KPI cards (4 por fila)
   doc.setFillColor(...BG_HEAD); doc.rect(0, y-5, 297, 8, 'F');
   doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...TEXT_W);
   doc.text('RESUMEN EJECUTIVO', 14, y); y += 5;
@@ -6075,6 +6741,8 @@ function exportReportePDF() {
     ['Ticket promedio', f2(ticketPromedio)],
     ['Comisiones MELI', f2(totalComisiones)],
     ['Costo de productos', f2(costoProductos)],
+    ['Otros gastos', f2(otrosPDF.gastos)],
+    ['Otros ingresos', f2(otrosPDF.ingresos)],
     ['Ganancia estimada', f2(ganancia)],
     ['Margen neto', margenPct + '%'],
   ];
@@ -6088,7 +6756,7 @@ function exportReportePDF() {
     doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...TEXT_W);
     doc.text(String(val), cx+2, cy+11);
   });
-  y += 40;
+  y += Math.ceil(kpis.length / 4) * 18 + 4;
 
   // Canales
   const canalRows = [

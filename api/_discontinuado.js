@@ -70,6 +70,23 @@ function camposDiscontinuado(body, anterior) {
   return { discontinuado: true, motivo_discontinuado: motivo, nota_discontinuado: nota, fecha_discontinuado: fecha };
 }
 
+// ── Qué entra en la sincronización de stock ─────────────────────────────────
+// Un descatalogado con unidades en el depósito sigue vendiendo hasta agotarse, así que su
+// publicación tiene que seguir mostrando el número real: si se lo deja afuera de la
+// sincronización, una venta perdida o un cambio hecho a mano en MELI lo dejan ofreciendo
+// mercadería que ya no está, que es justo lo que el sync viene a evitar.
+//
+// El que ya está en cero sí queda afuera: no tiene nada que ofrecer, y volver a escribirle 0
+// a una publicación que el usuario pudo haber cerrado o pausado a mano es tocar algo que ya
+// no es del CRM.
+function entraEnSyncStock(p) {
+  return !p?.discontinuado || (Number(p?.stock_dep) || 0) > 0;
+}
+
+// El mismo criterio como filtro de PostgREST, para no traerse de la base lo que después se
+// va a descartar. Equivale a: discontinuado IS NOT TRUE OR stock_dep > 0.
+const FILTRO_SYNC_STOCK = 'discontinuado.is.null,discontinuado.eq.false,stock_dep.gt.0';
+
 const COLUMNAS_MOTIVO = ['motivo_discontinuado', 'nota_discontinuado', 'fecha_discontinuado'];
 
 // ¿El error es "esa columna no existe"? Pasa cuando el deploy llega antes que la migración.
@@ -106,5 +123,7 @@ module.exports = {
   camposDiscontinuado,
   faltaMigracionMotivo,
   escribirConMotivo,
+  entraEnSyncStock,
+  FILTRO_SYNC_STOCK,
   COLUMNAS_MOTIVO,
 };

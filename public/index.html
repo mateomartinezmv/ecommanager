@@ -5151,9 +5151,11 @@ function renderStock() {
 // Descatalogar es decir "de este producto no compro más". No es borrarlo ni ponerlo en cero:
 //   - sale de Reposición (api/restock.js lo filtra), así que deja de pedir compra
 //   - sale de los avisos de stock bajo del dashboard
-//   - sale de la sincronización masiva de stock
 //   - las unidades que queden se siguen vendiendo igual, y cada venta le sigue bajando el
 //     stock a MELI y a Shopify
+//   - mientras le queden unidades sigue entrando en la sincronización masiva de stock, para
+//     que su publicación no quede ofreciendo lo que ya no está; recién cuando llega a cero
+//     se lo deja de tocar (entraEnSyncStock en api/_discontinuado.js)
 // Por eso sirve para las dos situaciones: el producto que ya está en 0 y no se vuelve a
 // importar, y el que todavía tiene stock pero no se repone cuando se termine.
 //
@@ -5212,8 +5214,8 @@ function openDiscontinuar(sku) {
   document.getElementById('disc-guardar').textContent = yaEstaba ? 'Guardar motivo' : '⛔ Descatalogar';
 
   const queda = p.stockDep > 0
-    ? `Quedan <strong>${p.stockDep} uds</strong> en depósito${upvDe(p) > 1 ? ` (${etiquetaPack(p)})` : ''}: se siguen vendiendo hasta agotarse, pero el producto deja de pedir compra y sale de Reposición.`
-    : 'No queda stock: sale de Reposición y de los avisos de stock bajo. No se borra: el histórico de ventas queda intacto.';
+    ? `Quedan <strong>${p.stockDep} uds</strong> en depósito${upvDe(p) > 1 ? ` (${etiquetaPack(p)})` : ''}: se siguen vendiendo hasta agotarse y la publicación se sigue sincronizando, pero el producto deja de pedir compra y sale de Reposición.`
+    : 'No queda stock: sale de Reposición, de los avisos de stock bajo y de la sincronización de publicaciones. No se borra: el histórico de ventas queda intacto.';
   document.getElementById('disc-resumen').innerHTML =
     `<strong>${escHtml(p.nombre)}</strong> <span class="badge badge-gray">${escHtml(p.sku)}</span><br>${queda}`;
 

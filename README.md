@@ -168,10 +168,15 @@ Para corregir el motivo de uno ya descatalogado, hacé clic en su badge de la co
 - Desaparece de **Reposición**: deja de pedir compra, deja de contar para el lead time y no
   entra más en el calendario de pedidos.
 - Desaparece de los avisos de **stock bajo** del dashboard.
-- Sale de la **sincronización masiva** de stock (el botón 🔄 y el cron): ya no se le toca la
-  publicación en lote.
 - **Las unidades que queden se siguen vendiendo igual**, y cada venta le sigue descontando el
   stock en MELI y en Shopify. Descatalogar no es pausar la publicación ni poner stock 0.
+- **Mientras le queden unidades sigue entrando en la sincronización masiva** (el botón 🔄, el
+  cron de publicaciones y el sync de Shopify): si se lo dejara afuera, una venta cuya
+  notificación se perdió o un cambio hecho a mano en MELI lo dejarían ofreciendo mercadería
+  que ya no está, que es justo lo que esa sincronización viene a evitar.
+- Cuando llega a **cero** sí queda afuera de la sincronización: ya no tiene nada que ofrecer,
+  y volver a escribirle 0 a una publicación que capaz cerraste a mano es tocar algo que ya no
+  maneja el CRM.
 - No se borra nada: el histórico de ventas y los reportes quedan intactos.
 
 **El análisis**, en la pestaña **⛔ Discontinuados**:

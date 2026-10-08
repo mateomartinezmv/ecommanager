@@ -20,6 +20,7 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet } = require('../_meliPublicaciones');
 const { syncMeliStock } = require('../_stockSync');
 const { packsDisponibles } = require('../_packs');
+const { entraEnSyncStock } = require('../_discontinuado');
 
 const LOTE = 20;                 // multiget de MELI
 const ESTADOS_SINCRONIZABLES = new Set(['active', 'paused']);
@@ -78,10 +79,12 @@ async function auditar(token, supabase) {
     .order('nombre');
   if (error) throw error;
 
-  const vivos = (productos || []).filter(p => !p.discontinuado);
-  const mapa = await traerPublicaciones(token, vivos.flatMap(meliIdsDe));
+  // Un descatalogado con unidades sigue vendiendo, así que su publicación sigue entrando en
+  // la auditoría y en la corrección; el que ya está en cero no tiene nada que ofrecer.
+  const sincronizables = (productos || []).filter(entraEnSyncStock);
+  const mapa = await traerPublicaciones(token, sincronizables.flatMap(meliIdsDe));
 
-  const filas = vivos
+  const filas = sincronizables
     .map(p => {
       // Lo que las publicaciones TIENEN que mostrar son packs completos: un
       // producto de a par con 16 unidades sueltas se publica como 8.

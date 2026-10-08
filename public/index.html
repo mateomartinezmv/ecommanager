@@ -291,8 +291,33 @@
         <select id="stock-subgrupo" onchange="renderStock()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
           <option value="">Todos los subgrupos</option>
         </select>
+        <select id="stock-motivo" onchange="renderStock()" style="display:none;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+          <option value="">Todos los motivos</option>
+        </select>
         <button class="btn btn-ghost btn-sm" id="btn-agrupar" onclick="toggleAgrupado()">🗂 Agrupar</button>
         <button class="btn btn-ghost btn-sm" onclick="limpiarFiltrosStock()">✕ Limpiar</button>
+      </div>
+      <!-- Análisis del catálogo descatalogado. Sólo se muestra en la pestaña ⛔: la idea no es
+           ver una lista de bajas sino el patrón que tienen, para no volver a comprar lo mismo. -->
+      <div id="stock-disc-panel" style="display:none">
+        <div id="stock-disc-aviso"></div>
+        <div class="cards-grid" id="stock-disc-stats"></div>
+        <div class="two-col">
+          <div class="table-wrap">
+            <div class="table-header">
+              <span class="table-title">⛔ Por qué se descatalogaron</span>
+              <span style="font-size:11px;color:var(--text-muted)">cantidad de productos</span>
+            </div>
+            <div style="padding:20px" id="stock-disc-donut"></div>
+          </div>
+          <div class="table-wrap">
+            <div class="table-header">
+              <span class="table-title">🗂 Qué estilo de producto se cae</span>
+              <span style="font-size:11px;color:var(--text-muted)">por grupo</span>
+            </div>
+            <div id="stock-disc-grupos" style="padding:12px 20px 20px;max-height:340px;overflow:auto"></div>
+          </div>
+        </div>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -1335,6 +1360,32 @@
   </div>
 </div>
 
+<!-- MODAL: DESCATALOGAR PRODUCTO -->
+<div class="modal-overlay" id="modal-discontinuar">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="disc-titulo">⛔ Descatalogar producto</div>
+    <input type="hidden" id="disc-sku">
+    <p id="disc-resumen" style="font-size:13px;color:var(--text-dim);line-height:1.6;margin-bottom:14px"></p>
+    <div class="form-group">
+      <label class="form-label">Motivo *</label>
+      <select id="disc-motivo" onchange="refreshDiscAyuda()"></select>
+      <small id="disc-motivo-ayuda" style="font-size:11px;color:var(--text-muted);display:block;margin-top:5px;min-height:28px"></small>
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Aclaración (opcional)</label>
+      <input type="text" id="disc-nota" placeholder="ej: el proveedor cambió el diámetro" maxlength="200">
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Fecha</label>
+      <input type="date" id="disc-fecha">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-discontinuar')">Cancelar</button>
+      <button class="btn btn-danger" id="disc-guardar" onclick="saveDiscontinuar()">⛔ Descatalogar</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: ETIQUETAS SKU -->
 <div class="modal-overlay" id="modal-etiquetas">
   <div class="modal" style="max-width:400px">
@@ -1595,7 +1646,8 @@
 // =====================
 // DATA LAYER
 // =====================
-let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] }, movimientos: [], movCategorias: [], movimientosMeta: { cargada: false, error: null } };
+let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] }, movimientos: [], movCategorias: [], movimientosMeta: { cargada: false, error: null }, // Se prende si la API avisa que las columnas del motivo de descatalogado todavía no existen.
+  motivoDiscMigracion: false };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
@@ -1673,7 +1725,7 @@ function etiquetaPack(p, stockDep) {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -2470,8 +2522,11 @@ function donutArco(cx, cy, rExt, rInt, desde, hasta) {
 }
 
 // datos: [{ label, valor, color, cantidad }]. Devuelve el SVG + la leyenda con los importes.
+// `opts.formato` permite graficar algo que no sea plata (ej. cantidad de productos); por
+// defecto formatea como importe, que es lo que grafica Finanzas.
 function renderDonut(datos, opts) {
   opts = opts || {};
+  const val = opts.formato || fmt;
   const total = datos.reduce((a, d) => a + d.valor, 0);
   if (!datos.length || total <= 0) {
     return `<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px">
@@ -2489,14 +2544,14 @@ function renderDonut(datos, opts) {
       ? `<circle cx="${CX}" cy="${CY}" r="${(R_EXT + R_INT) / 2}" fill="none" stroke="${d.color}" stroke-width="${R_EXT - R_INT}"></circle>`
       : `<path d="${donutArco(CX, CY, R_EXT, R_INT, angulo, angulo + grados)}" fill="${d.color}" stroke="var(--surface)" stroke-width="1.5"></path>`;
     angulo += grados;
-    return `<g><title>${d.label}: ${fmt(d.valor)} (${((d.valor / total) * 100).toFixed(1)}%)</title>${forma}</g>`;
+    return `<g><title>${d.label}: ${val(d.valor)} (${((d.valor / total) * 100).toFixed(1)}%)</title>${forma}</g>`;
   }).join('');
 
   const leyenda = datos.map(d => `
     <div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:3px 0">
       <span style="width:10px;height:10px;border-radius:2px;background:${d.color};flex-shrink:0"></span>
       <span style="flex:1;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.label}">${d.label}</span>
-      <span style="font-family:'JetBrains Mono',monospace;color:var(--text)">${fmt(d.valor)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--text)">${val(d.valor)}</span>
       <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);width:46px;text-align:right">${((d.valor / total) * 100).toFixed(1)}%</span>
     </div>`).join('');
 
@@ -2504,7 +2559,7 @@ function renderDonut(datos, opts) {
     <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
       <svg viewBox="0 0 180 180" width="180" height="180" style="flex-shrink:0">
         ${porciones}
-        <text x="${CX}" y="${CY - 4}" text-anchor="middle" style="font-size:16px;font-weight:700;fill:var(--text);font-family:'JetBrains Mono',monospace">${fmt(total)}</text>
+        <text x="${CX}" y="${CY - 4}" text-anchor="middle" style="font-size:16px;font-weight:700;fill:var(--text);font-family:'JetBrains Mono',monospace">${val(total)}</text>
         <text x="${CX}" y="${CY + 13}" text-anchor="middle" style="font-size:9px;fill:var(--text-muted)">${opts.subtitulo || 'total'}</text>
       </svg>
       <div style="flex:1;min-width:200px">${leyenda}</div>
@@ -2966,6 +3021,18 @@ async function saveProducto() {
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
   const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, unidadesPorVenta: parseInt(document.getElementById('p-upv').value) || 1, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliIds: document.getElementById('p-meli-id').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  // El formulario no pregunta por el descatalogado (eso se hace con el botón ⛔), así que al
+  // editar se reenvía el estado actual: sin esto el PUT lo reactivaba en silencio y el
+  // producto volvía a Reposición.
+  if (editingProductoSKU) {
+    const actual = db.productos.find(x => x.sku === editingProductoSKU);
+    if (actual) {
+      prod.discontinuado = !!actual.discontinuado;
+      prod.motivoDiscontinuado = actual.motivoDiscontinuado || null;
+      prod.notaDiscontinuado = actual.notaDiscontinuado || '';
+      prod.fechaDiscontinuado = actual.fechaDiscontinuado || null;
+    }
+  }
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -4943,6 +5010,7 @@ function limpiarFiltrosStock() {
   document.getElementById('stock-search').value = '';
   document.getElementById('stock-grupo').value = '';
   document.getElementById('stock-subgrupo').value = '';
+  document.getElementById('stock-motivo').value = '';
   syncStockFiltros();
   renderStock();
 }
@@ -4967,21 +5035,24 @@ function stockRowHtml(p, sangria = false) {
   const vendible = packsDe(p);
   const alerta = vendible <= 0 ? 'stock-low' : p.stockDep <= p.alertaMin ? 'stock-med' : 'stock-ok';
   const discBtn = p.discontinuado
-    ? `<button class="btn btn-ghost btn-sm" title="Reactivar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, false)">♻️</button>`
-    : `<button class="btn btn-ghost btn-sm" title="Discontinuar producto" data-sku="${p.sku}" onclick="toggleDiscontinuado(this.dataset.sku, true)">⛔</button>`;
+    ? `<button class="btn btn-ghost btn-sm" title="Volver a catalogar: vuelve a Reposición" data-sku="${p.sku}" onclick="reactivarProducto(this.dataset.sku)">♻️</button>`
+    : `<button class="btn btn-ghost btn-sm" title="Descatalogar: no se vuelve a comprar" data-sku="${p.sku}" onclick="openDiscontinuar(this.dataset.sku)">⛔</button>`;
   const etiquetas = p.grupo
     ? `<span class="badge badge-blue">${p.grupo}</span>${p.subgrupo ? ` <span class="badge badge-gray" style="font-size:10px">${p.subgrupo}</span>` : ''}`
     : '<span style="color:var(--text-muted)">Sin grupo</span>';
-  return `<tr${p.discontinuado ? ' style="opacity:0.55"' : ''}>
+  // El atenuado marca al descatalogado entre los activos; en la pestaña ⛔ son todos, así que
+  // atenuarlos sólo complica leer justo la pantalla que está para leerse.
+  const atenuar = p.discontinuado && stockTabFilter !== 'disc';
+  return `<tr${atenuar ? ' style="opacity:0.55"' : ''}>
     <td${sangria ? ' style="padding-left:28px"' : ''}><span class="badge badge-gray">${p.sku}</span></td>
-    <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado ? ' <span class="badge badge-red" style="font-size:10px">Discontinuado</span>' : ''}</td>
+    <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado && p.notaDiscontinuado ? `<br><span style="font-size:11px;color:var(--text-muted)">⛔ ${escHtml(p.notaDiscontinuado)}</span>` : ''}</td>
     <td>${etiquetas}</td>
     <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
     <td class="${alerta}">${p.stockDep}${etiquetaPack(p) ? ` <span class="badge badge-blue" style="font-size:10px" title="Se vende de a ${upvDe(p)}: el depósito tiene ${p.stockDep} unidades sueltas">${etiquetaPack(p)}</span>` : ''}</td>
     <td>${(p.meliIds || []).length ? `${p.stockMeli}${p.meliIds.length > 1 ? ` <span class="badge badge-gray" style="font-size:10px" title="${p.meliIds.join(', ')}">×${p.meliIds.length}</span>` : ''}` : '—'}</td>
     <td>${p.shopifyId ? p.stockShopify : '—'}</td>
     <td>${fmt(p.precio)}</td>
-    <td>${p.discontinuado ? '<span class="badge" style="background:#6b7280;color:#fff">Discontinuado</span>' : vendible <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
+    <td>${p.discontinuado ? badgeMotivoHtml(p) : vendible <= 0 ? '<span class="badge badge-red">Sin stock</span>' : p.stockDep <= p.alertaMin ? '<span class="badge badge-yellow">Stock bajo</span>' : '<span class="badge badge-green">OK</span>'}</td>
     <td>
       <button class="btn btn-ghost btn-sm" data-sku="${p.sku}" onclick="openAjuste(this.dataset.sku)">📋</button>
       <button class="btn btn-ghost btn-sm" title="Imprimir etiquetas SKU" data-sku="${p.sku}" onclick="openEtiquetas(this.dataset.sku)">🏷️</button>
@@ -5042,9 +5113,12 @@ function stockAgrupadoHtml(productos) {
 
 function renderStock() {
   syncStockFiltros();
+  syncStockMotivoSelect();
+  renderStockDisc();
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
   const fGrupo = document.getElementById('stock-grupo')?.value || '';
   const fSub = document.getElementById('stock-subgrupo')?.value || '';
+  const fMotivo = document.getElementById('stock-motivo')?.value || '';
 
   const filtered = db.productos.filter(p => {
     const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
@@ -5052,7 +5126,12 @@ function renderStock() {
     const matchGrupo = !fGrupo || p.grupo === fGrupo;
     const matchSub = !fSub || p.subgrupo === fSub;
     if (!matchQ || !matchGrupo || !matchSub) return false;
-    if (stockTabFilter === 'disc') return p.discontinuado;
+    if (stockTabFilter === 'disc') {
+      if (!p.discontinuado) return false;
+      // '__sin__' agrupa a los descatalogados sin motivo registrado (los de antes del campo).
+      if (!fMotivo) return true;
+      return fMotivo === '__sin__' ? !p.motivoDiscontinuado : p.motivoDiscontinuado === fMotivo;
+    }
     const matchTipo = stockTabFilter === 'all' || (p.tipo || 'nuevo') === stockTabFilter;
     return matchTipo && !p.discontinuado;
   });
@@ -5066,21 +5145,289 @@ function renderStock() {
     : filtered.map(p => stockRowHtml(p)).join('');
 }
 
-async function toggleDiscontinuado(sku, value) {
+// =====================
+// DESCATALOGAR / DISCONTINUAR PRODUCTOS
+// =====================
+// Descatalogar es decir "de este producto no compro más". No es borrarlo ni ponerlo en cero:
+//   - sale de Reposición (api/restock.js lo filtra), así que deja de pedir compra
+//   - sale de los avisos de stock bajo del dashboard
+//   - las unidades que queden se siguen vendiendo igual, y cada venta le sigue bajando el
+//     stock a MELI y a Shopify
+//   - mientras le queden unidades sigue entrando en la sincronización masiva de stock, para
+//     que su publicación no quede ofreciendo lo que ya no está; recién cuando llega a cero
+//     se lo deja de tocar (entraEnSyncStock en api/_discontinuado.js)
+// Por eso sirve para las dos situaciones: el producto que ya está en 0 y no se vuelve a
+// importar, y el que todavía tiene stock pero no se repone cuando se termine.
+//
+// Lo que hace que esto valga más que un flag es el MOTIVO: es el dato con el que después se
+// mira qué estilo de producto no funciona (ver renderStockDisc), para no volver a comprar lo
+// mismo con otro nombre.
+//
+// Espejo de api/_discontinuado.js — el SPA es un HTML plano sin bundler, no hay forma de
+// importar ese archivo desde acá. Al agregar un motivo hay que tocar los dos lugares.
+const MOTIVOS_DISCONTINUADO = [
+  { id: 'poca_venta',    nombre: 'Poca venta',               emoji: '🐌', color: '#f59e0b',
+    ayuda: 'Rota muy lento: ocupa plata y lugar que rinden más en otra cosa.' },
+  { id: 'poco_margen',   nombre: 'Poco margen de ganancia',  emoji: '📉', color: '#eab308',
+    ayuda: 'Se vende, pero lo que queda después de comisión y envío no paga el trabajo.' },
+  { id: 'problematico',  nombre: 'Producto problemático',    emoji: '⚠️', color: '#ef4444',
+    ayuda: 'Calidad despareja, reclamos, devoluciones, se rompe o no calza.' },
+  { id: 'sin_proveedor', nombre: 'No se consigue más',       emoji: '🚫', color: '#64748b',
+    ayuda: 'El proveedor lo discontinuó o dejó de ser viable importarlo.' },
+  { id: 'reemplazado',   nombre: 'Reemplazado por otro',     emoji: '🔁', color: '#4f8ef7',
+    ayuda: 'Hay una versión nueva o un equivalente mejor en el catálogo.' },
+  { id: 'competencia',   nombre: 'No competitivo en precio', emoji: '🥊', color: '#a78bfa',
+    ayuda: 'La competencia lo tiene más barato de lo que se puede igualar.' },
+  { id: 'otro',          nombre: 'Otro motivo',              emoji: '✏️', color: '#94a3b8',
+    ayuda: 'Cualquier otra razón: conviene dejarla escrita en la aclaración.' },
+];
+
+// Los productos descatalogados antes de que existiera el campo (y los de una base donde la
+// migración todavía no corrió) no tienen motivo: se agrupan acá en vez de desaparecer del
+// análisis.
+const MOTIVO_SIN_REGISTRAR = { id: '__sin__', nombre: 'Sin motivo registrado', emoji: '❔', color: '#475569', ayuda: '' };
+
+function motivoDisc(id) {
+  return MOTIVOS_DISCONTINUADO.find(m => m.id === id) || MOTIVO_SIN_REGISTRAR;
+}
+
+// Badge del motivo, clickeable: abre el modal para corregirlo o completarlo.
+function badgeMotivoHtml(p) {
+  const m = motivoDisc(p.motivoDiscontinuado);
+  const detalle = [
+    p.fechaDiscontinuado ? `Descatalogado el ${p.fechaDiscontinuado}` : 'Sin fecha registrada',
+    p.notaDiscontinuado || '',
+    'Clic para cambiar el motivo',
+  ].filter(Boolean).join(' · ');
+  return `<span class="badge" style="background:${m.color}26;color:${m.color};cursor:pointer"
+    title="${escHtml(detalle)}" data-sku="${escHtml(p.sku)}" onclick="openDiscontinuar(this.dataset.sku)">⛔ ${m.emoji} ${m.nombre}</span>`;
+}
+
+function openDiscontinuar(sku) {
   const p = db.productos.find(x => x.sku === sku);
   if (!p) return;
+  document.getElementById('disc-sku').value = sku;
+
+  // El mismo modal sirve para descatalogar y para corregir el motivo de uno que ya lo está.
+  const yaEstaba = p.discontinuado;
+  document.getElementById('disc-titulo').textContent = yaEstaba ? '⛔ Motivo del descatalogado' : '⛔ Descatalogar producto';
+  document.getElementById('disc-guardar').textContent = yaEstaba ? 'Guardar motivo' : '⛔ Descatalogar';
+
+  const queda = p.stockDep > 0
+    ? `Quedan <strong>${p.stockDep} uds</strong> en depósito${upvDe(p) > 1 ? ` (${etiquetaPack(p)})` : ''}: se siguen vendiendo hasta agotarse y la publicación se sigue sincronizando, pero el producto deja de pedir compra y sale de Reposición.`
+    : 'No queda stock: sale de Reposición, de los avisos de stock bajo y de la sincronización de publicaciones. No se borra: el histórico de ventas queda intacto.';
+  document.getElementById('disc-resumen').innerHTML =
+    `<strong>${escHtml(p.nombre)}</strong> <span class="badge badge-gray">${escHtml(p.sku)}</span><br>${queda}`;
+
+  const selMotivo = document.getElementById('disc-motivo');
+  selMotivo.innerHTML = '<option value="">— Elegí un motivo —</option>' +
+    MOTIVOS_DISCONTINUADO.map(m => `<option value="${m.id}">${m.emoji} ${m.nombre}</option>`).join('');
+  selMotivo.value = p.motivoDiscontinuado || '';
+  refreshDiscAyuda();
+
+  document.getElementById('disc-nota').value = p.notaDiscontinuado || '';
+  document.getElementById('disc-fecha').value = p.fechaDiscontinuado || new Date().toISOString().slice(0, 10);
+  openModal('modal-discontinuar');
+}
+
+// La explicación de cada motivo no entra en el <option>: va debajo del select y cambia con
+// la elección, para que elegir "poco margen" vs "poca venta" no sea adivinar.
+function refreshDiscAyuda() {
+  const elegido = MOTIVOS_DISCONTINUADO.find(m => m.id === document.getElementById('disc-motivo').value);
+  document.getElementById('disc-motivo-ayuda').textContent = elegido ? elegido.ayuda : '';
+}
+
+async function saveDiscontinuar() {
+  const sku = document.getElementById('disc-sku').value;
+  const p = db.productos.find(x => x.sku === sku);
+  if (!p) return;
+
+  const motivo = document.getElementById('disc-motivo').value;
+  // El motivo es obligatorio a propósito: sin él esto vuelve a ser un flag y la pantalla de
+  // análisis no puede decir nada.
+  if (!motivo) { alert('Elegí un motivo: es lo que después permite ver qué estilo de producto no funciona.'); return; }
+  const nota = document.getElementById('disc-nota').value.trim();
+  if (motivo === 'otro' && !nota) { alert('Con "Otro motivo" conviene escribir la aclaración, si no el análisis no dice nada.'); return; }
+
+  const btn = document.getElementById('disc-guardar');
+  btn.disabled = true;
   try {
-    await api('PUT', `/productos?sku=${encodeURIComponent(sku)}`, {
-      ...p,
-      stockDep: p.stockDep, stockMeli: p.stockMeli, stockShopify: p.stockShopify,
-      alertaMin: p.alertaMin, meliIds: p.meliIds, shopifyId: p.shopifyId,
-      discontinuado: value,
+    await guardarDiscontinuado(p, {
+      discontinuado: true,
+      motivoDiscontinuado: motivo,
+      notaDiscontinuado: nota,
+      fechaDiscontinuado: document.getElementById('disc-fecha').value || new Date().toISOString().slice(0, 10),
     });
-    p.discontinuado = value;
-    renderStock();
-  } catch(e) {
+    closeModal('modal-discontinuar');
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function reactivarProducto(sku) {
+  const p = db.productos.find(x => x.sku === sku);
+  if (!p) return;
+  if (!confirm(`¿Volver a catalogar ${p.sku}?\n\nVuelve a Reposición y a los avisos de stock bajo, y se le borra el motivo del descatalogado.`)) return;
+  try {
+    await guardarDiscontinuado(p, { discontinuado: false, motivoDiscontinuado: null, notaDiscontinuado: '', fechaDiscontinuado: null });
+  } catch (e) {
     alert('Error: ' + e.message);
   }
+}
+
+// El PUT de /productos reescribe la fila entera, así que hay que mandarle el producto
+// completo y no sólo lo que cambia.
+async function guardarDiscontinuado(p, campos) {
+  const resp = await api('PUT', `/productos?sku=${encodeURIComponent(p.sku)}`, {
+    ...p,
+    stockDep: p.stockDep, stockMeli: p.stockMeli, stockShopify: p.stockShopify,
+    alertaMin: p.alertaMin, meliIds: p.meliIds, shopifyId: p.shopifyId,
+    ...campos,
+  });
+
+  // Si la base todavía no tiene las columnas del motivo, la API guarda el descatalogado y
+  // avisa que el motivo no entró. Se refleja tal cual en memoria: mostrar un motivo que no
+  // se guardó sería peor que no mostrar ninguno.
+  db.motivoDiscMigracion = !!resp?.migracionMotivoPendiente;
+  const guardado = db.motivoDiscMigracion
+    ? { discontinuado: campos.discontinuado, motivoDiscontinuado: null, notaDiscontinuado: null, fechaDiscontinuado: null }
+    : campos;
+
+  p.discontinuado        = !!guardado.discontinuado;
+  p.motivoDiscontinuado  = guardado.discontinuado ? (guardado.motivoDiscontinuado || null) : null;
+  p.notaDiscontinuado    = guardado.discontinuado ? (guardado.notaDiscontinuado || null) : null;
+  p.fechaDiscontinuado   = guardado.discontinuado ? (guardado.fechaDiscontinuado || null) : null;
+
+  renderStock();
+  renderDashboard();
+  return resp;
+}
+
+// ── Análisis del catálogo descatalogado ─────────────────────────────────────
+// Lo que se quiere contestar acá no es "qué dimos de baja" sino "qué estilo de producto no
+// nos funciona": si tres de los cuatro productos de un grupo se cayeron por poca venta, el
+// problema es el grupo y no el producto.
+function discPorMotivo(discos) {
+  const por = {};
+  for (const p of discos) {
+    const m = motivoDisc(p.motivoDiscontinuado);
+    (por[m.id] ??= { label: `${m.emoji} ${m.nombre}`, color: m.color, valor: 0, cantidad: 0 }).valor += 1;
+    por[m.id].cantidad += 1;
+  }
+  return Object.values(por).sort((a, b) => b.valor - a.valor);
+}
+
+// Un renglón por grupo: cuántos de sus productos están descatalogados sobre el total del
+// grupo, con qué motivos y qué subgrupos arrastran la cuenta.
+function discPorGrupo(discos) {
+  const totalPorGrupo = {};
+  for (const p of db.productos) totalPorGrupo[p.grupo || 'Sin grupo'] = (totalPorGrupo[p.grupo || 'Sin grupo'] || 0) + 1;
+
+  const filas = {};
+  for (const p of discos) {
+    const g = p.grupo || 'Sin grupo';
+    const fila = (filas[g] ??= { grupo: g, cantidad: 0, total: totalPorGrupo[g] || 0, motivos: {}, subgrupos: {} });
+    fila.cantidad += 1;
+    const m = motivoDisc(p.motivoDiscontinuado);
+    fila.motivos[m.id] = (fila.motivos[m.id] || 0) + 1;
+    const sub = p.subgrupo || 'Sin subgrupo';
+    fila.subgrupos[sub] = (fila.subgrupos[sub] || 0) + 1;
+  }
+
+  // Ordena por proporción del grupo y no por cantidad: 3 de 4 productos de un grupo chico
+  // dice mucho más que 5 de 60 del grupo más grande del catálogo.
+  return Object.values(filas).sort((a, b) =>
+    (b.cantidad / (b.total || 1)) - (a.cantidad / (a.total || 1)) || b.cantidad - a.cantidad);
+}
+
+function discGrupoFilaHtml(f) {
+  const pct = f.total ? (f.cantidad / f.total) * 100 : 0;
+  const motivos = Object.entries(f.motivos).sort((a, b) => b[1] - a[1]).map(([id, n]) => {
+    const m = motivoDisc(id);
+    return `<span class="badge" style="background:${m.color}26;color:${m.color};font-size:10px">${m.emoji} ${m.nombre}${n > 1 ? ` ×${n}` : ''}</span>`;
+  }).join(' ');
+  const subs = Object.entries(f.subgrupos).sort((a, b) => b[1] - a[1])
+    .map(([sub, n]) => `${escHtml(sub)}${n > 1 ? ` (${n})` : ''}`).join(' · ');
+
+  return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:baseline;gap:8px">
+      <span style="font-size:13px;font-weight:600;flex:1">${escHtml(f.grupo)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text)">${f.cantidad}/${f.total}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);width:44px;text-align:right">${pct.toFixed(0)}%</span>
+    </div>
+    <div style="height:4px;border-radius:2px;background:var(--surface2);margin:5px 0 6px;overflow:hidden">
+      <div style="height:100%;width:${Math.min(100, pct).toFixed(1)}%;background:var(--red)"></div>
+    </div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:3px">${motivos}</div>
+    <div style="font-size:11px;color:var(--text-muted)">${subs}</div>
+  </div>`;
+}
+
+function renderStockDisc() {
+  const panel = document.getElementById('stock-disc-panel');
+  const selMotivo = document.getElementById('stock-motivo');
+  const esDisc = stockTabFilter === 'disc';
+  panel.style.display = esDisc ? 'block' : 'none';
+  selMotivo.style.display = esDisc ? '' : 'none';
+  if (!esDisc) return;
+
+  const discos = db.productos.filter(p => p.discontinuado);
+
+  document.getElementById('stock-disc-aviso').innerHTML = db.motivoDiscMigracion
+    ? `<div style="margin-bottom:20px;padding:14px 16px;border-radius:var(--radius);border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px;line-height:1.6">
+        ⚠️ <strong>Falta correr la migración del motivo en Supabase.</strong>
+        El producto quedó descatalogado igual, pero el motivo no se pudo guardar. Corré
+        <code>supabase/migrations/20261008010000_add_motivo_discontinuado.sql</code> en el
+        SQL Editor y volvé a elegir el motivo.
+      </div>`
+    : '';
+
+  const conStock = discos.filter(p => p.stockDep > 0);
+  const udsRemanentes = conStock.reduce((a, p) => a + (p.stockDep || 0), 0);
+  const capital = conStock.reduce((a, p) => a + (p.stockDep || 0) * (p.costo || 0), 0);
+  const porMotivo = discPorMotivo(discos);
+  const porGrupo = discPorGrupo(discos);
+  const topMotivo = porMotivo[0];
+  const topGrupo = porGrupo[0];
+  // Los valores de texto no entran en los 28px del .stat-value: van más chicos.
+  const chico = 'font-size:15px;line-height:1.35;letter-spacing:0';
+
+  document.getElementById('stock-disc-stats').innerHTML = `
+    <div class="stat-card red"><div class="stat-icon">⛔</div><div class="stat-value">${discos.length}</div><div class="stat-label">Descatalogados sobre ${db.productos.length} del catálogo</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">📦</div><div class="stat-value">${udsRemanentes}</div><div class="stat-label">Unidades por liquidar, en ${conStock.length} producto${conStock.length === 1 ? '' : 's'}</div></div>
+    <div class="stat-card purple"><div class="stat-icon">💰</div><div class="stat-value">${fmt(capital)}</div><div class="stat-label">Costo inmovilizado en esas unidades</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🔎</div><div class="stat-value" style="${chico}">${topMotivo ? topMotivo.label : '—'}</div><div class="stat-label">${topMotivo ? `Motivo más frecuente · ${topMotivo.valor} producto${topMotivo.valor === 1 ? '' : 's'}` : 'Todavía no hay motivos cargados'}</div></div>
+    <div class="stat-card green"><div class="stat-icon">🗂</div><div class="stat-value" style="${chico}">${topGrupo ? escHtml(topGrupo.grupo) : '—'}</div><div class="stat-label">${topGrupo ? `Grupo más castigado · ${topGrupo.cantidad} de ${topGrupo.total}` : 'Sin grupos con bajas'}</div></div>
+  `;
+
+  document.getElementById('stock-disc-donut').innerHTML = renderDonut(porMotivo, {
+    subtitulo: 'productos',
+    vacio: 'Todavía no hay productos descatalogados.',
+    formato: n => String(n),
+  });
+
+  document.getElementById('stock-disc-grupos').innerHTML = porGrupo.length
+    ? porGrupo.map(discGrupoFilaHtml).join('')
+    : '<div style="text-align:center;padding:30px 10px;color:var(--text-muted);font-size:13px">Todavía no hay productos descatalogados.</div>';
+}
+
+// Las opciones del filtro por motivo salen del catálogo, más "sin motivo" si hay productos
+// viejos sin uno.
+function syncStockMotivoSelect() {
+  const sel = document.getElementById('stock-motivo');
+  if (!sel) return;
+  const discos = db.productos.filter(p => p.discontinuado);
+  const cuenta = id => discos.filter(p => (p.motivoDiscontinuado || '__sin__') === id).length;
+  const opciones = [...MOTIVOS_DISCONTINUADO, MOTIVO_SIN_REGISTRAR]
+    .map(m => ({ ...m, n: cuenta(m.id) }))
+    .filter(m => m.n > 0);
+  const previo = sel.value;
+  const valido = opciones.some(m => m.id === previo) ? previo : '';
+  sel.innerHTML = `<option value="">Todos los motivos (${discos.length})</option>` +
+    opciones.map(m => `<option value="${m.id}"${m.id === valido ? ' selected' : ''}>${m.emoji} ${m.nombre} (${m.n})</option>`).join('');
+  sel.value = valido;
 }
 
 // =====================
@@ -5212,6 +5559,9 @@ function descargarEtiquetas() {
 // =====================
 function switchStockTab(tab) {
   stockTabFilter = tab;
+  // El filtro por motivo sólo existe en la pestaña ⛔: salir de ahí lo limpia para que no
+  // quede filtrando en silencio al volver.
+  if (tab !== 'disc') document.getElementById('stock-motivo').value = '';
   document.querySelectorAll('#page-stock .tab').forEach((t,i) => {
     t.classList.toggle('active', ['all','nuevo','usado','disc'][i] === tab);
   });

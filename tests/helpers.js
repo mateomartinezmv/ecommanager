@@ -36,8 +36,17 @@ function servirPublic() {
 function estadoDemo() {
   return {
     productos: [
-      { sku: 'SKU1', nombre: 'Slider', tipo: 'nuevo', stock_dep: 10, stock_meli: 10,
-        stock_shopify: 0, costo: 400, precio: 1000, alerta_min: 2, created_at: HOY },
+      { sku: 'SKU1', nombre: 'Slider', tipo: 'nuevo', grupo: 'Sliders', subgrupo: 'Universales',
+        stock_dep: 10, stock_meli: 10, stock_shopify: 0, costo: 400, precio: 1000,
+        alerta_min: 2, discontinuado: false, created_at: HOY },
+      // Dos productos más, de otro grupo, para poder descatalogar y mirar el análisis por
+      // grupo sin que quede un solo renglón.
+      { sku: 'SKU2', nombre: 'Espejo redondo', tipo: 'nuevo', grupo: 'Espejos', subgrupo: 'Redondos',
+        stock_dep: 4, stock_meli: 4, stock_shopify: 0, costo: 250, precio: 700,
+        alerta_min: 2, discontinuado: false, created_at: HOY },
+      { sku: 'SKU3', nombre: 'Espejo cuadrado', tipo: 'nuevo', grupo: 'Espejos', subgrupo: 'Cuadrados',
+        stock_dep: 0, stock_meli: 0, stock_shopify: 0, costo: 300, precio: 800,
+        alerta_min: 2, discontinuado: false, created_at: HOY },
     ],
     ventas: [
       { id: 'V-1', canal: 'meli', fecha: HOY, sku: 'SKU1', producto: 'Slider', cantidad: 2,
@@ -77,7 +86,40 @@ function mockearApi(page, estado, fallos = {}) {
 
     if (fallos[ruta]) return error(fallos[ruta].status, fallos[ruta].error);
 
-    if (ruta === '/productos') return ok(estado.productos);
+    if (ruta === '/productos') {
+      if (metodo === 'PUT') {
+        const p = estado.productos.find(x => x.sku === url.searchParams.get('sku'));
+        if (!p) return error(404, 'producto inexistente');
+        // Réplica de camposDiscontinuado (api/_discontinuado.js): lo que el request no manda
+        // se conserva, y reactivar limpia el motivo entero.
+        const disc = cuerpo.discontinuado !== undefined ? !!cuerpo.discontinuado : !!p.discontinuado;
+        Object.assign(p, {
+          nombre: cuerpo.nombre ?? p.nombre,
+          grupo: cuerpo.grupo?.trim() || null,
+          subgrupo: cuerpo.subgrupo?.trim() || null,
+          stock_dep: cuerpo.stockDep ?? p.stock_dep,
+          costo: cuerpo.costo ?? p.costo,
+          precio: cuerpo.precio ?? p.precio,
+          alerta_min: cuerpo.alertaMin ?? p.alerta_min,
+          notas: cuerpo.notas ?? p.notas,
+          discontinuado: disc,
+          motivo_discontinuado: !disc ? null
+            : (cuerpo.motivoDiscontinuado !== undefined ? (cuerpo.motivoDiscontinuado || null) : (p.motivo_discontinuado ?? null)),
+          nota_discontinuado: !disc ? null
+            : (cuerpo.notaDiscontinuado !== undefined ? (String(cuerpo.notaDiscontinuado).trim() || null) : (p.nota_discontinuado ?? null)),
+          fecha_discontinuado: !disc ? null
+            : (cuerpo.fechaDiscontinuado || p.fecha_discontinuado || HOY),
+        });
+        // `sinMotivo` imita a una base donde la migración del motivo todavía no corrió: la
+        // API guarda el descatalogado y avisa que el motivo no entró.
+        if (estado.sinMotivo) {
+          p.motivo_discontinuado = null; p.nota_discontinuado = null; p.fecha_discontinuado = null;
+          return ok({ ...p, migracionMotivoPendiente: true });
+        }
+        return ok(p);
+      }
+      return ok(estado.productos);
+    }
     if (ruta === '/ventas') return ok(estado.ventas);
     if (ruta === '/envios' || ruta === '/clientes' || ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
     if (ruta.startsWith('/meli/ads')) return ok({ ok: true, total_spend: 0, dias_con_datos: 0 });

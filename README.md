@@ -137,3 +137,59 @@ Después de eso, en el menú lateral aparece **Finanzas → 💵 Gastos e ingres
 > Los **costos fijos mensuales** (Vercel, BPS, IVA mínimo...) siguen cargándose en
 > *Información del negocio*: son una cuota mensual que se prorratea por período, no un
 > movimiento con fecha propia.
+
+---
+
+## Descatalogar productos (Stock → ⛔)
+
+Para los productos que no se vuelven a comprar: el que ya está en cero y no se importa más,
+y el que todavía tiene stock pero no se repone cuando se termine.
+
+**Antes de usarlo hay que agregar las columnas una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261008010000_add_motivo_discontinuado.sql`
+3. **Run**
+
+Si todavía no corriste la migración, el botón funciona igual (el producto queda
+descatalogado) pero el motivo no se guarda, y la pestaña ⛔ te avisa qué archivo falta.
+
+**Cómo se usa:** en Stock, el botón **⛔** de cada fila abre el formulario y pide un motivo.
+Los motivos son: *poca venta*, *poco margen de ganancia*, *producto problemático*, *no se
+consigue más*, *reemplazado por otro*, *no competitivo en precio* y *otro* (con aclaración).
+El motivo es obligatorio: es lo único que después permite ver un patrón. Se puede agregar una
+aclaración libre y cambiar la fecha.
+
+Para corregir el motivo de uno ya descatalogado, hacé clic en su badge de la columna
+**Estado**. Con **♻️** vuelve al catálogo y se le borra el motivo.
+
+**Qué cambia cuando un producto está descatalogado:**
+
+- Desaparece de **Reposición**: deja de pedir compra, deja de contar para el lead time y no
+  entra más en el calendario de pedidos.
+- Desaparece de los avisos de **stock bajo** del dashboard.
+- **Las unidades que queden se siguen vendiendo igual**, y cada venta le sigue descontando el
+  stock en MELI y en Shopify. Descatalogar no es pausar la publicación ni poner stock 0.
+- **Mientras le queden unidades sigue entrando en la sincronización masiva** (el botón 🔄, el
+  cron de publicaciones y el sync de Shopify): si se lo dejara afuera, una venta cuya
+  notificación se perdió o un cambio hecho a mano en MELI lo dejarían ofreciendo mercadería
+  que ya no está, que es justo lo que esa sincronización viene a evitar.
+- Cuando llega a **cero** sí queda afuera de la sincronización: ya no tiene nada que ofrecer,
+  y volver a escribirle 0 a una publicación que capaz cerraste a mano es tocar algo que ya no
+  maneja el CRM.
+- No se borra nada: el histórico de ventas y los reportes quedan intactos.
+
+**El análisis**, en la pestaña **⛔ Discontinuados**:
+
+- Cuántos productos se descatalogaron, cuántas unidades quedan por liquidar y cuánto costaron
+  esas unidades (la plata que está parada).
+- Un gráfico con el reparto por motivo: si la mitad del catálogo caído es "poca venta", el
+  problema es qué se compra; si es "poco margen", es a qué precio se compra.
+- **Qué estilo de producto se cae**, por grupo: cuántos productos del grupo están
+  descatalogados sobre el total del grupo, con qué motivos y qué subgrupos arrastran la
+  cuenta. Está ordenado por proporción y no por cantidad, porque 3 de 4 productos de un grupo
+  chico dice mucho más que 5 de 60 del grupo más grande.
+- Un filtro por motivo para ver sólo los de una causa.
+
+Los productos que ya estaban descatalogados de antes aparecen como **"Sin motivo
+registrado"**: se les puede poner el motivo a mano desde el badge de la columna Estado.

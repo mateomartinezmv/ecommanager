@@ -10,6 +10,7 @@
 
 const { getSupabase } = require('../_supabase');
 const { sincronizarStock, resumenSync } = require('../_stockSync');
+const { FILTRO_SYNC_STOCK } = require('../_discontinuado');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,7 +27,10 @@ module.exports = async (req, res) => {
       .from('productos')
       .select('sku, nombre, meli_id, meli_ids, shopify_id, stock_dep, unidades_por_venta')
       .not('meli_id', 'is', null)
-      .eq('discontinuado', false);
+      // Los descatalogados que todavía tienen unidades entran igual: siguen vendiendo hasta
+      // agotarse y su publicación tiene que mostrar el stock real. Los que ya están en cero
+      // quedan afuera (ver entraEnSyncStock en _discontinuado.js).
+      .or(FILTRO_SYNC_STOCK);
     if (skuFiltro) query = query.eq('sku', skuFiltro);
 
     const { data: productos, error } = await query.order('sku');

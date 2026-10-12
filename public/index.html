@@ -8310,7 +8310,13 @@ async function renderAds(forzar = false) {
       adsState.campanas = (r.campanas || []).sort((a, b) => b.inversion - a.inversion);
       adsState.campanasCargadas = true;
       const previa = sel.value;
-      sel.innerHTML = adsState.campanas.map(c =>
+      // "Todas" primero: con más de una campaña corriendo, el ROAS de equilibrio que
+      // importa es el de todo lo que se está gastando junto.
+      const conGasto = adsState.campanas.filter(c => c.inversion > 0);
+      const opcionTodas = conGasto.length > 1
+        ? `<option value="todas">🔀 Todas las campañas — ${fmt(conGasto.reduce((a, c) => a + c.inversion, 0))}</option>`
+        : '';
+      sel.innerHTML = opcionTodas + adsState.campanas.map(c =>
         `<option value="${c.id}">${escHtml(c.nombre)} — ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</option>`
       ).join('') || '<option value="">Sin campañas</option>';
       if (previa && adsState.campanas.some(c => c.id === previa)) sel.value = previa;
@@ -8355,6 +8361,9 @@ async function renderAdsAnuncios() {
     adsState.anuncios = r.anuncios || [];
     adsState.totales = r.totales;
     adsState.periodo = r.periodo;
+    // Viene en la raíz de la respuesta, no dentro de totales: la tabla lo necesita para
+    // decidir si muestra de qué campaña es cada anuncio.
+    adsState.todasLasCampanas = !!r.todas_las_campanas;
     pintarAdsStats();
     pintarAdsAviso();
     pintarAdsTabla();
@@ -8371,6 +8380,7 @@ async function renderAdsAnuncios() {
 // que YA se anuncia (ajustar) y qué falta anunciar (anunciar).
 const RECO_MOTIVOS = {
   // Plata que se está perdiendo ahora.
+  en_varias_campanas:       { emoji: '⚔️', label: 'En varias campañas',     color: 'var(--red)' },
   anunciado_sin_stock:      { emoji: '🚨', label: 'Anunciado sin stock',    color: 'var(--red)' },
   perdiendo:                { emoji: '🔴', label: 'Perdiendo plata',        color: 'var(--red)' },
   quema_sin_vender:         { emoji: '🕳️', label: 'Gasta y no vende',       color: 'var(--red)' },
@@ -8551,6 +8561,9 @@ function pintarReco() {
         x.cpc_max != null ? `podés pagar hasta <b>${fmt(x.cpc_max)}</b>/clic` : null,
         `stock <b>${x.stock}</b>${x.meses_stock ? ` (${x.meses_stock} meses)` : ''}`,
         x.unidades_meli_periodo ? `vendió <b>${x.unidades_meli_periodo}</b> en la ventana` : 'sin ventas en la ventana',
+        (x.campanas_activas || []).length
+          ? `en <b>${x.campanas_activas.map(escHtml).join('</b> + <b>')}</b>`
+          : null,
         ads && ads.inversion > 0
           ? `ads <b>${fmt(ads.inversion)}</b> a ROAS ${ads.roas.toFixed(2)}x`
             + (x.compartido_con > 1
@@ -8670,6 +8683,19 @@ function pintarAdsAviso() {
   if (!t) { cont.innerHTML = ''; return; }
 
   const avisos = [];
+
+  // Con todas las campañas juntas, el total de arriba no dice cuál está gastando qué.
+  // El desglose es lo que permite comparar dos campañas sin cambiar de pantalla.
+  if (t.campana?.campanas?.length > 1) {
+    const filas = t.campana.campanas.map(c =>
+      `<li style="margin-top:3px"><b>${escHtml(c.nombre)}</b>: ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</li>`
+    ).join('');
+    avisos.push(`<div style="background:rgba(59,130,246,0.10);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+      🔀 <b>Mirando ${t.campana.campanas.length} campañas juntas.</b> El ROAS de equilibrio de arriba es el del conjunto;
+      cada anuncio de la tabla dice de qué campaña es.
+      <ul style="margin:6px 0 0 18px">${filas}</ul>
+    </div>`);
+  }
 
   // Reconciliación contra el panel de MELI. Sin esto, la tabla suma distinto que la
   // campaña y no hay forma de saber si falta un anuncio o si el cálculo está mal.
@@ -8904,6 +8930,8 @@ function pintarAdsTabla() {
                 <div style="font-weight:500;font-size:13px">${titulo}</div>
                 <div style="font-size:11px;color:var(--text-muted)">
                   ${pausado ? '<span style="color:var(--yellow)">⏸ pausado</span> · ' : ''}
+                  ${adsState.todasLasCampanas && a.campaign_name
+                      ? `<span style="color:var(--accent)">${escHtml(a.campaign_name)}</span> · ` : ''}
                   ${a.sku ? `SKU ${escHtml(a.sku)}` : '<span style="color:var(--red)">sin vincular</span>'}
                   ${a.variantes > 1 ? ` · ${a.variantes} variantes` : ''}
                   ${a.costo != null ? ` · costo ${fmt(a.costo)}` : ''}

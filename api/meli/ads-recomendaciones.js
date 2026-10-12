@@ -498,6 +498,13 @@ module.exports = async (req, res) => {
       const mesesStock = rotacionMensual > 0 ? r2(stockDep / rotacionMensual) : null;
 
       // Lo que se anuncia ahora, para la rama de ajuste.
+      // En qué campañas está corriendo. Con una sola campaña daba igual; con dos, saber
+      // si un producto está en las dos es la diferencia entre escalarlo y estar pagando
+      // dos veces por el mismo tráfico.
+      const campanasActivas = [...new Set(
+        c.activos.map(id => gruposRecientes.get(id)?.campaign_name).filter(Boolean)
+      )];
+
       const ahora = sumarGrupos(c.activos.map(id => gruposRecientes.get(id)).filter(Boolean), parteDelGrupo);
       // Con cuántos SKU comparte el anuncio más grande que lo toca. En 1 el anuncio es
       // suyo entero; arriba de 1 los números de abajo son su parte, no el total.
@@ -530,6 +537,20 @@ module.exports = async (req, res) => {
       }
 
       if (anunciado) {
+        // Dos campañas con el mismo producto son dos anuncios tuyos en la misma subasta:
+        // se suben el CPC entre ellos y el presupuesto se parte sin que nadie lo decida.
+        // Es lo primero que hay que mirar después de armar una campaña de winners a partir
+        // de otra, porque los winners suelen quedar en las dos.
+        if (campanasActivas.length > 1) {
+          reglas.push({
+            familia: 'ajustar', motivo: 'en_varias_campanas', accion: 'Dejarlo en una sola',
+            urgencia: 'alta',
+            detalle: `Está corriendo en ${campanasActivas.length} campañas a la vez`
+              + ` (${campanasActivas.join(' y ')}). Son dos anuncios tuyos compitiendo en la`
+              + ` misma subasta: te suben el CPC entre ellos y parten el presupuesto.`,
+            plata: ahora.inversion,
+          });
+        }
         if (stockPub <= 0) {
           reglas.push({
             familia: 'ajustar', motivo: 'anunciado_sin_stock', accion: 'Pausar ya', urgencia: 'alta',
@@ -681,6 +702,7 @@ module.exports = async (req, res) => {
         unidades_mes: unidadesMes,
 
         anunciado,
+        campanas_activas: campanasActivas,
         ad_groups: c.grupos,
         // En 1 el anuncio es de este producto solo. Arriba de 1, los números de ads son
         // su parte del anuncio compartido, no el total que muestra el panel de MELI.

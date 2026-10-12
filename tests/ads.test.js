@@ -22,12 +22,14 @@ const { abrirCRM, estadoDemo, erroresReales, leerTarjetas } = require('./helpers
 function estadoConAds(extra = {}) {
   const estado = estadoDemo();
   estado.adsCampanas = [
-    { id: '358477958', nombre: 'Campaña principal', inversion: 13983, roas: 4.13 },
+    { id: '358477958', nombre: 'TEST - muchos ads', inversion: 13983, roas: 4.13 },
+    { id: '999000111', nombre: 'WINNERS', inversion: 2400, roas: 6.10 },
   ];
   estado.adsAnuncios = {
     ok: true,
     periodo: { desde: '2026-09-12', hasta: '2026-10-11' },
-    campaign_id: '358477958',
+    campaign_id: 'todas',
+    todas_las_campanas: true,
     currency: 'UYU',
     comision_pct: 14.33,
     totales: {
@@ -36,6 +38,14 @@ function estadoConAds(extra = {}) {
       anuncios_sin_vincular: 0, anuncios_sku_sin_vincular: 0, truncado: null, cvr_campana: 1.8,
       margen_ponderado: 41.8,
       roas_breakeven_campana: 2.39,
+      campana: {
+        nombre: '2 campañas con gasto', impresiones: 50000, clics: 1671,
+        inversion: 16383, facturacion: 72331, unidades: 36, roas: 4.41,
+        campanas: [
+          { id: '358477958', nombre: 'TEST - muchos ads', inversion: 13983, facturacion: 57691, roas: 4.13 },
+          { id: '999000111', nombre: 'WINNERS', inversion: 2400, facturacion: 14640, roas: 6.1 },
+        ],
+      },
       economia: {
         comision_pct: 14.33, comision_es_manual: false, envio_unitario: 165,
         envios: { total: 247, con_costo: 111, sin_costo: 136, promedio_real: 202.69, fallback_usado: 202.69, estimados: 136 },
@@ -45,7 +55,8 @@ function estadoConAds(extra = {}) {
     },
     anuncios: [
       {
-        ad_group_id: '1', campaign_id: '358477958', titulo: 'Baúl Trasero Moto 45L', thumbnail: null,
+        ad_group_id: '1', campaign_id: '358477958', campaign_name: 'TEST - muchos ads',
+        titulo: 'Baúl Trasero Moto 45L', thumbnail: null,
         status: 'ACTIVE', item_ids: ['MLU111'], variantes: 1, permalink: null,
         impresiones: 30000, clics: 1000, inversion: 8000, facturacion: 40000, unidades: 10,
         ctr: 3.3, cpc: 8, cvr: 1, roas: 5, acos: 20, tacos: 0, sov: 0,
@@ -61,7 +72,8 @@ function estadoConAds(extra = {}) {
       {
         // El caso que la cuenta vieja pintaba de verde: ROAS 2,2x contra un equilibrio real
         // de 2,87x. Con comisión fija y sin envío su equilibrio daba 2,37x y "ganaba".
-        ad_group_id: '2', campaign_id: '358477958', titulo: 'Gato Soporte Elevador', thumbnail: null,
+        ad_group_id: '2', campaign_id: '999000111', campaign_name: 'WINNERS',
+        titulo: 'Gato Soporte Elevador', thumbnail: null,
         status: 'ACTIVE', item_ids: ['MLU222'], variantes: 1, permalink: null,
         impresiones: 20000, clics: 671, inversion: 5983, facturacion: 17691, unidades: 6,
         ctr: 3.3, cpc: 8.9, cvr: 0.89, roas: 2.2, acos: 45.4, tacos: 0, sov: 0,
@@ -86,8 +98,8 @@ function estadoConAds(extra = {}) {
     referencia: { campanas: 1, clics: 1671, inversion: 13983, unidades: 30, cpc: 8.4, cvr: 1.8, cpa: 467,
       ad_groups: 20, anuncios_activos: 12 },
     resumen: {
-      catalogo: 76, evaluados: 55, con_recomendacion: 5, mostrados: 5,
-      anunciados: 2, sin_anunciar: 3, con_historico: 3,
+      catalogo: 76, evaluados: 55, con_recomendacion: 6, mostrados: 6,
+      anunciados: 3, sin_anunciar: 3, con_historico: 3,
       snapshot_historico: true, incompleto: null,
       descartados: { discontinuados: 9, sin_publicacion: 7, sin_costo: 5, sin_precio: 0, sin_publicacion_activa: 2 },
       por_motivo: [
@@ -96,6 +108,7 @@ function estadoConAds(extra = {}) {
         { motivo: 'anunciado_sin_stock', familia: 'ajustar', productos: 1, plata: 800 },
         { motivo: 'ya_fallo', familia: 'anunciar', productos: 1, plata: 0 },
         { motivo: 'escalar', familia: 'ajustar', productos: 1, plata: 2100 },
+        { motivo: 'en_varias_campanas', familia: 'ajustar', productos: 1, plata: 1200 },
       ],
     },
     recomendaciones: [
@@ -142,10 +155,30 @@ function estadoConAds(extra = {}) {
         estado_publicacion: 'active', publicaciones: 1,
         stock: 0, stock_dep: 0, meses_stock: null, unidades_meli_periodo: 1, unidades_mes: 1,
         anunciado: true, ad_groups: ['88'],
+        campanas_activas: ['TEST - muchos ads'],
         ads_ahora: { clics: 90, inversion: 800, unidades: 1, facturacion: 1750, roas: 2.19, impresiones: 3000 },
         historico: null, veredicto_historico: null,
         cpc_max: 7, cpa_estimado: 467, ganancia_por_venta: -80, cvr_referencia: 1.8, cvr_origen: 'cuenta',
         otros_motivos: [{ motivo: 'margen_flaco', detalle: 'Haría falta ROAS 4.52x para empatar.' }],
+      },
+      {
+        // Un producto que quedó en las dos campañas: los winners salen de la campaña
+        // vieja y suelen quedar también en ella.
+        sku: 'HSJ-20121-B', nombre: 'Espejos Aleron Chico', grupo: 'Espejos',
+        familia: 'ajustar', motivo: 'en_varias_campanas', accion: 'Dejarlo en una sola',
+        urgencia: 'alta', plata_en_juego: 1200,
+        detalle: 'Está corriendo en 2 campañas a la vez (TEST - muchos ads y WINNERS). Son dos anuncios tuyos compitiendo en la misma subasta: te suben el CPC entre ellos y parten el presupuesto.',
+        margen: 50, roas_breakeven: 2, contribucion: 600, precio: 1200, costo: 400,
+        comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
+        meli_id: 'MLU888', permalink: null, thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 12, stock_dep: 12, meses_stock: 4, unidades_meli_periodo: 3, unidades_mes: 3,
+        anunciado: true, ad_groups: ['11', '22'],
+        campanas_activas: ['TEST - muchos ads', 'WINNERS'],
+        ads_ahora: { clics: 140, inversion: 1200, unidades: 4, facturacion: 4800, roas: 4, impresiones: 9000 },
+        historico: null, veredicto_historico: null,
+        cpc_max: 10, cpa_estimado: 467, ganancia_por_venta: 133, cvr_referencia: 1.8, cvr_origen: 'cuenta',
+        otros_motivos: [],
       },
       {
         // El caso que destapó dos bugs: tres colores de un mismo manillar cuelgan de UN
@@ -161,6 +194,7 @@ function estadoConAds(extra = {}) {
         estado_publicacion: 'active', publicaciones: 1,
         stock: 5, stock_dep: 5, meses_stock: null, unidades_meli_periodo: 0, unidades_mes: 0,
         anunciado: true, ad_groups: ['7068115768680593'],
+        campanas_activas: ['TEST - muchos ads'],
         // Un tercio del anuncio: $1.002 repartidos entre los tres colores.
         compartido_con: 3,
         ads_ahora: { clics: 79, inversion: 334, unidades: 3, facturacion: 3140, roas: 9.4, impresiones: 7755 },
@@ -327,7 +361,7 @@ test('los chips separan lo que ya anunciás de lo que falta, y filtran por motiv
   try {
     await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
     const chips = await crm.page.$$eval('#ads-reco-chips button', els => els.map(e => e.textContent.trim()));
-    assert.ok(chips.some(c => /Todo/.test(c) && /5/.test(c)), `chips: ${chips.join(' | ')}`);
+    assert.ok(chips.some(c => /Todo/.test(c) && /6/.test(c)), `chips: ${chips.join(' | ')}`);
     assert.ok(chips.some(c => /Lo que ya anunciás/.test(c)));
     assert.ok(chips.some(c => /Lo que falta anunciar/.test(c)));
     assert.ok(chips.some(c => /Ganador sin anunciar/.test(c)));
@@ -490,6 +524,56 @@ test('esconder los que pagan se combina con el filtro por motivo, sin mentir el 
     const texto = await crm.page.textContent('#ads-reco-lista');
     assert.match(texto, /viene pagando \(1\)/);
     assert.match(texto, /No hay nada que tocar/);
+  } finally { await crm.cerrar(); }
+});
+
+test('con dos campañas corriendo se pueden mirar juntas', async () => {
+  const estado = estadoConAds();
+  const crm = await irAAds(estado);
+  try {
+    // La opción aparece sola cuando hay más de una campaña gastando, y va primera: con
+    // dos campañas el ROAS de equilibrio que importa es el del conjunto.
+    const opciones = await crm.page.$$eval('#ads-campana option', els => els.map(e => ({ v: e.value, t: e.textContent })));
+    assert.strictEqual(opciones[0].v, 'todas', `opciones: ${JSON.stringify(opciones)}`);
+    assert.match(opciones[0].t, /Todas las campañas/);
+
+    // Y el request la pide como tal.
+    const pedidos = (estado.adsRequests || []).filter(u => u.startsWith('/meli/ads-anuncios'));
+    assert.ok(pedidos.some(u => /campaign_id=todas/.test(u)), `pedidos: ${pedidos.join(' | ')}`);
+  } finally { await crm.cerrar(); }
+});
+
+test('mirando todas, cada anuncio dice de qué campaña es y el total se desglosa', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    // Sin el desglose, un total de $16.383 no dice cuál de las dos lo está gastando.
+    const aviso = await crm.page.textContent('#ads-aviso');
+    assert.match(aviso, /Mirando 2 campañas juntas/);
+    assert.match(aviso, /TEST - muchos ads/);
+    assert.match(aviso, /WINNERS/);
+
+    // Y cada fila se puede volver a atribuir a su campaña.
+    const tabla = await crm.page.textContent('#ads-tabla');
+    assert.match(tabla, /TEST - muchos ads/);
+    assert.match(tabla, /WINNERS/);
+  } finally { await crm.cerrar(); }
+});
+
+test('un producto corriendo en las dos campañas sale marcado', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+
+    // Armar una campaña de winners a partir de otra deja los winners en las dos, y ahí
+    // son dos anuncios tuyos compitiendo en la misma subasta.
+    assert.match(texto, /Espejos Aleron Chico/);
+    assert.match(texto, /Dejarlo en una sola/);
+    assert.match(texto, /2 campañas a la vez/);
+    assert.match(texto, /misma subasta/);
+
+    // Y en la ficha se ve en cuáles, sin tener que abrir MELI.
+    assert.match(texto, /en TEST - muchos ads \+ WINNERS/);
   } finally { await crm.cerrar(); }
 });
 

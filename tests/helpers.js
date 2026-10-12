@@ -135,6 +135,38 @@ function mockearApi(page, estado, fallos = {}) {
       return ok({ ok: true, total_spend: 0, dias_con_datos: 0 });
     }
 
+    // Las fotos de cada publicación contra las de su original. El POST hace lo que hace el
+    // endpoint: deja a cada ángulo corregible con las fotos de la original, y no toca las
+    // que MELI no deja (catálogo, cerradas).
+    if (ruta === '/meli/fotos') {
+      const fotos = estado.fotos || { ok: true, productos: [], resumen: {} };
+      if (metodo === 'POST') {
+        (estado.fotosPost = estado.fotosPost || []).push(cuerpo);
+        const resultados = [];
+        for (const prod of fotos.productos) {
+          if (cuerpo.sku && prod.sku !== cuerpo.sku) continue;
+          for (const pub of prod.publicaciones) {
+            if (!pub.copiable) continue;
+            resultados.push({ ok: true, sku: prod.sku, meli_id: pub.meli_id, titulo: pub.titulo, antes: pub.fotos.length, ahora: prod.original.fotos.length, modo: 'id', aviso: null });
+            pub.fotos = prod.original.fotos.map(f => ({ ...f }));
+            pub.distintas = false; pub.copiable = false; pub.motivo = null;
+          }
+          prod.distintas = prod.publicaciones.filter(x => x.distintas).length;
+          prod.copiables = prod.publicaciones.filter(x => x.copiable).length;
+          prod.trabadas = prod.publicaciones.filter(x => x.distintas && x.motivo).length;
+        }
+        fotos.resumen = {
+          ...fotos.resumen,
+          distintas: fotos.productos.reduce((s, x) => s + x.distintas, 0),
+          copiables: fotos.productos.reduce((s, x) => s + x.copiables, 0),
+          trabadas: fotos.productos.reduce((s, x) => s + x.trabadas, 0),
+          productos_afectados: fotos.productos.filter(x => x.distintas > 0).length,
+        };
+        return ok({ ok: true, copiadas: resultados.length, fallidas: 0, resultados });
+      }
+      return ok(fotos);
+    }
+
     if (ruta === '/movimientos') {
       const esCategoria = url.searchParams.get('recurso') === 'categoria';
       const id = url.searchParams.get('id');

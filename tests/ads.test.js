@@ -6,8 +6,13 @@
 //      siempre ?comision=15 y el endpoint no restaba envío, así que el ROAS de equilibrio
 //      salía 1,9x cuando el real era 2,4x — y con eso un anuncio a 2,2x figuraba en verde
 //      mientras perdía plata en cada venta.
-//   2. Que "Qué anunciar" liste productos que NO están en ninguna campaña. Es toda la
-//      razón de ser de la sección: el panel de MELI sólo muestra lo que ya se anuncia.
+//   2. Que "Qué anunciar y qué apagar" liste productos que NO están en ninguna campaña.
+//      Es toda la razón de ser de la sección: el panel de MELI sólo muestra lo que ya se
+//      anuncia, así que un producto con 55% de margen y sin una impresión no aparece en
+//      ningún lado.
+//   3. Que el histórico frene las recomendaciones. Volver a prender un anuncio que perdía
+//      plata es repetir el error con más convicción, y parte de ese historial vive sólo en
+//      el snapshot diario local: pasados los 90 días, MELI no lo tiene más.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -74,53 +79,90 @@ function estadoConAds(extra = {}) {
   estado.adsReco = {
     ok: true,
     periodo: { desde: '2026-09-12', hasta: '2026-10-11', dias: 30 },
-    periodo_previo: { desde: '2026-08-13', hasta: '2026-09-11' },
+    periodo_historico: { desde: '2026-07-14', hasta: '2026-10-11', dias: 90 },
     currency: 'UYU',
-    ads_disponible: true, error_ads: null, ads_incompleto: null,
-    economia: { comision_pct: 14.33, envio_unitario: 165, envios: { sin_costo: 136, con_costo: 111, total: 247, fallback_usado: 202.69 } },
+    economia: { comision_pct: 14.33, comision_es_manual: false, envio_unitario: 165, ventas_muestra: 501,
+      envios: { total: 247, con_costo: 111, sin_costo: 136, promedio_real: 202.69, fallback_usado: 202.69, estimados: 136 } },
+    referencia: { campanas: 1, clics: 1671, inversion: 13983, unidades: 30, cpc: 8.4, cvr: 1.8, cpa: 467,
+      ad_groups: 20, anuncios_activos: 12 },
     resumen: {
-      catalogo: 76, evaluados: 55, con_recomendacion: 3,
-      anuncios_leidos: 20, skus_anunciados: 12,
-      descartados: { discontinuados: 9, sin_costo: 5, sin_publicar: 7 },
+      catalogo: 76, evaluados: 55, con_recomendacion: 4, mostrados: 4,
+      anunciados: 1, sin_anunciar: 3, con_historico: 2,
+      snapshot_historico: true, incompleto: null,
+      descartados: { discontinuados: 9, sin_publicacion: 7, sin_costo: 5, sin_precio: 0, sin_publicacion_activa: 2 },
       por_motivo: [
-        { motivo: 'ganador_sin_anunciar', productos: 1, plata: 6915 },
-        { motivo: 'se_apago_y_andaba', productos: 1, plata: 4200 },
-        { motivo: 'anunciado_sin_stock', productos: 1, plata: 800 },
+        { motivo: 'ganador_sin_anunciar', familia: 'anunciar', productos: 1, plata: 6915 },
+        { motivo: 'se_apago_y_andaba', familia: 'anunciar', productos: 1, plata: 4200 },
+        { motivo: 'anunciado_sin_stock', familia: 'ajustar', productos: 1, plata: 800 },
+        { motivo: 'ya_fallo', familia: 'anunciar', productos: 1, plata: 0 },
       ],
     },
     recomendaciones: [
       {
-        sku: 'HSJ-20121', nombre: 'Espejos Moto Tipo Aleron Grande', motivo: 'ganador_sin_anunciar',
-        accion: 'Empezar a anunciar', urgencia: 'alta', plata_en_juego: 6915,
-        detalle: 'Vendió 9 unidades sin un peso de publicidad, con 55.4% de margen.',
+        sku: 'HSJ-20121', nombre: 'Espejos Moto Tipo Aleron Grande', grupo: 'Espejos',
+        familia: 'anunciar', motivo: 'ganador_sin_anunciar', accion: 'Empezar a anunciar',
+        urgencia: 'alta', plata_en_juego: 6915,
+        detalle: 'Nunca se anunció. Vendió 9 unidades sin un peso de publicidad, con 55.4% de margen.',
         margen: 55.4, roas_breakeven: 1.81, contribucion: 768.33, precio: 1386, costo: 400,
         comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
-        stock: 18, stock_publicado: 18, meses_stock: 2, unidades_periodo: 9,
-        unidades_organicas: 9, unidades_previas: 11, ads: null, anunciado: false,
+        meli_id: 'MLU333', permalink: 'https://articulo.mercadolibre.com.uy/MLU333', thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 18, stock_dep: 18, meses_stock: 2, unidades_meli_periodo: 9, unidades_mes: 3,
+        anunciado: false, ad_groups: [], ads_ahora: null,
+        historico: null, veredicto_historico: null,
+        cpc_max: 13.8, cpa_estimado: 467, ganancia_por_venta: 301.33, cvr_referencia: 1.8, cvr_origen: 'cuenta',
         otros_motivos: [],
       },
       {
-        sku: 'DFB-002', nombre: 'Deflector Parabrisas', motivo: 'se_apago_y_andaba',
-        accion: 'Volver a prenderlo', urgencia: 'alta', plata_en_juego: 4200,
-        detalle: 'Invertiste 2100 a ROAS 3.80x (equilibrio 2.42x) y vendió 7 unidades. En este período no gastó nada.',
+        sku: 'DFB-002', nombre: 'Deflector Parabrisas', grupo: 'Parabrisas',
+        familia: 'anunciar', motivo: 'se_apago_y_andaba', accion: 'Volver a prenderlo',
+        urgencia: 'alta', plata_en_juego: 4200,
+        detalle: 'Estuvo anunciándose y ya no está en la campaña. Cuando corría invirtió 2100 a ROAS 3.80x (equilibrio 2.42x) y vendió 7 unidades.',
         margen: 41.3, roas_breakeven: 2.42, contribucion: 722, precio: 1750, costo: 540,
         comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
-        stock: 9, stock_publicado: 9, meses_stock: 3, unidades_periodo: 3,
-        unidades_organicas: 3, unidades_previas: 7,
-        ads: { ahora: { clics: 0, inversion: 0, unidades: 0, facturacion: 0, roas: 0 } },
-        anunciado: false, otros_motivos: [],
+        meli_id: 'MLU444', permalink: null, thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 9, stock_dep: 9, meses_stock: 3, unidades_meli_periodo: 3, unidades_mes: 2,
+        anunciado: false, ad_groups: ['77'], ads_ahora: null,
+        historico: { inversion: 2100, unidades: 7, clics: 310, roas: 3.8, cpc: 6.8, cvr: 2.3,
+          desde: '2026-07-14', hasta: '2026-08-20', fuente: 'ambas', campanas: ['Campaña principal'], dias_locales: 12 },
+        veredicto_historico: 'rentable',
+        cpc_max: 16.6, cpa_estimado: 467, ganancia_por_venta: 255, cvr_referencia: 2.3, cvr_origen: 'propio',
+        otros_motivos: [],
       },
       {
-        sku: 'AP-TAILBOXLED', nombre: 'Baúl Trasero Moto 28L', motivo: 'anunciado_sin_stock',
-        accion: 'Pausar ya', urgencia: 'alta', plata_en_juego: 800,
-        detalle: 'Gastaste 800 en ads de un producto sin stock en el depósito.',
+        sku: 'AP-TAILBOXLED', nombre: 'Baúl Trasero Moto 28L', grupo: 'Baúles',
+        familia: 'ajustar', motivo: 'anunciado_sin_stock', accion: 'Pausar ya',
+        urgencia: 'alta', plata_en_juego: 800,
+        detalle: 'Gastaste 800 en ads de una publicación sin stock en MELI.',
         margen: 22.1, roas_breakeven: 4.52, contribucion: 387, precio: 1750, costo: 800,
         comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
-        stock: 0, stock_publicado: 0, meses_stock: null, unidades_periodo: 1,
-        unidades_organicas: 0, unidades_previas: 2,
-        ads: { ahora: { clics: 90, inversion: 800, unidades: 1, facturacion: 1750, roas: 2.19 } },
-        anunciado: true,
+        meli_id: 'MLU555', permalink: null, thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 0, stock_dep: 0, meses_stock: null, unidades_meli_periodo: 1, unidades_mes: 1,
+        anunciado: true, ad_groups: ['88'],
+        ads_ahora: { clics: 90, inversion: 800, unidades: 1, facturacion: 1750, roas: 2.19, impresiones: 3000 },
+        historico: null, veredicto_historico: null,
+        cpc_max: 7, cpa_estimado: 467, ganancia_por_venta: -80, cvr_referencia: 1.8, cvr_origen: 'cuenta',
         otros_motivos: [{ motivo: 'margen_flaco', detalle: 'Haría falta ROAS 4.52x para empatar.' }],
+      },
+      {
+        // El que el histórico salva de un error: parece una oportunidad y ya falló.
+        sku: 'HP-ZJ039', nombre: 'Posapies Aluminio CNC', grupo: 'Posapies',
+        familia: 'anunciar', motivo: 'ya_fallo', accion: 'No volver sin cambiar algo',
+        urgencia: 'baja', plata_en_juego: 0,
+        detalle: 'Estuvo anunciándose y ya no está en la campaña. Cuando se anunciaba invirtió 3100 a ROAS 1.40x, debajo del equilibrio de 4.70x. Volver a prenderlo sin tocar precio ni publicación repite el resultado.',
+        margen: 21.3, roas_breakeven: 4.7, contribucion: 320, precio: 1500, costo: 820,
+        comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
+        meli_id: 'MLU666', permalink: null, thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 5, stock_dep: 5, meses_stock: 5, unidades_meli_periodo: 1, unidades_mes: 1,
+        anunciado: false, ad_groups: ['99'], ads_ahora: null,
+        historico: { inversion: 3100, unidades: 3, clics: 420, roas: 1.4, cpc: 7.4, cvr: 0.7,
+          desde: '2026-05-01', hasta: '2026-06-15', fuente: 'local', campanas: ['Campaña vieja'], dias_locales: 45 },
+        veredicto_historico: 'perdia',
+        cpc_max: 2.2, cpa_estimado: 467, ganancia_por_venta: -147, cvr_referencia: 1.8, cvr_origen: 'cuenta',
+        otros_motivos: [],
       },
     ],
   };
@@ -214,13 +256,13 @@ test('Qué anunciar lista productos que no están en ninguna campaña', async ()
     // Un ganador orgánico sin un solo anuncio: lo que el panel de MELI no puede ver.
     assert.match(texto, /Espejos Moto Tipo Aleron Grande/);
     assert.match(texto, /Empezar a anunciar/);
-    assert.match(texto, /sin ads en el período/);
+    assert.match(texto, /sin ads activo/);
 
     // Uno que se anunciaba y se apagó, con lo que rendía cuando estaba prendido.
     assert.match(texto, /Deflector Parabrisas/);
     assert.match(texto, /Volver a prenderlo/);
 
-    // Y uno que hay que apagar ya: se está gastando en algo sin stock.
+    // Y uno que hay que apagar ya: se está gastando en algo sin stock en MELI.
     assert.match(texto, /Baúl Trasero Moto 28L/);
     assert.match(texto, /Pausar ya/);
     // Los motivos secundarios también se muestran: un producto puede estar mal por más
@@ -229,49 +271,122 @@ test('Qué anunciar lista productos que no están en ninguna campaña', async ()
   } finally { await crm.cerrar(); }
 });
 
-test('los chips filtran por motivo y el contador dice cuánta plata hay en cada uno', async () => {
-  const crm = await irAAds(estadoConAds());
-  try {
-    await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
-    const chips = await crm.page.$$eval('#ads-reco-chips button', els => els.map(e => e.textContent.trim()));
-    assert.ok(chips.some(c => /Todo/.test(c) && /3/.test(c)), `chips: ${chips.join(' | ')}`);
-    assert.ok(chips.some(c => /Ganador sin anunciar/.test(c)));
-
-    await crm.page.click('#ads-reco-chips button:has-text("Ganador sin anunciar")');
-    await crm.page.waitForTimeout(200);
-    const texto = await crm.page.textContent('#ads-reco-lista');
-    assert.match(texto, /Espejos Moto Tipo Aleron Grande/);
-    assert.ok(!/Deflector Parabrisas/.test(texto), 'el filtro no sacó los otros motivos');
-  } finally { await crm.cerrar(); }
-});
-
-test('los productos sin costo quedan afuera y la pantalla dice que quedaron afuera', async () => {
+test('el histórico frena la recomendación de volver a anunciar algo que ya perdía', async () => {
   const crm = await irAAds(estadoConAds());
   try {
     await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
     const texto = await crm.page.textContent('#ads-reco-lista');
-    // Silenciarlos haría parecer que el catálogo está cubierto cuando hay cinco productos
-    // sobre los que no se puede opinar.
-    assert.match(texto, /5 producto\(s\) quedaron afuera por no tener costo/);
-    assert.match(texto, /55 productos publicados evaluados/);
+
+    // Por margen y stock parecería una oportunidad. El histórico dice que no: se anunció
+    // a ROAS 1,40x contra un equilibrio de 4,70x. Recomendarlo sería repetir el error.
+    assert.match(texto, /Posapies Aluminio CNC/);
+    assert.match(texto, /No volver sin cambiar algo/);
+    assert.match(texto, /cuando se anunciaba, perdía/);
+    // Y tiene que verse de dónde sale ese histórico, porque parte vive sólo en el snapshot.
+    assert.match(texto, /3100 invertidos|\$\s?3[.,]?100/);
+    assert.match(texto, /histórico guardado/);
   } finally { await crm.cerrar(); }
 });
 
-test('sin acceso a MELI Ads la sección sigue sirviendo, pero lo aclara', async () => {
+test('el histórico que suma MELI y el snapshot dice que viene de los dos lados', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /MELI \+ guardado/);
+    assert.match(texto, /cuando se anunciaba, pagaba/);
+  } finally { await crm.cerrar(); }
+});
+
+test('los chips separan lo que ya anunciás de lo que falta, y filtran por motivo', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
+    const chips = await crm.page.$$eval('#ads-reco-chips button', els => els.map(e => e.textContent.trim()));
+    assert.ok(chips.some(c => /Todo/.test(c) && /4/.test(c)), `chips: ${chips.join(' | ')}`);
+    assert.ok(chips.some(c => /Lo que ya anunciás/.test(c)));
+    assert.ok(chips.some(c => /Lo que falta anunciar/.test(c)));
+    assert.ok(chips.some(c => /Ganador sin anunciar/.test(c)));
+
+    // La familia: sólo lo que ya se anuncia.
+    await crm.page.click('#ads-reco-chips button:has-text("Lo que ya anunciás")');
+    await crm.page.waitForTimeout(200);
+    let texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /Baúl Trasero Moto 28L/);
+    assert.ok(!/Espejos Moto Tipo Aleron Grande/.test(texto), 'la familia no filtró');
+
+    // Y el motivo puntual.
+    await crm.page.click('#ads-reco-chips button:has-text("Ganador sin anunciar")');
+    await crm.page.waitForTimeout(200);
+    texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /Espejos Moto Tipo Aleron Grande/);
+    assert.ok(!/Deflector Parabrisas/.test(texto), 'el filtro por motivo no sacó los otros');
+  } finally { await crm.cerrar(); }
+});
+
+test('los productos que quedaron afuera se dicen, no se esconden', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    // Silenciarlos haría parecer que el catálogo está cubierto cuando hay productos
+    // sobre los que no se puede opinar.
+    assert.match(texto, /5 producto\(s\) quedaron afuera por no tener costo/);
+    assert.match(texto, /2 producto\(s\) quedaron afuera porque ninguna de sus/);
+    assert.match(texto, /55 productos publicados evaluados/);
+    // La referencia de la cuenta, que es con lo que se estima si el clic se paga.
+    assert.match(texto, /traer una venta cuesta/);
+  } finally { await crm.cerrar(); }
+});
+
+test('sin el snapshot histórico la sección avisa qué migración falta', async () => {
   const estado = estadoConAds();
   estado.adsReco = {
     ...estado.adsReco,
-    ads_disponible: false,
-    error_ads: 'La cuenta no tiene perfil de anunciante en MELI Ads.',
+    resumen: { ...estado.adsReco.resumen, snapshot_historico: false },
   };
   const crm = await irAAds(estado);
   try {
     await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
     const texto = await crm.page.textContent('#ads-reco-lista');
-    assert.match(texto, /No se pudo leer MELI Ads/);
-    assert.match(texto, /no se puede distinguir lo que ya estás anunciando/);
-    // Las recomendaciones igual se muestran: el catálogo y las ventas alcanzan.
-    assert.match(texto, /Espejos Moto Tipo Aleron Grande/);
+    assert.match(texto, /El histórico guardado no está disponible/);
+    assert.match(texto, /20261001000000_add_ads_anuncios\.sql/);
+    // Y por qué importa: sin snapshot, un producto apagado hace meses parece virgen.
+    assert.match(texto, /nunca se hubiera anunciado/);
+  } finally { await crm.cerrar(); }
+});
+
+test('una campaña que no se pudo leer entera se avisa antes que mostrar una lista incompleta', async () => {
+  const estado = estadoConAds();
+  estado.adsReco = {
+    ...estado.adsReco,
+    resumen: {
+      ...estado.adsReco.resumen,
+      incompleto: [{ campana: 'Campaña principal', motivo: 'tiene más de 600 anuncios' }],
+    },
+  };
+  const crm = await irAAds(estado);
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /No se pudieron leer enteras 1 campaña/);
+    assert.match(texto, /puede figurar como "sin anunciar" estando anunciado/);
+  } finally { await crm.cerrar(); }
+});
+
+test('sin perfil de anunciante la sección lo dice en vez de mostrar una lista vacía', async () => {
+  // La sección necesita saber qué está anunciado para poder decir qué falta anunciar.
+  // Sin acceso a Ads no puede distinguirlo, y una lista vacía se leería como "está todo
+  // cubierto", que es lo contrario de lo que pasa.
+  const estado = estadoConAds();
+  estado.adsReco = { ok: false, sin_acceso: true, mensaje: 'No se encontró perfil de anunciante en MELI Ads.' };
+  const crm = await irAAds(estado);
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /No se encontró perfil de anunciante/);
+    const chips = await crm.page.textContent('#ads-reco-chips');
+    assert.strictEqual(chips.trim(), '', 'no debería haber chips sin datos');
   } finally { await crm.cerrar(); }
 });
 
@@ -279,6 +394,8 @@ test('no hubo errores ni alertas en la pestaña de Ads', async () => {
   const crm = await irAAds(estadoConAds());
   try {
     await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    await crm.page.click('#ads-reco-chips button:has-text("Lo que falta anunciar")');
+    await crm.page.waitForTimeout(200);
     await crm.page.click('#ads-reco-chips button:has-text("Todo")');
     await crm.page.waitForTimeout(200);
     assert.deepStrictEqual(erroresReales(crm.errores), []);

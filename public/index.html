@@ -844,9 +844,9 @@
            también los que nunca se anunciaron y los que se apagaron. -->
       <div class="table-wrap" style="margin-top:20px">
         <div class="table-header">
-          <span class="table-title">🎯 Qué anunciar</span>
+          <span class="table-title">🎯 Qué anunciar y qué apagar</span>
           <span style="display:flex;gap:8px;align-items:center">
-            <span style="font-size:11px;color:var(--text-muted)">Cruza catálogo, ventas y ads del período</span>
+            <span style="font-size:11px;color:var(--text-muted)">Catálogo + ventas + ads, mirando primero cómo le fue antes</span>
             <button class="btn btn-ghost btn-sm" onclick="renderAdsRecomendaciones(true)">🔄 Recalcular</button>
             <button class="btn btn-ghost btn-sm" onclick="exportRecoCSV()">📊 CSV</button>
           </span>
@@ -8201,23 +8201,37 @@ async function renderAdsAnuncios() {
     tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   }
 }
-
-// ── QUÉ ANUNCIAR ──────────────────────────────────────────────────────────────────────
+// ── QUÉ ANUNCIAR Y QUÉ APAGAR ─────────────────────────────────────────────────────────
 // Cada motivo es una frase que un vendedor puede accionar sin traducir nada. El emoji y el
 // color no decoran: separan la plata que se está perdiendo ahora (rojo) de la que se está
 // dejando de ganar (verde) y de lo que es apenas una idea para probar (gris).
+//
+// `familia` parte la lista en las dos preguntas distintas que contesta: qué hacer con lo
+// que YA se anuncia (ajustar) y qué falta anunciar (anunciar).
 const RECO_MOTIVOS = {
-  anunciado_sin_stock:    { emoji: '🚨', label: 'Anunciado sin stock',   color: 'var(--red)' },
-  perdiendo:              { emoji: '🔴', label: 'Perdiendo plata',       color: 'var(--red)' },
-  quema_sin_vender:       { emoji: '🕳️', label: 'Gasta y no vende',      color: 'var(--red)' },
-  sin_margen:             { emoji: '⛔', label: 'Sin margen',            color: 'var(--red)' },
-  se_apago_y_andaba:      { emoji: '🔌', label: 'Se apagó y andaba bien', color: 'var(--yellow)' },
-  ganador_sin_anunciar:   { emoji: '🏆', label: 'Ganador sin anunciar',  color: 'var(--green)' },
-  escalar:                { emoji: '🚀', label: 'Para escalar',          color: 'var(--green)' },
-  stock_dormido:          { emoji: '😴', label: 'Stock dormido',         color: 'var(--yellow)' },
-  margen_alto_sin_probar: { emoji: '💎', label: 'Margen alto sin probar', color: 'var(--accent)' },
-  nunca_vendio:           { emoji: '🧊', label: 'Nunca vendió',          color: 'var(--text-muted)' },
-  margen_flaco:           { emoji: '🪶', label: 'Margen flaco para ads', color: 'var(--text-muted)' },
+  // Plata que se está perdiendo ahora.
+  anunciado_sin_stock:      { emoji: '🚨', label: 'Anunciado sin stock',    color: 'var(--red)' },
+  perdiendo:                { emoji: '🔴', label: 'Perdiendo plata',        color: 'var(--red)' },
+  quema_sin_vender:         { emoji: '🕳️', label: 'Gasta y no vende',       color: 'var(--red)' },
+  sin_margen:               { emoji: '⛔', label: 'Sin margen',             color: 'var(--red)' },
+  // Plata que se está dejando de ganar.
+  se_apago_y_andaba:        { emoji: '🔌', label: 'Se apagó y andaba bien', color: 'var(--yellow)' },
+  ganador_sin_anunciar:     { emoji: '🏆', label: 'Ganador sin anunciar',   color: 'var(--green)' },
+  escalar:                  { emoji: '🚀', label: 'Para escalar',           color: 'var(--green)' },
+  stock_dormido:            { emoji: '😴', label: 'Stock dormido',          color: 'var(--yellow)' },
+  para_probar:              { emoji: '💎', label: 'Para probar',            color: 'var(--accent)' },
+  // Los que no conviene tocar, y por qué.
+  ya_fallo:                 { emoji: '🧯', label: 'Ya falló antes',         color: 'var(--text-muted)' },
+  no_paga_el_clic:          { emoji: '🪶', label: 'No paga el clic',        color: 'var(--text-muted)' },
+  margen_flaco:             { emoji: '🪶', label: 'Margen flaco para ads',  color: 'var(--text-muted)' },
+  sin_stock_para_anunciar:  { emoji: '📦', label: 'Sin stock para anunciar', color: 'var(--text-muted)' },
+};
+
+const RECO_VEREDICTO = {
+  rentable: { texto: 'cuando se anunciaba, pagaba', color: 'var(--green)' },
+  al_filo:  { texto: 'cuando se anunciaba, al filo', color: 'var(--yellow)' },
+  perdia:   { texto: 'cuando se anunciaba, perdía', color: 'var(--red)' },
+  no_vendio:{ texto: 'se anunció y no vendió', color: 'var(--red)' },
 };
 
 async function renderAdsRecomendaciones(forzar = false) {
@@ -8227,7 +8241,7 @@ async function renderAdsRecomendaciones(forzar = false) {
   if (adsState.recoCargando) return;
 
   adsState.recoCargando = true;
-  cont.innerHTML = '<div class="empty-state"><p>Mirando el catálogo contra tus ventas y tus ads...</p></div>';
+  cont.innerHTML = '<div class="empty-state"><p>Mirando el catálogo contra tus ventas, tus ads y el histórico...</p></div>';
   document.getElementById('ads-reco-chips').innerHTML = '';
   try {
     const r = await api('GET', `/meli/ads-recomendaciones?${adsRango()}`);
@@ -8252,7 +8266,7 @@ function pintarReco() {
   if (!r) return;
   if (!r.ok) {
     chips.innerHTML = '';
-    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">${r.sin_acceso ? '📣' : '⚠️'}</div>
       <p>${escHtml(r.mensaje || r.error || 'No se pudieron calcular las recomendaciones.')}</p></div>`;
     return;
   }
@@ -8260,95 +8274,133 @@ function pintarReco() {
   const todas = r.recomendaciones || [];
   const res = r.resumen || {};
 
-  // Chips por motivo, ordenados por plata en juego: el primero es el que más mueve.
   const chipHtml = (clave, label, emoji, n, plata, activo) => `
     <button class="btn btn-sm ${activo ? '' : 'btn-ghost'}" onclick="filtrarReco('${clave}')"
       style="font-size:12px;padding:5px 12px">${emoji} ${escHtml(label)}
-      <span style="opacity:.7">· ${n}${plata != null ? ` · ${fmt(plata)}` : ''}</span></button>`;
+      <span style="opacity:.7">· ${n}${plata ? ` · ${fmt(plata)}` : ''}</span></button>`;
 
+  // Los dos grandes primero —son las dos preguntas distintas que contesta la sección— y
+  // después el detalle por motivo, ordenado por plata en juego.
   chips.innerHTML =
     chipHtml('todos', 'Todo', '📋', todas.length, null, adsState.recoFiltro === 'todos') +
+    chipHtml('fam:ajustar', 'Lo que ya anunciás', '📣', todas.filter(x => x.familia === 'ajustar').length, null, adsState.recoFiltro === 'fam:ajustar') +
+    chipHtml('fam:anunciar', 'Lo que falta anunciar', '➕', todas.filter(x => x.familia === 'anunciar').length, null, adsState.recoFiltro === 'fam:anunciar') +
+    `<span style="width:100%;height:0"></span>` +
     (res.por_motivo || []).map(m => {
       const def = RECO_MOTIVOS[m.motivo] || { emoji: '•', label: m.motivo };
       return chipHtml(m.motivo, def.label, def.emoji, m.productos, m.plata, adsState.recoFiltro === m.motivo);
     }).join('');
 
-  const lista = adsState.recoFiltro === 'todos'
-    ? todas
-    : todas.filter(x => x.motivo === adsState.recoFiltro);
+  const f = adsState.recoFiltro;
+  const lista = f === 'todos' ? todas
+    : f.startsWith('fam:') ? todas.filter(x => x.familia === f.slice(4))
+    : todas.filter(x => x.motivo === f);
 
   // Avisos de alcance: sin estos, una lista corta se lee como "no hay nada que hacer"
   // cuando en realidad faltan datos.
   const avisos = [];
-  if (!r.ads_disponible) {
-    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">
-      ⚠️ No se pudo leer MELI Ads${r.error_ads ? `: ${escHtml(r.error_ads)}` : ''}.
-      Las recomendaciones salen igual, pero no se puede distinguir lo que ya estás anunciando.
-    </div>`);
+  const aviso = (color, html) => avisos.push(
+    `<div style="background:${color.bg};border:1px solid ${color.b};border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">${html}</div>`);
+  const AMARILLO = { bg: 'rgba(245,158,11,0.12)', b: 'var(--yellow)' };
+  const ROJO = { bg: 'rgba(239,68,68,0.08)', b: 'var(--red)' };
+
+  if (res.incompleto) {
+    aviso(ROJO, `⚠️ <b>No se pudieron leer enteras ${res.incompleto.length} campaña(s)</b>
+      (${res.incompleto.map(x => `${escHtml(x.campana)}: ${escHtml(x.motivo)}`).join(' · ')}).
+      Algún producto puede figurar como "sin anunciar" estando anunciado.`);
   }
-  if (r.ads_incompleto) {
-    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">⚠️ ${escHtml(r.ads_incompleto)}</div>`);
+  if (res.snapshot_historico === false) {
+    aviso(AMARILLO, `🗄️ <b>El histórico guardado no está disponible.</b> Falta correr la migración
+      <code>20261001000000_add_ads_anuncios.sql</code>. Se usa sólo lo que MELI sirve (90 días),
+      así que un producto apagado hace más de tres meses va a figurar como si nunca se hubiera anunciado.`);
   }
   const d = res.descartados || {};
   if (d.sin_costo) {
-    avisos.push(`<div style="background:rgba(239,68,68,0.08);border:1px solid var(--red);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">
-      ⚠️ <b>${d.sin_costo} producto(s) quedaron afuera por no tener costo o precio cargado.</b>
-      Sin costo no hay margen, y sin margen no se puede decir si conviene anunciarlos.
-    </div>`);
+    aviso(ROJO, `⚠️ <b>${d.sin_costo} producto(s) quedaron afuera por no tener costo cargado.</b>
+      Sin costo no hay margen, y sin margen no se puede decir si conviene anunciarlos.`);
+  }
+  if (d.sin_publicacion_activa) {
+    aviso(AMARILLO, `😴 ${d.sin_publicacion_activa} producto(s) quedaron afuera porque ninguna de sus
+      publicaciones está activa en MELI. Anunciar una publicación pausada no hace nada.`);
   }
 
   if (!lista.length) {
     cont.innerHTML = avisos.join('') + `<div class="empty-state"><div class="empty-icon">✅</div>
-      <p>${todas.length ? 'Nada en este motivo.' : 'Nada para cambiar: el catálogo publicado está bien cubierto.'}</p></div>`;
+      <p>${todas.length ? 'Nada en este filtro.' : 'Nada para cambiar: el catálogo publicado está bien cubierto.'}</p></div>`;
     return;
   }
 
   const borde = { alta: 'var(--red)', media: 'var(--yellow)', baja: 'var(--border)' };
+  const ref = r.referencia || {};
 
   cont.innerHTML = avisos.join('') + `
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
-      ${res.evaluados} productos publicados evaluados · ${res.skus_anunciados} con anuncio en el período ·
-      comparando contra ${r.periodo_previo ? `${r.periodo_previo.desde} → ${r.periodo_previo.hasta}` : 'sin período previo disponible'}
+      ${res.evaluados} productos publicados evaluados · ${res.anunciados} con anuncio activo ·
+      ${res.sin_anunciar} sin anunciar · ${res.con_historico} con historial de ads
+      ${ref.cpc ? `<br>Referencia de la cuenta: CPC ${fmt(ref.cpc)} · conversión ${ref.cvr}% · traer una venta cuesta ${ref.cpa != null ? fmt(ref.cpa) : '—'}` : ''}
+      <br>Histórico: ${r.periodo_historico.desde} → ${r.periodo_historico.hasta}${res.snapshot_historico ? ' + lo guardado de antes' : ''}
+      ${res.mostrados < res.con_recomendacion ? ` · mostrando ${res.mostrados} de ${res.con_recomendacion}` : ''}
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
     ${lista.map(x => {
       const def = RECO_MOTIVOS[x.motivo] || { emoji: '•', label: x.motivo, color: 'var(--text)' };
-      const ads = x.ads?.ahora;
-      // La ficha del producto: los números con los que se discute la recomendación.
+      const ads = x.ads_ahora;
+
+      // La ficha: los números con los que se discute la recomendación.
       const datos = [
         `margen <b>${x.margen}%</b>`,
         x.roas_breakeven != null ? `equilibrio <b>${x.roas_breakeven.toFixed(2)}x</b>` : '<b style="color:var(--red)">sin margen</b>',
         `deja <b>${fmt(x.contribucion)}</b> por venta`,
-        `stock <b>${x.stock}</b>${x.meses_stock != null && x.meses_stock > 0 ? ` (${x.meses_stock} meses)` : ''}`,
-        x.unidades_periodo ? `vendió <b>${x.unidades_periodo}</b> en el período` : 'sin ventas en el período',
+        x.cpc_max != null ? `podés pagar hasta <b>${fmt(x.cpc_max)}</b>/clic` : null,
+        `stock <b>${x.stock}</b>${x.meses_stock ? ` (${x.meses_stock} meses)` : ''}`,
+        x.unidades_meli_periodo ? `vendió <b>${x.unidades_meli_periodo}</b> en la ventana` : 'sin ventas en la ventana',
         ads && ads.inversion > 0
           ? `ads <b>${fmt(ads.inversion)}</b> a ROAS ${ads.roas.toFixed(2)}x`
-          : '<span style="color:var(--text-muted)">sin ads en el período</span>',
-      ].join(' · ');
+          : '<span style="color:var(--text-muted)">sin ads activo</span>',
+      ].filter(Boolean).join(' · ');
+
+      // El histórico, que es lo que impide recomendar algo que ya falló.
+      const v = RECO_VEREDICTO[x.veredicto_historico];
+      const hist = !x.historico ? '' : `
+        <div style="font-size:11px;margin-top:5px;color:var(--text-muted)">
+          📜 ${x.historico.desde || '?'} → ${x.historico.hasta || '?'}:
+          ${fmt(x.historico.inversion)} invertidos · ${x.historico.unidades} unidades ·
+          ROAS ${x.historico.roas.toFixed(2)}x
+          ${v ? `· <b style="color:${v.color}">${escHtml(v.texto)}</b>` : ''}
+          ${x.historico.fuente === 'local' ? ' <span title="Sale del snapshot diario guardado, no de la API de MELI">(histórico guardado)</span>' : ''}
+          ${x.historico.fuente === 'ambas' ? ' <span title="Suma la ventana de MELI y el snapshot diario guardado">(MELI + guardado)</span>' : ''}
+        </div>`;
 
       const otros = (x.otros_motivos || []).map(o => {
         const od = RECO_MOTIVOS[o.motivo] || { emoji: '•', label: o.motivo };
         return `<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${od.emoji} ${escHtml(od.label)}: ${escHtml(o.detalle)}</div>`;
       }).join('');
 
+      const titulo = x.permalink
+        ? `<a href="${escHtml(x.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(x.nombre)} ↗</a>`
+        : escHtml(x.nombre);
+
       return `
       <div style="border:1px solid var(--border);border-left:3px solid ${borde[x.urgencia]};border-radius:var(--radius);padding:12px 14px;background:var(--surface2)">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
-          <div style="flex:1;min-width:280px">
-            <div style="font-size:13px;font-weight:600">
-              <span title="${escHtml(def.label)}">${def.emoji}</span>
-              ${escHtml(x.nombre || x.sku)}
-              <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(x.sku)}</span>
+          <div style="flex:1;min-width:300px;display:flex;gap:10px">
+            ${x.thumbnail ? `<img src="${escHtml(x.thumbnail)}" style="width:40px;height:40px;object-fit:contain;border-radius:6px;background:var(--surface);flex-shrink:0">` : ''}
+            <div>
+              <div style="font-size:13px;font-weight:600">
+                <span title="${escHtml(def.label)}">${def.emoji}</span> ${titulo}
+                <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(x.sku)}</span>
+              </div>
+              <div style="font-size:12px;margin-top:5px;color:var(--text-dim)">${escHtml(x.detalle)}</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${datos}</div>
+              ${hist}
+              ${otros}
             </div>
-            <div style="font-size:12px;margin-top:5px;color:var(--text-dim)">${escHtml(x.detalle)}</div>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${datos}</div>
-            ${otros}
           </div>
           <div style="text-align:right;min-width:130px">
             <div style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;
                         background:${def.color};color:#fff;white-space:nowrap">${escHtml(x.accion)}</div>
-            <div style="font-size:16px;font-weight:700;margin-top:6px">${fmt(x.plata_en_juego)}</div>
-            <div style="font-size:10px;color:var(--text-muted)">en juego</div>
+            ${x.plata_en_juego > 0 ? `<div style="font-size:16px;font-weight:700;margin-top:6px">${fmt(x.plata_en_juego)}</div>
+            <div style="font-size:10px;color:var(--text-muted)">en juego</div>` : ''}
           </div>
         </div>
       </div>`;
@@ -8359,10 +8411,11 @@ function pintarReco() {
 function exportRecoCSV() {
   const r = adsState.reco;
   if (!r?.ok || !r.recomendaciones?.length) return alert('No hay recomendaciones para exportar.');
-  const cols = ['sku', 'nombre', 'motivo', 'accion', 'urgencia', 'plata_en_juego', 'margen',
-    'roas_breakeven', 'contribucion', 'precio', 'costo', 'comision_pct', 'envio_unitario',
-    'economia_fuente', 'stock', 'meses_stock', 'unidades_periodo', 'unidades_organicas',
-    'unidades_previas', 'anunciado', 'detalle'];
+  const cols = ['sku', 'nombre', 'familia', 'motivo', 'accion', 'urgencia', 'plata_en_juego',
+    'margen', 'roas_breakeven', 'contribucion', 'precio', 'costo', 'comision_pct', 'envio_unitario',
+    'economia_fuente', 'stock', 'stock_dep', 'meses_stock', 'unidades_meli_periodo', 'unidades_mes',
+    'anunciado', 'veredicto_historico', 'cpc_max', 'cpa_estimado', 'ganancia_por_venta',
+    'cvr_referencia', 'cvr_origen', 'detalle'];
   const filas = r.recomendaciones.map(x => cols.map(c => {
     const v = x[c];
     return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');

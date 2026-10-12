@@ -86,8 +86,8 @@ function estadoConAds(extra = {}) {
     referencia: { campanas: 1, clics: 1671, inversion: 13983, unidades: 30, cpc: 8.4, cvr: 1.8, cpa: 467,
       ad_groups: 20, anuncios_activos: 12 },
     resumen: {
-      catalogo: 76, evaluados: 55, con_recomendacion: 4, mostrados: 4,
-      anunciados: 1, sin_anunciar: 3, con_historico: 2,
+      catalogo: 76, evaluados: 55, con_recomendacion: 5, mostrados: 5,
+      anunciados: 2, sin_anunciar: 3, con_historico: 3,
       snapshot_historico: true, incompleto: null,
       descartados: { discontinuados: 9, sin_publicacion: 7, sin_costo: 5, sin_precio: 0, sin_publicacion_activa: 2 },
       por_motivo: [
@@ -95,6 +95,7 @@ function estadoConAds(extra = {}) {
         { motivo: 'se_apago_y_andaba', familia: 'anunciar', productos: 1, plata: 4200 },
         { motivo: 'anunciado_sin_stock', familia: 'ajustar', productos: 1, plata: 800 },
         { motivo: 'ya_fallo', familia: 'anunciar', productos: 1, plata: 0 },
+        { motivo: 'escalar', familia: 'ajustar', productos: 1, plata: 2100 },
       ],
     },
     recomendaciones: [
@@ -145,6 +146,29 @@ function estadoConAds(extra = {}) {
         historico: null, veredicto_historico: null,
         cpc_max: 7, cpa_estimado: 467, ganancia_por_venta: -80, cvr_referencia: 1.8, cvr_origen: 'cuenta',
         otros_motivos: [{ motivo: 'margen_flaco', detalle: 'Haría falta ROAS 4.52x para empatar.' }],
+      },
+      {
+        // El caso que destapó dos bugs: tres colores de un mismo manillar cuelgan de UN
+        // ad group de 5 variantes. Cada uno mostraba el gasto entero del anuncio, y el
+        // acumulado decía "cuando se anunciaba" aunque el anuncio esté corriendo ahora.
+        sku: 'HP-CB0382', nombre: 'Manillar Universal Aluminio Para Moto 22mm - Blanco', grupo: 'Manillares',
+        familia: 'ajustar', motivo: 'escalar', accion: 'Subir presupuesto',
+        urgencia: 'media', plata_en_juego: 2100,
+        detalle: 'ROAS 9.40x contra un equilibrio de 3.28x: cada peso de ads deja 1.86 limpios. Hay 5 unidades publicadas para sostenerlo.',
+        margen: 30.46, roas_breakeven: 3.28, contribucion: 362, precio: 1190, costo: 640,
+        comision_pct: 14.33, envio_unitario: 165, economia_fuente: 'sku',
+        meli_id: 'MLU777', permalink: null, thumbnail: null,
+        estado_publicacion: 'active', publicaciones: 1,
+        stock: 5, stock_dep: 5, meses_stock: null, unidades_meli_periodo: 0, unidades_mes: 0,
+        anunciado: true, ad_groups: ['7068115768680593'],
+        // Un tercio del anuncio: $1.002 repartidos entre los tres colores.
+        compartido_con: 3,
+        ads_ahora: { clics: 79, inversion: 334, unidades: 3, facturacion: 3140, roas: 9.4, impresiones: 7755 },
+        historico: { inversion: 599, unidades: 4, clics: 180, roas: 7.12, cpc: 3.3, cvr: 2.2,
+          desde: '2026-07-15', hasta: '2026-10-12', fuente: 'api', campanas: ['Campaña principal'], dias_locales: 0 },
+        veredicto_historico: 'rentable',
+        cpc_max: 9, cpa_estimado: 467, ganancia_por_venta: -105, cvr_referencia: 1.8, cvr_origen: 'cuenta',
+        otros_motivos: [],
       },
       {
         // El que el histórico salva de un error: parece una oportunidad y ya falló.
@@ -303,7 +327,7 @@ test('los chips separan lo que ya anunciás de lo que falta, y filtran por motiv
   try {
     await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
     const chips = await crm.page.$$eval('#ads-reco-chips button', els => els.map(e => e.textContent.trim()));
-    assert.ok(chips.some(c => /Todo/.test(c) && /4/.test(c)), `chips: ${chips.join(' | ')}`);
+    assert.ok(chips.some(c => /Todo/.test(c) && /5/.test(c)), `chips: ${chips.join(' | ')}`);
     assert.ok(chips.some(c => /Lo que ya anunciás/.test(c)));
     assert.ok(chips.some(c => /Lo que falta anunciar/.test(c)));
     assert.ok(chips.some(c => /Ganador sin anunciar/.test(c)));
@@ -387,6 +411,40 @@ test('sin perfil de anunciante la sección lo dice en vez de mostrar una lista v
     assert.match(texto, /No se encontró perfil de anunciante/);
     const chips = await crm.page.textContent('#ads-reco-chips');
     assert.strictEqual(chips.trim(), '', 'no debería haber chips sin datos');
+  } finally { await crm.cerrar(); }
+});
+
+test('un anuncio que corre ahora no se cuenta en pasado', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+
+    // El manillar se está anunciando en este momento: su acumulado no puede leerse como
+    // el epitafio de un anuncio apagado.
+    assert.match(texto, /Manillar Universal Aluminio/);
+    assert.match(texto, /viene pagando/);
+    assert.match(texto, /Acumulado/);
+
+    // Y el que sí está apagado conserva el pasado, que ahí es lo correcto.
+    assert.match(texto, /cuando se anunciaba, perdía/);
+  } finally { await crm.cerrar(); }
+});
+
+test('un anuncio compartido entre variantes avisa que el número es su parte', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-lista', { timeout: 15000 });
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    // Sin esto, los $334 se leen como el gasto del anuncio y no cierran contra el panel
+    // de MELI, que muestra los $1.002 del grupo entero.
+    assert.match(texto, /comparte con 2 más/);
+
+    // El que tiene el anuncio para él solo no arrastra el aviso.
+    const sinAviso = await crm.page.$$eval('#ads-reco-lista > div > div', els =>
+      els.filter(e => /Porta Matricula|Baúl Trasero/.test(e.textContent))
+         .every(e => !/comparte con/.test(e.textContent)));
+    assert.ok(sinAviso, 'el aviso de compartido se filtró a un anuncio propio');
   } finally { await crm.cerrar(); }
 });
 

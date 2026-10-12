@@ -173,3 +173,47 @@ test('las ventas canceladas y las de otros canales no entran en la cuenta', asyn
   assert.strictEqual(eco.global.ventas, 1);
   assert.strictEqual(eco.global.comision_pct, 10);
 });
+
+// ── Reparto de un anuncio entre las variantes que lo comparten ───────────────────────────
+// MELI agrupa todas las variantes de una publicación en un solo ad group (el "5 variantes"
+// del panel) y no abre las métricas por variante: los endpoints por anuncio quedaron
+// deprecados. Cuando esas variantes son SKU distintos del CRM, atribuirle el total a cada
+// uno multiplica el gasto por la cantidad de colores: tres manillares mostraban $1.002 cada
+// uno de un anuncio que gastó $1.002.
+const { sumarGrupos } = require('../api/meli/ads-recomendaciones');
+
+const grupoManillar = {
+  id: '7068115768680593',
+  metrics: { prints: 23265, clicks: 238, cost: 1002, total_amount: 9419, units_quantity: 9 },
+};
+
+test('un anuncio propio se cuenta entero', () => {
+  const t = sumarGrupos([grupoManillar]);
+  assert.strictEqual(t.inversion, 1002);
+  assert.strictEqual(t.clics, 238);
+  assert.strictEqual(t.unidades, 9);
+});
+
+test('un anuncio compartido por tres variantes aporta un tercio a cada una', () => {
+  const unTercio = () => 1 / 3;
+  const t = sumarGrupos([grupoManillar], unTercio);
+  assert.strictEqual(t.inversion, 334);
+  assert.strictEqual(t.clics, 79);          // 238/3 = 79,33 → se cierra redondeando
+  assert.strictEqual(t.unidades, 3);
+  // Lo importante: tres productos sumados dan el anuncio, no el triple.
+  assert.strictEqual(t.inversion * 3, 1002);
+});
+
+test('el ROAS no se deforma al repartir: es un cociente, no un total', () => {
+  const entero = sumarGrupos([grupoManillar]);
+  const parte = sumarGrupos([grupoManillar], () => 1 / 3);
+  const roas = t => Math.round((t.facturacion / t.inversion) * 100) / 100;
+  assert.strictEqual(roas(entero), roas(parte));
+});
+
+test('las unidades fraccionadas se guardan exactas para no perderse al sumar fuentes', () => {
+  // Media unidad de la API más media del snapshot tienen que dar una, no cero.
+  const t = sumarGrupos([grupoManillar], () => 1 / 2);
+  assert.strictEqual(t.unidades_exactas, 4.5);
+  assert.strictEqual(t.unidades, 5);
+});

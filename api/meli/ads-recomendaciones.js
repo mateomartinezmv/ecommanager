@@ -159,17 +159,33 @@ async function traerPublicaciones(ctx, ids) {
   return mapa;
 }
 
-/** Suma de métricas de ad groups (las del search vienen en minúsculas dentro de `metrics`). */
-function sumarGrupos(grupos) {
+/**
+ * Suma de métricas de ad groups (las del search vienen en minúsculas dentro de `metrics`).
+ *
+ * `parte` es la fracción del anuncio que le toca al producto que se está mirando. Un ad
+ * group de tipo FAMILY agrupa todas las variantes de una publicación —el "5 variantes" del
+ * panel de MELI— y esas variantes pueden ser SKU distintos del CRM. MELI sirve las métricas
+ * del grupo entero y no las abre por variante (los endpoints por anuncio quedaron
+ * deprecados), así que sin repartir, cada SKU se llevaba el 100% del gasto: tres colores de
+ * un mismo manillar mostraban $1.002 cada uno cuando el anuncio gastó $1.002 en total.
+ */
+function sumarGrupos(grupos, parte = () => 1) {
   const t = { impresiones: 0, clics: 0, inversion: 0, facturacion: 0, unidades: 0 };
   for (const g of grupos) {
     const m = g.metrics || {};
-    t.impresiones += ent(m.prints);
-    t.clics += ent(m.clicks);
-    t.inversion += num(m.cost);
-    t.facturacion += num(m.total_amount);
-    t.unidades += ent(m.units_quantity);
+    const f = parte(g);
+    t.impresiones += ent(m.prints) * f;
+    t.clics += ent(m.clicks) * f;
+    t.inversion += num(m.cost) * f;
+    t.facturacion += num(m.total_amount) * f;
+    t.unidades += ent(m.units_quantity) * f;
   }
+  // Las unidades quedan fraccionadas al repartir: se redondean al cerrar para que la
+  // tarjeta no diga "2.33 unidades", pero el reparto se hace sobre el crudo.
+  t.unidades_exactas = t.unidades;
+  t.unidades = Math.round(t.unidades);
+  t.impresiones = Math.round(t.impresiones);
+  t.clics = Math.round(t.clics);
   return t;
 }
 
@@ -289,6 +305,21 @@ module.exports = async (req, res) => {
     if (errProd) throw errProd;
     if (errVentas) throw errVentas;
 
+    // Cuántos SKU del CRM comparten cada anuncio. Es el divisor con el que se reparten
+    // las métricas: un ad group de 5 variantes que son 3 productos distintos le aporta un
+    // tercio a cada uno, no el total a los tres.
+    const skuDeItem = new Map();
+    for (const p of productos || []) {
+      for (const id of meliIdsDe(p)) skuDeItem.set(up(id), up(p.sku));
+    }
+    const skusDeGrupo = new Map();
+    for (const [adGroupId, ids] of itemIds) {
+      skusDeGrupo.set(String(adGroupId), new Set(ids.map(id => skuDeItem.get(up(id))).filter(Boolean)));
+    }
+    // Un anuncio que no resuelve a ningún SKU no se reparte: no hay entre quiénes.
+    const skusDelGrupo = (id) => skusDeGrupo.get(String(id))?.size || 1;
+    const parteDelGrupo = (g) => 1 / skusDelGrupo(g.id ?? g);
+
     // Demanda propia: lo que el producto vende, con y sin que nadie lo empuje.
     const demanda = new Map();   // sku → { meli, total }
     for (const v of ventas || []) {
@@ -326,14 +357,16 @@ module.exports = async (req, res) => {
     const pubs = await traerPublicaciones(ctx, evaluables.flatMap(c => c.ids));
 
     // ── 5. Histórico local, lo único que sobrevive a los 90 días ─────────────────
-    const skus = [...new Set(evaluables.map(c => c.producto.sku).filter(Boolean))];
     const histLocal = new Map();
     let snapshotDisponible = true;
-    if (skus.length) {
+    if (evaluables.length) {
+      // Sin filtro por `sku`: esa columna guarda UN solo SKU por fila, el primero que
+      // matcheó al capturar, así que un anuncio de varias variantes quedaría entero
+      // colgado de uno y los demás no verían nada. Las publicaciones del anuncio están
+      // en `item_ids` y de ahí sale el reparto, igual que con la API en vivo.
       const { data: snaps, error: errSnap } = await supabase
         .from('meli_ads_anuncios')
-        .select('fecha, sku, campaign_name, impressions, clicks, spend, facturacion, unidades')
-        .in('sku', skus)
+        .select('fecha, sku, item_ids, campaign_name, impressions, clicks, spend, facturacion, unidades')
         .lt('fecha', rangoHist.desde)   // los días que la API ya contestó no se suman de nuevo
         .limit(50000);
       if (errSnap) {
@@ -343,23 +376,31 @@ module.exports = async (req, res) => {
         console.error('ads-recomendaciones: no se pudo leer meli_ads_anuncios:', errSnap.message);
       }
       for (const s of snaps || []) {
-        const k = up(s.sku);
-        if (!histLocal.has(k)) {
-          histLocal.set(k, {
-            impresiones: 0, clics: 0, inversion: 0, facturacion: 0, unidades: 0,
-            dias: new Set(), primer_dia: s.fecha, ultimo_dia: s.fecha, campanas: new Set(),
-          });
+        // Los SKU que comparten esa fila. Si los item_ids no resuelven (una publicación
+        // que ya no está en el CRM), se cae a la columna `sku` que guardó el cron.
+        const suyos = [...new Set((s.item_ids || []).map(id => skuDeItem.get(up(id))).filter(Boolean))];
+        const destinos = suyos.length ? suyos : (s.sku ? [up(s.sku)] : []);
+        if (!destinos.length) continue;
+        const f = 1 / destinos.length;
+
+        for (const k of destinos) {
+          if (!histLocal.has(k)) {
+            histLocal.set(k, {
+              impresiones: 0, clics: 0, inversion: 0, facturacion: 0, unidades: 0,
+              dias: new Set(), primer_dia: s.fecha, ultimo_dia: s.fecha, campanas: new Set(),
+            });
+          }
+          const h = histLocal.get(k);
+          h.impresiones += ent(s.impressions) * f;
+          h.clics += ent(s.clicks) * f;
+          h.inversion += num(s.spend) * f;
+          h.facturacion += num(s.facturacion) * f;
+          h.unidades += ent(s.unidades) * f;
+          h.dias.add(s.fecha);
+          if (s.fecha < h.primer_dia) h.primer_dia = s.fecha;
+          if (s.fecha > h.ultimo_dia) h.ultimo_dia = s.fecha;
+          if (s.campaign_name) h.campanas.add(s.campaign_name);
         }
-        const h = histLocal.get(k);
-        h.impresiones += ent(s.impressions);
-        h.clics += ent(s.clicks);
-        h.inversion += num(s.spend);
-        h.facturacion += num(s.facturacion);
-        h.unidades += ent(s.unidades);
-        h.dias.add(s.fecha);
-        if (s.fecha < h.primer_dia) h.primer_dia = s.fecha;
-        if (s.fecha > h.ultimo_dia) h.ultimo_dia = s.fecha;
-        if (s.campaign_name) h.campanas.add(s.campaign_name);
       }
     }
 
@@ -405,14 +446,14 @@ module.exports = async (req, res) => {
 
       // ── Histórico: cómo le fue cuando sí se anunciaba ──
       const gruposPropios = c.grupos.map(id => gruposHist.get(id)).filter(Boolean);
-      const apiHist = sumarGrupos(gruposPropios);
+      const apiHist = sumarGrupos(gruposPropios, parteDelGrupo);
       const local = histLocal.get(up(p.sku));
       const hist = {
-        impresiones: apiHist.impresiones + (local?.impresiones || 0),
-        clics: apiHist.clics + (local?.clics || 0),
+        impresiones: Math.round(apiHist.impresiones + (local?.impresiones || 0)),
+        clics: Math.round(apiHist.clics + (local?.clics || 0)),
         inversion: r2(apiHist.inversion + (local?.inversion || 0)),
         facturacion: r2(apiHist.facturacion + (local?.facturacion || 0)),
-        unidades: apiHist.unidades + (local?.unidades || 0),
+        unidades: Math.round((apiHist.unidades_exactas ?? apiHist.unidades) + (local?.unidades || 0)),
         desde: local?.primer_dia || (gruposPropios.length ? rangoHist.desde : null),
         hasta: gruposPropios.length ? rangoHist.hasta : (local?.ultimo_dia || null),
         fuente: gruposPropios.length && local ? 'ambas' : gruposPropios.length ? 'api' : local ? 'local' : null,
@@ -457,7 +498,10 @@ module.exports = async (req, res) => {
       const mesesStock = rotacionMensual > 0 ? r2(stockDep / rotacionMensual) : null;
 
       // Lo que se anuncia ahora, para la rama de ajuste.
-      const ahora = sumarGrupos(c.activos.map(id => gruposRecientes.get(id)).filter(Boolean));
+      const ahora = sumarGrupos(c.activos.map(id => gruposRecientes.get(id)).filter(Boolean), parteDelGrupo);
+      // Con cuántos SKU comparte el anuncio más grande que lo toca. En 1 el anuncio es
+      // suyo entero; arriba de 1 los números de abajo son su parte, no el total.
+      const compartidoCon = Math.max(1, ...[...c.grupos, ...c.activos].map(skusDelGrupo));
       ahora.roas = ahora.inversion > 0 ? r2(ahora.facturacion / ahora.inversion) : 0;
       ahora.inversion = r2(ahora.inversion);
       ahora.facturacion = r2(ahora.facturacion);
@@ -638,6 +682,9 @@ module.exports = async (req, res) => {
 
         anunciado,
         ad_groups: c.grupos,
+        // En 1 el anuncio es de este producto solo. Arriba de 1, los números de ads son
+        // su parte del anuncio compartido, no el total que muestra el panel de MELI.
+        compartido_con: compartidoCon,
         ads_ahora: anunciado ? ahora : null,
         historico: tuvoAds ? hist : null,
         veredicto_historico: veredictoHist,
@@ -723,3 +770,8 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message, detalle: err.detalle });
   }
 };
+
+// El reparto de un anuncio entre las variantes que lo comparten es la aritmética que
+// decide cuánta plata se le atribuye a cada producto; se expone para poder probarla sin
+// levantar el endpoint ni hablar con MELI.
+module.exports.sumarGrupos = sumarGrupos;

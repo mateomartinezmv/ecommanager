@@ -8387,11 +8387,14 @@ const RECO_MOTIVOS = {
   sin_stock_para_anunciar:  { emoji: '📦', label: 'Sin stock para anunciar', color: 'var(--text-muted)' },
 };
 
+// El veredicto del acumulado, en el tiempo verbal que corresponde. Un producto que se
+// está anunciando AHORA no "se anunciaba": decirlo en pasado hace dudar de si el tablero
+// entendió el estado del anuncio.
 const RECO_VEREDICTO = {
-  rentable: { texto: 'cuando se anunciaba, pagaba', color: 'var(--green)' },
-  al_filo:  { texto: 'cuando se anunciaba, al filo', color: 'var(--yellow)' },
-  perdia:   { texto: 'cuando se anunciaba, perdía', color: 'var(--red)' },
-  no_vendio:{ texto: 'se anunció y no vendió', color: 'var(--red)' },
+  rentable:  { pasado: 'cuando se anunciaba, pagaba',  presente: 'viene pagando',          color: 'var(--green)' },
+  al_filo:   { pasado: 'cuando se anunciaba, al filo', presente: 'viene al filo',          color: 'var(--yellow)' },
+  perdia:    { pasado: 'cuando se anunciaba, perdía',  presente: 'viene perdiendo',        color: 'var(--red)' },
+  no_vendio: { pasado: 'se anunció y no vendió',       presente: 'todavía no vendió nada', color: 'var(--red)' },
 };
 
 async function renderAdsRecomendaciones(forzar = false) {
@@ -8516,17 +8519,21 @@ function pintarReco() {
         x.unidades_meli_periodo ? `vendió <b>${x.unidades_meli_periodo}</b> en la ventana` : 'sin ventas en la ventana',
         ads && ads.inversion > 0
           ? `ads <b>${fmt(ads.inversion)}</b> a ROAS ${ads.roas.toFixed(2)}x`
+            + (x.compartido_con > 1
+                ? ` <span style="color:var(--yellow)" title="MELI agrupa las variantes en un solo anuncio y no abre las métricas por variante. Lo que se muestra es la parte que le toca a este SKU: ${x.compartido_con} productos comparten el anuncio.">(su parte de un anuncio que comparte con ${x.compartido_con - 1} más)</span>`
+                : '')
           : '<span style="color:var(--text-muted)">sin ads activo</span>',
       ].filter(Boolean).join(' · ');
 
-      // El histórico, que es lo que impide recomendar algo que ya falló.
+      // El acumulado largo: para los apagados es el historial que impide recomendar algo
+      // que ya falló; para los que están corriendo, los 90 días detrás del período.
       const v = RECO_VEREDICTO[x.veredicto_historico];
       const hist = !x.historico ? '' : `
         <div style="font-size:11px;margin-top:5px;color:var(--text-muted)">
-          📜 ${x.historico.desde || '?'} → ${x.historico.hasta || '?'}:
+          ${x.anunciado ? '📈 Acumulado' : '📜'} ${x.historico.desde || '?'} → ${x.historico.hasta || '?'}:
           ${fmt(x.historico.inversion)} invertidos · ${x.historico.unidades} unidades ·
           ROAS ${x.historico.roas.toFixed(2)}x
-          ${v ? `· <b style="color:${v.color}">${escHtml(v.texto)}</b>` : ''}
+          ${v ? `· <b style="color:${v.color}">${escHtml(x.anunciado ? v.presente : v.pasado)}</b>` : ''}
           ${x.historico.fuente === 'local' ? ' <span title="Sale del snapshot diario guardado, no de la API de MELI">(histórico guardado)</span>' : ''}
           ${x.historico.fuente === 'ambas' ? ' <span title="Suma la ventana de MELI y el snapshot diario guardado">(MELI + guardado)</span>' : ''}
         </div>`;

@@ -70,6 +70,10 @@ module.exports = async (req, res) => {
 
   const campaignId = req.query.campaign_id;
   if (!campaignId) return res.status(400).json({ ok: false, error: 'Falta campaign_id' });
+  // Con más de una campaña corriendo, el ROAS de equilibrio que importa es el de todo lo
+  // que se está gastando junto, no el de una. `campaign_id=todas` abre las dos (o las
+  // cinco) en la misma tabla, con la columna de campaña para poder separarlas de nuevo.
+  const todasLasCampanas = String(campaignId).toLowerCase() === 'todas';
 
   // Pisar la comisión es para simular otra categoría; vacío quiere decir "usá la real".
   const comisionOverride = num(req.query.comision) || null;
@@ -98,7 +102,9 @@ module.exports = async (req, res) => {
       + `?date_from=${rango.desde}&date_to=${rango.hasta}`
       + `&metrics=${METRICS_AD_GROUP}&metrics_summary=true`
       + `&limit=${PAGINA}&offset=${offset}&sort=desc&sort_by=cost`
-      + `&${encodeURIComponent('filters[campaign_id]')}=${encodeURIComponent(campaignId)}`;
+      + (todasLasCampanas
+          ? ''   // sin filtro: el search devuelve los ad groups de todas las campañas
+          : `&${encodeURIComponent('filters[campaign_id]')}=${encodeURIComponent(campaignId)}`);
 
     const crudos = [];
     let offset = 0;
@@ -130,26 +136,65 @@ module.exports = async (req, res) => {
     // sobre la suma de los anuncios. Si las dos no coinciden, el hueco se muestra en vez
     // de taparse: casi siempre es gasto de anuncios que ya no están en la campaña.
     // Es una comodidad, no la tabla: si falla, la pestaña igual tiene que cargar.
-    let campanaRes = { ok: false, body: {} };
+    // Con `todas` el total sale de sumar las campañas; con una, de pedirla directo.
+    // En los dos casos es la cifra que el vendedor ve en el panel de Ads.
+    let campana = null;
+    const nombreCampana = new Map();   // campaign_id → nombre, para la columna de la tabla
     try {
-      campanaRes = await adsGet(
-        `${API}/advertising/${ctx.siteId}/product_ads/campaigns/${encodeURIComponent(campaignId)}`
-        + `?date_from=${rango.desde}&date_to=${rango.hasta}&metrics=${METRICS_CAMPANA}`,
-        ctx.headers
-      );
+      if (todasLasCampanas) {
+        const r = await adsGet(
+          `${API}/advertising/${ctx.siteId}/advertisers/${ctx.advertiserId}/product_ads/campaigns/search`
+          + `?date_from=${rango.desde}&date_to=${rango.hasta}&metrics=${METRICS_CAMPANA}&limit=200&offset=0`,
+          ctx.headers
+        );
+        if (r.ok) {
+          const cs = r.body.results || [];
+          for (const c of cs) nombreCampana.set(String(c.id), c.name || `Campaña ${c.id}`);
+          // Sólo las que gastaron algo: sumar campañas pausadas en cero no cambia el total
+          // pero infla la cuenta de "campañas" que se muestra al lado.
+          const vivas = cs.filter(c => num(c.metrics?.cost) > 0);
+          const sumar = (f) => vivas.reduce((a, c) => a + f(c.metrics || {}), 0);
+          const inversion = sumar(m => num(m.cost));
+          const facturacion = sumar(m => num(m.total_amount));
+          campana = {
+            nombre: `${vivas.length} campaña${vivas.length === 1 ? '' : 's'} con gasto`,
+            campanas: vivas.map(c => ({
+              id: String(c.id), nombre: c.name || `Campaña ${c.id}`,
+              inversion: r2(num(c.metrics?.cost)), facturacion: r2(num(c.metrics?.total_amount)),
+              roas: num(c.metrics?.cost) > 0 ? r2(num(c.metrics.total_amount) / num(c.metrics.cost)) : 0,
+            })).sort((a, b) => b.inversion - a.inversion),
+            impresiones: sumar(m => ent(m.prints)),
+            clics: sumar(m => ent(m.clicks)),
+            inversion: r2(inversion),
+            facturacion: r2(facturacion),
+            unidades: sumar(m => ent(m.units_quantity)),
+            roas: inversion > 0 ? r2(facturacion / inversion) : 0,
+          };
+        }
+      } else {
+        const r = await adsGet(
+          `${API}/advertising/${ctx.siteId}/product_ads/campaigns/${encodeURIComponent(campaignId)}`
+          + `?date_from=${rango.desde}&date_to=${rango.hasta}&metrics=${METRICS_CAMPANA}`,
+          ctx.headers
+        );
+        const mc = r.ok ? (r.body.metrics || r.body) : null;
+        if (mc) {
+          nombreCampana.set(String(campaignId), r.body.name || null);
+          campana = {
+            nombre: r.body.name || null,
+            impresiones: ent(mc.prints),
+            clics: ent(mc.clicks),
+            inversion: r2(num(mc.cost)),
+            facturacion: r2(num(mc.total_amount)),
+            unidades: ent(mc.units_quantity),
+            roas: num(mc.cost) > 0 ? r2(num(mc.total_amount) / num(mc.cost)) : 0,
+          };
+        }
+      }
     } catch (e) {
+      // Es una comodidad, no la tabla: si falla, la pestaña igual tiene que cargar.
       console.error('ads-anuncios: no se pudo leer el total de la campaña:', e.message);
     }
-    const mc = campanaRes.ok ? (campanaRes.body.metrics || campanaRes.body) : null;
-    const campana = mc ? {
-      nombre: campanaRes.body.name || null,
-      impresiones: ent(mc.prints),
-      clics: ent(mc.clicks),
-      inversion: r2(num(mc.cost)),
-      facturacion: r2(num(mc.total_amount)),
-      unidades: ent(mc.units_quantity),
-      roas: num(mc.cost) > 0 ? r2(num(mc.total_amount) / num(mc.cost)) : 0,
-    } : null;
 
     // ── 2. Las publicaciones detrás de cada ad group ──────────────────────────────
     // El search de ad groups no devuelve los item_ids, y sin ellos no hay forma de
@@ -264,6 +309,7 @@ module.exports = async (req, res) => {
       const fila = {
         ad_group_id: String(g.id),
         campaign_id: String(g.campaign_id ?? campaignId),
+        campaign_name: nombreCampana.get(String(g.campaign_id ?? campaignId)) || null,
         tipo: g.ad_group_type || null,          // FAMILY = agrupa variantes, ITEM = suelta
         titulo: g.title || ads[0]?.title || `Ad group ${g.id}`,
         thumbnail: g.thumbnail || ads[0]?.thumbnail || null,
@@ -436,7 +482,7 @@ module.exports = async (req, res) => {
           fecha: rango.desde,
           ad_group_id: f.ad_group_id,
           campaign_id: f.campaign_id,
-          campaign_name: req.query.campaign_name || null,
+          campaign_name: f.campaign_name || req.query.campaign_name || null,
           titulo: f.titulo,
           thumbnail: f.thumbnail,
           status: f.status,
@@ -462,6 +508,7 @@ module.exports = async (req, res) => {
       periodo: { desde: rango.desde, hasta: rango.hasta },
       recortado: rango.recortado,
       campaign_id: String(campaignId),
+      todas_las_campanas: todasLasCampanas,
       currency: ctx.currency,
       comision_pct: totales.economia.comision_pct,
       guardados,

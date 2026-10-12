@@ -914,6 +914,7 @@
         <button class="tab" onclick="switchAngulosTab('todos')">Todos</button>
         <button class="tab" onclick="switchAngulosTab('stock')">📦 Stock por publicación</button>
         <button class="tab" onclick="switchAngulosTab('precios')">💲 Precios y descuentos</button>
+        <button class="tab" onclick="switchAngulosTab('fotos')">🖼️ Fotos por publicación</button>
         <button class="tab" onclick="switchAngulosTab('historial')">🕐 Historial</button>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
@@ -4347,6 +4348,7 @@ let angulosMaxFinal = 60;   // largo máximo del título que ve el comprador
 let angulosPortadas = [];   // foto de portada elegida para cada ángulo
 let stockPubs = null;       // auditoría de stock publicación por publicación
 let preciosPubs = null;     // auditoría de precio y descuento publicación por publicación
+let fotosPubs = null;       // auditoría de las fotos de cada publicación contra la original
 
 // La portada es lo único que ve el comprador en los resultados, así que se elige a mano.
 function elegirPortada(i, foto) {
@@ -4377,7 +4379,7 @@ function actualizarTituloAngulo(i, valor) {
 }
 
 async function cargarAngulos(force = false) {
-  if (force) { stockPubs = null; preciosPubs = null; }
+  if (force) { stockPubs = null; preciosPubs = null; fotosPubs = null; }
   if (db.angulosMeta.cargada && !force) return;
   const btn = document.getElementById('btn-refrescar-angulos');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Leyendo MELI...'; }
@@ -4450,6 +4452,10 @@ async function renderAngulos() {
   if (angulosTab === 'precios') {
     thead.innerHTML = '<tr><th>Producto</th><th>Publicación</th><th>Precio de lista</th><th>Precio con descuento</th><th>Estado</th></tr>';
     return renderAngulosPrecios();
+  }
+  if (angulosTab === 'fotos') {
+    thead.innerHTML = '<tr><th>Producto</th><th>Publicación</th><th>Fotos, en orden</th><th>Estado</th><th>Acciones</th></tr>';
+    return renderAngulosFotos();
   }
   if (angulosTab === 'historial') {
     thead.innerHTML = '<tr><th>Publicación</th><th>Producto</th><th>Estado</th><th>Fecha</th><th>Detalle</th></tr>';
@@ -4780,10 +4786,164 @@ async function emparejarPrecios() {
   }
 }
 
+// Las fotos son del producto, no del título: todas las publicaciones de un SKU tienen que
+// mostrar las mismas y en el mismo orden. Los ángulos nacen con las fotos de la original,
+// pero después la original cambia —una foto nueva, una que se saca, otro orden para cambiar
+// la miniatura— y los ángulos se quedan con las viejas. Acá se ve esa diferencia y se corrige.
+function tiraFotos(fotos) {
+  if (!fotos || !fotos.length) return '<span style="color:var(--text-muted);font-size:12px">sin fotos</span>';
+  const vistas = fotos.slice(0, 10).map((f, i) => `<div style="position:relative;line-height:0">
+      <img src="${escHtml(f.url || '')}" alt="" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--border);background:var(--surface)">
+      <span style="position:absolute;bottom:0;right:0;font-size:9px;line-height:1.4;background:rgba(0,0,0,0.65);color:#fff;border-radius:3px;padding:0 3px">${i + 1}</span>
+    </div>`).join('');
+  const resto = fotos.length > 10 ? `<span style="font-size:11px;color:var(--text-muted);align-self:center">+${fotos.length - 10}</span>` : '';
+  return `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">${vistas}${resto}</div>`;
+}
+
+async function renderAngulosFotos() {
+  const tbody = document.getElementById('angulos-tbody');
+  const empty = document.getElementById('angulos-empty');
+
+  if (!fotosPubs) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;color:var(--text-muted)">Leyendo las fotos de cada publicación...</td></tr>';
+    try {
+      fotosPubs = await fetch('/api/meli/fotos').then(r => r.json());
+    } catch (e) {
+      fotosPubs = { ok: false, error: e.message, productos: [], resumen: {} };
+    }
+  }
+
+  const r = fotosPubs.resumen || {};
+  document.getElementById('angulos-stats').innerHTML = `
+    <div class="stat-card ${r.distintas ? 'red' : 'green'}"><div class="stat-icon">${r.distintas ? '⚠️' : '✅'}</div><div class="stat-value">${r.distintas || 0}</div><div class="stat-label">Publicaciones con otras fotos que la original</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">📦</div><div class="stat-value">${r.productos_afectados || 0}</div><div class="stat-label">Productos afectados</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🔗</div><div class="stat-value">${r.publicaciones || 0}</div><div class="stat-label">Ángulos comparados contra su original</div></div>
+    <div class="stat-card ${r.trabadas ? 'red' : 'purple'}"><div class="stat-icon">🔒</div><div class="stat-value">${r.trabadas || 0}</div><div class="stat-label">Distintas que MELI no deja corregir</div></div>`;
+
+  const aviso = document.getElementById('angulos-aviso');
+  if (fotosPubs.ok === false) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `⚠️ ${escHtml(fotosPubs.error)}`;
+  } else if (r.trabadas) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = `🔒 <strong>${r.trabadas} publicación${r.trabadas === 1 ? '' : 'es'} con otras fotos que no se puede${r.trabadas === 1 ? '' : 'n'} corregir desde acá.</strong>
+      O son de catálogo —ahí las fotos las pone MELI con la ficha del producto, no el vendedor— o están cerradas. El motivo de cada una está en su fila.`;
+  } else {
+    aviso.style.display = 'none';
+  }
+
+  const q = (document.getElementById('angulos-search')?.value || '').toLowerCase();
+  const productos = (fotosPubs.productos || []).filter(p => {
+    if (q && !(p.nombre || '').toLowerCase().includes(q) && !(p.sku || '').toLowerCase().includes(q)) return false;
+    return r.distintas ? p.distintas > 0 : true;
+  });
+
+  document.getElementById('angulos-titulo').textContent = r.distintas
+    ? 'Publicaciones que no muestran las mismas fotos que su original'
+    : 'Fotos por publicación';
+  document.getElementById('angulos-count').innerHTML = r.copiables
+    ? `<button class="btn btn-primary btn-sm" id="btn-fotos-todas" onclick="copiarFotosPublicaciones()">🖼️ Copiar las fotos de cada original a las ${r.copiables}</button>`
+    : `${r.publicaciones || 0} publicaciones con las fotos de su original`;
+
+  if (!productos.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    empty.querySelector('p').textContent = fotosPubs.ok === false
+      ? 'No se pudieron leer las fotos de MELI.'
+      : '✅ Todos los ángulos muestran las mismas fotos, y en el mismo orden, que su original.';
+    return;
+  }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = productos.map(p => {
+    const link = (pub) => pub.permalink
+      ? `<a href="${escHtml(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escHtml((pub.titulo || pub.meli_id).slice(0, 48))} ↗</a>`
+      : escHtml(pub.titulo || pub.meli_id);
+    const id = (pub) => `<div style="font-size:11px;color:var(--text-muted);font-family:'JetBrains Mono',monospace">${escHtml(pub.meli_id)}</div>`;
+
+    const boton = p.copiables
+      ? `<button class="btn btn-primary btn-sm" id="btn-fotos-${escHtml(p.sku)}" onclick="copiarFotosPublicaciones('${escHtml(p.sku)}')">🖼️ Copiar a ${p.copiables === 1 ? 'la otra' : `las ${p.copiables}`}</button>`
+      : '';
+
+    const filaOriginal = `<tr>
+      <td><strong>${escHtml(p.nombre)}</strong><div style="font-size:11px"><span class="badge badge-gray">${escHtml(p.sku)}</span></div></td>
+      <td>${link(p.original)}${id(p.original)}</td>
+      <td>${tiraFotos(p.original.fotos)}</td>
+      <td><span class="badge badge-blue">original</span></td>
+      <td>${boton}</td>
+    </tr>`;
+
+    const filas = p.publicaciones.map(pub => {
+      const estado = pub.distintas
+        ? (pub.motivo
+          ? `<span class="badge badge-yellow">distintas</span><div style="font-size:11px;color:var(--text-muted);max-width:220px">${escHtml(pub.motivo)}</div>`
+          : '<span class="badge badge-red">distintas</span>')
+        : '<span class="badge badge-green">iguales</span>';
+      return `<tr>
+        <td></td>
+        <td>${link(pub)}${id(pub)}</td>
+        <td>${tiraFotos(pub.fotos)}</td>
+        <td>${estado}</td>
+        <td></td>
+      </tr>`;
+    }).join('');
+
+    return filaOriginal + filas;
+  }).join('');
+}
+
+// Copia las fotos de la original, en su mismo orden, a los ángulos que quedaron distintos.
+async function copiarFotosPublicaciones(sku = '') {
+  if (angulosOcupado) return;
+  const producto = (fotosPubs?.productos || []).find(p => p.sku === sku);
+  const cuantas = sku ? (producto?.copiables || 0) : (fotosPubs?.resumen?.copiables || 0);
+  const alcance = sku
+    ? `las ${cuantas} publicación${cuantas === 1 ? '' : 'es'} de ${producto?.nombre || sku}`
+    : `las ${cuantas} publicaciones de todos los productos`;
+  if (!confirm(`Se van a reemplazar las fotos de ${alcance} por las de su publicación original, en el mismo orden.\n\nLas fotos que tengan ahora se pierden: si alguna no está en la original, no vuelve. La original no se toca.\n\n¿Seguimos?`)) return;
+
+  const btn = document.getElementById(sku ? `btn-fotos-${sku}` : 'btn-fotos-todas');
+  angulosOcupado = true;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Copiando...'; }
+
+  try {
+    const data = await fetch('/api/meli/fotos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sku ? { sku } : {}),
+    }).then(r => r.json());
+
+    if (data.ok === false) throw new Error(data.error);
+
+    const fallos = (data.resultados || []).filter(x => !x.ok);
+    const avisos = (data.resultados || []).filter(x => x.ok && x.aviso);
+    const detalle = fallos.length
+      ? '\n\nNo se pudieron:\n' + fallos.map(f => `· ${f.sku} (${f.meli_id}): ${f.error}`).join('\n')
+      : '';
+    const revisar = avisos.length
+      ? '\n\nPara revisar:\n' + avisos.map(f => `· ${f.sku} (${f.meli_id}): ${f.aviso}`).join('\n')
+      : '';
+    // MELI es una llamada por publicación: si el catálogo es grande no entran todas en el
+    // tiempo que Vercel le da a la función, y el resto queda para la próxima pasada.
+    const resto = data.pendientes
+      ? `\n\nQuedaron ${data.pendientes} para la próxima: volvé a apretar el botón.`
+      : '';
+    alert(`✅ Publicaciones actualizadas: ${data.copiadas} · Fallidas: ${data.fallidas}${detalle}${revisar}${resto}`);
+
+    fotosPubs = null;
+    await renderAngulosFotos();
+  } catch (e) {
+    alert('⚠️ Error copiando las fotos: ' + e.message);
+  } finally {
+    angulosOcupado = false;
+    if (btn) { btn.disabled = false; btn.textContent = '🖼️ Copiar'; }
+  }
+}
+
 function switchAngulosTab(tab) {
   angulosTab = tab;
   document.querySelectorAll('#page-angulos .tab').forEach((t, i) => {
-    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'stock', 'precios', 'historial'][i] === tab);
+    t.classList.toggle('active', ['faltan', 'ok', 'todos', 'stock', 'precios', 'fotos', 'historial'][i] === tab);
   });
   renderAngulos();
 }

@@ -7206,7 +7206,7 @@ function exportVentasPDF() {
   doc.save(`ventas_${tab2}_${fechaHoy}.pdf`);
 }
 
-function exportReportePDF() {
+async function exportReportePDF() {
   const { desde, hasta } = getReporteFiltro();
   const ventasFiltradas = desde === null ? db.ventas : db.ventas.filter(v => v.fecha >= desde && v.fecha <= hasta);
   const enviosFiltrados = desde === null ? db.envios : db.envios.filter(e => { const d = (e.creado || '').slice(0, 10); return d >= desde && d <= hasta; });
@@ -7375,20 +7375,9 @@ function exportReportePDF() {
       const labelA = aDesde.slice(5)+' → '+aHasta.slice(5);
       const labelB = bDesde.slice(5)+' → '+bHasta.slice(5);
       doc.text(`COMPARACIÓN DE PERÍODOS   A: ${labelA}  vs  B: ${labelB}`, 14, 9);
-      const pA = filtrarPeriodo(aDesde, aHasta), pB = filtrarPeriodo(bDesde, bHasta);
-      const mA = calcularMetricas(pA.ventas, pA.envios), mB = calcularMetricas(pB.ventas, pB.envios);
+      const [adsA, adsB] = await Promise.all([adsDelPeriodo(aDesde, aHasta), adsDelPeriodo(bDesde, bHasta)]);
       const fmtC = (val, tipo) => tipo === 'money' ? f2(val) : tipo === 'pct' ? val+'%' : String(val);
-      const compMetricas = [
-        { nombre:'Ingresos', a:mA.ingresos, b:mB.ingresos, tipo:'money', mejor:'mayor' },
-        { nombre:'Ventas', a:mA.ventas, b:mB.ventas, tipo:'num', mejor:'mayor' },
-        { nombre:'Unidades vendidas', a:mA.unidades, b:mB.unidades, tipo:'num', mejor:'mayor' },
-        { nombre:'Ticket promedio', a:mA.ticket, b:mB.ticket, tipo:'money', mejor:'mayor' },
-        { nombre:'Comisiones MELI', a:mA.comisiones, b:mB.comisiones, tipo:'money', mejor:'menor' },
-        { nombre:'Costo de productos', a:mA.costoProductos, b:mB.costoProductos, tipo:'money', mejor:'menor' },
-        { nombre:'Costo de envíos', a:mA.costoEnvios, b:mB.costoEnvios, tipo:'money', mejor:'menor' },
-        { nombre:'Ganancia estimada', a:mA.ganancia, b:mB.ganancia, tipo:'money', mejor:'mayor' },
-        { nombre:'Margen neto', a:mA.margen, b:mB.margen, tipo:'pct', mejor:'mayor' },
-      ];
+      const compMetricas = metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB);
       const compBody = compMetricas.map(m => {
         const diff = m.a - m.b;
         const diffPct = m.b !== 0 ? ((diff/Math.abs(m.b))*100).toFixed(1) : (m.a !== 0 ? '100.0' : '0.0');
@@ -7408,8 +7397,8 @@ function exportReportePDF() {
         didParseCell: d => {
           if (d.section === 'body' && d.column.index === 3) {
             const raw = String(d.cell.raw);
-            const esMenos = d.row.index < 7 ? raw.startsWith('↓') : raw.startsWith('↑');
-            d.cell.styles.textColor = raw === '— 0' || raw === '—  ' ? [148,163,184] : (esMenos ? RED : GREEN);
+            const malo = compMetricas[d.row.index].mejor === 'mayor' ? raw.startsWith('↓') : raw.startsWith('↑');
+            d.cell.styles.textColor = raw.startsWith('—') ? [148,163,184] : (malo ? RED : GREEN);
             d.cell.styles.fontStyle = 'bold';
           }
         }
@@ -7719,23 +7708,33 @@ function calcularMetricas(ventas, envios) {
   return { ingresos, comisiones, costoEnvios, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: cantVentas };
 }
 
-function renderComparador() {
-  const aDesde = document.getElementById('comp-a-desde').value;
-  const aHasta = document.getElementById('comp-a-hasta').value;
-  const bDesde = document.getElementById('comp-b-desde').value;
-  const bHasta = document.getElementById('comp-b-hasta').value;
+// Gasto de Ads por período, desde meli_ads_diario. Se cachea para que el PDF no vuelva a pedirlo.
+const compAdsCache = {};
+async function adsDelPeriodo(desde, hasta) {
+  const key = desde + '|' + hasta;
+  if (!(key in compAdsCache)) {
+    try {
+      const data = await fetch(`/api/meli/ads-historico?desde=${desde}&hasta=${hasta}`).then(r => r.json());
+      compAdsCache[key] = data.ok === false ? null : (data.total_spend || 0);
+    } catch {
+      return null; // no se cachea el error, así el próximo render reintenta
+    }
+  }
+  return compAdsCache[key];
+}
 
-  if (!aDesde || !aHasta || !bDesde || !bHasta) return;
-
+// Métricas de la comparación, compartidas entre la tabla y el PDF.
+// adsA/adsB en null = no se pudo leer el gasto; se cuenta como 0 y se avisa en la fila.
+function metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB) {
   const pA = filtrarPeriodo(aDesde, aHasta);
   const pB = filtrarPeriodo(bDesde, bHasta);
   const mA = calcularMetricas(pA.ventas, pA.envios);
   const mB = calcularMetricas(pB.ventas, pB.envios);
-
-  const labelA = aDesde.slice(5) + ' → ' + aHasta.slice(5);
-  const labelB = bDesde.slice(5) + ' → ' + bHasta.slice(5);
-
-  const metricas = [
+  const gA = mA.ganancia - (adsA || 0);
+  const gB = mB.ganancia - (adsB || 0);
+  const margen = (g, ing) => ing > 0 ? parseFloat(((g / ing) * 100).toFixed(1)) : 0;
+  const sinAds = adsA === null || adsB === null;
+  return [
     { nombre: 'Ingresos', a: mA.ingresos, b: mB.ingresos, tipo: 'money', mejor: 'mayor' },
     { nombre: 'Ventas', a: mA.ventas, b: mB.ventas, tipo: 'num', mejor: 'mayor' },
     { nombre: 'Unidades vendidas', a: mA.unidades, b: mB.unidades, tipo: 'num', mejor: 'mayor' },
@@ -7743,9 +7742,30 @@ function renderComparador() {
     { nombre: 'Comisiones MELI', a: mA.comisiones, b: mB.comisiones, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de productos', a: mA.costoProductos, b: mB.costoProductos, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de envíos', a: mA.costoEnvios, b: mB.costoEnvios, tipo: 'money', mejor: 'menor' },
-    { nombre: 'Ganancia estimada', a: mA.ganancia, b: mB.ganancia, tipo: 'money', mejor: 'mayor' },
-    { nombre: 'Margen neto', a: mA.margen, b: mB.margen, tipo: 'pct', mejor: 'mayor' },
+    { nombre: 'Gasto en Ads' + (sinAds ? ' (sin datos)' : ''), a: adsA || 0, b: adsB || 0, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Ganancia estimada', a: gA, b: gB, tipo: 'money', mejor: 'mayor' },
+    { nombre: 'Margen neto', a: margen(gA, mA.ingresos), b: margen(gB, mB.ingresos), tipo: 'pct', mejor: 'mayor' },
   ];
+}
+
+let compRenderSeq = 0;
+async function renderComparador() {
+  const aDesde = document.getElementById('comp-a-desde').value;
+  const aHasta = document.getElementById('comp-a-hasta').value;
+  const bDesde = document.getElementById('comp-b-desde').value;
+  const bHasta = document.getElementById('comp-b-hasta').value;
+
+  if (!aDesde || !aHasta || !bDesde || !bHasta) return;
+
+  // Si cambian las fechas mientras se piden los Ads, gana el último render
+  const seq = ++compRenderSeq;
+  const [adsA, adsB] = await Promise.all([adsDelPeriodo(aDesde, aHasta), adsDelPeriodo(bDesde, bHasta)]);
+  if (seq !== compRenderSeq) return;
+
+  const labelA = aDesde.slice(5) + ' → ' + aHasta.slice(5);
+  const labelB = bDesde.slice(5) + ' → ' + bHasta.slice(5);
+
+  const metricas = metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB);
 
   const filas = metricas.map(m => {
     const diff = m.a - m.b;

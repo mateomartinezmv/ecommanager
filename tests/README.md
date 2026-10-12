@@ -36,6 +36,8 @@ Lo que sí vive en un módulo de `api/` se testea directo, sin navegador: es el 
 | `sin-migracion.test.js` | El estado en el que una migración todavía no se corrió en Supabase (la tabla `movimientos`, las columnas del motivo de descatalogado): el resto del CRM tiene que funcionar igual y la pantalla nueva tiene que explicar qué falta. |
 | `descatalogado-reglas.test.js` | Las reglas que no pasan por la pantalla, directo sobre `api/_discontinuado.js` (sin navegador): qué columnas se escriben al descatalogar, reactivar y editar, y qué productos entran en la sincronización de stock. |
 | `descatalogar.test.js` | Descatalogar productos: el motivo obligatorio y lo que queda guardado, que el producto salga de la lista y de los avisos de stock bajo, el filtro y el análisis de la pestaña ⛔, que editar el producto no lo reactive y que reactivar limpie el motivo. |
+| `ads-economia.test.js` | La cuenta del margen y el ROAS de equilibrio, directo sobre `api/meli/_economia.js` (sin navegador): la comisión que sale de lo que MELI cobró, el envío prorrateado entre las ventas de un mismo paquete, los envíos sin costo cargado y la cadena de respaldo cuando un SKU no tiene historia propia. |
+| `ads.test.js` | La pestaña 📣 Ads: que la pantalla no imponga un 15% de comisión, el ROAS de equilibrio de la campaña y su tarjeta, el aviso de los envíos sin costo y el tooltip con la cuenta entera. Y la sección 🎯 Qué anunciar y qué apagar: productos sin campaña, el histórico que frena volver a prender lo que ya perdía, los chips por familia y por motivo, lo que queda afuera y por qué, el aviso de la migración del snapshot, la campaña que no se pudo leer entera y el caso sin perfil de anunciante. |
 
 ## Al agregar tests
 

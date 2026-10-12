@@ -448,6 +448,51 @@ test('un anuncio compartido entre variantes avisa que el número es su parte', a
   } finally { await crm.cerrar(); }
 });
 
+test('se pueden esconder los que vienen pagando, para trabajar sobre el resto', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
+
+    // El botón dice cuántos esconde antes de tocarlo.
+    const boton = await crm.page.textContent('#ads-reco-chips button:has-text("Ocultar los que vienen pagando")');
+    assert.match(boton, /· 1/);
+
+    await crm.page.click('#ads-reco-chips button:has-text("Ocultar los que vienen pagando")');
+    await crm.page.waitForTimeout(200);
+    let texto = await crm.page.textContent('#ads-reco-lista');
+
+    // El manillar viene pagando: se va. Lo demás, que sí pide acción, se queda.
+    assert.ok(!/Manillar Universal Aluminio/.test(texto), 'no escondió el que viene pagando');
+    assert.match(texto, /Baúl Trasero Moto 28L/);      // anunciado pero sin stock: hay que pausarlo
+    assert.match(texto, /Espejos Moto Tipo Aleron/);   // sin anunciar: hay que prenderlo
+
+    // Y lo dice, para que no parezca que se perdieron solos.
+    assert.match(texto, /1 escondido por venir pagando/);
+
+    // Vuelve a mostrarlos.
+    await crm.page.click('#ads-reco-chips button:has-text("Ocultar los que vienen pagando")');
+    await crm.page.waitForTimeout(200);
+    texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /Manillar Universal Aluminio/);
+  } finally { await crm.cerrar(); }
+});
+
+test('esconder los que pagan se combina con el filtro por motivo, sin mentir el vacío', async () => {
+  const crm = await irAAds(estadoConAds());
+  try {
+    await crm.page.waitForSelector('#ads-reco-chips button', { timeout: 15000 });
+    await crm.page.click('#ads-reco-chips button:has-text("Ocultar los que vienen pagando")');
+    await crm.page.waitForTimeout(200);
+    // El único "Para escalar" del tablero es el que viene pagando: el motivo queda vacío,
+    // y un "no hay nada" a secas haría pensar que no hay nada que escalar.
+    await crm.page.click('#ads-reco-chips button:has-text("Para escalar")');
+    await crm.page.waitForTimeout(200);
+    const texto = await crm.page.textContent('#ads-reco-lista');
+    assert.match(texto, /viene pagando \(1\)/);
+    assert.match(texto, /No hay nada que tocar/);
+  } finally { await crm.cerrar(); }
+});
+
 test('no hubo errores ni alertas en la pestaña de Ads', async () => {
   const crm = await irAAds(estadoConAds());
   try {

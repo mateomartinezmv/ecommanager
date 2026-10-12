@@ -22,6 +22,7 @@
 
 const { getSupabase } = require('../_supabase');
 const { getAdsContext, adsGet, resolverRango, enLotes, API } = require('./_adsClient');
+const { cargarEconomia, deSku, contribucionUnitaria } = require('./_economia');
 
 // Este endpoint toma las métricas en MAYÚSCULAS (los de campaña, en minúsculas).
 const METRICS_AD_GROUP = [
@@ -32,8 +33,11 @@ const METRICS_AD_GROUP = [
 
 const METRICS_ADS = 'clicks,prints,cost,cpc,ctr,total_amount,units_quantity,roas,cvr';
 
-// Comisión de MELI por defecto. Es la misma que usa procesar-orden-meli para valorizar
-// las ventas; se puede pisar por request con ?comision=12.5 para simular otra categoría.
+// Comisión de MELI de último recurso: sólo se usa si la cuenta todavía no tiene ninguna
+// venta de la cual medir la comisión efectiva. El camino normal es _economia.js, que la
+// saca de lo que MELI cobró de verdad en cada venta del SKU. Se puede pisar por request
+// con ?comision=12.5 para simular otra categoría, y con ?envio=0 / ?envio=250 para ver la
+// cuenta sin envío o con otro costo de envío.
 const COMISION_DEFAULT = 15;
 
 const CONCURRENCIA = 6;
@@ -67,7 +71,9 @@ module.exports = async (req, res) => {
   const campaignId = req.query.campaign_id;
   if (!campaignId) return res.status(400).json({ ok: false, error: 'Falta campaign_id' });
 
-  const comisionPct = num(req.query.comision) || COMISION_DEFAULT;
+  // Pisar la comisión es para simular otra categoría; vacío quiere decir "usá la real".
+  const comisionOverride = num(req.query.comision) || null;
+  const envioParam = req.query.envio === undefined ? 'auto' : req.query.envio;
   const rango = resolverRango(req.query);
   if (rango.vacio) {
     return res.json({ ok: false, error: `Rango vacío: ${rango.desde} es posterior a ${rango.hasta}.` });
@@ -157,9 +163,13 @@ module.exports = async (req, res) => {
 
     // ── 3. Catálogo del CRM para resolver SKU y costo ─────────────────────────────
     const supabase = getSupabase();
-    const { data: productos, error: errProd } = await supabase
-      .from('productos')
-      .select('sku, nombre, costo, precio, meli_id, meli_ids');
+    const [{ data: productos, error: errProd }, economia] = await Promise.all([
+      supabase.from('productos').select('sku, nombre, costo, precio, meli_id, meli_ids'),
+      // La comisión efectiva y el envío por unidad de cada SKU, medidos sobre las ventas
+      // reales. Es lo que convierte el ROAS de equilibrio en un número con el que se puede
+      // decidir en vez de un piso optimista.
+      cargarEconomia(supabase, { envio: envioParam }),
+    ]);
     if (errProd) throw errProd;
 
     const porMeliId = new Map();
@@ -172,6 +182,56 @@ module.exports = async (req, res) => {
     }
 
     // ── 4. Armado de filas ────────────────────────────────────────────────────────
+
+    /**
+     * La economía de un anuncio: lo que queda de cada venta después del costo, la comisión
+     * y el envío, y el ROAS que hace falta para que no destruya plata.
+     *
+     * Vive en una sola función porque se aplica dos veces —al armar la fila y de nuevo
+     * cuando un anuncio huérfano aparece por SKU más abajo—, y tener las dos cuentas
+     * escritas aparte fue lo que dejó que se desincronizaran.
+     */
+    const aplicarEconomia = (fila) => {
+      if (fila.costo == null || !(fila.precio_real > 0)) {
+        fila.estado = 'sin_costo';
+        return fila;
+      }
+
+      const eco = deSku(economia, fila.sku);
+      const comisionPct = comisionOverride ?? eco.comision_pct;
+      const c = contribucionUnitaria({
+        precio: fila.precio_real,
+        costo: fila.costo,
+        comision_pct: comisionPct,
+        envio_unitario: eco.envio_unitario,
+      });
+
+      fila.comision_pct = r2(comisionPct);
+      fila.comision = c.comision;
+      fila.envio_unitario = c.envio;
+      fila.contribucion = c.contribucion;
+      fila.margen = c.margen_pct;
+      // El corazón de la tabla: por debajo de este ROAS el anuncio destruye plata.
+      fila.roas_breakeven = c.roas_breakeven;
+      // De dónde salieron la comisión y el envío: 'sku' si se midieron sobre este producto,
+      // 'mixto'/'global' si se prestaron del promedio, 'default' si no hay ni una venta de
+      // la cual medir, 'manual' si el request pisó la comisión. La tabla lo marca con ~.
+      fila.economia_fuente = comisionOverride ? 'manual' : eco.fuente;
+      fila.economia_muestra = eco.ventas_muestra;
+
+      fila.cpa_max = c.contribucion;
+      // El CPC máximo sale de la conversión del período. Sin ventas no hay conversión
+      // medida, y un "$0" se leería como "no pujes", que no es lo que dice el dato.
+      fila.cpc_max = fila.unidades > 0 ? r2(c.contribucion * (fila.cvr / 100)) : null;
+      fila.ganancia = r2(c.contribucion * fila.unidades - fila.inversion);
+      fila.estado = fila.roas_breakeven == null ? 'sin_margen'
+        : fila.roas === 0 && fila.inversion === 0 ? 'sin_datos'
+        : fila.roas >= fila.roas_breakeven * 1.15 ? 'ganando'
+        : fila.roas >= fila.roas_breakeven ? 'al_filo'
+        : 'perdiendo';
+      return fila;
+    };
+
     const filas = crudos.map((g, i) => {
       const ads = detalles[i] || [];
       const itemIds = ads.map(a => a.item_id).filter(Boolean);
@@ -222,37 +282,13 @@ module.exports = async (req, res) => {
         // Economía: se completa abajo si hay costo en el CRM.
         sku: producto?.sku || null,
         costo: producto ? num(producto.costo) : null,
-        comision_pct: comisionPct,
+        comision_pct: null,
         sin_vincular: !producto,
         sku_publicacion: null,
         sku_sin_vincular: false,
       };
 
-      if (producto && precioReal > 0) {
-        const comision = precioReal * (comisionPct / 100);
-        const contribucion = precioReal - num(producto.costo) - comision;
-        const margen = contribucion / precioReal;
-
-        fila.comision = r2(comision);
-        fila.contribucion = r2(contribucion);
-        fila.margen = r2(margen * 100);
-        // El corazón de la tabla: por debajo de este ROAS el anuncio destruye plata.
-        fila.roas_breakeven = margen > 0 ? r2(1 / margen) : null;
-        fila.cpa_max = r2(contribucion);
-        // El CPC máximo sale de la conversión del período. Sin ventas no hay conversión
-        // medida, y un "$0" se leería como "no pujes", que no es lo que dice el dato.
-        fila.cpc_max = unidades > 0 ? r2(contribucion * (cvr / 100)) : null;
-        fila.ganancia = r2(contribucion * unidades - inversion);
-        fila.estado = fila.roas_breakeven == null ? 'sin_margen'
-          : roas === 0 && inversion === 0 ? 'sin_datos'
-          : roas >= fila.roas_breakeven * 1.15 ? 'ganando'
-          : roas >= fila.roas_breakeven ? 'al_filo'
-          : 'perdiendo';
-      } else {
-        fila.estado = 'sin_costo';
-      }
-
-      return fila;
+      return aplicarEconomia(fila);
     });
 
     // ── 5. Los que no vincularon: entrar a la publicación y leer su SKU ───────────
@@ -284,23 +320,11 @@ module.exports = async (req, res) => {
         }
       });
 
-      // Recalcular la economía de los que aparecieron por SKU.
+      // Recalcular la economía de los que aparecieron por SKU: ahora que tienen costo,
+      // la misma cuenta que el resto.
       for (const f of huerfanos) {
         if (!f.sku_sin_vincular || !f.precio_real) continue;
-        const comision = f.precio_real * (comisionPct / 100);
-        const contribucion = f.precio_real - f.costo - comision;
-        const margen = contribucion / f.precio_real;
-        f.comision = r2(comision);
-        f.contribucion = r2(contribucion);
-        f.margen = r2(margen * 100);
-        f.roas_breakeven = margen > 0 ? r2(1 / margen) : null;
-        f.cpa_max = r2(contribucion);
-        f.cpc_max = f.unidades > 0 ? r2(contribucion * (f.cvr / 100)) : null;
-        f.ganancia = r2(contribucion * f.unidades - f.inversion);
-        f.estado = f.roas_breakeven == null ? 'sin_margen'
-          : f.roas >= f.roas_breakeven * 1.15 ? 'ganando'
-          : f.roas >= f.roas_breakeven ? 'al_filo'
-          : 'perdiendo';
+        aplicarEconomia(f);
       }
     }
 
@@ -346,6 +370,15 @@ module.exports = async (req, res) => {
     // número optimista que parece real.
     const conCosto = filas.filter(f => f.ganancia !== undefined);
 
+    // El ROAS de equilibrio de la campaña entera. No es el promedio de los ROAS BE de cada
+    // anuncio —eso le daría el mismo peso a un producto que factura mil que a uno que
+    // factura cien mil— sino el inverso del margen ponderado por facturación: el número
+    // que hay que comparar contra el ROAS Objetivo que se configura en MELI.
+    const conMargen = conCosto.filter(f => f.contribucion != null && f.facturacion > 0);
+    const facturacionConMargen = conMargen.reduce((a, f) => a + f.facturacion, 0);
+    const contribucionTotal = conMargen.reduce((a, f) => a + f.contribucion * f.unidades, 0);
+    const margenPonderado = facturacionConMargen > 0 ? contribucionTotal / facturacionConMargen : 0;
+
     const totales = {
       anuncios: filas.length,
       impresiones: sum('impresiones'),
@@ -361,6 +394,20 @@ module.exports = async (req, res) => {
       truncado: truncado ? { mostrados: filas.length, total } : null,
       // La conversión que se usa de referencia para los anuncios que todavía no vendieron.
       cvr_campana: r2(cvrCampana),
+      margen_ponderado: facturacionConMargen > 0 ? r2(margenPonderado * 100) : null,
+      roas_breakeven_campana: margenPonderado > 0 ? r2(1 / margenPonderado) : null,
+    };
+
+    // De qué está hecha la cuenta. Va en la respuesta para que la pantalla pueda decir si
+    // el margen se midió o se estimó: un ROAS de equilibrio calculado con envíos en cero
+    // es optimista, y el usuario tiene que poder verlo sin abrir el código.
+    totales.economia = {
+      comision_pct: comisionOverride ?? economia.global.comision_pct,
+      comision_es_manual: comisionOverride != null,
+      envio_unitario: economia.global.envio_unitario,
+      envios: economia.envios,
+      periodo: economia.periodo,
+      ventas_muestra: economia.global.ventas,
     };
 
     // Lo que la campaña gastó y no aparece en ningún anuncio de la lista. Se informa
@@ -416,7 +463,7 @@ module.exports = async (req, res) => {
       recortado: rango.recortado,
       campaign_id: String(campaignId),
       currency: ctx.currency,
-      comision_pct: comisionPct,
+      comision_pct: totales.economia.comision_pct,
       guardados,
       totales,
       anuncios: filas,

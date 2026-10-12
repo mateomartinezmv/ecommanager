@@ -122,7 +122,18 @@ function mockearApi(page, estado, fallos = {}) {
     }
     if (ruta === '/ventas') return ok(estado.ventas);
     if (ruta === '/envios' || ruta === '/clientes' || ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
-    if (ruta.startsWith('/meli/ads')) return ok({ ok: true, total_spend: 0, dias_con_datos: 0 });
+    // La pestaña de Ads: cada suite puede poner su propia respuesta en el estado. Las
+    // URLs pedidas se guardan porque lo que *no* se manda también es parte del contrato
+    // (ej: sin ?comision el endpoint usa la comisión real en vez de un 15% fijo).
+    if (ruta.startsWith('/meli/ads')) {
+      (estado.adsRequests = estado.adsRequests || []).push(ruta + url.search);
+      if (ruta === '/meli/ads-campanas' && estado.adsCampanas) {
+        return ok({ ok: true, periodo: {}, currency: 'UYU', campanas: estado.adsCampanas });
+      }
+      if (ruta === '/meli/ads-anuncios' && estado.adsAnuncios) return ok(estado.adsAnuncios);
+      if (ruta === '/meli/ads-recomendaciones' && estado.adsReco) return ok(estado.adsReco);
+      return ok({ ok: true, total_spend: 0, dias_con_datos: 0 });
+    }
 
     if (ruta === '/movimientos') {
       const esCategoria = url.searchParams.get('recurso') === 'categoria';

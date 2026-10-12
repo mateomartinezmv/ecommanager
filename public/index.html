@@ -816,8 +816,11 @@
       <span style="color:var(--text-muted)">→</span>
       <input type="date" id="ads-hasta" style="width:150px;padding:7px 10px" onchange="renderAdsAnuncios()">
       <span style="font-size:13px;font-weight:600;color:var(--text-dim);margin-left:12px">Comisión MELI</span>
-      <input type="number" id="ads-comision" value="15" min="0" max="50" step="0.5" style="width:80px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <input type="number" id="ads-comision" value="" placeholder="real" min="0" max="50" step="0.5" style="width:80px;padding:7px 10px" onchange="renderAdsAnuncios()">
       <span style="color:var(--text-muted);font-size:13px">%</span>
+      <span style="font-size:13px;font-weight:600;color:var(--text-dim);margin-left:12px">Envío</span>
+      <input type="number" id="ads-envio" value="" placeholder="real" min="0" step="10" style="width:90px;padding:7px 10px" onchange="renderAdsAnuncios()">
+      <span style="color:var(--text-muted);font-size:12px">vacío = medido sobre tus ventas · 0 = sin envío</span>
     </div>
     <div class="content">
       <div class="cards-grid" id="ads-stats"></div>
@@ -827,12 +830,29 @@
           <span class="table-title">📣 Anuncios de la campaña</span>
           <span style="font-size:11px;color:var(--text-muted)" id="ads-tabla-leyenda">
             ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo<br>
+            El margen sale de <b>precio − costo − comisión real − envío</b>: la comisión es la que MELI te cobró en las ventas de ese SKU, no un 15% fijo.<br>
             <b>Sin vender todavía (🔵 en prueba):</b> <b>CPC</b> = lo que pagás por clic contra el máximo que podrías pagar y seguir ganando.
             <b>Inversión</b> = lo gastado contra lo que deja una sola venta (🟢 ya se pagó · 🟡 una venta lo cubre · 🔴 ya quemó más de una venta sin vender).
             <code>~</code> = techo estimado con la conversión de la campaña. Pasá el mouse por cualquier número para ver la cuenta.
           </span>
         </div>
         <div id="ads-tabla"></div>
+      </div>
+
+      <!-- QUÉ ANUNCIAR: el catálogo entero, no sólo lo que ya está en una campaña.
+           MELI sólo conoce los productos que ya pusiste a competir; esta sección mira
+           también los que nunca se anunciaron y los que se apagaron. -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header">
+          <span class="table-title">🎯 Qué anunciar</span>
+          <span style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:11px;color:var(--text-muted)">Cruza catálogo, ventas y ads del período</span>
+            <button class="btn btn-ghost btn-sm" onclick="renderAdsRecomendaciones(true)">🔄 Recalcular</button>
+            <button class="btn btn-ghost btn-sm" onclick="exportRecoCSV()">📊 CSV</button>
+          </span>
+        </div>
+        <div id="ads-reco-chips" style="padding:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
+        <div id="ads-reco-lista" style="padding:12px 16px 16px"></div>
       </div>
     </div>
   </div>
@@ -8060,6 +8080,9 @@ let adsState = {
   campanasCargadas: false,
   orden: { campo: 'inversion', dir: 'desc' },
   filtroEstado: 'todos',   // todos | activos | pausados
+  reco: null,              // respuesta de /meli/ads-recomendaciones
+  recoFiltro: 'todos',     // motivo elegido en los chips
+  recoCargando: false,
 };
 
 // Columnas de la tabla. `campo` es por lo que ordena y `tipo` cómo compara: las de texto
@@ -8139,6 +8162,9 @@ async function renderAds(forzar = false) {
   }
 
   await renderAdsAnuncios();
+  // Las recomendaciones no dependen de la campaña elegida —miran el catálogo entero— así
+  // que se piden una vez por período y no en cada cambio de selector.
+  await renderAdsRecomendaciones(forzar);
 }
 
 async function renderAdsAnuncios() {
@@ -8150,10 +8176,16 @@ async function renderAdsAnuncios() {
   }
 
   tabla.innerHTML = '<div class="empty-state"><p>Cargando anuncios...</p></div>';
-  const comision = document.getElementById('ads-comision').value || 15;
+  // Vacíos a propósito: sin estos parámetros el endpoint mide la comisión y el envío sobre
+  // las ventas reales del SKU. Mandar un 15% fijo era lo que inflaba el margen y bajaba el
+  // ROAS de equilibrio de toda la tabla.
+  const comision = document.getElementById('ads-comision').value.trim();
+  const envio = document.getElementById('ads-envio').value.trim();
+  const extra = (comision !== '' ? `&comision=${encodeURIComponent(comision)}` : '')
+              + (envio !== '' ? `&envio=${encodeURIComponent(envio)}` : '');
 
   try {
-    const r = await api('GET', `/meli/ads-anuncios?campaign_id=${encodeURIComponent(campaignId)}&${adsRango()}&comision=${comision}`);
+    const r = await api('GET', `/meli/ads-anuncios?campaign_id=${encodeURIComponent(campaignId)}&${adsRango()}${extra}`);
     if (!r.ok) {
       tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
         <p>${escHtml(r.mensaje || r.error || 'MELI no devolvió datos.')}</p></div>`;
@@ -8170,6 +8202,180 @@ async function renderAdsAnuncios() {
   }
 }
 
+// ── QUÉ ANUNCIAR ──────────────────────────────────────────────────────────────────────
+// Cada motivo es una frase que un vendedor puede accionar sin traducir nada. El emoji y el
+// color no decoran: separan la plata que se está perdiendo ahora (rojo) de la que se está
+// dejando de ganar (verde) y de lo que es apenas una idea para probar (gris).
+const RECO_MOTIVOS = {
+  anunciado_sin_stock:    { emoji: '🚨', label: 'Anunciado sin stock',   color: 'var(--red)' },
+  perdiendo:              { emoji: '🔴', label: 'Perdiendo plata',       color: 'var(--red)' },
+  quema_sin_vender:       { emoji: '🕳️', label: 'Gasta y no vende',      color: 'var(--red)' },
+  sin_margen:             { emoji: '⛔', label: 'Sin margen',            color: 'var(--red)' },
+  se_apago_y_andaba:      { emoji: '🔌', label: 'Se apagó y andaba bien', color: 'var(--yellow)' },
+  ganador_sin_anunciar:   { emoji: '🏆', label: 'Ganador sin anunciar',  color: 'var(--green)' },
+  escalar:                { emoji: '🚀', label: 'Para escalar',          color: 'var(--green)' },
+  stock_dormido:          { emoji: '😴', label: 'Stock dormido',         color: 'var(--yellow)' },
+  margen_alto_sin_probar: { emoji: '💎', label: 'Margen alto sin probar', color: 'var(--accent)' },
+  nunca_vendio:           { emoji: '🧊', label: 'Nunca vendió',          color: 'var(--text-muted)' },
+  margen_flaco:           { emoji: '🪶', label: 'Margen flaco para ads', color: 'var(--text-muted)' },
+};
+
+async function renderAdsRecomendaciones(forzar = false) {
+  const cont = document.getElementById('ads-reco-lista');
+  if (!cont) return;
+  if (adsState.reco && !forzar) { pintarReco(); return; }
+  if (adsState.recoCargando) return;
+
+  adsState.recoCargando = true;
+  cont.innerHTML = '<div class="empty-state"><p>Mirando el catálogo contra tus ventas y tus ads...</p></div>';
+  document.getElementById('ads-reco-chips').innerHTML = '';
+  try {
+    const r = await api('GET', `/meli/ads-recomendaciones?${adsRango()}`);
+    adsState.reco = r;
+    pintarReco();
+  } catch (e) {
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
+  } finally {
+    adsState.recoCargando = false;
+  }
+}
+
+function filtrarReco(motivo) {
+  adsState.recoFiltro = motivo;
+  pintarReco();
+}
+
+function pintarReco() {
+  const r = adsState.reco;
+  const cont = document.getElementById('ads-reco-lista');
+  const chips = document.getElementById('ads-reco-chips');
+  if (!r) return;
+  if (!r.ok) {
+    chips.innerHTML = '';
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div>
+      <p>${escHtml(r.mensaje || r.error || 'No se pudieron calcular las recomendaciones.')}</p></div>`;
+    return;
+  }
+
+  const todas = r.recomendaciones || [];
+  const res = r.resumen || {};
+
+  // Chips por motivo, ordenados por plata en juego: el primero es el que más mueve.
+  const chipHtml = (clave, label, emoji, n, plata, activo) => `
+    <button class="btn btn-sm ${activo ? '' : 'btn-ghost'}" onclick="filtrarReco('${clave}')"
+      style="font-size:12px;padding:5px 12px">${emoji} ${escHtml(label)}
+      <span style="opacity:.7">· ${n}${plata != null ? ` · ${fmt(plata)}` : ''}</span></button>`;
+
+  chips.innerHTML =
+    chipHtml('todos', 'Todo', '📋', todas.length, null, adsState.recoFiltro === 'todos') +
+    (res.por_motivo || []).map(m => {
+      const def = RECO_MOTIVOS[m.motivo] || { emoji: '•', label: m.motivo };
+      return chipHtml(m.motivo, def.label, def.emoji, m.productos, m.plata, adsState.recoFiltro === m.motivo);
+    }).join('');
+
+  const lista = adsState.recoFiltro === 'todos'
+    ? todas
+    : todas.filter(x => x.motivo === adsState.recoFiltro);
+
+  // Avisos de alcance: sin estos, una lista corta se lee como "no hay nada que hacer"
+  // cuando en realidad faltan datos.
+  const avisos = [];
+  if (!r.ads_disponible) {
+    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">
+      ⚠️ No se pudo leer MELI Ads${r.error_ads ? `: ${escHtml(r.error_ads)}` : ''}.
+      Las recomendaciones salen igual, pero no se puede distinguir lo que ya estás anunciando.
+    </div>`);
+  }
+  if (r.ads_incompleto) {
+    avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">⚠️ ${escHtml(r.ads_incompleto)}</div>`);
+  }
+  const d = res.descartados || {};
+  if (d.sin_costo) {
+    avisos.push(`<div style="background:rgba(239,68,68,0.08);border:1px solid var(--red);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:12px">
+      ⚠️ <b>${d.sin_costo} producto(s) quedaron afuera por no tener costo o precio cargado.</b>
+      Sin costo no hay margen, y sin margen no se puede decir si conviene anunciarlos.
+    </div>`);
+  }
+
+  if (!lista.length) {
+    cont.innerHTML = avisos.join('') + `<div class="empty-state"><div class="empty-icon">✅</div>
+      <p>${todas.length ? 'Nada en este motivo.' : 'Nada para cambiar: el catálogo publicado está bien cubierto.'}</p></div>`;
+    return;
+  }
+
+  const borde = { alta: 'var(--red)', media: 'var(--yellow)', baja: 'var(--border)' };
+
+  cont.innerHTML = avisos.join('') + `
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+      ${res.evaluados} productos publicados evaluados · ${res.skus_anunciados} con anuncio en el período ·
+      comparando contra ${r.periodo_previo ? `${r.periodo_previo.desde} → ${r.periodo_previo.hasta}` : 'sin período previo disponible'}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+    ${lista.map(x => {
+      const def = RECO_MOTIVOS[x.motivo] || { emoji: '•', label: x.motivo, color: 'var(--text)' };
+      const ads = x.ads?.ahora;
+      // La ficha del producto: los números con los que se discute la recomendación.
+      const datos = [
+        `margen <b>${x.margen}%</b>`,
+        x.roas_breakeven != null ? `equilibrio <b>${x.roas_breakeven.toFixed(2)}x</b>` : '<b style="color:var(--red)">sin margen</b>',
+        `deja <b>${fmt(x.contribucion)}</b> por venta`,
+        `stock <b>${x.stock}</b>${x.meses_stock != null && x.meses_stock > 0 ? ` (${x.meses_stock} meses)` : ''}`,
+        x.unidades_periodo ? `vendió <b>${x.unidades_periodo}</b> en el período` : 'sin ventas en el período',
+        ads && ads.inversion > 0
+          ? `ads <b>${fmt(ads.inversion)}</b> a ROAS ${ads.roas.toFixed(2)}x`
+          : '<span style="color:var(--text-muted)">sin ads en el período</span>',
+      ].join(' · ');
+
+      const otros = (x.otros_motivos || []).map(o => {
+        const od = RECO_MOTIVOS[o.motivo] || { emoji: '•', label: o.motivo };
+        return `<div style="font-size:11px;color:var(--text-muted);margin-top:3px">${od.emoji} ${escHtml(od.label)}: ${escHtml(o.detalle)}</div>`;
+      }).join('');
+
+      return `
+      <div style="border:1px solid var(--border);border-left:3px solid ${borde[x.urgencia]};border-radius:var(--radius);padding:12px 14px;background:var(--surface2)">
+        <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <div style="font-size:13px;font-weight:600">
+              <span title="${escHtml(def.label)}">${def.emoji}</span>
+              ${escHtml(x.nombre || x.sku)}
+              <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(x.sku)}</span>
+            </div>
+            <div style="font-size:12px;margin-top:5px;color:var(--text-dim)">${escHtml(x.detalle)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:6px">${datos}</div>
+            ${otros}
+          </div>
+          <div style="text-align:right;min-width:130px">
+            <div style="display:inline-block;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:600;
+                        background:${def.color};color:#fff;white-space:nowrap">${escHtml(x.accion)}</div>
+            <div style="font-size:16px;font-weight:700;margin-top:6px">${fmt(x.plata_en_juego)}</div>
+            <div style="font-size:10px;color:var(--text-muted)">en juego</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+    </div>`;
+}
+
+function exportRecoCSV() {
+  const r = adsState.reco;
+  if (!r?.ok || !r.recomendaciones?.length) return alert('No hay recomendaciones para exportar.');
+  const cols = ['sku', 'nombre', 'motivo', 'accion', 'urgencia', 'plata_en_juego', 'margen',
+    'roas_breakeven', 'contribucion', 'precio', 'costo', 'comision_pct', 'envio_unitario',
+    'economia_fuente', 'stock', 'meses_stock', 'unidades_periodo', 'unidades_organicas',
+    'unidades_previas', 'anunciado', 'detalle'];
+  const filas = r.recomendaciones.map(x => cols.map(c => {
+    const v = x[c];
+    return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
+  }).join(','));
+  const csv = [cols.join(','), ...filas].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `que-anunciar-${r.periodo.desde}_${r.periodo.hasta}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function pintarAdsStats() {
   const t = adsState.totales;
   if (!t) return;
@@ -8178,6 +8384,21 @@ function pintarAdsStats() {
   // que ya no están en la campaña) y eso se explica aparte, en el aviso de reconciliación.
   const c = t.campana || t;
   const gananciaClase = t.ganancia >= 0 ? 'green' : 'red';
+
+  // El número con el que se configura el ROAS Objetivo en MELI. Se pinta contra el ROAS
+  // que la campaña está logrando: verde si sobra colchón, rojo si está comprando ventas
+  // que no pagan lo que cuestan.
+  const be = t.roas_breakeven_campana;
+  const beCard = be == null ? '' : (() => {
+    const holgura = c.roas > 0 ? c.roas / be : 0;
+    const clase = holgura >= 1.25 ? 'green' : holgura >= 1 ? 'yellow' : 'red';
+    const eco = t.economia || {};
+    const detalle = `margen ${t.margen_ponderado}% · comisión ${eco.comision_pct}%${eco.comision_es_manual ? ' (a mano)' : ''}`
+      + (eco.envio_unitario ? ` · envío ${fmt(eco.envio_unitario)}/u` : ' · sin envío');
+    return `<div class="stat-card ${clase}" title="${escHtml(detalle)}"><div class="stat-icon">⚖️</div>
+      <div class="stat-value">${be.toFixed(2)}x</div>
+      <div class="stat-label">ROAS de equilibrio · ${escHtml(detalle)}</div></div>`;
+  })();
   document.getElementById('ads-stats').innerHTML = `
     <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(c.inversion)}</div><div class="stat-label">Inversión en ads</div></div>
     <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(c.facturacion)}</div><div class="stat-label">Facturación atribuida</div></div>
@@ -8185,6 +8406,7 @@ function pintarAdsStats() {
     <div class="stat-card purple"><div class="stat-icon">📦</div><div class="stat-value">${c.unidades}</div><div class="stat-label">Unidades vendidas</div></div>
     <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${c.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${c.impresiones.toLocaleString('es-AR')} impresiones</div></div>
     <div class="stat-card ${gananciaClase}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
+    ${beCard}
   `;
 }
 
@@ -8212,6 +8434,31 @@ function pintarAdsAviso() {
     avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
       ⚠️ La campaña tiene ${t.truncado.total} anuncios y se muestran los ${t.truncado.mostrados} de mayor gasto.
     </div>`);
+  }
+
+  // De qué está hecho el margen. Un ROAS de equilibrio sale de la comisión y el envío, y
+  // los dos se pueden estar estimando: decirlo es la diferencia entre un número con el que
+  // se decide y uno que parece medido y no lo es.
+  const eco = t.economia;
+  if (eco) {
+    const env = eco.envios || {};
+    if (env.sin_costo && env.fallback_usado > 0) {
+      avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+        🚚 <b>${env.sin_costo} de ${env.total} envíos entraron al CRM sin costo</b> (los de Mercado Envíos, que MELI liquida aparte).
+        Para que el margen no quede inflado se completaron con ${fmt(env.fallback_usado)}, el promedio de los ${env.con_costo} envíos que sí tienen costo cargado.
+        Cargá esos envíos y el ROAS de equilibrio deja de ser una estimación — o poné <b>Envío = 0</b> arriba para ver la cuenta sin ellos.
+      </div>`);
+    } else if (env.sin_costo && !env.fallback_usado) {
+      avisos.push(`<div style="background:rgba(239,68,68,0.10);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+        🚚 <b>El margen está calculado sin envío</b> y ${env.sin_costo} envíos del período no tienen costo cargado.
+        El ROAS de equilibrio de abajo es optimista: en la realidad hay que vender más caro o pujar más barato.
+      </div>`);
+    }
+    if (eco.comision_es_manual) {
+      avisos.push(`<div style="background:rgba(59,130,246,0.10);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
+        ✍️ Comisión forzada a <b>${eco.comision_pct}%</b> desde el filtro de arriba. Vaciá ese campo para volver a la comisión que MELI te cobró de verdad en cada venta.
+      </div>`);
+    }
   }
 
   const botonVincular = (a, meliId) =>
@@ -8368,6 +8615,24 @@ function pintarAdsTabla() {
                   ? ` y te sobran ${fmt(a.contribucion - a.deficit)}.`
                   : '.');
 
+        // La cuenta del ROAS de equilibrio, entera. Es el número que decide si el anuncio
+        // sigue o se apaga, así que tiene que poder auditarse sin salir de la fila.
+        const fuente = {
+          sku: 'medidos sobre las ventas de este SKU',
+          mixto: 'comisión de este SKU, envío del promedio general',
+          global: 'promedio general: este SKU todavía no tiene ventas propias',
+          default: 'sin ventas de las cuales medir: se usó el 15% por defecto',
+          manual: 'comisión forzada a mano desde el filtro de arriba',
+        }[a.economia_fuente] || '';
+        const beTitulo = a.contribucion == null ? ''
+          : `${fmt(a.precio_real)} de precio − ${fmt(a.costo)} de costo − ${fmt(a.comision)} de comisión (${a.comision_pct}%)`
+            + (a.envio_unitario ? ` − ${fmt(a.envio_unitario)} de envío` : ' (sin envío)')
+            + ` = ${fmt(a.contribucion)} limpios, que es el ${a.margen.toFixed(1)}% del precio.`
+            + (be != null
+                ? ` Para recuperar un peso de ads hacen falta ${be.toFixed(2)} de facturación.`
+                : ' Con margen negativo no hay ROAS que alcance.')
+            + (fuente ? ` Comisión y envío: ${fuente}.` : '');
+
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
         const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';
         // El ACOS de equilibrio es el margen: por encima de él la venta no paga el anuncio.
@@ -8402,9 +8667,9 @@ function pintarAdsTabla() {
           <td style="text-align:right">${a.unidades}</td>
           <td style="text-align:right">${fmt(a.facturacion)}</td>
           <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
-          <td style="text-align:right">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
+          <td style="text-align:right" title="${escHtml(beTitulo)}">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
           <td style="text-align:right;color:${acosColor}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
-          <td style="text-align:right">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
+          <td style="text-align:right" title="${escHtml(beTitulo)}">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="${escHtml(cpcTitulo)}">${techo != null
             ? (a.cpc_max_es_estimado ? `<span style="color:var(--text-muted)">~${fmt(techo)}</span>` : fmt(techo))
             : '—'}</td>
@@ -8508,7 +8773,8 @@ async function confirmarVincularAnuncio() {
 function exportAdsCSV() {
   if (!adsFiltrados().length) return alert('No hay anuncios para exportar.');
   const cols = ['titulo', 'sku', 'status', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
-    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen', 'cpa_max', 'cpc_max',
+    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen',
+    'comision_pct', 'envio_unitario', 'economia_fuente', 'cpa_max', 'cpc_max',
     'cpc_max_estimado', 'cpc_max_es_estimado', 'cvr_referencia', 'deficit', 'ventas_para_empatar',
     'ganancia', 'estado'];
   // Exporta lo que se está viendo: si hay filtro de activos, el CSV lo respeta.

@@ -8242,6 +8242,7 @@ let adsState = {
   filtroEstado: 'todos',   // todos | activos | pausados
   reco: null,              // respuesta de /meli/ads-recomendaciones
   recoFiltro: 'todos',     // motivo elegido en los chips
+  recoOcultarOk: false,    // esconder los que ya vienen pagando
   recoCargando: false,
 };
 
@@ -8422,6 +8423,23 @@ function filtrarReco(motivo) {
   pintarReco();
 }
 
+/**
+ * Esconde los anuncios que ya vienen pagando.
+ *
+ * Con la campaña madura, la mayoría de las tarjetas son productos que andan bien: ocupan
+ * la pantalla y entierran lo que sí hay que tocar. Esto no los borra —siguen contando en
+ * los chips y en el CSV— sólo los saca de la vista para poder trabajar sobre el resto.
+ */
+function toggleRecoOcultarOk() {
+  adsState.recoOcultarOk = !adsState.recoOcultarOk;
+  pintarReco();
+}
+
+/** Un anuncio corriendo cuyo acumulado da por encima del equilibrio: no hay nada que hacerle. */
+function recoVienePagando(x) {
+  return !!x.anunciado && x.veredicto_historico === 'rentable';
+}
+
 function pintarReco() {
   const r = adsState.reco;
   const cont = document.getElementById('ads-reco-lista');
@@ -8444,7 +8462,17 @@ function pintarReco() {
 
   // Los dos grandes primero —son las dos preguntas distintas que contesta la sección— y
   // después el detalle por motivo, ordenado por plata en juego.
-  chips.innerHTML =
+  // El toggle va primero y separado: no es un motivo más, es una lente sobre todos.
+  const ok = todas.filter(recoVienePagando).length;
+  const toggle = !ok ? '' : `
+    <button class="btn btn-sm ${adsState.recoOcultarOk ? '' : 'btn-ghost'}" onclick="toggleRecoOcultarOk()"
+      style="font-size:12px;padding:5px 12px"
+      title="${adsState.recoOcultarOk ? 'Volver a mostrarlos' : 'Los saca de la vista para trabajar sobre el resto. Siguen contando en los chips y en el CSV.'}">
+      ${adsState.recoOcultarOk ? '🙈' : '👁️'} Ocultar los que vienen pagando
+      <span style="opacity:.7">· ${ok}</span></button>
+    <span style="width:100%;height:0"></span>`;
+
+  chips.innerHTML = toggle +
     chipHtml('todos', 'Todo', '📋', todas.length, null, adsState.recoFiltro === 'todos') +
     chipHtml('fam:ajustar', 'Lo que ya anunciás', '📣', todas.filter(x => x.familia === 'ajustar').length, null, adsState.recoFiltro === 'fam:ajustar') +
     chipHtml('fam:anunciar', 'Lo que falta anunciar', '➕', todas.filter(x => x.familia === 'anunciar').length, null, adsState.recoFiltro === 'fam:anunciar') +
@@ -8455,9 +8483,11 @@ function pintarReco() {
     }).join('');
 
   const f = adsState.recoFiltro;
-  const lista = f === 'todos' ? todas
+  const porChip = f === 'todos' ? todas
     : f.startsWith('fam:') ? todas.filter(x => x.familia === f.slice(4))
     : todas.filter(x => x.motivo === f);
+  const lista = adsState.recoOcultarOk ? porChip.filter(x => !recoVienePagando(x)) : porChip;
+  const ocultos = porChip.length - lista.length;
 
   // Avisos de alcance: sin estos, una lista corta se lee como "no hay nada que hacer"
   // cuando en realidad faltan datos.
@@ -8488,8 +8518,11 @@ function pintarReco() {
   }
 
   if (!lista.length) {
+    const porElToggle = ocultos > 0;
     cont.innerHTML = avisos.join('') + `<div class="empty-state"><div class="empty-icon">✅</div>
-      <p>${todas.length ? 'Nada en este filtro.' : 'Nada para cambiar: el catálogo publicado está bien cubierto.'}</p></div>`;
+      <p>${porElToggle
+        ? `Todo lo que queda acá viene pagando (${ocultos}). No hay nada que tocar.`
+        : todas.length ? 'Nada en este filtro.' : 'Nada para cambiar: el catálogo publicado está bien cubierto.'}</p></div>`;
     return;
   }
 
@@ -8503,6 +8536,7 @@ function pintarReco() {
       ${ref.cpc ? `<br>Referencia de la cuenta: CPC ${fmt(ref.cpc)} · conversión ${ref.cvr}% · traer una venta cuesta ${ref.cpa != null ? fmt(ref.cpa) : '—'}` : ''}
       <br>Histórico: ${r.periodo_historico.desde} → ${r.periodo_historico.hasta}${res.snapshot_historico ? ' + lo guardado de antes' : ''}
       ${res.mostrados < res.con_recomendacion ? ` · mostrando ${res.mostrados} de ${res.con_recomendacion}` : ''}
+      ${ocultos ? `<br><b>${ocultos} escondido${ocultos === 1 ? '' : 's'} por venir pagando.</b> No hay nada que hacerles: el botón de arriba los devuelve.` : ''}
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
     ${lista.map(x => {

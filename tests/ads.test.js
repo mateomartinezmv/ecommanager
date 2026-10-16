@@ -296,7 +296,7 @@ test('los envíos sin costo cargado se avisan: el margen de esa cuenta está est
 test('el tooltip del ROAS de equilibrio muestra la cuenta entera, envío incluido', async () => {
   const crm = await irAAds(estadoConAds());
   try {
-    const titulo = await crm.page.$eval('#ads-tabla tbody tr:first-child td:nth-child(10)', e => e.getAttribute('title'));
+    const titulo = await crm.page.$eval('#ads-tabla tbody tr:first-child td:nth-child(11)', e => e.getAttribute('title'));
     assert.match(titulo, /de precio/);
     assert.match(titulo, /de costo/);
     assert.match(titulo, /de comisión/);

@@ -66,6 +66,22 @@ async function adsGet(url, headers, apiVersion = '2') {
 }
 
 /**
+ * PUT contra la API de Ads. Igual que adsGet: devuelve { ok, status, body } y deja que el
+ * endpoint decida qué hacer con un 4xx, que acá es información (qué campo rechazó MELI).
+ */
+async function adsPut(url, headers, cuerpo, apiVersion = '2') {
+  const r = await fetch(url, {
+    method: 'PUT',
+    headers: { ...headers, 'Api-Version': apiVersion },
+    body: JSON.stringify(cuerpo),
+  });
+  const text = await r.text();
+  let body = {};
+  if (text) { try { body = JSON.parse(text); } catch { body = { raw: text }; } }
+  return { ok: r.ok, status: r.status, body };
+}
+
+/**
  * Normaliza el rango pedido a lo que MELI puede contestar.
  * Devuelve { desde, hasta, recortado } — `recortado` avisa cuándo se movió el borde.
  */
@@ -111,4 +127,4 @@ async function enLotes(items, limite, tarea) {
   return salida;
 }
 
-module.exports = { API, getAdsContext, adsGet, resolverRango, enLotes, aFecha, sumarDias };
+module.exports = { API, getAdsContext, adsGet, adsPut, resolverRango, enLotes, aFecha, sumarDias };

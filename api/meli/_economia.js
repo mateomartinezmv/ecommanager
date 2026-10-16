@@ -15,16 +15,25 @@
 // se movió: la comisión que MELI cobró en cada venta y el costo del envío que se despachó
 // por esa venta.
 //
-// Sobre los envíos sin costo cargado: los despachos de `mercado_envios` entran al CRM con
-// costo 0 porque el número lo liquida MELI aparte, no porque el envío sea gratis. Tomarlos
-// como 0 vuelve a inflar el margen, así que por defecto se completan con el promedio de los
-// envíos que sí tienen costo (`envio: 'auto'`). Se puede forzar un número o apagarlo con
-// `envio: 0`, y la respuesta siempre dice cuántos envíos se estimaron para que el número no
-// se lea como medido.
+// Sobre los envíos de Mercado Envíos: entran al CRM con costo 0 y ese 0 es real para el
+// margen. Lo que MELI le cobra al vendedor por el envío sale de lo que descuenta del pago,
+// y `ventas.comision` ya es todo ese descuento (total − neto recibido, ver
+// recalcular-comisiones.js); en los productos debajo del umbral de envío gratis lo paga el
+// comprador. Medido sobre las ventas reales: las de Mercado Envíos tienen la misma comisión
+// efectiva que las de Flex (15,1% contra 14,5–16%), así que no esconden un envío. Antes se
+// completaban con el promedio de los envíos propios (~$200) y eso le sumaba un envío
+// inexistente a más de la mitad de las ventas: un producto de $100 daba margen negativo.
+//
+// Lo que sí se completa son los envíos propios (Flex, transportistas) que todavía no tienen
+// el costo cargado: ahí el 0 es un dato faltante. Por defecto con el promedio de los que sí
+// lo tienen (`envio: 'auto'`); se puede forzar un número o apagarlo con `envio: 0`, y la
+// respuesta dice cuántos se estimaron para que el número no se lea como medido.
 
 const DIAS_VENTANA = 180;        // Historia que se mira para promediar comisión y envío.
 const MIN_VENTAS_SKU = 3;        // Debajo de esto, el promedio del SKU es ruido: va el global.
 const COMISION_DEFAULT = 15;     // Último recurso: catálogo sin una sola venta todavía.
+// Envíos que liquida MELI: su costo para el vendedor ya viene adentro de ventas.comision.
+const TRANSPORTISTAS_MELI = ['mercado_envios'];
 
 const num = v => (v === null || v === undefined ? 0 : parseFloat(v) || 0);
 const r2 = v => Math.round(v * 100) / 100;
@@ -74,7 +83,9 @@ function repartirEnvios(ventas, envios, envioFallback) {
     const parte = Math.max(1, num(v.cantidad)) / unidadesEnvio;
 
     const real = num(e.costo);
-    const estimado = real <= 0 && envioFallback > 0;
+    // Mercado Envíos en 0 no es un dato faltante: lo que MELI cobra ya está en la comisión.
+    const cubreMeli = TRANSPORTISTAS_MELI.includes(String(e.transportista || '').toLowerCase());
+    const estimado = real <= 0 && envioFallback > 0 && !cubreMeli;
     const costoEnvio = real > 0 ? real : (estimado ? envioFallback : 0);
 
     salida.set(String(v.id), { costo: costoEnvio * parte, estimado, sin_envio: false });
@@ -189,7 +200,11 @@ async function cargarEconomia(supabase, opts = {}) {
     envios: {
       total: enviosDelPeriodo.length,
       con_costo: conCosto.length,
-      sin_costo: enviosDelPeriodo.length - conCosto.length,
+      // Sólo los propios sin costo: los de Mercado Envíos en 0 no son un dato faltante.
+      sin_costo: enviosDelPeriodo.filter(e => num(e.costo) <= 0
+        && !TRANSPORTISTAS_MELI.includes(String(e.transportista || '').toLowerCase())).length,
+      mercado_envios: enviosDelPeriodo.filter(e =>
+        TRANSPORTISTAS_MELI.includes(String(e.transportista || '').toLowerCase())).length,
       promedio_real: r2(envioPromedioReal),
       // Lo que se usó para completar los que vinieron en 0. En 0 significa que no se
       // completó nada y el margen vuelve a estar sobrestimado.

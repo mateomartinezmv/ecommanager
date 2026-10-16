@@ -287,9 +287,10 @@ test('los envíos sin costo cargado se avisan: el margen de esa cuenta está est
   const crm = await irAAds(estadoConAds());
   try {
     const aviso = await crm.page.textContent('#ads-aviso');
-    assert.match(aviso, /136 de 247 envíos entraron al CRM sin costo/);
+    // Sólo los propios (Flex, transportistas): los de Mercado Envíos en 0 son reales.
+    assert.match(aviso, /136 envíos propios \(Flex o transportista\) no tienen el costo cargado/);
     // Y tiene que decir qué se hizo al respecto, no sólo que falta el dato.
-    assert.match(aviso, /se completaron con/);
+    assert.match(aviso, /Se completaron con/);
   } finally { await crm.cerrar(); }
 });
 

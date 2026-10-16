@@ -10,21 +10,27 @@ const assert = require('node:assert');
 const { abrirCRM, estadoDemo, erroresReales } = require('./helpers');
 
 const HOY = new Date().toISOString().slice(0, 10);
+// Todos publicados en MELI salvo que se diga otra cosa: sin publicación no se pueden anunciar.
 const prod = (sku, nombre, precio, costo, stock, extra = {}) => ({
   sku, nombre, tipo: 'nuevo', grupo: 'G', subgrupo: '', stock_dep: stock, stock_meli: stock,
-  stock_shopify: 0, costo, precio, alerta_min: 0, discontinuado: false, created_at: HOY, ...extra,
+  stock_shopify: 0, costo, precio, alerta_min: 0, discontinuado: false, created_at: HOY,
+  meli_id: 'MLU' + sku, meli_ids: ['MLU' + sku], ...extra,
 });
 
 function estado() {
   const e = estadoDemo();
   e.productos = [
-    prod('ALTO', 'Baúl 45L', 1000, 400, 5),            // $600 · 60%
-    prod('MEDIO', 'Espejo', 1000, 700, 3),             // $300 · 30%
-    prod('BAJO', 'Slider', 1000, 900, 8),              // $100 · 10%
+    // Cortes por defecto: muy alto ≥ 70%, alto ≥ 50%, medio ≥ 30%, poco margen debajo.
+    prod('ALTO', 'Baúl 45L', 1000, 400, 5),            // $600 · 60% → alto
+    prod('MEDIO', 'Espejo', 1000, 700, 3),             // $300 · 30% → medio
+    prod('BAJO', 'Slider', 1000, 900, 8),              // $100 · 10% → poco margen
     prod('PIERDE', 'Puños', 500, 600, 2),              // −$100
     prod('SINCOSTO', 'Gato', 800, 0, 4),               // sin costo
-    prod('SINSTOCK', 'Manillar', 2000, 500, 0),        // 75%, pero sin stock
+    prod('MUYALTO', 'Cubre puños', 1000, 200, 6),      // 80% → muy alto
+    prod('SINSTOCK', 'Manillar', 2000, 700, 0),        // 65%, pero sin stock
     prod('BAJA', 'Viejo', 2000, 100, 9, { discontinuado: true }),
+    // Repuesto que se vende sólo en el local: sin publicación en MELI, no se anuncia.
+    prod('LOCAL', 'Extensor espejo', 100, 11, 50, { meli_id: null, meli_ids: [] }),
   ];
   // Ventas MELI de los últimos 30 días: el peso de cada segmento es margen $ × unidades.
   //   alto  600 × 2 = 1200 · medio 300 × 4 = 1200 · bajo 100 × 1 (sin ventas cuenta 1) = 100
@@ -83,6 +89,9 @@ async function irAMargen(est = estado()) {
   crm.estado = est;
   await crm.page.click('.nav-item:has-text("Ads MELI")');
   await crm.page.waitForSelector('#ads-margen-lista table', { timeout: 15000 });
+  // Que terminen de llegar los anuncios: cada respuesta vuelve a dibujar el reparto, y un
+  // click en medio cae sobre un botón que ya no está.
+  await crm.page.waitForSelector('#ads-tabla table', { timeout: 15000 });
   return crm;
 }
 
@@ -93,6 +102,7 @@ const skusDe = (page, seg) => page.$$eval(
 test('cada producto cae en su segmento por margen % (precio − costo)', async () => {
   const crm = await irAMargen();
   try {
+    assert.deepStrictEqual(await skusDe(crm.page, 'muy_alto'), ['MUYALTO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'alto'), ['ALTO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'medio'), ['MEDIO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'bajo'), ['BAJO']);
@@ -106,6 +116,8 @@ test('cada producto cae en su segmento por margen % (precio − costo)', async (
 
     const lista = await crm.page.textContent('#ads-margen-lista');
     assert.ok(!lista.includes('BAJA'), 'los descatalogados no se segmentan');
+    assert.ok(!lista.includes('LOCAL'), 'lo que no está publicado en MELI no se segmenta');
+    assert.match(await crm.page.textContent('#ads-margen-sin-meli'), /1 producto sin publicación en MELI/);
     assert.ok(!lista.includes('SINSTOCK'), 'sin stock queda afuera mientras el filtro esté prendido');
     assert.deepStrictEqual(erroresReales(crm.errores), []);
   } finally { await crm.cerrar(); }
@@ -127,14 +139,16 @@ test('en $ por unidad segmenta por el monto del margen', async () => {
   const crm = await irAMargen();
   try {
     await crm.page.selectOption('#ads-margen-modo', 'monto');
+    await crm.page.fill('#ads-margen-muyalto', '700');
     await crm.page.fill('#ads-margen-alto', '500');
     await crm.page.fill('#ads-margen-medio', '200');
     await crm.page.dispatchEvent('#ads-margen-medio', 'change');
+    assert.deepStrictEqual(await skusDe(crm.page, 'muy_alto'), ['MUYALTO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'alto'), ['ALTO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'medio'), ['MEDIO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'bajo'), ['BAJO']);
     const resumen = (await crm.page.textContent('#ads-margen-resumen')).replace(/\s+/g, ' ');
-    assert.match(resumen, /\$500 o más/);
+    assert.match(resumen, /\$500 a \$700/);
   } finally { await crm.cerrar(); }
 });
 
@@ -146,15 +160,17 @@ const recoDe = (page, seg) =>
 test('el presupuesto se reparte por margen × ventas y dice qué subir y qué bajar', async () => {
   const crm = await irAMargen();
   try {
-    await crm.page.fill('#ads-presupuesto', '1000');
+    await crm.page.fill('#ads-presupuesto', '1650');
     await crm.page.waitForSelector('#ads-presupuesto-tabla');
-    // 1000 sobre pesos 1200 / 1200 / 100 → 480 / 480 / 40.
-    assert.match(await filaReparto(crm.page, 'alto'), /\$480/);
-    assert.match(await filaReparto(crm.page, 'medio'), /\$480/);
-    assert.match(await filaReparto(crm.page, 'bajo'), /\$40/);
-    assert.match(await crm.page.textContent('#ads-presupuesto-diario'), /\$33 por día/);
+    // Pesos: muy alto 800 × 1 (sin ventas) · alto 1200 · medio 1200 · poco margen 100 → 3300.
+    // 1650 es la mitad: 400 / 600 / 600 / 50.
+    assert.match(await filaReparto(crm.page, 'muy_alto'), /\$400/);
+    assert.match(await filaReparto(crm.page, 'alto'), /\$600/);
+    assert.match(await filaReparto(crm.page, 'medio'), /\$600/);
+    assert.match(await filaReparto(crm.page, 'bajo'), /\$50/);
+    assert.match(await crm.page.textContent('#ads-presupuesto-diario'), /\$55 por día/);
 
-    assert.strictEqual(await recoDe(crm.page, 'alto'), 'subir', 'gasta 10 de 480 sugeridos y gana con colchón');
+    assert.strictEqual(await recoDe(crm.page, 'alto'), 'subir', 'gasta 10 de 600 sugeridos y gana con colchón');
     assert.strictEqual(await recoDe(crm.page, 'medio'), 'bajar', 'el ads del segmento pierde plata');
     assert.match(await filaReparto(crm.page, 'medio'), /pierde \$50/);
     assert.strictEqual(await recoDe(crm.page, 'bajo'), 'arrancar', 'sin gasto todavía');
@@ -166,11 +182,11 @@ test('el presupuesto se reparte por margen × ventas y dice qué subir y qué ba
 test('más presupuesto del que el margen paga: cada segmento queda en su tope y sobra', async () => {
   const crm = await irAMargen();
   try {
-    await crm.page.fill('#ads-presupuesto', '3000');
+    await crm.page.fill('#ads-presupuesto', '4000');
     await crm.page.waitForSelector('#ads-presupuesto-sobrante');
     assert.match(await filaReparto(crm.page, 'alto'), /\$1\.200.*tope/);
     assert.match(await filaReparto(crm.page, 'bajo'), /\$100.*tope/);
-    assert.match(await crm.page.textContent('#ads-presupuesto-sobrante'), /Bajar el presupuesto total: sobran \$500/);
+    assert.match(await crm.page.textContent('#ads-presupuesto-sobrante'), /Bajar el presupuesto total: sobran \$700/);
   } finally { await crm.cerrar(); }
 });
 
@@ -211,8 +227,9 @@ test('el margen real descuenta comisión y envío, y se puede segmentar con él'
     assert.match(alto, /2\.50x/, 'ROAS de equilibrio = 1000 / 400');
 
     await crm.page.selectOption('#ads-margen-base', 'real');
-    // Con el real: MEDIO deja 100 (10%) y pasa a bajo; BAJO deja −100 y queda sin margen.
-    assert.deepStrictEqual(await skusDe(crm.page, 'alto'), ['ALTO']);
+    // Con el real: ALTO deja 400 (40%) y baja a medio; MEDIO deja 100 (10%) y pasa a poco
+    // margen; BAJO deja −100 y queda sin margen.
+    assert.deepStrictEqual(await skusDe(crm.page, 'medio'), ['ALTO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'bajo'), ['MEDIO']);
     assert.deepStrictEqual(await skusDe(crm.page, 'sin_margen'), ['BAJO', 'PIERDE']);
   } finally { await crm.cerrar(); }
@@ -235,7 +252,7 @@ test('el producto que corre en la campaña de otro segmento se avisa', async () 
   try {
     await crm.page.waitForSelector('#ads-equivocados-lista li[data-sku="MEDIO"]');
     const txt = (await crm.page.textContent('#ads-equivocados-lista')).replace(/\s+/g, ' ');
-    assert.match(txt, /Espejo .* es de 🟡 margen medio y está en C1 \(campaña de 🟢 margen alto\)/);
+    assert.match(txt, /Espejo .* es de 🟡 margen medio y está en C1 \(campaña de 🔵 margen alto\)/);
     assert.ok(!txt.includes('Baúl'), 'ALTO está en la campaña de su segmento');
   } finally { await crm.cerrar(); }
 });
@@ -244,12 +261,14 @@ test('aplicar el reparto manda a MELI el presupuesto diario y el ROAS objetivo d
   const crm = await irAMargen();
   try {
     await esperarMargenReal(crm.page);
-    await crm.page.fill('#ads-presupuesto', '1000');
+    await crm.page.waitForSelector('#ads-campanas-tabla tr[data-campana="1"]');
+    await crm.page.fill('#ads-presupuesto', '1650');
+    await crm.page.waitForSelector('#ads-presupuesto-tabla [data-aplicar="alto"]');
     await crm.page.click('#ads-presupuesto-tabla [data-aplicar="alto"]');
     await esperar(() => crm.estado.adsAcciones?.length);
     assert.deepStrictEqual(crm.estado.adsAcciones, [{
       nivel: 'campana', campaign_id: '1', campaign_name: 'C1',
-      cambios: { presupuesto: 16, roas_objetivo: 3.2 },          // 480 al mes / 30
+      cambios: { presupuesto: 20, roas_objetivo: 3.2 },          // 600 al mes / 30
       anterior: { presupuesto: 50, roas_objetivo: 1.67 },
     }]);
   } finally { await crm.cerrar(); }
@@ -280,16 +299,20 @@ test('las ventas orgánicas y el TACOS se muestran', async () => {
   } finally { await crm.cerrar(); }
 });
 
-test('la evolución suma por segmento con la ganancia después de ads', async () => {
+test('el rendimiento por segmento dice cuánto dejó cada $100 en ads, semana a semana', async () => {
   const crm = await irAMargen();
   try {
     await crm.page.waitForSelector('#ads-evolucion-tabla');
     await esperarMargenReal(crm.page);
     // ALTO deja 400 por venta (real): 3 × 400 − 150 = 1050. MEDIO deja 100: 100 − 300 = −200.
-    await crm.page.waitForFunction(() => /1\.050/.test(document.querySelector('#ads-evolucion-tabla tr[data-segmento="alto"]')?.textContent || ''));
+    await crm.page.waitForFunction(() => /1\.050/.test(document.querySelector('#ads-evolucion-tabla tr[data-segmento="alto"] .ganancia')?.textContent || ''));
+    const alto = (await crm.page.textContent('#ads-evolucion-tabla tr[data-segmento="alto"]')).replace(/\s+/g, ' ');
+    // Cada $100 en ads dejaron 1050 / 150 × 100 = 700; por semana 1×400−100 y 2×400−50.
+    assert.match(alto, /dejaron \$700 de ganancia/);
+    assert.match(alto, /\+\$300 · \+\$750/);
     const medio = (await crm.page.textContent('#ads-evolucion-tabla tr[data-segmento="medio"]')).replace(/\s+/g, ' ');
     assert.match(medio, /-200/);
-    assert.strictEqual(await crm.page.$$eval('#ads-evolucion svg .evol-linea', l => l.length), 2);
+    assert.match(medio, /perdieron \$67/);
   } finally { await crm.cerrar(); }
 });
 

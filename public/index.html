@@ -883,6 +883,8 @@
               <option value="pct">Margen en % del precio</option>
               <option value="monto">Margen en $ por unidad</option>
             </select>
+            <span style="font-size:12px;color:var(--text-dim)">Muy alto ≥</span>
+            <input type="number" id="ads-margen-muyalto" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
             <span style="font-size:12px;color:var(--text-dim)">Alto ≥</span>
             <input type="number" id="ads-margen-alto" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
             <span style="font-size:12px;color:var(--text-dim)">Medio ≥</span>
@@ -921,24 +923,20 @@
       <!-- EVOLUCIÓN: semana a semana por segmento, desde el snapshot diario por anuncio -->
       <div class="table-wrap" style="margin-top:20px">
         <div class="table-header">
-          <span class="table-title">📈 Evolución por segmento de margen</span>
+          <span class="table-title">📊 Qué devuelve la plata de ads en cada segmento</span>
           <span style="display:flex;gap:8px;align-items:center">
-            <select id="ads-evol-metrica" onchange="pintarAdsEvolucion()" style="width:auto;padding:5px 10px;font-size:12px">
-              <option value="ganancia">Ganancia (después de ads)</option>
-              <option value="inversion">Inversión en ads</option>
-              <option value="roas">ROAS</option>
-              <option value="unidades">Unidades vendidas por ads</option>
-            </select>
             <select id="ads-evol-semanas" onchange="cargarAdsEvolucion()" style="width:auto;padding:5px 10px;font-size:12px">
-              <option value="8">8 semanas</option>
-              <option value="12" selected>12 semanas</option>
-              <option value="26">26 semanas</option>
+              <option value="4">Últimas 4 semanas</option>
+              <option value="8">Últimas 8 semanas</option>
+              <option value="12" selected>Últimas 12 semanas</option>
+              <option value="26">Últimas 26 semanas</option>
             </select>
           </span>
         </div>
         <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
-          Cada producto se cuenta en el segmento en el que está <b>hoy</b> (con los cortes de arriba). La ganancia usa lo que deja cada venta
-          (margen real si está disponible) menos lo gastado en ads. Sale del snapshot diario guardado, así que va más atrás de los 90 días de MELI.
+          Responde una pregunta: <b>¿en qué segmento rinde más poner plata en ads?</b> Para cada uno, lo invertido, lo que se vendió por los anuncios
+          y la <b>ganancia que quedó después de pagar los ads</b> (lo que deja cada venta − lo gastado). La última columna es la ganancia de cada semana,
+          de la más vieja a la más nueva, para ver si va mejorando.
         </div>
         <div id="ads-evolucion" style="padding:12px 16px 16px"></div>
       </div>
@@ -9182,9 +9180,9 @@ function pintarAdsAviso() {
     const env = eco.envios || {};
     if (env.sin_costo && env.fallback_usado > 0) {
       avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
-        🚚 <b>${env.sin_costo} de ${env.total} envíos entraron al CRM sin costo</b> (los de Mercado Envíos, que MELI liquida aparte).
-        Para que el margen no quede inflado se completaron con ${fmt(env.fallback_usado)}, el promedio de los ${env.con_costo} envíos que sí tienen costo cargado.
-        Cargá esos envíos y el ROAS de equilibrio deja de ser una estimación — o poné <b>Envío = 0</b> arriba para ver la cuenta sin ellos.
+        🚚 <b>${env.sin_costo} envíos propios (Flex o transportista) no tienen el costo cargado.</b>
+        Se completaron con ${fmt(env.fallback_usado)}, el promedio de los ${env.con_costo} que sí lo tienen.
+        Cargalos y el ROAS de equilibrio deja de ser una estimación. Los de Mercado Envíos cuentan como $0: lo que MELI cobra por ellos ya está en la comisión.
       </div>`);
     } else if (env.sin_costo && !env.fallback_usado) {
       avisos.push(`<div style="background:rgba(239,68,68,0.10);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
@@ -9203,14 +9201,19 @@ function pintarAdsAviso() {
     `<button class="btn btn-ghost btn-sm" style="padding:1px 8px;font-size:11px;margin-left:6px"
       onclick="abrirVincularAnuncio('${a.ad_group_id}'${meliId ? `, '${escHtml(meliId)}'` : ''})">🔗 Vincular</button>`;
 
+  if (t.anuncios_vinculados_auto) {
+    avisos.push(`<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">
+      🔗 Se vincularon solas ${t.anuncios_vinculados_auto} publicación(es) cuyo SKU en MELI coincide con uno del CRM.</div>`);
+  }
   if (t.anuncios_sku_sin_vincular) {
+    // Llegan acá sólo los que no se pudieron vincular solos (el MLU ya es de otro SKU).
     const lista = adsState.anuncios.filter(a => a.sku_sin_vincular).map(a => {
       const mlu = a.item_id_faltante || a.item_ids[0] || '';
       return `<li style="margin-top:4px">${escHtml(a.sku)} (${escHtml(mlu)})${botonVincular(a, mlu)}</li>`;
     }).join('');
     avisos.push(`<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
-      🔗 <b>${t.anuncios_sku_sin_vincular} anuncio(s) con SKU conocido pero MLU sin vincular.</b>
-      El producto ya está en el CRM; falta enganchar ese MLU para que el margen salga solo.
+      🔗 <b>${t.anuncios_sku_sin_vincular} anuncio(s) con SKU conocido que no se pudieron vincular solos.</b>
+      Pasa cuando ese MLU ya figura en otro producto: revisá cuál es el correcto.
       <ul style="margin:6px 0 0 18px">${lista}</ul>
     </div>`);
   }
@@ -9374,8 +9377,14 @@ function pintarAdsTabla() {
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
         const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';
         // El ACOS de equilibrio es el margen: por encima de él la venta no paga el anuncio.
+        // Verde con colchón (hasta el 80% del margen), amarillo al filo, rojo por encima.
         const acosColor = a.margen == null ? 'var(--text)' : a.acos === 0 ? 'var(--text-muted)'
-          : a.acos <= a.margen ? 'var(--green)' : 'var(--red)';
+          : a.acos <= a.margen * 0.8 ? 'var(--green)' : a.acos <= a.margen ? 'var(--yellow)' : 'var(--red)';
+        const acosTitulo = a.margen == null ? '' : a.margen <= 0
+          ? `Este producto no deja margen a ${fmt(a.precio_real)}: ningún ACOS lo hace rentable.`
+          : `ACOS ${a.acos.toFixed(1)}% contra ${a.margen.toFixed(1)}% de margen: `
+            + (a.acos <= a.margen ? `de cada $100 vendidos quedan ${(a.margen - a.acos).toFixed(1)} después de ads.`
+                                  : `cada $100 vendidos pierden ${(a.acos - a.margen).toFixed(1)} después de ads.`);
         const titulo = a.permalink
           ? `<a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(a.titulo)} ↗</a>`
           : escHtml(a.titulo);
@@ -9409,7 +9418,7 @@ function pintarAdsTabla() {
           <td style="text-align:right">${fmt(a.facturacion)}</td>
           <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
           <td style="text-align:right" title="${escHtml(beTitulo)}">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
-          <td style="text-align:right;color:${acosColor}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
+          <td style="text-align:right;color:${acosColor}" title="${escHtml(acosTitulo)}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="Gasto en ads sobre toda la facturación del producto, con la orgánica">${a.tacos ? a.tacos.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="${escHtml(beTitulo)}">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="${escHtml(cpcTitulo)}">${techo != null
@@ -9525,19 +9534,44 @@ async function confirmarVincularAnuncio() {
 // Sale de los precios y costos de Stock, no de MELI: así entran también los productos que
 // nunca se anunciaron, que son justamente los que hay que repartir entre campañas.
 const ADS_MARGEN_SEGMENTOS = {
-  alto:       { emoji: '🟢', label: 'Margen alto',  clase: 'green' },
-  medio:      { emoji: '🟡', label: 'Margen medio', clase: 'yellow' },
-  bajo:       { emoji: '🟠', label: 'Margen bajo',  clase: 'blue' },
-  sin_margen: { emoji: '⛔', label: 'Sin margen',   clase: 'red' },
-  sin_datos:  { emoji: '❓', label: 'Sin precio o costo', clase: 'purple' },
+  muy_alto:   { emoji: '🟢', label: 'Margen muy alto', clase: 'green' },
+  alto:       { emoji: '🔵', label: 'Margen alto',     clase: 'blue' },
+  medio:      { emoji: '🟡', label: 'Margen medio',    clase: 'yellow' },
+  bajo:       { emoji: '🟠', label: 'Poco margen',     clase: 'purple' },
+  sin_margen: { emoji: '⛔', label: 'Sin margen',      clase: 'red' },
+  sin_datos:  { emoji: '❓', label: 'Sin precio o costo', clase: '' },
 };
 // Cortes por defecto de cada modo. En $ no hay un número que sirva para cualquier
-// catálogo, así que se parte en tercios de lo que hay cargado.
-const ADS_MARGEN_CORTES_PCT = { alto: 40, medio: 20 };
-const ADS_MARGEN_LS = 'ads-margen-cortes';
+// catálogo, así que se parte en cuartos de lo que hay cargado. La clave del storage
+// cambió con el cuarto segmento: los cortes viejos (40/20) no aplican a esta escala.
+const ADS_MARGEN_CORTES_PCT = { muy_alto: 70, alto: 50, medio: 30 };
+const ADS_MARGEN_LS = 'ads-margen-cortes-v2';
 
+/** Los productos que entran en la segmentación: activos y publicados en MELI. */
 function adsMargenProductos() {
-  return db.productos.filter(p => !p.discontinuado);
+  return db.productos.filter(p => !p.discontinuado && tienePublicacionMeli(p));
+}
+
+/**
+ * Un producto sin publicación en MELI no se puede anunciar: los que se venden sólo en
+ * el local (repuestos chicos como los extensores) no tienen que aparecer en ningún
+ * segmento ni llevarse presupuesto.
+ */
+function tienePublicacionMeli(p) {
+  return !!(p.meliId || (p.meliIds || []).length);
+}
+
+/** Los tres cortes, en orden: si quedaron cruzados, cada uno se recorta al de arriba. */
+function adsMargenCortes() {
+  const v = id => parseFloat(document.getElementById(id)?.value) || 0;
+  const muy_alto = v('ads-margen-muyalto');
+  const alto = Math.min(v('ads-margen-alto'), muy_alto);
+  const medio = Math.min(v('ads-margen-medio'), alto);
+  return { muy_alto, alto, medio };
+}
+
+function segmentoPorValor(valor, c) {
+  return valor >= c.muy_alto ? 'muy_alto' : valor >= c.alto ? 'alto' : valor >= c.medio ? 'medio' : 'bajo';
 }
 
 /** Margen de un producto: { monto, pct } o null si falta el precio o el costo. */
@@ -9593,9 +9627,9 @@ function adsMargenCortesDefault(modo) {
   if (modo === 'pct') return { ...ADS_MARGEN_CORTES_PCT };
   const montos = adsMargenProductos().map(margenBaseDe).filter(m => m && m.monto > 0)
     .map(m => m.monto).sort((a, b) => a - b);
-  if (!montos.length) return { alto: 0, medio: 0 };
-  const tercil = q => Math.round(montos[Math.min(montos.length - 1, Math.floor(montos.length * q))]);
-  return { alto: tercil(2 / 3), medio: tercil(1 / 3) };
+  if (!montos.length) return { muy_alto: 0, alto: 0, medio: 0 };
+  const cuartil = q => Math.round(montos[Math.min(montos.length - 1, Math.floor(montos.length * q))]);
+  return { muy_alto: cuartil(3 / 4), alto: cuartil(1 / 2), medio: cuartil(1 / 4) };
 }
 
 function adsMargenLeerGuardado() {
@@ -9606,6 +9640,7 @@ function adsMargenGuardar() {
   const g = adsMargenLeerGuardado();
   g.modo = document.getElementById('ads-margen-modo').value;
   g[g.modo] = {
+    muy_alto: parseFloat(document.getElementById('ads-margen-muyalto').value) || 0,
     alto: parseFloat(document.getElementById('ads-margen-alto').value) || 0,
     medio: parseFloat(document.getElementById('ads-margen-medio').value) || 0,
   };
@@ -9615,6 +9650,7 @@ function adsMargenGuardar() {
 /** Pone en los inputs los cortes del modo elegido: los guardados, o los de por defecto. */
 function adsMargenCargarCortes(modo) {
   const c = adsMargenLeerGuardado()[modo] || adsMargenCortesDefault(modo);
+  document.getElementById('ads-margen-muyalto').value = c.muy_alto;
   document.getElementById('ads-margen-alto').value = c.alto;
   document.getElementById('ads-margen-medio').value = c.medio;
 }
@@ -9647,9 +9683,7 @@ function adsMargenFilas(opts = {}) {
   const modoEl = document.getElementById('ads-margen-modo');
   if (!modoEl) return [];
   const modo = modoEl.value;
-  // Si los cortes quedaron invertidos (medio > alto), el medio manda hasta el alto.
-  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
-  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const cortes = adsMargenCortes();
   const soloStock = !opts.todos && document.getElementById('ads-margen-stock').checked;
   const anunciados = adsSkusAnunciados();
   const vendidas = adsUnidadesMeli30();
@@ -9665,9 +9699,7 @@ function adsMargenFilas(opts = {}) {
       const valor = base ? (modo === 'pct' ? base.pct : base.monto) : null;
       const segmento = !base ? 'sin_datos'
         : base.monto <= 0 ? 'sin_margen'
-        : valor >= alto ? 'alto'
-        : valor >= medio ? 'medio'
-        : 'bajo';
+        : segmentoPorValor(valor, cortes);
       const k = String(p.sku).toUpperCase();
       return {
         sku: p.sku, nombre: p.nombre, grupo: p.grupo, precio: p.precio, costo: p.costo,
@@ -9743,7 +9775,7 @@ function adsUnidadesMeli30() {
 
 // Sólo estos segmentos llevan campaña: sin margen no hay nada que pagar con ads, y sin
 // precio o costo no se sabe.
-const ADS_SEGMENTOS_CON_CAMPANA = ['alto', 'medio', 'bajo'];
+const ADS_SEGMENTOS_CON_CAMPANA = ['muy_alto', 'alto', 'medio', 'bajo'];
 const ADS_PRESUPUESTO_LS = 'ads-presupuesto';
 
 /**
@@ -9988,13 +10020,13 @@ function pintarAdsMargen() {
     return;
   }
 
-  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
-  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const c = adsMargenCortes();
   const corte = v => modo === 'pct' ? `${v}%` : fmt(v);
   const rango = {
-    alto: `${corte(alto)} o más`,
-    medio: `${corte(medio)} a ${corte(alto)}`,
-    bajo: `menos de ${corte(medio)}`,
+    muy_alto: `${corte(c.muy_alto)} o más`,
+    alto: `${corte(c.alto)} a ${corte(c.muy_alto)}`,
+    medio: `${corte(c.medio)} a ${corte(c.alto)}`,
+    bajo: `menos de ${corte(c.medio)}`,
     sin_margen: 'el costo iguala o supera el precio',
     sin_datos: 'cargalos en Stock para clasificarlos',
   };
@@ -10023,7 +10055,10 @@ function pintarAdsMargen() {
   const equivocados = pintarAdsEquivocados(filas);
 
   const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
-  cont.innerHTML = grupos.map(g => `
+  const sinMeli = db.productos.filter(p => !p.discontinuado && !tienePublicacionMeli(p)).length;
+  cont.innerHTML = (sinMeli ? `<div id="ads-margen-sin-meli" style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
+      ${sinMeli} producto${sinMeli === 1 ? '' : 's'} sin publicación en MELI (los que se venden sólo en el local) no entran: no se pueden anunciar.</div>` : '')
+    + grupos.map(g => `
     <div style="margin-bottom:16px" data-segmento-lista="${g.k}">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px">${g.def.emoji} ${escHtml(g.def.label)}
         <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(rango[g.k])} · ${g.filas.length} producto${g.filas.length === 1 ? '' : 's'}</span></div>
@@ -10286,92 +10321,71 @@ function contribucionPorSku() {
   return mapa;
 }
 
-const ADS_EVOL_COLOR = { alto: '#22c55e', medio: '#f59e0b', bajo: '#4f8ef7', sin_margen: '#ef4444', sin_datos: '#a78bfa' };
-
 function pintarAdsEvolucion() {
   const cont = document.getElementById('ads-evolucion');
   const r = adsState.evolucion;
   if (!cont || !r) return;
   if (!r.ok) {
-    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">📈</div><p>${escHtml(r.mensaje || r.error || 'No se pudo leer el histórico.')}</p></div>`;
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><p>${escHtml(r.mensaje || r.error || 'No se pudo leer el histórico.')}</p></div>`;
     return;
   }
-  const filas = r.filas || [];
+  const filas = (r.filas || []).filter(f => f.inversion > 0 || f.unidades > 0);
   if (!filas.length) {
-    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><p>Todavía no hay gasto guardado en el snapshot diario para estas semanas.</p></div>';
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><p>Todavía no hay gasto guardado en el snapshot diario para estas semanas.</p></div>';
     return;
   }
-  const metrica = document.getElementById('ads-evol-metrica').value;
   const segDe = new Map(adsMargenFilas({ todos: true }).map(f => [String(f.sku).toUpperCase(), f.segmento]));
   const contrib = contribucionPorSku();
 
-  // semana → segmento → acumulado
   const semanas = [...new Set(filas.map(f => f.semana))].sort();
   const acc = {};
+  let fueraMeli = 0;
   for (const f of filas) {
-    const seg = segDe.get(f.sku) || 'sin_datos';
-    const t = ((acc[seg] = acc[seg] || {})[f.semana] = acc[seg][f.semana] || { inversion: 0, facturacion: 0, unidades: 0, ganancia: 0 });
+    const seg = segDe.get(f.sku);
+    if (!seg) { fueraMeli += f.inversion; continue; }
+    const t = acc[seg] || (acc[seg] = { inversion: 0, facturacion: 0, unidades: 0, antes_ads: 0, semanas: {} });
+    const deja = (contrib.get(f.sku) || 0) * f.unidades;
     t.inversion += f.inversion;
     t.facturacion += f.facturacion;
     t.unidades += f.unidades;
-    t.ganancia += (contrib.get(f.sku) || 0) * f.unidades - f.inversion;
+    t.antes_ads += deja;
+    t.semanas[f.semana] = (t.semanas[f.semana] || 0) + deja - f.inversion;
   }
   const segs = Object.keys(ADS_MARGEN_SEGMENTOS).filter(k => acc[k]);
-  const valor = (seg, sem) => {
-    const t = acc[seg]?.[sem];
-    if (!t) return metrica === 'roas' ? null : 0;
-    if (metrica === 'roas') return t.inversion > 0 ? t.facturacion / t.inversion : null;
-    return t[metrica];
-  };
-  const fmtV = v => v == null ? '—' : metrica === 'roas' ? v.toFixed(2) + 'x' : metrica === 'unidades' ? Math.round(v) : fmt(v);
+  const fmtSem = w => `${w.slice(8, 10)}/${w.slice(5, 7)}`;
 
-  // Gráfico de líneas, una por segmento
-  const W = 760, H = 220, pad = { l: 64, r: 16, t: 12, b: 28 };
-  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
-  const vals = segs.flatMap(k => semanas.map(w => valor(k, w))).filter(v => v != null);
-  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
-  const span = (max - min) || 1;
-  const x = i => pad.l + (semanas.length === 1 ? iw / 2 : iw * i / (semanas.length - 1));
-  const y = v => pad.t + ih * (max - v) / span;
-  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto" role="img" aria-label="Evolución por segmento">`;
-  for (let i = 0; i <= 4; i++) {
-    const v = min + span * i / 4;
-    svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>
-      <text x="${pad.l - 6}" y="${y(v) + 4}" font-size="10" text-anchor="end" fill="var(--text-muted)">${fmtV(v)}</text>`;
-  }
-  if (min < 0) svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--text-muted)" stroke-dasharray="3 3"/>`;
-  const cada = Math.max(1, Math.ceil(semanas.length / 8));
-  semanas.forEach((w, i) => {
-    if (i % cada && i !== semanas.length - 1) return;
-    svg += `<text x="${x(i)}" y="${H - 8}" font-size="10" text-anchor="middle" fill="var(--text-muted)">${w.slice(8, 10)}/${w.slice(5, 7)}</text>`;
-  });
-  for (const k of segs) {
-    const pts = semanas.map((w, i) => [x(i), valor(k, w)]).filter(p => p[1] != null);
-    if (!pts.length) continue;
-    svg += `<polyline class="evol-linea" data-segmento="${k}" fill="none" stroke="${ADS_EVOL_COLOR[k]}" stroke-width="2"
-      points="${pts.map(p => `${p[0]},${y(p[1])}`).join(' ')}"/>`
-      + pts.map(p => `<circle cx="${p[0]}" cy="${y(p[1])}" r="2.5" fill="${ADS_EVOL_COLOR[k]}"/>`).join('');
-  }
-  svg += '</svg>';
-
-  const total = k => {
-    const t = Object.values(acc[k] || {}).reduce((a, v) => ({
-      inversion: a.inversion + v.inversion, facturacion: a.facturacion + v.facturacion,
-      unidades: a.unidades + v.unidades, ganancia: a.ganancia + v.ganancia }), { inversion: 0, facturacion: 0, unidades: 0, ganancia: 0 });
-    return { ...t, roas: t.inversion > 0 ? t.facturacion / t.inversion : null };
-  };
-  const leyenda = segs.map(k => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">
-    <span style="width:10px;height:10px;border-radius:2px;background:${ADS_EVOL_COLOR[k]}"></span>${escHtml(ADS_MARGEN_SEGMENTOS[k].label)}</span>`).join('');
-
-  cont.innerHTML = `<div style="font-size:12px;margin-bottom:6px">${leyenda}</div>${svg}
-    <div style="overflow-x:auto;margin-top:10px"><table id="ads-evolucion-tabla">
-      <thead><tr><th style="text-align:left">Segmento</th><th>Inversión</th><th>Facturación</th><th>ROAS</th><th>Unidades</th><th>Ganancia</th></tr></thead>
-      <tbody>${segs.map(k => { const t = total(k); return `<tr data-segmento="${k}">
+  cont.innerHTML = `<div style="overflow-x:auto"><table id="ads-evolucion-tabla">
+    <thead><tr><th style="text-align:left">Segmento</th><th>Invertido en ads</th><th>Vendido por ads</th><th>ROAS</th>
+      <th title="Lo que deja cada venta (antes de ads) − lo gastado en ads">Ganancia después de ads</th>
+      <th style="text-align:left">Cada $100 en ads…</th>
+      <th style="text-align:left" title="Ganancia después de ads de cada semana, de la más vieja a la más nueva">Por semana (${fmtSem(semanas[0])} → ${fmtSem(semanas[semanas.length - 1])})</th></tr></thead>
+    <tbody>${segs.map(k => {
+      const t = acc[k];
+      const ganancia = t.antes_ads - t.inversion;
+      const roas = t.inversion > 0 ? t.facturacion / t.inversion : null;
+      const por100 = t.inversion > 0 ? ganancia / t.inversion * 100 : null;
+      const veredicto = por100 == null ? '—'
+        : por100 >= 0 ? `<span style="color:var(--green)">dejaron <b>${fmt(por100)}</b> de ganancia</span>`
+        : `<span style="color:var(--red)">perdieron <b>${fmt(-por100)}</b></span>`;
+      const serie = semanas.map(w => {
+        const v = t.semanas[w];
+        return v == null ? '<span style="color:var(--text-muted)">—</span>'
+          : `<span style="color:${v >= 0 ? 'var(--green)' : 'var(--red)'}">${v >= 0 ? '+' : '−'}${fmt(Math.abs(v))}</span>`;
+      }).join(' · ');
+      return `<tr data-segmento="${k}">
         <td style="text-align:left">${ADS_MARGEN_SEGMENTOS[k].emoji} ${escHtml(ADS_MARGEN_SEGMENTOS[k].label)}</td>
-        <td>${fmt(t.inversion)}</td><td>${fmt(t.facturacion)}</td><td>${t.roas != null ? t.roas.toFixed(2) + 'x' : '—'}</td>
-        <td>${t.unidades}</td><td style="font-weight:600;color:${t.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(t.ganancia)}</td></tr>`; }).join('')}
-      </tbody></table></div>
-    ${r.inversion_sin_sku > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">${fmt(r.inversion_sin_sku)} de gasto en anuncios sin SKU vinculado no entra en ningún segmento.</div>` : ''}`;
+        <td>${fmt(t.inversion)}</td>
+        <td>${fmt(t.facturacion)} <span style="color:var(--text-muted);font-size:11px">· ${t.unidades} u</span></td>
+        <td>${roas != null ? roas.toFixed(2) + 'x' : '—'}</td>
+        <td class="ganancia" style="font-weight:600;color:${ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(ganancia)}</td>
+        <td style="text-align:left;font-size:12px">${veredicto}</td>
+        <td style="text-align:left;font-size:12px;white-space:nowrap">${serie}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>
+    ${r.inversion_sin_sku > 0 || fueraMeli > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+      ${r.inversion_sin_sku > 0 ? `${fmt(r.inversion_sin_sku)} de gasto en anuncios sin SKU vinculado` : ''}${r.inversion_sin_sku > 0 && fueraMeli > 0 ? ' y ' : ''}${fueraMeli > 0 ? `${fmt(fueraMeli)} en productos descatalogados o sin publicación` : ''}
+      no entran en ningún segmento.</div>` : ''}
+    ${semanas.length < 4 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">El histórico guardado arranca el ${fmtSem(semanas[0])}: con más semanas la comparación se vuelve más confiable.</div>` : ''}`;
 }
 
 // ── CAMBIOS Y SU EFECTO ──────────────────────────────────────────────────────────────

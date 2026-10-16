@@ -23,6 +23,7 @@
 const { getSupabase } = require('../_supabase');
 const { getAdsContext, adsGet, resolverRango, enLotes, API } = require('./_adsClient');
 const { cargarEconomia, deSku, contribucionUnitaria } = require('./_economia');
+const { parseMeliIds, meliIdsDe } = require('../_meliIds');
 
 // Este endpoint toma las métricas en MAYÚSCULAS (los de campaña, en minúsculas).
 const METRICS_AD_GROUP = [
@@ -300,11 +301,13 @@ module.exports = async (req, res) => {
       // ROAS y el número con el que MELI configura las campañas por objetivo.
       const acos = facturacion > 0 ? (inversion / facturacion) * 100 : 0;
 
-      // Precio realmente cobrado: la facturación atribuida sobre las unidades vendidas.
-      // Cae por debajo del precio de lista cuando hubo descuento, que es lo que importa
-      // para el margen. Sin ventas en el período, se usa el precio de la publicación.
+      // El precio con el que se arma el margen es el de la publicación, NO la facturación
+      // atribuida sobre las unidades. MELI le atribuye al anuncio también las ventas
+      // indirectas (el comprador entró por el anuncio y se llevó otro producto), así que
+      // facturación ÷ unidades mezcla precios de otros artículos: un manillar de $1.190
+      // salía a $656 y con margen negativo, y pintaba de rojo un ACOS de 7%.
       const precioPublicado = num(ads[0]?.price) || num(producto?.precio);
-      const precioReal = unidades > 0 && facturacion > 0 ? facturacion / unidades : precioPublicado;
+      const precioReal = precioPublicado;
 
       const fila = {
         ad_group_id: String(g.id),
@@ -359,6 +362,7 @@ module.exports = async (req, res) => {
             // El producto existe en el CRM: falta el MLU en productos.meli_ids.
             f.sku = p.sku;
             f.costo = num(p.costo);
+            if (!(f.precio_real > 0)) f.precio_real = f.precio_publicado = r2(num(p.precio));
             f.sku_sin_vincular = true;
             f.item_id_faltante = itemId;
           }
@@ -366,10 +370,35 @@ module.exports = async (req, res) => {
         }
       });
 
+      // Vincular solos los que aparecieron por SKU. El SKU que el vendedor cargó en la
+      // publicación coincide exacto con uno del CRM: no hay nada que decidir, y pedirlo
+      // uno por uno eran decenas de clicks (cada variante de un FAMILY es un MLU aparte).
+      // Se hace por SKU y en serie: dos variantes del mismo producto en paralelo se pisarían
+      // la lista de meli_ids. Si el trigger lo rechaza (el MLU ya es de otro SKU), queda
+      // en la lista para resolverlo a mano.
+      const porSkuFaltantes = new Map();
+      for (const f of huerfanos) {
+        if (!f.sku_sin_vincular || !f.item_id_faltante) continue;
+        if (!porSkuFaltantes.has(f.sku)) porSkuFaltantes.set(f.sku, []);
+        porSkuFaltantes.get(f.sku).push(f);
+      }
+      for (const [sku, suyas] of porSkuFaltantes) {
+        const p = porSku.get(String(sku).toUpperCase());
+        const nuevos = parseMeliIds([...meliIdsDe(p), ...suyas.map(f => f.item_id_faltante)]);
+        const { error } = await supabase.from('productos').update({ meli_ids: nuevos }).eq('sku', sku);
+        for (const f of suyas) {
+          if (error) { f.vinculo_error = error.message; continue; }
+          f.sku_sin_vincular = false;
+          f.sin_vincular = false;
+          f.vinculado_auto = true;
+        }
+        if (!error) p.meli_ids = nuevos;
+      }
+
       // Recalcular la economía de los que aparecieron por SKU: ahora que tienen costo,
       // la misma cuenta que el resto.
       for (const f of huerfanos) {
-        if (!f.sku_sin_vincular || !f.precio_real) continue;
+        if (!(f.sku_sin_vincular || f.vinculado_auto) || !f.precio_real) continue;
         aplicarEconomia(f);
       }
     }
@@ -437,6 +466,7 @@ module.exports = async (req, res) => {
       anuncios_con_costo: conCosto.length,
       anuncios_sin_vincular: filas.filter(f => f.sin_vincular && !f.sku_sin_vincular).length,
       anuncios_sku_sin_vincular: filas.filter(f => f.sku_sin_vincular).length,
+      anuncios_vinculados_auto: filas.filter(f => f.vinculado_auto).length,
       truncado: truncado ? { mostrados: filas.length, total } : null,
       // La conversión que se usa de referencia para los anuncios que todavía no vendieron.
       cvr_campana: r2(cvrCampana),

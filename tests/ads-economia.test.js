@@ -96,32 +96,38 @@ test('un envío que cubre un carrito se reparte entre sus ventas, no se cobra do
   assert.strictEqual(deSku(eco, 'AAA').envio_unitario, 100);
 });
 
-test('los envíos sin costo cargado se completan con el promedio de los que sí lo tienen', async () => {
+test('un envío propio sin costo se completa con el promedio; Mercado Envíos en 0 no', async () => {
   const tablas = {
     ventas: [
       { id: 'V1', sku: 'AAA', cantidad: 1, total: 1000, comision: 150, canal: 'meli', estado: 'pagada', fecha: hoy },
       { id: 'V2', sku: 'AAA', cantidad: 1, total: 1000, comision: 150, canal: 'meli', estado: 'pagada', fecha: hoy },
       { id: 'V3', sku: 'AAA', cantidad: 1, total: 1000, comision: 150, canal: 'meli', estado: 'pagada', fecha: hoy },
+      { id: 'V4', sku: 'AAA', cantidad: 1, total: 1000, comision: 150, canal: 'meli', estado: 'pagada', fecha: hoy },
     ],
     envios: [
       { id: 'E1', venta_id: 'V1', costo: 200, transportista: 'enviosuy' },
       { id: 'E2', venta_id: 'V2', costo: 200, transportista: 'gestionpost' },
-      // El caso real: Mercado Envíos entra al CRM en 0 porque MELI lo liquida aparte.
-      { id: 'E3', venta_id: 'V3', costo: 0, transportista: 'mercado_envios' },
+      // Flex despachado y todavía sin costo cargado: es un dato que falta.
+      { id: 'E3', venta_id: 'V3', costo: 0, transportista: 'enviosuy' },
+      // Mercado Envíos: el 0 es real. Lo que MELI cobra ya está en la comisión (total − neto
+      // recibido), y con las ventas reales su comisión es igual a la de Flex. Antes se
+      // completaba con el promedio y le sumaba ~$200 inexistentes a la mitad de las ventas.
+      { id: 'E4', venta_id: 'V4', costo: 0, transportista: 'mercado_envios' },
     ],
   };
 
   const auto = await cargarEconomia(fakeSupabase(tablas), {});
   assert.strictEqual(auto.envios.promedio_real, 200);
-  assert.strictEqual(auto.envios.sin_costo, 1);
+  assert.strictEqual(auto.envios.sin_costo, 1, 'sólo el propio cuenta como faltante');
+  assert.strictEqual(auto.envios.mercado_envios, 1);
   assert.strictEqual(auto.envios.estimados, 1);
-  // Las tres ventas pagan 200: las dos medidas y la completada.
-  assert.strictEqual(auto.global.envio_unitario, 200);
+  // 200 + 200 + 200 (estimado) + 0 (Mercado Envíos) sobre 4 unidades.
+  assert.strictEqual(auto.global.envio_unitario, 150);
 
-  // Con envio: 0 se ve la cuenta sin completar nada, y el margen queda sobrestimado.
+  // Con envio: 0 no se completa nada.
   const crudo = await cargarEconomia(fakeSupabase(tablas), { envio: 0 });
   assert.strictEqual(crudo.envios.fallback_usado, 0);
-  assert.ok(crudo.global.envio_unitario < auto.global.envio_unitario);
+  assert.strictEqual(crudo.global.envio_unitario, 100);
 });
 
 test('un SKU con una sola venta usa su comisión pero el envío del promedio', async () => {

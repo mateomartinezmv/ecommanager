@@ -132,6 +132,20 @@ function mockearApi(page, estado, fallos = {}) {
       }
       if (ruta === '/meli/ads-anuncios' && estado.adsAnuncios) return ok(estado.adsAnuncios);
       if (ruta === '/meli/ads-recomendaciones' && estado.adsReco) return ok(estado.adsReco);
+      if (ruta === '/meli/ads-economia' && estado.adsEconomia) return ok(estado.adsEconomia);
+      if (ruta === '/meli/ads-evolucion' && estado.adsEvolucion) return ok(estado.adsEvolucion);
+      // Lo que la pantalla manda a aplicar en MELI se guarda para verificar el cuerpo exacto.
+      if (ruta === '/meli/ads-acciones' && metodo === 'POST') {
+        (estado.adsAcciones = estado.adsAcciones || []).push(cuerpo);
+        return ok({ ok: true, enviado: cuerpo, registrado: true });
+      }
+      if (ruta === '/meli/ads-cambios') {
+        if (metodo === 'POST') {
+          (estado.adsCambiosManuales = estado.adsCambiosManuales || []).push(cuerpo);
+          return ok({ ok: true });
+        }
+        if (estado.adsCambios) return ok(estado.adsCambios);
+      }
       return ok({ ok: true, total_spend: 0, dias_con_datos: 0 });
     }
 

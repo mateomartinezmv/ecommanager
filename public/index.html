@@ -826,6 +826,17 @@
     <div class="content">
       <div class="cards-grid" id="ads-stats"></div>
       <div id="ads-aviso" style="margin-bottom:16px"></div>
+
+      <!-- CAMPAÑAS: cómo está configurada cada una en MELI (presupuesto, ROAS objetivo) contra
+           lo que necesita para no perder plata, y los botones para cambiarla desde acá. -->
+      <div class="table-wrap" style="margin-bottom:20px">
+        <div class="table-header">
+          <span class="table-title">🗂️ Campañas y su configuración</span>
+          <span style="font-size:11px;color:var(--text-muted)">ROAS objetivo = el que tiene cargado MELI (100 ÷ ACOS objetivo) · equilibrio = por debajo, cada venta pierde plata</span>
+        </div>
+        <div id="ads-campanas-tabla"></div>
+      </div>
+
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">📣 Anuncios de la campaña</span>
@@ -854,6 +865,111 @@
         </div>
         <div id="ads-reco-chips" style="padding:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
         <div id="ads-reco-lista" style="padding:12px 16px 16px"></div>
+      </div>
+
+      <!-- POR MARGEN: el catálogo partido por margen (precio − costo), para armar una
+           campaña por segmento con su propio ROAS objetivo. No depende de MELI: sale de
+           los precios y costos cargados en Stock. -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header">
+          <span class="table-title">💰 Productos por margen</span>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="ads-margen-base" onchange="onAdsMargenBase()" style="width:auto;padding:5px 10px;font-size:12px"
+              title="Bruto = precio − costo. Real = además descuenta la comisión y el envío que MELI te cobra en las ventas de ese SKU.">
+              <option value="bruto">Margen bruto (precio − costo)</option>
+              <option value="real">Margen real (− comisión − envío)</option>
+            </select>
+            <select id="ads-margen-modo" onchange="onAdsMargenModo()" style="width:auto;padding:5px 10px;font-size:12px">
+              <option value="pct">Margen en % del precio</option>
+              <option value="monto">Margen en $ por unidad</option>
+            </select>
+            <span style="font-size:12px;color:var(--text-dim)">Alto ≥</span>
+            <input type="number" id="ads-margen-alto" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
+            <span style="font-size:12px;color:var(--text-dim)">Medio ≥</span>
+            <input type="number" id="ads-margen-medio" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
+            <label style="font-size:12px;color:var(--text-dim);display:flex;gap:4px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="ads-margen-stock" checked onchange="pintarAdsMargen()" style="width:auto"> Sólo con stock
+            </label>
+            <button class="btn btn-ghost btn-sm" onclick="exportMargenCSV()">📊 CSV</button>
+          </span>
+        </div>
+        <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
+          Margen bruto = <b>precio de venta − costo</b>, con lo cargado en Stock. El <b>real</b> descuenta además la comisión y el envío
+          medidos sobre tus ventas de cada SKU: es el que dice cuánto podés pagar por una venta traída con ads.
+          La idea es armar una campaña por segmento: a más margen, más se puede pagar por clic y más bajo puede ser el ROAS objetivo.
+          📣 = tiene un anuncio activo en lo que está cargado arriba.
+        </div>
+        <div id="ads-margen-resumen" class="cards-grid" style="padding:12px 16px 0"></div>
+        <!-- Reparto del presupuesto entre las campañas por segmento -->
+        <div style="margin:0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2)">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600">💸 Presupuesto mensual para ads</span>
+            <input type="number" id="ads-presupuesto" min="0" step="500" placeholder="ej. 15000" style="width:130px;padding:6px 10px" oninput="onAdsPresupuesto()">
+            <span id="ads-presupuesto-diario" style="font-size:12px;color:var(--text-muted)"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+            Se reparte por la <b>ganancia que deja cada segmento</b>: margen $ × unidades vendidas en MELI en los últimos 30 días
+            (los que no vendieron cuentan como 1, para que tengan algo con qué probar). Ningún segmento recibe más de lo que deja
+            de margen en el mes: pasado eso, el anuncio cuesta más de lo que gana, y lo que sobra pasa a los otros.
+          </div>
+          <div id="ads-presupuesto-reparto" style="margin-top:10px"></div>
+        </div>
+        <div id="ads-margen-equivocados" style="padding:12px 16px 0"></div>
+        <div id="ads-margen-lista" style="padding:12px 16px 16px"></div>
+      </div>
+
+      <!-- EVOLUCIÓN: semana a semana por segmento, desde el snapshot diario por anuncio -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header">
+          <span class="table-title">📈 Evolución por segmento de margen</span>
+          <span style="display:flex;gap:8px;align-items:center">
+            <select id="ads-evol-metrica" onchange="pintarAdsEvolucion()" style="width:auto;padding:5px 10px;font-size:12px">
+              <option value="ganancia">Ganancia (después de ads)</option>
+              <option value="inversion">Inversión en ads</option>
+              <option value="roas">ROAS</option>
+              <option value="unidades">Unidades vendidas por ads</option>
+            </select>
+            <select id="ads-evol-semanas" onchange="cargarAdsEvolucion()" style="width:auto;padding:5px 10px;font-size:12px">
+              <option value="8">8 semanas</option>
+              <option value="12" selected>12 semanas</option>
+              <option value="26">26 semanas</option>
+            </select>
+          </span>
+        </div>
+        <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
+          Cada producto se cuenta en el segmento en el que está <b>hoy</b> (con los cortes de arriba). La ganancia usa lo que deja cada venta
+          (margen real si está disponible) menos lo gastado en ads. Sale del snapshot diario guardado, así que va más atrás de los 90 días de MELI.
+        </div>
+        <div id="ads-evolucion" style="padding:12px 16px 16px"></div>
+      </div>
+
+      <!-- CAMBIOS: lo que se tocó en las campañas y qué pasó después -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header">
+          <span class="table-title">🕓 Cambios y su efecto</span>
+          <span style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-ghost btn-sm" onclick="toggleFormCambio()">➕ Registrar cambio hecho en MELI</button>
+            <button class="btn btn-ghost btn-sm" onclick="cargarAdsCambios()">🔄</button>
+          </span>
+        </div>
+        <div id="ads-cambio-form" style="display:none;padding:12px 16px 0;gap:8px;flex-wrap:wrap;align-items:center">
+          <select id="ads-cambio-campana" style="width:auto;padding:5px 10px;font-size:12px"></select>
+          <select id="ads-cambio-campo" style="width:auto;padding:5px 10px;font-size:12px">
+            <option value="presupuesto">Presupuesto diario</option>
+            <option value="roas_objetivo">ROAS objetivo</option>
+            <option value="estado">Estado (active / paused)</option>
+          </select>
+          <input id="ads-cambio-anterior" placeholder="antes" style="width:90px;padding:5px 8px;font-size:12px">
+          <span style="color:var(--text-muted)">→</span>
+          <input id="ads-cambio-nuevo" placeholder="después" style="width:90px;padding:5px 8px;font-size:12px">
+          <input type="date" id="ads-cambio-fecha" style="width:150px;padding:5px 8px;font-size:12px">
+          <input id="ads-cambio-nota" placeholder="nota (opcional)" style="width:180px;padding:5px 8px;font-size:12px">
+          <button class="btn btn-sm" onclick="guardarCambioManual()">Guardar</button>
+        </div>
+        <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
+          Compara las 2 semanas antes de cada cambio contra las 2 de después, por día. Los cambios aplicados desde esta pestaña se registran solos.
+        </div>
+        <div id="ads-cambios" style="padding:12px 16px 16px"></div>
       </div>
     </div>
   </div>
@@ -8561,15 +8677,19 @@ const ADS_COLUMNAS = [
   { campo: 'cpc',            label: 'CPC' },
   { campo: 'inversion',      label: 'Inversión' },
   { campo: 'unidades',       label: 'Vtas' },
+  { campo: 'unidades_organicas', label: 'Orgán.' },
   { campo: 'facturacion',    label: 'Facturación' },
   { campo: 'roas',           label: 'ROAS' },
   { campo: 'roas_breakeven', label: 'ROAS BE' },
   { campo: 'acos',           label: 'ACOS' },
+  { campo: 'tacos',          label: 'TACOS' },
   { campo: 'margen',         label: 'Margen' },
   { campo: 'cpc_max',        label: 'CPC máx' },
   { campo: 'ganancia',       label: 'Ganancia' },
   { campo: 'estado',         label: 'Estado', tipo: 'texto', align: 'center' },
 ];
+// TACOS = gasto en ads sobre TODA la facturación del producto (ads + orgánica). Si sube
+// mientras el ACOS no se mueve, las ventas orgánicas se están corriendo a ads.
 
 function adsRango() {
   const periodo = document.getElementById('ads-periodo').value;
@@ -8598,6 +8718,13 @@ function onAdsPeriodoChange() {
 
 async function renderAds(forzar = false) {
   const sel = document.getElementById('ads-campana');
+  // No espera a MELI: sale de Stock, así que se ve aunque Ads no responda.
+  pintarAdsMargen();
+  // En paralelo y sin bloquear: la economía por SKU (margen real), el histórico semanal y
+  // los cambios registrados. Ninguno depende de la campaña elegida.
+  cargarAdsEconomia(forzar);
+  if (!adsState.evolucion || forzar) cargarAdsEvolucion();
+  if (!adsState.cambios || forzar) cargarAdsCambios();
 
   if (!adsState.campanasCargadas || forzar) {
     sel.innerHTML = '<option value="">Cargando campañas...</option>';
@@ -8625,6 +8752,7 @@ async function renderAds(forzar = false) {
         `<option value="${c.id}">${escHtml(c.nombre)} — ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</option>`
       ).join('') || '<option value="">Sin campañas</option>';
       if (previa && adsState.campanas.some(c => c.id === previa)) sel.value = previa;
+      pintarAdsCampanas();
     } catch (e) {
       sel.innerHTML = '<option value="">—</option>';
       document.getElementById('ads-tabla').innerHTML =
@@ -8672,6 +8800,9 @@ async function renderAdsAnuncios() {
     pintarAdsStats();
     pintarAdsAviso();
     pintarAdsTabla();
+    pintarAdsMargen();
+    pintarAdsCampanas();
+    pintarAdsEvolucion();
   } catch (e) {
     tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   }
@@ -8726,6 +8857,7 @@ async function renderAdsRecomendaciones(forzar = false) {
     const r = await api('GET', `/meli/ads-recomendaciones?${adsRango()}`);
     adsState.reco = r;
     pintarReco();
+    pintarAdsMargen();
   } catch (e) {
     cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   } finally {
@@ -8979,7 +9111,28 @@ function pintarAdsStats() {
     <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${c.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${c.impresiones.toLocaleString('es-AR')} impresiones</div></div>
     <div class="stat-card ${gananciaClase}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
     ${beCard}
+    ${organicaCard()}
   `;
+}
+
+/**
+ * Cuánto de lo vendido llegó sin pasar por el anuncio, y el TACOS de lo que se ve.
+ * Si las orgánicas son la mayor parte, el ROAS de los ads se está llevando el mérito de
+ * ventas que igual iban a pasar.
+ */
+function organicaCard() {
+  const an = adsState.anuncios || [];
+  const org = an.reduce((s, a) => s + (a.unidades_organicas || 0), 0);
+  const ads = an.reduce((s, a) => s + (a.unidades || 0), 0);
+  if (!org && !ads) return '';
+  const factOrg = an.reduce((s, a) => s + (a.facturacion_organica || 0), 0);
+  const factAds = an.reduce((s, a) => s + (a.facturacion || 0), 0);
+  const inv = an.reduce((s, a) => s + (a.inversion || 0), 0);
+  const tacos = factAds + factOrg > 0 ? inv / (factAds + factOrg) * 100 : null;
+  const pctOrg = (org / (org + ads)) * 100;
+  return `<div class="stat-card blue" id="ads-card-organica"><div class="stat-icon">🌱</div>
+    <div class="stat-value">${org}</div>
+    <div class="stat-label">Ventas orgánicas de estos productos (${pctOrg.toFixed(0)}% del total)${tacos != null ? ` · TACOS ${tacos.toFixed(1)}%` : ''}</div></div>`;
 }
 
 function pintarAdsAviso() {
@@ -9157,7 +9310,7 @@ function pintarAdsTabla() {
 
   document.getElementById('ads-tabla').innerHTML = `
     <table>
-      <thead><tr>${ADS_COLUMNAS.map(th).join('')}</tr></thead>
+      <thead><tr>${ADS_COLUMNAS.map(th).join('')}<th></th></tr></thead>
       <tbody>${filas.map(a => {
         const be = a.roas_breakeven;
         // CPC e inversión son las dos señales que NO dependen de haber vendido: sirven
@@ -9252,16 +9405,20 @@ function pintarAdsTabla() {
           <td style="text-align:right;font-weight:600;color:${cpcColor}" title="${escHtml(cpcTitulo)}">${fmt(a.cpc)}</td>
           <td style="text-align:right;font-weight:600;color:${inversionColor}" title="${escHtml(inversionTitulo)}">${fmt(a.inversion)}</td>
           <td style="text-align:right">${a.unidades}</td>
+          <td style="text-align:right;color:var(--text-muted)" title="Ventas que llegaron sin pasar por el anuncio${a.facturacion_organica ? ': ' + fmt(a.facturacion_organica) : ''}">${a.unidades_organicas ?? 0}</td>
           <td style="text-align:right">${fmt(a.facturacion)}</td>
           <td style="text-align:right;font-weight:600;color:${roasColor}">${a.roas.toFixed(2)}x</td>
           <td style="text-align:right" title="${escHtml(beTitulo)}">${be != null ? be.toFixed(2) + 'x' : '—'}</td>
           <td style="text-align:right;color:${acosColor}">${a.facturacion > 0 ? a.acos.toFixed(1) + '%' : '—'}</td>
+          <td style="text-align:right" title="Gasto en ads sobre toda la facturación del producto, con la orgánica">${a.tacos ? a.tacos.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="${escHtml(beTitulo)}">${a.margen != null ? a.margen.toFixed(1) + '%' : '—'}</td>
           <td style="text-align:right" title="${escHtml(cpcTitulo)}">${techo != null
             ? (a.cpc_max_es_estimado ? `<span style="color:var(--text-muted)">~${fmt(techo)}</span>` : fmt(techo))
             : '—'}</td>
           <td style="text-align:right;font-weight:600;color:${a.ganancia == null ? 'var(--text-muted)' : a.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${a.ganancia != null ? fmt(a.ganancia) : '—'}</td>
           <td style="text-align:center">${semaforo[a.estado] || ''}</td>
+          <td style="text-align:center"><button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" data-accion-anuncio="${a.ad_group_id}"
+            title="${pausado ? 'Reactivar' : 'Pausar'} este anuncio en MELI" onclick="accionAnuncio('${a.ad_group_id}')">${pausado ? '▶️' : '⏸️'}</button></td>
         </tr>`;
       }).join('')}</tbody>
       ${pieAdsTabla(filas)}
@@ -9286,13 +9443,16 @@ function pieAdsTabla(filas) {
     <td style="text-align:right">${clics > 0 ? fmt(inv / clics) : '—'}</td>
     <td style="text-align:right">${fmt(inv)}</td>
     <td style="text-align:right">${s('unidades')}</td>
+    <td style="text-align:right;color:var(--text-muted)">${s('unidades_organicas')}</td>
     <td style="text-align:right">${fmt(fact)}</td>
     <td style="text-align:right">${inv > 0 ? (fact / inv).toFixed(2) + 'x' : '—'}</td>
     <td></td>
     <td style="text-align:right">${fact > 0 ? ((inv / fact) * 100).toFixed(1) + '%' : '—'}</td>
+    <td style="text-align:right">${fact + s('facturacion_organica') > 0 ? ((inv / (fact + s('facturacion_organica'))) * 100).toFixed(1) + '%' : '—'}</td>
     <td></td>
     <td></td>
     <td style="text-align:right;color:${ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${conCosto.length ? fmt(ganancia) : '—'}</td>
+    <td></td>
     <td></td>
   </tr></tfoot>`;
 }
@@ -9354,6 +9514,955 @@ async function confirmarVincularAnuncio() {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Vincular';
+  }
+}
+
+// ── PRODUCTOS POR MARGEN ─────────────────────────────────────────────────────────────
+// Parte el catálogo por margen (precio − costo) para anunciar cada tramo en su propia
+// campaña: un ROAS objetivo pensado para un producto de 60% de margen hace perder plata en
+// uno de 20%, y uno pensado para el de 20% deja sin alcance al de 60%.
+//
+// Sale de los precios y costos de Stock, no de MELI: así entran también los productos que
+// nunca se anunciaron, que son justamente los que hay que repartir entre campañas.
+const ADS_MARGEN_SEGMENTOS = {
+  alto:       { emoji: '🟢', label: 'Margen alto',  clase: 'green' },
+  medio:      { emoji: '🟡', label: 'Margen medio', clase: 'yellow' },
+  bajo:       { emoji: '🟠', label: 'Margen bajo',  clase: 'blue' },
+  sin_margen: { emoji: '⛔', label: 'Sin margen',   clase: 'red' },
+  sin_datos:  { emoji: '❓', label: 'Sin precio o costo', clase: 'purple' },
+};
+// Cortes por defecto de cada modo. En $ no hay un número que sirva para cualquier
+// catálogo, así que se parte en tercios de lo que hay cargado.
+const ADS_MARGEN_CORTES_PCT = { alto: 40, medio: 20 };
+const ADS_MARGEN_LS = 'ads-margen-cortes';
+
+function adsMargenProductos() {
+  return db.productos.filter(p => !p.discontinuado);
+}
+
+/** Margen de un producto: { monto, pct } o null si falta el precio o el costo. */
+function margenDe(p) {
+  const precio = parseFloat(p.precio) || 0;
+  const costo = parseFloat(p.costo) || 0;
+  if (precio <= 0 || costo <= 0) return null;
+  const monto = precio - costo;
+  return { monto, pct: monto / precio * 100 };
+}
+
+/**
+ * Margen real: además del costo, descuenta la comisión y el envío por unidad medidos sobre
+ * las ventas del SKU (los mismos que usa la tabla de anuncios). null si todavía no llegó la
+ * economía o si falta precio/costo.
+ */
+function margenRealDe(p) {
+  const m = margenDe(p);
+  const eco = adsState.economia?.por_sku;
+  if (!m || !eco) return null;
+  const e = eco[String(p.sku).toUpperCase()] || adsState.economia.global_eco;
+  if (!e) return null;
+  const precio = parseFloat(p.precio);
+  const comision = precio * (parseFloat(e.comision_pct) || 0) / 100;
+  const envio = parseFloat(e.envio_unitario) || 0;
+  const monto = m.monto - comision - envio;
+  return {
+    monto, pct: monto / precio * 100, comision, envio, comision_pct: e.comision_pct, fuente: e.fuente,
+    // Por debajo de este ROAS cada venta traída con ads pierde plata.
+    roas_be: monto > 0 ? precio / monto : null,
+  };
+}
+
+/** El margen con el que se segmenta: el bruto, o el real si se eligió y ya está disponible. */
+function adsMargenBaseReal() {
+  return document.getElementById('ads-margen-base')?.value === 'real' && !!adsState.economia?.por_sku;
+}
+function margenBaseDe(p) {
+  return adsMargenBaseReal() ? margenRealDe(p) : margenDe(p);
+}
+
+function onAdsMargenBase() {
+  const g = adsMargenLeerGuardado();
+  g.base = document.getElementById('ads-margen-base').value;
+  try { localStorage.setItem(ADS_MARGEN_LS, JSON.stringify(g)); } catch (e) { /* sin storage */ }
+  // En $ los tercios dependen de la base: se recalculan si no había cortes guardados.
+  if (document.getElementById('ads-margen-modo').value === 'monto' && !g.monto) adsMargenCargarCortes('monto');
+  pintarAdsMargen();
+  pintarAdsEvolucion();
+}
+
+function adsMargenCortesDefault(modo) {
+  if (modo === 'pct') return { ...ADS_MARGEN_CORTES_PCT };
+  const montos = adsMargenProductos().map(margenBaseDe).filter(m => m && m.monto > 0)
+    .map(m => m.monto).sort((a, b) => a - b);
+  if (!montos.length) return { alto: 0, medio: 0 };
+  const tercil = q => Math.round(montos[Math.min(montos.length - 1, Math.floor(montos.length * q))]);
+  return { alto: tercil(2 / 3), medio: tercil(1 / 3) };
+}
+
+function adsMargenLeerGuardado() {
+  try { return JSON.parse(localStorage.getItem(ADS_MARGEN_LS) || '{}') || {}; } catch (e) { return {}; }
+}
+
+function adsMargenGuardar() {
+  const g = adsMargenLeerGuardado();
+  g.modo = document.getElementById('ads-margen-modo').value;
+  g[g.modo] = {
+    alto: parseFloat(document.getElementById('ads-margen-alto').value) || 0,
+    medio: parseFloat(document.getElementById('ads-margen-medio').value) || 0,
+  };
+  try { localStorage.setItem(ADS_MARGEN_LS, JSON.stringify(g)); } catch (e) { /* sin storage: sólo no se recuerda */ }
+}
+
+/** Pone en los inputs los cortes del modo elegido: los guardados, o los de por defecto. */
+function adsMargenCargarCortes(modo) {
+  const c = adsMargenLeerGuardado()[modo] || adsMargenCortesDefault(modo);
+  document.getElementById('ads-margen-alto').value = c.alto;
+  document.getElementById('ads-margen-medio').value = c.medio;
+}
+
+function onAdsMargenModo() {
+  adsMargenCargarCortes(document.getElementById('ads-margen-modo').value);
+  adsMargenGuardar();
+  pintarAdsMargen();
+}
+
+function onAdsMargenCortes() {
+  adsMargenGuardar();
+  pintarAdsMargen();
+}
+
+/** SKUs con un anuncio activo, según lo que ya cargó la pestaña (anuncios + recomendaciones). */
+function adsSkusAnunciados() {
+  const skus = new Set();
+  for (const a of adsState.anuncios || []) {
+    if (a.sku && String(a.status || '').toUpperCase() === 'ACTIVE') skus.add(String(a.sku).toUpperCase());
+  }
+  for (const x of adsState.reco?.recomendaciones || []) {
+    if (x.sku && x.anunciado) skus.add(String(x.sku).toUpperCase());
+  }
+  return skus;
+}
+
+/** Cada producto con su margen y su segmento, ordenado de mayor a menor margen. */
+function adsMargenFilas(opts = {}) {
+  const modoEl = document.getElementById('ads-margen-modo');
+  if (!modoEl) return [];
+  const modo = modoEl.value;
+  // Si los cortes quedaron invertidos (medio > alto), el medio manda hasta el alto.
+  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
+  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const soloStock = !opts.todos && document.getElementById('ads-margen-stock').checked;
+  const anunciados = adsSkusAnunciados();
+  const vendidas = adsUnidadesMeli30();
+  const campanasDe = adsCampanasPorSku();
+  const usarReal = adsMargenBaseReal();
+
+  return adsMargenProductos()
+    .filter(p => !soloStock || (p.stockDep || 0) > 0)
+    .map(p => {
+      const m = margenDe(p);
+      const real = margenRealDe(p);
+      const base = usarReal ? real : m;
+      const valor = base ? (modo === 'pct' ? base.pct : base.monto) : null;
+      const segmento = !base ? 'sin_datos'
+        : base.monto <= 0 ? 'sin_margen'
+        : valor >= alto ? 'alto'
+        : valor >= medio ? 'medio'
+        : 'bajo';
+      const k = String(p.sku).toUpperCase();
+      return {
+        sku: p.sku, nombre: p.nombre, grupo: p.grupo, precio: p.precio, costo: p.costo,
+        stock: p.stockDep || 0,
+        unidades_30d: vendidas.get(k) || 0,
+        margen: m ? m.monto : null, margen_pct: m ? m.pct : null,
+        margen_real: real ? real.monto : null, margen_real_pct: real ? real.pct : null,
+        roas_be: real ? real.roas_be : null,
+        // El margen con el que se segmenta y se reparte el presupuesto.
+        margen_base: base ? base.monto : null, margen_base_pct: base ? base.pct : null,
+        segmento, anunciado: anunciados.has(k),
+        campanas: campanasDe.get(k) || [],
+      };
+    })
+    .sort((a, b) => (b[modo === 'pct' ? 'margen_base_pct' : 'margen_base'] ?? -Infinity)
+                  - (a[modo === 'pct' ? 'margen_base_pct' : 'margen_base'] ?? -Infinity));
+}
+
+/** Campañas en las que corre cada SKU, según los anuncios activos cargados arriba. */
+function adsCampanasPorSku() {
+  const mapa = new Map();
+  for (const a of adsState.anuncios || []) {
+    if (!a.sku || String(a.status || '').toUpperCase() !== 'ACTIVE' || !a.campaign_id) continue;
+    const k = String(a.sku).toUpperCase();
+    const l = mapa.get(k) || [];
+    if (!l.includes(String(a.campaign_id))) l.push(String(a.campaign_id));
+    mapa.set(k, l);
+  }
+  return mapa;
+}
+
+/**
+ * El segmento de cada campaña: el de la mayoría de sus productos (por cantidad de
+ * anuncios activos). Es lo que permite decir "esta es la campaña de margen alto" y marcar
+ * los productos que quedaron en la campaña de otro segmento.
+ */
+function adsSegmentoDeCampanas(filasTodas) {
+  const segDe = new Map(filasTodas.map(f => [String(f.sku).toUpperCase(), f.segmento]));
+  const cuenta = new Map();
+  for (const a of adsState.anuncios || []) {
+    if (!a.sku || String(a.status || '').toUpperCase() !== 'ACTIVE' || !a.campaign_id) continue;
+    const seg = segDe.get(String(a.sku).toUpperCase());
+    if (!ADS_SEGMENTOS_CON_CAMPANA.includes(seg)) continue;
+    const c = cuenta.get(String(a.campaign_id)) || {};
+    c[seg] = (c[seg] || 0) + 1;
+    cuenta.set(String(a.campaign_id), c);
+  }
+  const out = new Map();
+  for (const [id, c] of cuenta) {
+    const [seg, n] = Object.entries(c).sort((x, y) => y[1] - x[1])[0];
+    const total = Object.values(c).reduce((s, v) => s + v, 0);
+    out.set(id, { segmento: seg, productos: total, pureza: n / total });
+  }
+  return out;
+}
+
+function nombreCampana(id) {
+  const c = (adsState.campanas || []).find(x => String(x.id) === String(id));
+  return c ? c.nombre : (adsState.anuncios || []).find(a => String(a.campaign_id) === String(id))?.campaign_name || `Campaña ${id}`;
+}
+
+/** Unidades vendidas en MELI por SKU en los últimos 30 días (sin canceladas). */
+function adsUnidadesMeli30() {
+  const desde = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const mapa = new Map();
+  for (const v of db.ventas || []) {
+    if (v.canal !== 'meli' || v.estado === 'cancelada' || !v.sku || String(v.fecha || '').slice(0, 10) < desde) continue;
+    const k = String(v.sku).toUpperCase();
+    mapa.set(k, (mapa.get(k) || 0) + (parseFloat(v.cantidad) || 0));
+  }
+  return mapa;
+}
+
+// Sólo estos segmentos llevan campaña: sin margen no hay nada que pagar con ads, y sin
+// precio o costo no se sabe.
+const ADS_SEGMENTOS_CON_CAMPANA = ['alto', 'medio', 'bajo'];
+const ADS_PRESUPUESTO_LS = 'ads-presupuesto';
+
+/**
+ * Reparte el presupuesto entre las campañas por segmento.
+ *
+ * El peso de cada segmento es la ganancia bruta que deja en un mes: margen $ × unidades
+ * vendidas en MELI en 30 días. Repartir sólo por margen mandaría la plata a productos de
+ * mucho margen que no se venden; así va a donde cada venta y la cantidad de ventas pagan.
+ * Un producto sin ventas cuenta como 1 unidad: recibe algo para probar, no nada.
+ *
+ * Ese mismo número es el tope: gastar en ads más de lo que el segmento deja de margen es
+ * perder plata aunque venda. Lo que un segmento no puede absorber se reparte entre los
+ * otros, y si todos llegan al tope el sobrante queda sin asignar.
+ */
+function repartirPresupuestoAds(filas, presupuesto) {
+  const segs = ADS_SEGMENTOS_CON_CAMPANA.map(k => {
+    const suyas = filas.filter(f => f.segmento === k);
+    const peso = suyas.reduce((s, f) => s + f.margen_base * Math.max(f.unidades_30d, 1), 0);
+    return { segmento: k, productos: suyas.length, unidades_30d: suyas.reduce((s, f) => s + f.unidades_30d, 0),
+             peso, tope: peso, monto: 0, al_tope: false, ...roasObjetivoSegmento(suyas) };
+  }).filter(s => s.productos > 0);
+
+  let resto = presupuesto;
+  let abiertos = segs.filter(s => s.peso > 0);
+  while (resto > 0.005 && abiertos.length) {
+    const total = abiertos.reduce((s, x) => s + x.peso, 0);
+    const pasados = abiertos.filter(x => resto * x.peso / total >= x.tope - x.monto);
+    if (!pasados.length) {
+      for (const x of abiertos) x.monto += resto * x.peso / total;
+      resto = 0;
+      break;
+    }
+    for (const x of pasados) { resto -= x.tope - x.monto; x.monto = x.tope; x.al_tope = true; }
+    abiertos = abiertos.filter(x => !x.al_tope);
+  }
+  const asignado = segs.reduce((s, x) => s + x.monto, 0);
+  for (const x of segs) x.pct = presupuesto > 0 ? x.monto / presupuesto * 100 : 0;
+  return { segmentos: segs, sobrante: Math.max(0, presupuesto - asignado) };
+}
+
+// Colchón sobre el equilibrio para el ROAS objetivo sugerido: MELI apunta al objetivo en
+// promedio, así que cargar el equilibrio exacto deja la mitad de las ventas perdiendo.
+const ADS_ROAS_COLCHON = 1.25;
+
+/**
+ * El ROAS de equilibrio de un segmento y el objetivo que conviene cargarle en MELI.
+ *
+ * El equilibrio es el del segmento entero, ponderado por lo que vende cada producto
+ * (facturación / ganancia antes de ads), con el margen REAL: con el bruto daría un número
+ * más bajo y el objetivo dejaría perder plata en cada venta. null si no hay margen real.
+ */
+function roasObjetivoSegmento(filas) {
+  let fact = 0, contrib = 0;
+  for (const f of filas) {
+    if (!(f.margen_real > 0)) continue;
+    const u = Math.max(f.unidades_30d, 1);
+    fact += f.precio * u;
+    contrib += f.margen_real * u;
+  }
+  if (!(contrib > 0)) return { roas_be: null, roas_objetivo: null };
+  const be = fact / contrib;
+  // Redondeado para arriba a 0,1: es el número que se tipea en MELI.
+  return { roas_be: be, roas_objetivo: Math.ceil(be * ADS_ROAS_COLCHON * 10) / 10 };
+}
+
+/**
+ * Lo que se está gastando hoy en ads en cada segmento, llevado a 30 días, con lo que
+ * dejó: sale de los anuncios cargados arriba (la campaña elegida, o todas).
+ */
+function adsGastoPorSegmento(filas) {
+  const segDe = new Map(filas.map(f => [String(f.sku).toUpperCase(), f.segmento]));
+  const p = adsState.periodo;
+  const dias = p?.desde && p?.hasta
+    ? Math.max(1, Math.round((new Date(p.hasta) - new Date(p.desde)) / 86400000) + 1) : 30;
+  const out = {};
+  for (const a of adsState.anuncios || []) {
+    const seg = a.sku && segDe.get(String(a.sku).toUpperCase());
+    if (!seg || !(a.inversion > 0)) continue;
+    const t = out[seg] || (out[seg] = { inversion: 0, facturacion: 0, ganancia: 0, be_x_fact: 0, fact_con_be: 0 });
+    t.inversion += a.inversion;
+    t.facturacion += a.facturacion || 0;
+    t.ganancia += a.ganancia || 0;
+    if (a.roas_breakeven != null && a.facturacion > 0) { t.be_x_fact += a.roas_breakeven * a.facturacion; t.fact_con_be += a.facturacion; }
+  }
+  for (const t of Object.values(out)) {
+    t.mensual = t.inversion / dias * 30;
+    t.roas = t.inversion > 0 ? t.facturacion / t.inversion : 0;
+    t.roas_be = t.fact_con_be > 0 ? t.be_x_fact / t.fact_con_be : null;
+  }
+  return { porSegmento: out, dias, hayDatos: (adsState.anuncios || []).length > 0 };
+}
+
+/**
+ * Subir, bajar o mantener el gasto de un segmento.
+ *
+ * Primero la plata: si el ads del segmento viene perdiendo, se baja aunque el reparto le
+ * dé más. Después el reparto: lejos de lo sugerido para arriba se baja, para abajo se sube
+ * sólo si el ROAS tiene colchón sobre el equilibrio (25%); al filo, se sube de a poco.
+ */
+function recoPresupuestoSegmento(sugerido, real) {
+  if (!real || real.inversion <= 0) {
+    return sugerido > 0
+      ? { tipo: 'arrancar', emoji: '🆕', color: 'var(--accent)', texto: `Arrancar con ${fmt(sugerido)}/mes` }
+      : { tipo: 'nada', emoji: '—', color: 'var(--text-muted)', texto: 'Sin gasto' };
+  }
+  if (real.ganancia < 0) {
+    return { tipo: 'bajar', emoji: '🔻', color: 'var(--red)',
+      texto: `Bajar: el ads pierde ${fmt(-real.ganancia)} en el período. Pausá los anuncios en rojo antes de seguir gastando` };
+  }
+  const holgura = real.roas_be ? real.roas / real.roas_be : null;
+  if (real.mensual > sugerido * 1.2) {
+    return { tipo: 'bajar', emoji: '🔻', color: 'var(--yellow)', texto: `Bajar a ${fmt(sugerido)}/mes: está por encima de lo que le toca` };
+  }
+  if (real.mensual < sugerido * 0.8) {
+    if (holgura != null && holgura >= 1.25) {
+      return { tipo: 'subir', emoji: '🔺', color: 'var(--green)', texto: `Subir a ${fmt(sugerido)}/mes: ROAS ${real.roas.toFixed(2)}x contra ${real.roas_be.toFixed(2)}x de equilibrio` };
+    }
+    return { tipo: 'subir_poco', emoji: '↗️', color: 'var(--yellow)',
+      texto: `Subir de a poco (${fmt(Math.min(sugerido, real.mensual * 1.2))}/mes): gana, pero con poco colchón` };
+  }
+  return { tipo: 'mantener', emoji: '✅', color: 'var(--green)', texto: 'Mantener: está en lo que le toca y gana' };
+}
+
+function onAdsPresupuesto() {
+  try { localStorage.setItem(ADS_PRESUPUESTO_LS, document.getElementById('ads-presupuesto').value); } catch (e) { /* sin storage */ }
+  pintarAdsPresupuesto(adsMargenFilas());
+}
+
+function pintarAdsPresupuesto(filas) {
+  const input = document.getElementById('ads-presupuesto');
+  const cont = document.getElementById('ads-presupuesto-reparto');
+  const diarioEl = document.getElementById('ads-presupuesto-diario');
+  if (!input || !cont) return;
+  if (input.value === '' && !input.dataset.cargado) {
+    input.dataset.cargado = '1';
+    try { input.value = localStorage.getItem(ADS_PRESUPUESTO_LS) || ''; } catch (e) { /* sin storage */ }
+  }
+  const presupuesto = parseFloat(input.value) || 0;
+  diarioEl.textContent = presupuesto > 0 ? `≈ ${fmt(presupuesto / 30)} por día` : '';
+  if (presupuesto <= 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Poné un monto para ver cuánto le toca a cada campaña.</div>';
+    return;
+  }
+
+  const { segmentos, sobrante } = repartirPresupuestoAds(filas, presupuesto);
+  if (!segmentos.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No hay productos con margen para anunciar.</div>';
+    return;
+  }
+  const sinMargen = filas.filter(f => f.segmento === 'sin_margen').length;
+  const gasto = adsGastoPorSegmento(filas);
+  const recos = segmentos.map(x => recoPresupuestoSegmento(x.monto, gasto.porSegmento[x.segmento]));
+  // Qué campaña de MELI corresponde a cada segmento: la que tiene mayoría de productos de él.
+  const segCamp = adsSegmentoDeCampanas(adsMargenFilas({ todos: true }));
+  const campanasDeSeg = k => [...segCamp].filter(([, v]) => v.segmento === k).map(([id]) => id);
+  adsState.reparto = Object.fromEntries(segmentos.map(x => [x.segmento, x]));
+
+  // El total: si el reparto dejó sobrante, el presupuesto ya es más de lo que el catálogo
+  // paga; si todo lo que se gasta gana con colchón y ningún segmento está en el tope, hay
+  // lugar para subirlo.
+  const realTotal = Object.values(gasto.porSegmento).reduce((s, t) => s + t.mensual, 0);
+  const todosGanan = segmentos.every(x => {
+    const t = gasto.porSegmento[x.segmento];
+    return t && t.inversion > 0 && t.ganancia > 0 && t.roas_be && t.roas / t.roas_be >= 1.25;
+  });
+  const recoTotal = sobrante > 0.5 ? null
+    : todosGanan && !segmentos.some(x => x.al_tope) && realTotal >= presupuesto * 0.9
+      ? `🔺 <b>Hay lugar para subir el presupuesto total.</b> Todas las campañas ganan con colchón y ninguna llegó al tope de lo que su margen paga.`
+      : null;
+
+  cont.innerHTML = `
+    <div style="overflow-x:auto"><table id="ads-presupuesto-tabla">
+      <thead><tr><th style="text-align:left">Campaña</th><th>Productos</th><th>Vendió (30 d)</th>
+        <th>Margen que deja/mes</th><th>% del presupuesto</th><th>Mensual</th><th>Diario</th>
+        <th>Gasto actual/mes</th><th title="Equilibrio del segmento con margen real × ${ADS_ROAS_COLCHON} de colchón">ROAS objetivo</th>
+        <th style="text-align:left">Campaña en MELI</th><th style="text-align:left">Recomendación</th></tr></thead>
+      <tbody>${segmentos.map((x, i) => {
+        const def = ADS_MARGEN_SEGMENTOS[x.segmento];
+        const real = gasto.porSegmento[x.segmento];
+        const rec = recos[i];
+        return `<tr data-segmento="${x.segmento}" data-reco="${rec.tipo}">
+          <td style="text-align:left">${def.emoji} ${escHtml(def.label)}</td>
+          <td>${x.productos}</td>
+          <td>${x.unidades_30d}</td>
+          <td>${fmt(x.peso)}</td>
+          <td>${x.pct.toFixed(1)}%</td>
+          <td><b>${fmt(x.monto)}</b>${x.al_tope ? ` <span style="color:var(--yellow)" title="Más que esto cuesta más de lo que el segmento deja de margen en un mes">⚠️ tope</span>` : ''}</td>
+          <td>${fmt(x.monto / 30)}</td>
+          <td>${real ? fmt(real.mensual) : '—'}</td>
+          <td class="roas-objetivo" title="${x.roas_be ? `Equilibrio ${x.roas_be.toFixed(2)}x con margen real` : 'Hace falta el margen real (comisión y envío) para calcularlo'}">${x.roas_objetivo ? `<b>${x.roas_objetivo.toFixed(1)}x</b>` : '—'}</td>
+          <td style="text-align:left;font-size:12px">${celdaCampanaSegmento(x, campanasDeSeg(x.segmento))}</td>
+          <td style="text-align:left;font-size:12px;color:${rec.color}">${rec.emoji} ${escHtml(rec.texto)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+      ${gasto.hayDatos
+        ? `Gasto actual = lo que gastaron los anuncios cargados arriba en ${gasto.dias} días, llevado a 30. Si elegiste una sola campaña, sólo cuenta esa: elegí "Todas las campañas" para ver el total.`
+        : 'Todavía no hay anuncios cargados arriba: cuando carguen, se compara el gasto actual con lo sugerido.'}
+    </div>
+    ${recoTotal ? `<div id="ads-presupuesto-total" style="margin-top:8px;font-size:12px;padding:8px 12px;border-radius:var(--radius);background:rgba(34,197,94,0.10);border:1px solid var(--green)">${recoTotal}</div>` : ''}
+    ${sobrante > 0.5 ? `<div id="ads-presupuesto-sobrante" style="margin-top:8px;font-size:12px;padding:8px 12px;border-radius:var(--radius);background:rgba(245,158,11,0.12);border:1px solid var(--yellow)">
+      🔻 <b>Bajar el presupuesto total: sobran ${fmt(sobrante)}.</b> Con lo que se vende hoy, gastar más que esto en ads cuesta más de lo que dejan las ventas.
+      Conviene guardarlo o sumar productos al catálogo antes que gastarlo.</div>` : ''}
+    ${sinMargen ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">⛔ ${sinMargen} producto${sinMargen === 1 ? '' : 's'} sin margen: no van en ninguna campaña.</div>` : ''}`;
+}
+
+/** La campaña de MELI de un segmento, con su presupuesto cargado y el botón para aplicar el sugerido. */
+function celdaCampanaSegmento(x, ids) {
+  if (!ids.length) {
+    return `<span style="color:var(--text-muted)">${(adsState.anuncios || []).length ? 'Ninguna: armá una campaña con estos productos' : '—'}</span>`;
+  }
+  if (ids.length > 1) {
+    return `<span title="${escHtml(ids.map(nombreCampana).join(' · '))}">${ids.length} campañas</span>`;
+  }
+  const id = ids[0];
+  const c = (adsState.campanas || []).find(k => String(k.id) === String(id));
+  const actual = c?.presupuesto != null ? `${fmt(c.presupuesto)}/día` : 'presupuesto ?';
+  return `${escHtml(nombreCampana(id))} <span style="color:var(--text-muted)">· ${actual}</span>
+    <button class="btn btn-ghost btn-sm" style="padding:1px 8px;font-size:11px;margin-left:4px" data-aplicar="${x.segmento}"
+      onclick="aplicarRepartoACampana('${x.segmento}', '${escHtml(String(id))}')">⚡ Aplicar</button>`;
+}
+
+function pintarAdsMargen() {
+  const resumen = document.getElementById('ads-margen-resumen');
+  const cont = document.getElementById('ads-margen-lista');
+  if (!resumen || !cont) return;
+  // Primera vez: el modo y los cortes que se usaron la última vez, si quedaron guardados.
+  if (document.getElementById('ads-margen-alto').value === '') {
+    const g = adsMargenLeerGuardado();
+    if (g.modo === 'pct' || g.modo === 'monto') document.getElementById('ads-margen-modo').value = g.modo;
+    if (g.base === 'bruto' || g.base === 'real') document.getElementById('ads-margen-base').value = g.base;
+    adsMargenCargarCortes(document.getElementById('ads-margen-modo').value);
+  }
+  const modo = document.getElementById('ads-margen-modo').value;
+
+  const filas = adsMargenFilas();
+  if (!filas.length) {
+    resumen.innerHTML = '';
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>No hay productos para segmentar.</p></div>';
+    pintarAdsPresupuesto(filas);
+    return;
+  }
+
+  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
+  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const corte = v => modo === 'pct' ? `${v}%` : fmt(v);
+  const rango = {
+    alto: `${corte(alto)} o más`,
+    medio: `${corte(medio)} a ${corte(alto)}`,
+    bajo: `menos de ${corte(medio)}`,
+    sin_margen: 'el costo iguala o supera el precio',
+    sin_datos: 'cargalos en Stock para clasificarlos',
+  };
+
+  const grupos = Object.keys(ADS_MARGEN_SEGMENTOS)
+    .map(k => ({ k, def: ADS_MARGEN_SEGMENTOS[k], filas: filas.filter(f => f.segmento === k) }))
+    .filter(g => g.filas.length);
+
+  resumen.innerHTML = grupos.map(g => {
+    const conM = g.filas.filter(f => f.margen_base != null);
+    const prom = conM.length
+      ? (modo === 'pct'
+          ? `${(conM.reduce((s, f) => s + f.margen_base_pct, 0) / conM.length).toFixed(1)}%`
+          : fmt(conM.reduce((s, f) => s + f.margen_base, 0) / conM.length))
+      : '—';
+    const enAds = g.filas.filter(f => f.anunciado).length;
+    const obj = ADS_SEGMENTOS_CON_CAMPANA.includes(g.k) ? roasObjetivoSegmento(g.filas) : {};
+    return `<div class="stat-card ${g.def.clase}" data-segmento="${g.k}"><div class="stat-icon">${g.def.emoji}</div>
+      <div class="stat-value">${g.filas.length}</div>
+      <div class="stat-label">${escHtml(g.def.label)} · ${escHtml(rango[g.k])}<br>
+        ${g.k === 'sin_datos' ? '' : `promedio ${prom} · `}${enAds} con anuncio
+        ${obj.roas_objetivo ? `<br>🎯 ROAS objetivo <b>${obj.roas_objetivo.toFixed(1)}x</b> <span style="opacity:.7">(equilibrio ${obj.roas_be.toFixed(2)}x)</span>` : ''}</div></div>`;
+  }).join('');
+
+  pintarAdsPresupuesto(filas);
+  const equivocados = pintarAdsEquivocados(filas);
+
+  const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
+  cont.innerHTML = grupos.map(g => `
+    <div style="margin-bottom:16px" data-segmento-lista="${g.k}">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">${g.def.emoji} ${escHtml(g.def.label)}
+        <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(rango[g.k])} · ${g.filas.length} producto${g.filas.length === 1 ? '' : 's'}</span></div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th style="text-align:left">Producto</th><th>Precio</th><th>Costo</th><th>Margen $</th><th>Margen %</th>
+          <th title="Después de la comisión y el envío medidos sobre tus ventas">Margen real</th><th title="Por debajo de este ROAS cada venta con ads pierde plata">ROAS equil.</th>
+          <th>Vendió (30 d)</th><th>Stock</th><th>Ads</th></tr></thead>
+        <tbody>${g.filas.map(f => `
+          <tr>
+            <td style="text-align:left">${escHtml(f.nombre)} <span style="color:var(--text-muted);font-size:11px">· ${escHtml(f.sku)}</span></td>
+            <td>${f.precio ? fmt(f.precio) : '—'}</td>
+            <td>${f.costo ? fmt(f.costo) : '—'}</td>
+            <td><b>${f.margen != null ? fmt(f.margen) : '—'}</b></td>
+            <td>${fmtPct(f.margen_pct)}</td>
+            <td class="margen-real">${f.margen_real != null ? `${fmt(f.margen_real)} · ${fmtPct(f.margen_real_pct)}` : '—'}</td>
+            <td>${f.roas_be != null ? f.roas_be.toFixed(2) + 'x' : (f.margen_real != null ? '<span style="color:var(--red)">sin margen</span>' : '—')}</td>
+            <td>${f.unidades_30d}</td>
+            <td>${f.stock}</td>
+            <td style="text-align:center">${f.anunciado ? '📣' : ''}${equivocados.has(String(f.sku).toUpperCase()) ? ' <span title="Está en la campaña de otro segmento" style="color:var(--yellow)">🔀</span>' : ''}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+    </div>`).join('');
+}
+
+/**
+ * Productos que corren en la campaña de otro segmento: un producto de margen bajo en la
+ * campaña de margen alto queda con un ROAS objetivo que lo hace perder plata, y uno de
+ * margen alto en la de bajo queda con poco alcance. Pasa sobre todo cuando cambia un
+ * precio o un costo y el producto se mueve de segmento.
+ */
+function pintarAdsEquivocados(filas) {
+  const cont = document.getElementById('ads-margen-equivocados');
+  const skus = new Set();
+  if (!cont) return skus;
+  const segCamp = adsSegmentoDeCampanas(adsMargenFilas({ todos: true }));
+  const lista = [];
+  for (const f of filas) {
+    if (!ADS_SEGMENTOS_CON_CAMPANA.includes(f.segmento) && f.segmento !== 'sin_margen') continue;
+    for (const id of f.campanas) {
+      const c = segCamp.get(id);
+      if (!c || c.segmento === f.segmento) continue;
+      lista.push({ f, id, c });
+      skus.add(String(f.sku).toUpperCase());
+    }
+  }
+  if (!lista.length) { cont.innerHTML = ''; return skus; }
+  const seg = k => `${ADS_MARGEN_SEGMENTOS[k].emoji} ${ADS_MARGEN_SEGMENTOS[k].label.toLowerCase()}`;
+  cont.innerHTML = `<div style="background:rgba(245,158,11,0.12);border:1px solid var(--yellow);border-radius:var(--radius);padding:10px 14px;font-size:12px">
+    🔀 <b>${lista.length} producto${lista.length === 1 ? '' : 's'} en la campaña de otro segmento.</b>
+    El ROAS objetivo de esa campaña está pensado para otro margen: movelos a la campaña de su segmento.
+    <ul id="ads-equivocados-lista" style="margin:6px 0 0 18px">${lista.map(({ f, id, c }) =>
+      `<li data-sku="${escHtml(f.sku)}">${escHtml(f.nombre)} <span style="color:var(--text-muted)">· ${escHtml(f.sku)}</span> — es de ${seg(f.segmento)}
+       y está en <b>${escHtml(nombreCampana(id))}</b> (campaña de ${seg(c.segmento)})</li>`).join('')}</ul></div>`;
+  return skus;
+}
+
+function exportMargenCSV() {
+  const filas = adsMargenFilas();
+  if (!filas.length) return alert('No hay productos para exportar.');
+  const cols = ['segmento', 'sku', 'nombre', 'grupo', 'precio', 'costo', 'margen', 'margen_pct', 'margen_real', 'margen_real_pct', 'roas_be', 'unidades_30d', 'stock', 'anunciado'];
+  const lineas = filas.map(f => cols.map(c => {
+    const v = c === 'segmento' ? ADS_MARGEN_SEGMENTOS[f.segmento].label
+      : (c === 'margen_pct' || c === 'margen_real_pct') && f[c] != null ? f[c].toFixed(1)
+      : (c === 'margen_real' || c === 'roas_be') && f[c] != null ? f[c].toFixed(2)
+      : c === 'anunciado' ? (f.anunciado ? 'si' : 'no')
+      : f[c];
+    return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
+  }).join(','));
+  const csv = [cols.join(','), ...lineas].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'productos-por-margen.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── CAMPAÑAS: configuración en MELI contra lo que necesitan ────────────────────────────
+// MELI decide cuánto pujar con el ACOS objetivo de la campaña. Si ese objetivo es más laxo
+// que el equilibrio del margen, MELI tiene permiso para comprar ventas que pierden plata y
+// lo va a hacer: es un error que no se ve en ningún lado del panel de MELI.
+
+const ESTRATEGIAS_ADS = { profitability: 'Rentabilidad', increase: 'Crecimiento', visibility: 'Visibilidad' };
+
+/** ROAS de equilibrio de una campaña, ponderado por facturación, desde los anuncios cargados. */
+function roasBeDeCampana(id) {
+  const t = adsState.totales;
+  const sola = !adsState.todasLasCampanas && String(document.getElementById('ads-campana')?.value) === String(id);
+  if (sola && t?.roas_breakeven_campana != null) return t.roas_breakeven_campana;
+  const suyos = (adsState.anuncios || []).filter(a => String(a.campaign_id) === String(id) && a.roas_breakeven != null);
+  if (!suyos.length) return null;
+  const fact = suyos.reduce((s, a) => s + (a.facturacion || 0), 0);
+  return fact > 0
+    ? suyos.reduce((s, a) => s + a.roas_breakeven * (a.facturacion || 0), 0) / fact
+    : suyos.reduce((s, a) => s + a.roas_breakeven, 0) / suyos.length;
+}
+
+function pintarAdsCampanas() {
+  const cont = document.getElementById('ads-campanas-tabla');
+  if (!cont) return;
+  const cs = adsState.campanas || [];
+  if (!cs.length) { cont.innerHTML = '<div class="empty-state"><p>Sin campañas.</p></div>'; return; }
+  const segCamp = adsSegmentoDeCampanas(adsMargenFilas({ todos: true }));
+
+  cont.innerHTML = `<div style="overflow-x:auto"><table>
+    <thead><tr><th style="text-align:left">Campaña</th><th>Estado</th><th>Presupuesto/día</th><th>Estrategia</th>
+      <th>ROAS objetivo</th><th>ROAS equilibrio</th><th>ROAS real</th><th>Gasto</th><th style="text-align:left">Diagnóstico</th><th>Acciones</th></tr></thead>
+    <tbody>${cs.map(c => {
+      const activa = String(c.status || '').toLowerCase() === 'active';
+      const objetivo = c.acos_objetivo > 0 ? 100 / c.acos_objetivo : null;
+      const be = roasBeDeCampana(c.id);
+      const seg = segCamp.get(String(c.id));
+      let diag;
+      if (be == null) diag = `<span style="color:var(--text-muted)">Elegí "Todas las campañas" (o esta) arriba para calcular su equilibrio</span>`;
+      else if (objetivo == null) diag = `<span style="color:var(--text-muted)">Sin ROAS objetivo en MELI · equilibrio ${be.toFixed(2)}x</span>`;
+      else if (objetivo < be) diag = `<span style="color:var(--red)">🔴 El objetivo deja perder plata: MELI puede comprar ventas a ${objetivo.toFixed(2)}x y el equilibrio es ${be.toFixed(2)}x. Subilo a ${(Math.ceil(be * ADS_ROAS_COLCHON * 10) / 10).toFixed(1)}x o más</span>`;
+      else if (objetivo < be * 1.1) diag = `<span style="color:var(--yellow)">🟡 Objetivo al filo del equilibrio (${be.toFixed(2)}x): sin colchón</span>`;
+      else diag = `<span style="color:var(--green)">🟢 El objetivo cubre el equilibrio (${be.toFixed(2)}x)</span>`;
+      const roasColor = be == null || !c.inversion ? 'var(--text)' : c.roas >= be ? 'var(--green)' : 'var(--red)';
+      return `<tr data-campana="${escHtml(String(c.id))}" data-diag="${be == null || objetivo == null ? 'sin_dato' : objetivo < be ? 'pierde' : objetivo < be * 1.1 ? 'filo' : 'ok'}">
+        <td style="text-align:left">${escHtml(c.nombre)}${seg ? ` <span style="font-size:11px;color:var(--text-muted)">· ${ADS_MARGEN_SEGMENTOS[seg.segmento].emoji} ${escHtml(ADS_MARGEN_SEGMENTOS[seg.segmento].label.toLowerCase())}</span>` : ''}</td>
+        <td>${activa ? '<span class="badge badge-green">Activa</span>' : `<span class="badge badge-yellow">${escHtml(c.status || '—')}</span>`}</td>
+        <td>${c.presupuesto != null ? fmt(c.presupuesto) : '—'}</td>
+        <td>${escHtml(ESTRATEGIAS_ADS[c.estrategia] || c.estrategia || '—')}</td>
+        <td><b>${objetivo != null ? objetivo.toFixed(2) + 'x' : '—'}</b>${c.acos_objetivo ? ` <span style="font-size:10px;color:var(--text-muted)">(ACOS ${c.acos_objetivo}%)</span>` : ''}</td>
+        <td>${be != null ? be.toFixed(2) + 'x' : '—'}</td>
+        <td style="color:${roasColor}">${c.inversion ? c.roas.toFixed(2) + 'x' : '—'}</td>
+        <td>${fmt(c.inversion)}</td>
+        <td style="text-align:left;font-size:12px;max-width:340px">${diag}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" title="Cambiar el presupuesto diario" onclick="accionCampana('${escHtml(String(c.id))}','presupuesto')">💵</button>
+          <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" title="Cambiar el ROAS objetivo" onclick="accionCampana('${escHtml(String(c.id))}','roas_objetivo')">🎯</button>
+          <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" title="${activa ? 'Pausar' : 'Activar'} la campaña" onclick="accionCampana('${escHtml(String(c.id))}','estado')">${activa ? '⏸️' : '▶️'}</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+// ── ACCIONES SOBRE MELI ──────────────────────────────────────────────────────────────
+// Todo pasa por api/meli/ads-acciones.js, que aplica el cambio y lo deja registrado para
+// el "antes y después". Toca plata real: siempre se confirma mostrando antes → después.
+
+async function enviarAccionAds(payload, resumen) {
+  if (!confirm(`${resumen}\n\nEsto cambia la campaña en Mercado Ads ahora mismo. ¿Confirmás?`)) return false;
+  try {
+    const r = await api('POST', '/meli/ads-acciones', payload);
+    if (!r.ok) { alert('❌ ' + (r.error || 'MELI no aceptó el cambio.')); return false; }
+    alert('✅ Cambio aplicado en Mercado Ads.' + (r.aviso_registro ? '\n\n⚠️ ' + r.aviso_registro : ''));
+    await renderAds(true);
+    cargarAdsCambios();
+    return true;
+  } catch (e) {
+    alert('❌ Error: ' + e.message);
+    return false;
+  }
+}
+
+async function accionCampana(id, campo) {
+  const c = (adsState.campanas || []).find(x => String(x.id) === String(id));
+  if (!c) return;
+  const objetivo = c.acos_objetivo > 0 ? +(100 / c.acos_objetivo).toFixed(2) : null;
+  const anterior = { presupuesto: c.presupuesto, roas_objetivo: objetivo, estado: String(c.status || '').toLowerCase() };
+  let nuevo, resumen;
+  if (campo === 'estado') {
+    nuevo = anterior.estado === 'active' ? 'paused' : 'active';
+    resumen = `${nuevo === 'paused' ? '⏸️ Pausar' : '▶️ Activar'} la campaña "${c.nombre}".`;
+  } else if (campo === 'presupuesto') {
+    const v = prompt(`Presupuesto diario para "${c.nombre}" (hoy: ${c.presupuesto != null ? fmt(c.presupuesto) : '—'}):`, c.presupuesto ?? '');
+    if (v === null || v === '') return;
+    nuevo = parseFloat(String(v).replace(',', '.'));
+    if (!(nuevo > 0)) return alert('Poné un monto mayor a 0.');
+    resumen = `💵 Presupuesto diario de "${c.nombre}": ${c.presupuesto != null ? fmt(c.presupuesto) : '—'} → ${fmt(nuevo)}.`;
+  } else {
+    const be = roasBeDeCampana(id);
+    const sugerido = be != null ? Math.ceil(be * ADS_ROAS_COLCHON * 10) / 10 : objetivo;
+    const v = prompt(`ROAS objetivo para "${c.nombre}" (hoy: ${objetivo != null ? objetivo + 'x' : '—'}${be != null ? ` · equilibrio ${be.toFixed(2)}x` : ''}):`, sugerido ?? '');
+    if (v === null || v === '') return;
+    nuevo = parseFloat(String(v).replace(',', '.'));
+    if (!(nuevo > 0)) return alert('Poné un ROAS mayor a 0.');
+    if (be != null && nuevo < be && !confirm(`⚠️ ${nuevo}x está por debajo del equilibrio (${be.toFixed(2)}x): MELI va a poder comprar ventas que pierden plata. ¿Seguir igual?`)) return;
+    resumen = `🎯 ROAS objetivo de "${c.nombre}": ${objetivo != null ? objetivo + 'x' : '—'} → ${nuevo}x (ACOS ${(100 / nuevo).toFixed(1)}%).`;
+  }
+  return enviarAccionAds({
+    nivel: 'campana', campaign_id: c.id, campaign_name: c.nombre,
+    cambios: { [campo]: nuevo }, anterior: { [campo]: anterior[campo] },
+  }, resumen);
+}
+
+async function accionAnuncio(adGroupId) {
+  const a = (adsState.anuncios || []).find(x => x.ad_group_id === String(adGroupId));
+  if (!a) return;
+  const activo = String(a.status || '').toUpperCase() === 'ACTIVE';
+  const nuevo = activo ? 'paused' : 'active';
+  const detalle = a.ganancia != null ? `\nEn el período: ${fmt(a.inversion)} de ads, ganancia ${fmt(a.ganancia)}.` : '';
+  return enviarAccionAds({
+    nivel: 'anuncio', ad_group_id: a.ad_group_id, titulo: a.titulo,
+    campaign_id: a.campaign_id, campaign_name: a.campaign_name,
+    cambios: { estado: nuevo }, anterior: { estado: activo ? 'active' : 'paused' },
+  }, `${activo ? '⏸️ Pausar' : '▶️ Reactivar'} el anuncio "${a.titulo}".${detalle}`);
+}
+
+/** Aplica a la campaña de un segmento el presupuesto diario y el ROAS objetivo del reparto. */
+async function aplicarRepartoACampana(segmento, campaignId) {
+  const x = adsState.reparto?.[segmento];
+  const c = (adsState.campanas || []).find(k => String(k.id) === String(campaignId));
+  if (!x || !c) return;
+  const diario = Math.round(x.monto / 30);
+  if (!(diario > 0)) return alert('El reparto no le asigna presupuesto a este segmento.');
+  const objetivoActual = c.acos_objetivo > 0 ? +(100 / c.acos_objetivo).toFixed(2) : null;
+  const cambios = { presupuesto: diario };
+  const anterior = { presupuesto: c.presupuesto };
+  let resumen = `Campaña "${c.nombre}" (${ADS_MARGEN_SEGMENTOS[segmento].label.toLowerCase()}):\n`
+    + `💵 Presupuesto diario: ${c.presupuesto != null ? fmt(c.presupuesto) : '—'} → ${fmt(diario)}`;
+  if (x.roas_objetivo) {
+    cambios.roas_objetivo = x.roas_objetivo;
+    anterior.roas_objetivo = objetivoActual;
+    resumen += `\n🎯 ROAS objetivo: ${objetivoActual != null ? objetivoActual + 'x' : '—'} → ${x.roas_objetivo.toFixed(1)}x`;
+  }
+  return enviarAccionAds({ nivel: 'campana', campaign_id: c.id, campaign_name: c.nombre, cambios, anterior }, resumen);
+}
+
+// ── DATOS EXTRA: economía por SKU, evolución y cambios ───────────────────────────────
+// No dependen del período ni de la campaña elegida, así que se piden una vez y se repintan
+// solos. Ninguno es imprescindible: si falla, la pestaña sigue con lo que tiene.
+
+async function cargarAdsEconomia(forzar = false) {
+  if (adsState.economia && !forzar) return;
+  try {
+    const r = await api('GET', '/meli/ads-economia');
+    if (r && r.ok && r.por_sku) {
+      adsState.economia = { ...r, global_eco: r.global
+        ? { comision_pct: r.global.comision_pct, envio_unitario: r.global.envio_unitario, fuente: 'global' } : null };
+      pintarAdsMargen();
+      pintarAdsCampanas();
+      pintarAdsEvolucion();
+    }
+  } catch (e) { /* sin economía: la sección sigue con el margen bruto */ }
+}
+
+async function cargarAdsEvolucion() {
+  const cont = document.getElementById('ads-evolucion');
+  if (!cont) return;
+  const semanas = document.getElementById('ads-evol-semanas').value;
+  cont.innerHTML = '<div class="empty-state"><p>Cargando el histórico...</p></div>';
+  try {
+    adsState.evolucion = await api('GET', `/meli/ads-evolucion?semanas=${semanas}`);
+  } catch (e) {
+    adsState.evolucion = { ok: false, error: e.message };
+  }
+  pintarAdsEvolucion();
+}
+
+/** Lo que deja cada venta de un SKU antes de ads: margen real si está, si no el bruto. */
+function contribucionPorSku() {
+  const mapa = new Map();
+  for (const p of adsMargenProductos()) {
+    const m = margenRealDe(p) || margenDe(p);
+    if (m) mapa.set(String(p.sku).toUpperCase(), m.monto);
+  }
+  return mapa;
+}
+
+const ADS_EVOL_COLOR = { alto: '#22c55e', medio: '#f59e0b', bajo: '#4f8ef7', sin_margen: '#ef4444', sin_datos: '#a78bfa' };
+
+function pintarAdsEvolucion() {
+  const cont = document.getElementById('ads-evolucion');
+  const r = adsState.evolucion;
+  if (!cont || !r) return;
+  if (!r.ok) {
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">📈</div><p>${escHtml(r.mensaje || r.error || 'No se pudo leer el histórico.')}</p></div>`;
+    return;
+  }
+  const filas = r.filas || [];
+  if (!filas.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">📈</div><p>Todavía no hay gasto guardado en el snapshot diario para estas semanas.</p></div>';
+    return;
+  }
+  const metrica = document.getElementById('ads-evol-metrica').value;
+  const segDe = new Map(adsMargenFilas({ todos: true }).map(f => [String(f.sku).toUpperCase(), f.segmento]));
+  const contrib = contribucionPorSku();
+
+  // semana → segmento → acumulado
+  const semanas = [...new Set(filas.map(f => f.semana))].sort();
+  const acc = {};
+  for (const f of filas) {
+    const seg = segDe.get(f.sku) || 'sin_datos';
+    const t = ((acc[seg] = acc[seg] || {})[f.semana] = acc[seg][f.semana] || { inversion: 0, facturacion: 0, unidades: 0, ganancia: 0 });
+    t.inversion += f.inversion;
+    t.facturacion += f.facturacion;
+    t.unidades += f.unidades;
+    t.ganancia += (contrib.get(f.sku) || 0) * f.unidades - f.inversion;
+  }
+  const segs = Object.keys(ADS_MARGEN_SEGMENTOS).filter(k => acc[k]);
+  const valor = (seg, sem) => {
+    const t = acc[seg]?.[sem];
+    if (!t) return metrica === 'roas' ? null : 0;
+    if (metrica === 'roas') return t.inversion > 0 ? t.facturacion / t.inversion : null;
+    return t[metrica];
+  };
+  const fmtV = v => v == null ? '—' : metrica === 'roas' ? v.toFixed(2) + 'x' : metrica === 'unidades' ? Math.round(v) : fmt(v);
+
+  // Gráfico de líneas, una por segmento
+  const W = 760, H = 220, pad = { l: 64, r: 16, t: 12, b: 28 };
+  const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
+  const vals = segs.flatMap(k => semanas.map(w => valor(k, w))).filter(v => v != null);
+  const max = Math.max(0, ...vals), min = Math.min(0, ...vals);
+  const span = (max - min) || 1;
+  const x = i => pad.l + (semanas.length === 1 ? iw / 2 : iw * i / (semanas.length - 1));
+  const y = v => pad.t + ih * (max - v) / span;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto" role="img" aria-label="Evolución por segmento">`;
+  for (let i = 0; i <= 4; i++) {
+    const v = min + span * i / 4;
+    svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>
+      <text x="${pad.l - 6}" y="${y(v) + 4}" font-size="10" text-anchor="end" fill="var(--text-muted)">${fmtV(v)}</text>`;
+  }
+  if (min < 0) svg += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--text-muted)" stroke-dasharray="3 3"/>`;
+  const cada = Math.max(1, Math.ceil(semanas.length / 8));
+  semanas.forEach((w, i) => {
+    if (i % cada && i !== semanas.length - 1) return;
+    svg += `<text x="${x(i)}" y="${H - 8}" font-size="10" text-anchor="middle" fill="var(--text-muted)">${w.slice(8, 10)}/${w.slice(5, 7)}</text>`;
+  });
+  for (const k of segs) {
+    const pts = semanas.map((w, i) => [x(i), valor(k, w)]).filter(p => p[1] != null);
+    if (!pts.length) continue;
+    svg += `<polyline class="evol-linea" data-segmento="${k}" fill="none" stroke="${ADS_EVOL_COLOR[k]}" stroke-width="2"
+      points="${pts.map(p => `${p[0]},${y(p[1])}`).join(' ')}"/>`
+      + pts.map(p => `<circle cx="${p[0]}" cy="${y(p[1])}" r="2.5" fill="${ADS_EVOL_COLOR[k]}"/>`).join('');
+  }
+  svg += '</svg>';
+
+  const total = k => {
+    const t = Object.values(acc[k] || {}).reduce((a, v) => ({
+      inversion: a.inversion + v.inversion, facturacion: a.facturacion + v.facturacion,
+      unidades: a.unidades + v.unidades, ganancia: a.ganancia + v.ganancia }), { inversion: 0, facturacion: 0, unidades: 0, ganancia: 0 });
+    return { ...t, roas: t.inversion > 0 ? t.facturacion / t.inversion : null };
+  };
+  const leyenda = segs.map(k => `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px">
+    <span style="width:10px;height:10px;border-radius:2px;background:${ADS_EVOL_COLOR[k]}"></span>${escHtml(ADS_MARGEN_SEGMENTOS[k].label)}</span>`).join('');
+
+  cont.innerHTML = `<div style="font-size:12px;margin-bottom:6px">${leyenda}</div>${svg}
+    <div style="overflow-x:auto;margin-top:10px"><table id="ads-evolucion-tabla">
+      <thead><tr><th style="text-align:left">Segmento</th><th>Inversión</th><th>Facturación</th><th>ROAS</th><th>Unidades</th><th>Ganancia</th></tr></thead>
+      <tbody>${segs.map(k => { const t = total(k); return `<tr data-segmento="${k}">
+        <td style="text-align:left">${ADS_MARGEN_SEGMENTOS[k].emoji} ${escHtml(ADS_MARGEN_SEGMENTOS[k].label)}</td>
+        <td>${fmt(t.inversion)}</td><td>${fmt(t.facturacion)}</td><td>${t.roas != null ? t.roas.toFixed(2) + 'x' : '—'}</td>
+        <td>${t.unidades}</td><td style="font-weight:600;color:${t.ganancia >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(t.ganancia)}</td></tr>`; }).join('')}
+      </tbody></table></div>
+    ${r.inversion_sin_sku > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">${fmt(r.inversion_sin_sku)} de gasto en anuncios sin SKU vinculado no entra en ningún segmento.</div>` : ''}`;
+}
+
+// ── CAMBIOS Y SU EFECTO ──────────────────────────────────────────────────────────────
+
+const ADS_CAMPO_LABEL = { presupuesto: 'Presupuesto/día', roas_objetivo: 'ROAS objetivo', estado: 'Estado' };
+const ADS_VEREDICTO_CAMBIO = {
+  mejoro:    { txt: '🟢 Mejoró la ganancia', color: 'var(--green)' },
+  empeoro:   { txt: '🔴 Empeoró la ganancia', color: 'var(--red)' },
+  igual:     { txt: '⚪ Sin cambio claro', color: 'var(--text-muted)' },
+  esperando: { txt: '⏳ Faltan días para juzgar', color: 'var(--text-muted)' },
+};
+
+async function cargarAdsCambios() {
+  const cont = document.getElementById('ads-cambios');
+  if (!cont) return;
+  try {
+    adsState.cambios = await api('GET', '/meli/ads-cambios');
+  } catch (e) {
+    adsState.cambios = { ok: false, error: e.message };
+  }
+  pintarAdsCambios();
+}
+
+function pintarAdsCambios() {
+  const cont = document.getElementById('ads-cambios');
+  const r = adsState.cambios;
+  if (!cont || !r) return;
+  if (!r.ok) {
+    cont.innerHTML = `<div class="empty-state"><div class="empty-icon">🕓</div><p>${escHtml(r.mensaje || r.error || 'No se pudieron leer los cambios.')}</p></div>`;
+    return;
+  }
+  const cambios = r.cambios || [];
+  if (!cambios.length) {
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">🕓</div><p>Todavía no hay cambios registrados. Los que hagas desde esta pestaña aparecen solos.</p></div>';
+    return;
+  }
+  const valor = (campo, v) => v == null || v === '' ? '—'
+    : campo === 'presupuesto' ? fmt(parseFloat(v))
+    : campo === 'roas_objetivo' ? `${parseFloat(v).toFixed(2)}x`
+    : v === 'paused' ? 'pausado' : v === 'active' ? 'activo' : v;
+  const ventana = t => !t || !t.dias ? '—'
+    : `${fmt(t.ganancia_dia)}/día · ROAS ${t.roas != null ? t.roas.toFixed(2) + 'x' : '—'} · ${fmt(t.inversion_dia)}/día de ads`;
+  cont.innerHTML = `${r.sin_snapshot ? '<div style="font-size:11px;color:var(--yellow);margin-bottom:6px">Sin el snapshot diario (migración de meli_ads_anuncios) no se puede calcular el antes y después.</div>' : ''}
+    <div style="overflow-x:auto"><table id="ads-cambios-tabla">
+    <thead><tr><th style="text-align:left">Fecha</th><th style="text-align:left">Qué</th><th>Cambio</th>
+      <th style="text-align:left">2 semanas antes</th><th style="text-align:left">Después</th><th style="text-align:left">Resultado</th></tr></thead>
+    <tbody>${cambios.map(c => {
+      const v = ADS_VEREDICTO_CAMBIO[c.veredicto] || ADS_VEREDICTO_CAMBIO.esperando;
+      return `<tr data-veredicto="${c.veredicto}">
+        <td style="text-align:left;white-space:nowrap">${escHtml(String(c.fecha).slice(0, 10))}${c.origen === 'manual' ? ' <span title="Cargado a mano" style="color:var(--text-muted)">✍️</span>' : ''}</td>
+        <td style="text-align:left">${c.nivel === 'anuncio' ? '📣 ' + escHtml(c.titulo || c.ad_group_id) : '🗂️ ' + escHtml(c.campaign_name || c.campaign_id)}
+          ${c.nota ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(c.nota)}</div>` : ''}</td>
+        <td style="white-space:nowrap">${escHtml(ADS_CAMPO_LABEL[c.campo] || c.campo)}: ${escHtml(valor(c.campo, c.valor_anterior))} → <b>${escHtml(valor(c.campo, c.valor_nuevo))}</b></td>
+        <td style="text-align:left;font-size:12px">${ventana(c.antes)}</td>
+        <td style="text-align:left;font-size:12px">${ventana(c.despues)}${c.despues?.dias ? ` <span style="color:var(--text-muted)">(${c.despues.dias} d)</span>` : ''}</td>
+        <td style="text-align:left;font-size:12px;color:${v.color}">${v.txt}</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
+}
+
+function toggleFormCambio() {
+  const f = document.getElementById('ads-cambio-form');
+  const abrir = f.style.display === 'none';
+  f.style.display = abrir ? 'flex' : 'none';
+  if (abrir) {
+    document.getElementById('ads-cambio-campana').innerHTML = (adsState.campanas || [])
+      .map(c => `<option value="${escHtml(String(c.id))}">${escHtml(c.nombre)}</option>`).join('') || '<option value="">Sin campañas</option>';
+    if (!document.getElementById('ads-cambio-fecha').value) document.getElementById('ads-cambio-fecha').value = new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function guardarCambioManual() {
+  const id = document.getElementById('ads-cambio-campana').value;
+  const nuevo = document.getElementById('ads-cambio-nuevo').value.trim();
+  if (!id || !nuevo) return alert('Elegí la campaña y poné el valor nuevo.');
+  const c = (adsState.campanas || []).find(x => String(x.id) === String(id));
+  try {
+    const r = await api('POST', '/meli/ads-cambios', {
+      nivel: 'campana', campaign_id: id, campaign_name: c?.nombre || null,
+      campo: document.getElementById('ads-cambio-campo').value,
+      valor_anterior: document.getElementById('ads-cambio-anterior').value.trim() || null,
+      valor_nuevo: nuevo,
+      fecha: document.getElementById('ads-cambio-fecha').value || null,
+      nota: document.getElementById('ads-cambio-nota').value.trim() || null,
+    });
+    if (!r.ok) return alert('❌ ' + (r.mensaje || r.error || 'No se pudo guardar.'));
+    ['ads-cambio-anterior', 'ads-cambio-nuevo', 'ads-cambio-nota'].forEach(i => { document.getElementById(i).value = ''; });
+    toggleFormCambio();
+    cargarAdsCambios();
+  } catch (e) {
+    alert('❌ Error: ' + e.message);
   }
 }
 

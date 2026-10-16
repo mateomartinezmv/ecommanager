@@ -883,6 +883,20 @@
           📣 = tiene un anuncio activo en lo que está cargado arriba.
         </div>
         <div id="ads-margen-resumen" class="cards-grid" style="padding:12px 16px 0"></div>
+        <!-- Reparto del presupuesto entre las campañas por segmento -->
+        <div style="margin:0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2)">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:600">💸 Presupuesto mensual para ads</span>
+            <input type="number" id="ads-presupuesto" min="0" step="500" placeholder="ej. 15000" style="width:130px;padding:6px 10px" oninput="onAdsPresupuesto()">
+            <span id="ads-presupuesto-diario" style="font-size:12px;color:var(--text-muted)"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+            Se reparte por la <b>ganancia que deja cada segmento</b>: margen $ × unidades vendidas en MELI en los últimos 30 días
+            (los que no vendieron cuentan como 1, para que tengan algo con qué probar). Ningún segmento recibe más de lo que deja
+            de margen en el mes: pasado eso, el anuncio cuesta más de lo que gana, y lo que sobra pasa a los otros.
+          </div>
+          <div id="ads-presupuesto-reparto" style="margin-top:10px"></div>
+        </div>
         <div id="ads-margen-lista" style="padding:12px 16px 16px"></div>
       </div>
     </div>
@@ -9486,6 +9500,7 @@ function adsMargenFilas() {
   const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
   const soloStock = document.getElementById('ads-margen-stock').checked;
   const anunciados = adsSkusAnunciados();
+  const vendidas = adsUnidadesMeli30();
 
   return adsMargenProductos()
     .filter(p => !soloStock || (p.stockDep || 0) > 0)
@@ -9500,12 +9515,203 @@ function adsMargenFilas() {
       return {
         sku: p.sku, nombre: p.nombre, grupo: p.grupo, precio: p.precio, costo: p.costo,
         stock: p.stockDep || 0,
+        unidades_30d: vendidas.get(String(p.sku).toUpperCase()) || 0,
         margen: m ? m.monto : null, margen_pct: m ? m.pct : null,
         segmento, anunciado: anunciados.has(String(p.sku).toUpperCase()),
       };
     })
     .sort((a, b) => (b[modo === 'pct' ? 'margen_pct' : 'margen'] ?? -Infinity)
                   - (a[modo === 'pct' ? 'margen_pct' : 'margen'] ?? -Infinity));
+}
+
+/** Unidades vendidas en MELI por SKU en los últimos 30 días (sin canceladas). */
+function adsUnidadesMeli30() {
+  const desde = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const mapa = new Map();
+  for (const v of db.ventas || []) {
+    if (v.canal !== 'meli' || v.estado === 'cancelada' || !v.sku || String(v.fecha || '').slice(0, 10) < desde) continue;
+    const k = String(v.sku).toUpperCase();
+    mapa.set(k, (mapa.get(k) || 0) + (parseFloat(v.cantidad) || 0));
+  }
+  return mapa;
+}
+
+// Sólo estos segmentos llevan campaña: sin margen no hay nada que pagar con ads, y sin
+// precio o costo no se sabe.
+const ADS_SEGMENTOS_CON_CAMPANA = ['alto', 'medio', 'bajo'];
+const ADS_PRESUPUESTO_LS = 'ads-presupuesto';
+
+/**
+ * Reparte el presupuesto entre las campañas por segmento.
+ *
+ * El peso de cada segmento es la ganancia bruta que deja en un mes: margen $ × unidades
+ * vendidas en MELI en 30 días. Repartir sólo por margen mandaría la plata a productos de
+ * mucho margen que no se venden; así va a donde cada venta y la cantidad de ventas pagan.
+ * Un producto sin ventas cuenta como 1 unidad: recibe algo para probar, no nada.
+ *
+ * Ese mismo número es el tope: gastar en ads más de lo que el segmento deja de margen es
+ * perder plata aunque venda. Lo que un segmento no puede absorber se reparte entre los
+ * otros, y si todos llegan al tope el sobrante queda sin asignar.
+ */
+function repartirPresupuestoAds(filas, presupuesto) {
+  const segs = ADS_SEGMENTOS_CON_CAMPANA.map(k => {
+    const suyas = filas.filter(f => f.segmento === k);
+    const peso = suyas.reduce((s, f) => s + f.margen * Math.max(f.unidades_30d, 1), 0);
+    return { segmento: k, productos: suyas.length, unidades_30d: suyas.reduce((s, f) => s + f.unidades_30d, 0),
+             peso, tope: peso, monto: 0, al_tope: false };
+  }).filter(s => s.productos > 0);
+
+  let resto = presupuesto;
+  let abiertos = segs.filter(s => s.peso > 0);
+  while (resto > 0.005 && abiertos.length) {
+    const total = abiertos.reduce((s, x) => s + x.peso, 0);
+    const pasados = abiertos.filter(x => resto * x.peso / total >= x.tope - x.monto);
+    if (!pasados.length) {
+      for (const x of abiertos) x.monto += resto * x.peso / total;
+      resto = 0;
+      break;
+    }
+    for (const x of pasados) { resto -= x.tope - x.monto; x.monto = x.tope; x.al_tope = true; }
+    abiertos = abiertos.filter(x => !x.al_tope);
+  }
+  const asignado = segs.reduce((s, x) => s + x.monto, 0);
+  for (const x of segs) x.pct = presupuesto > 0 ? x.monto / presupuesto * 100 : 0;
+  return { segmentos: segs, sobrante: Math.max(0, presupuesto - asignado) };
+}
+
+/**
+ * Lo que se está gastando hoy en ads en cada segmento, llevado a 30 días, con lo que
+ * dejó: sale de los anuncios cargados arriba (la campaña elegida, o todas).
+ */
+function adsGastoPorSegmento(filas) {
+  const segDe = new Map(filas.map(f => [String(f.sku).toUpperCase(), f.segmento]));
+  const p = adsState.periodo;
+  const dias = p?.desde && p?.hasta
+    ? Math.max(1, Math.round((new Date(p.hasta) - new Date(p.desde)) / 86400000) + 1) : 30;
+  const out = {};
+  for (const a of adsState.anuncios || []) {
+    const seg = a.sku && segDe.get(String(a.sku).toUpperCase());
+    if (!seg || !(a.inversion > 0)) continue;
+    const t = out[seg] || (out[seg] = { inversion: 0, facturacion: 0, ganancia: 0, be_x_fact: 0, fact_con_be: 0 });
+    t.inversion += a.inversion;
+    t.facturacion += a.facturacion || 0;
+    t.ganancia += a.ganancia || 0;
+    if (a.roas_breakeven != null && a.facturacion > 0) { t.be_x_fact += a.roas_breakeven * a.facturacion; t.fact_con_be += a.facturacion; }
+  }
+  for (const t of Object.values(out)) {
+    t.mensual = t.inversion / dias * 30;
+    t.roas = t.inversion > 0 ? t.facturacion / t.inversion : 0;
+    t.roas_be = t.fact_con_be > 0 ? t.be_x_fact / t.fact_con_be : null;
+  }
+  return { porSegmento: out, dias, hayDatos: (adsState.anuncios || []).length > 0 };
+}
+
+/**
+ * Subir, bajar o mantener el gasto de un segmento.
+ *
+ * Primero la plata: si el ads del segmento viene perdiendo, se baja aunque el reparto le
+ * dé más. Después el reparto: lejos de lo sugerido para arriba se baja, para abajo se sube
+ * sólo si el ROAS tiene colchón sobre el equilibrio (25%); al filo, se sube de a poco.
+ */
+function recoPresupuestoSegmento(sugerido, real) {
+  if (!real || real.inversion <= 0) {
+    return sugerido > 0
+      ? { tipo: 'arrancar', emoji: '🆕', color: 'var(--accent)', texto: `Arrancar con ${fmt(sugerido)}/mes` }
+      : { tipo: 'nada', emoji: '—', color: 'var(--text-muted)', texto: 'Sin gasto' };
+  }
+  if (real.ganancia < 0) {
+    return { tipo: 'bajar', emoji: '🔻', color: 'var(--red)',
+      texto: `Bajar: el ads pierde ${fmt(-real.ganancia)} en el período. Pausá los anuncios en rojo antes de seguir gastando` };
+  }
+  const holgura = real.roas_be ? real.roas / real.roas_be : null;
+  if (real.mensual > sugerido * 1.2) {
+    return { tipo: 'bajar', emoji: '🔻', color: 'var(--yellow)', texto: `Bajar a ${fmt(sugerido)}/mes: está por encima de lo que le toca` };
+  }
+  if (real.mensual < sugerido * 0.8) {
+    if (holgura != null && holgura >= 1.25) {
+      return { tipo: 'subir', emoji: '🔺', color: 'var(--green)', texto: `Subir a ${fmt(sugerido)}/mes: ROAS ${real.roas.toFixed(2)}x contra ${real.roas_be.toFixed(2)}x de equilibrio` };
+    }
+    return { tipo: 'subir_poco', emoji: '↗️', color: 'var(--yellow)',
+      texto: `Subir de a poco (${fmt(Math.min(sugerido, real.mensual * 1.2))}/mes): gana, pero con poco colchón` };
+  }
+  return { tipo: 'mantener', emoji: '✅', color: 'var(--green)', texto: 'Mantener: está en lo que le toca y gana' };
+}
+
+function onAdsPresupuesto() {
+  try { localStorage.setItem(ADS_PRESUPUESTO_LS, document.getElementById('ads-presupuesto').value); } catch (e) { /* sin storage */ }
+  pintarAdsPresupuesto(adsMargenFilas());
+}
+
+function pintarAdsPresupuesto(filas) {
+  const input = document.getElementById('ads-presupuesto');
+  const cont = document.getElementById('ads-presupuesto-reparto');
+  const diarioEl = document.getElementById('ads-presupuesto-diario');
+  if (!input || !cont) return;
+  if (input.value === '' && !input.dataset.cargado) {
+    input.dataset.cargado = '1';
+    try { input.value = localStorage.getItem(ADS_PRESUPUESTO_LS) || ''; } catch (e) { /* sin storage */ }
+  }
+  const presupuesto = parseFloat(input.value) || 0;
+  diarioEl.textContent = presupuesto > 0 ? `≈ ${fmt(presupuesto / 30)} por día` : '';
+  if (presupuesto <= 0) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Poné un monto para ver cuánto le toca a cada campaña.</div>';
+    return;
+  }
+
+  const { segmentos, sobrante } = repartirPresupuestoAds(filas, presupuesto);
+  if (!segmentos.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No hay productos con margen para anunciar.</div>';
+    return;
+  }
+  const sinMargen = filas.filter(f => f.segmento === 'sin_margen').length;
+  const gasto = adsGastoPorSegmento(filas);
+  const recos = segmentos.map(x => recoPresupuestoSegmento(x.monto, gasto.porSegmento[x.segmento]));
+
+  // El total: si el reparto dejó sobrante, el presupuesto ya es más de lo que el catálogo
+  // paga; si todo lo que se gasta gana con colchón y ningún segmento está en el tope, hay
+  // lugar para subirlo.
+  const realTotal = Object.values(gasto.porSegmento).reduce((s, t) => s + t.mensual, 0);
+  const todosGanan = segmentos.every(x => {
+    const t = gasto.porSegmento[x.segmento];
+    return t && t.inversion > 0 && t.ganancia > 0 && t.roas_be && t.roas / t.roas_be >= 1.25;
+  });
+  const recoTotal = sobrante > 0.5 ? null
+    : todosGanan && !segmentos.some(x => x.al_tope) && realTotal >= presupuesto * 0.9
+      ? `🔺 <b>Hay lugar para subir el presupuesto total.</b> Todas las campañas ganan con colchón y ninguna llegó al tope de lo que su margen paga.`
+      : null;
+
+  cont.innerHTML = `
+    <div style="overflow-x:auto"><table id="ads-presupuesto-tabla">
+      <thead><tr><th style="text-align:left">Campaña</th><th>Productos</th><th>Vendió (30 d)</th>
+        <th>Margen que deja/mes</th><th>% del presupuesto</th><th>Mensual</th><th>Diario</th>
+        <th>Gasto actual/mes</th><th style="text-align:left">Recomendación</th></tr></thead>
+      <tbody>${segmentos.map((x, i) => {
+        const def = ADS_MARGEN_SEGMENTOS[x.segmento];
+        const real = gasto.porSegmento[x.segmento];
+        const rec = recos[i];
+        return `<tr data-segmento="${x.segmento}" data-reco="${rec.tipo}">
+          <td style="text-align:left">${def.emoji} ${escHtml(def.label)}</td>
+          <td>${x.productos}</td>
+          <td>${x.unidades_30d}</td>
+          <td>${fmt(x.peso)}</td>
+          <td>${x.pct.toFixed(1)}%</td>
+          <td><b>${fmt(x.monto)}</b>${x.al_tope ? ` <span style="color:var(--yellow)" title="Más que esto cuesta más de lo que el segmento deja de margen en un mes">⚠️ tope</span>` : ''}</td>
+          <td>${fmt(x.monto / 30)}</td>
+          <td>${real ? fmt(real.mensual) : '—'}</td>
+          <td style="text-align:left;font-size:12px;color:${rec.color}">${rec.emoji} ${escHtml(rec.texto)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+    <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+      ${gasto.hayDatos
+        ? `Gasto actual = lo que gastaron los anuncios cargados arriba en ${gasto.dias} días, llevado a 30. Si elegiste una sola campaña, sólo cuenta esa: elegí "Todas las campañas" para ver el total.`
+        : 'Todavía no hay anuncios cargados arriba: cuando carguen, se compara el gasto actual con lo sugerido.'}
+    </div>
+    ${recoTotal ? `<div id="ads-presupuesto-total" style="margin-top:8px;font-size:12px;padding:8px 12px;border-radius:var(--radius);background:rgba(34,197,94,0.10);border:1px solid var(--green)">${recoTotal}</div>` : ''}
+    ${sobrante > 0.5 ? `<div id="ads-presupuesto-sobrante" style="margin-top:8px;font-size:12px;padding:8px 12px;border-radius:var(--radius);background:rgba(245,158,11,0.12);border:1px solid var(--yellow)">
+      🔻 <b>Bajar el presupuesto total: sobran ${fmt(sobrante)}.</b> Con lo que se vende hoy, gastar más que esto en ads cuesta más de lo que dejan las ventas.
+      Conviene guardarlo o sumar productos al catálogo antes que gastarlo.</div>` : ''}
+    ${sinMargen ? `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">⛔ ${sinMargen} producto${sinMargen === 1 ? '' : 's'} sin margen: no van en ninguna campaña.</div>` : ''}`;
 }
 
 function pintarAdsMargen() {
@@ -9524,6 +9730,7 @@ function pintarAdsMargen() {
   if (!filas.length) {
     resumen.innerHTML = '';
     cont.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>No hay productos para segmentar.</p></div>';
+    pintarAdsPresupuesto(filas);
     return;
   }
 
@@ -9556,13 +9763,15 @@ function pintarAdsMargen() {
         ${g.k === 'sin_datos' ? '' : `promedio ${prom} · `}${enAds} con anuncio</div></div>`;
   }).join('');
 
+  pintarAdsPresupuesto(filas);
+
   const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
   cont.innerHTML = grupos.map(g => `
     <div style="margin-bottom:16px" data-segmento-lista="${g.k}">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px">${g.def.emoji} ${escHtml(g.def.label)}
         <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(rango[g.k])} · ${g.filas.length} producto${g.filas.length === 1 ? '' : 's'}</span></div>
       <div style="overflow-x:auto"><table>
-        <thead><tr><th style="text-align:left">Producto</th><th>Precio</th><th>Costo</th><th>Margen $</th><th>Margen %</th><th>Stock</th><th>Ads</th></tr></thead>
+        <thead><tr><th style="text-align:left">Producto</th><th>Precio</th><th>Costo</th><th>Margen $</th><th>Margen %</th><th>Vendió (30 d)</th><th>Stock</th><th>Ads</th></tr></thead>
         <tbody>${g.filas.map(f => `
           <tr>
             <td style="text-align:left">${escHtml(f.nombre)} <span style="color:var(--text-muted);font-size:11px">· ${escHtml(f.sku)}</span></td>
@@ -9570,6 +9779,7 @@ function pintarAdsMargen() {
             <td>${f.costo ? fmt(f.costo) : '—'}</td>
             <td><b>${f.margen != null ? fmt(f.margen) : '—'}</b></td>
             <td>${fmtPct(f.margen_pct)}</td>
+            <td>${f.unidades_30d}</td>
             <td>${f.stock}</td>
             <td style="text-align:center">${f.anunciado ? '📣' : ''}</td>
           </tr>`).join('')}
@@ -9580,7 +9790,7 @@ function pintarAdsMargen() {
 function exportMargenCSV() {
   const filas = adsMargenFilas();
   if (!filas.length) return alert('No hay productos para exportar.');
-  const cols = ['segmento', 'sku', 'nombre', 'grupo', 'precio', 'costo', 'margen', 'margen_pct', 'stock', 'anunciado'];
+  const cols = ['segmento', 'sku', 'nombre', 'grupo', 'precio', 'costo', 'margen', 'margen_pct', 'unidades_30d', 'stock', 'anunciado'];
   const lineas = filas.map(f => cols.map(c => {
     const v = c === 'segmento' ? ADS_MARGEN_SEGMENTOS[f.segmento].label
       : c === 'margen_pct' && f.margen_pct != null ? f.margen_pct.toFixed(1)

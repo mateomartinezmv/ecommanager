@@ -48,4 +48,4 @@ cargan movimientos y después verifican cómo cambian los totales, y los de
 `descatalogar.test.js` descatalogan productos y después miran el análisis que sale de eso. Si
 un test nuevo no depende de ese estado, conviene abrir su propio `abrirCRM()` en otro
 archivo.
-| `ads-margen.test.js` | La sección 💰 Productos por margen de la pestaña de Ads: margen = precio − costo, cada producto en su segmento (alto, medio, bajo, sin margen, sin datos), los cortes editables en % y en $, el filtro de stock, que los descatalogados no entren y la marca de los que ya tienen anuncio. |
+| `ads-margen.test.js` | La sección 💰 Productos por margen de la pestaña de Ads: margen = precio − costo, cada producto en su segmento (alto, medio, bajo, sin margen, sin datos), los cortes editables en % y en $, el filtro de stock, que los descatalogados no entren y la marca de los que ya tienen anuncio. El reparto del presupuesto entre las campañas por segmento (margen × ventas MELI de 30 días, con tope en lo que el margen paga y el sobrante avisado) y las recomendaciones de subir, bajar o arrancar según el gasto actual y si viene ganando. |

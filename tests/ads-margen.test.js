@@ -26,14 +26,30 @@ function estado() {
     prod('SINSTOCK', 'Manillar', 2000, 500, 0),        // 75%, pero sin stock
     prod('BAJA', 'Viejo', 2000, 100, 9, { discontinuado: true }),
   ];
-  e.adsCampanas = [{ id: '1', nombre: 'C1', inversion: 100, roas: 3 }];
+  // Ventas MELI de los últimos 30 días: el peso de cada segmento es margen $ × unidades.
+  //   alto  600 × 2 = 1200 · medio 300 × 4 = 1200 · bajo 100 × 1 (sin ventas cuenta 1) = 100
+  const venta = (id, sku, cantidad, extra = {}) => ({ id, canal: 'meli', fecha: HOY, sku, producto: sku,
+    cantidad, precio_unit: 1000, comision: 0, total: 1000 * cantidad, estado: 'completada', created_at: HOY, ...extra });
+  e.ventas = [
+    venta('V-1', 'ALTO', 2), venta('V-2', 'MEDIO', 4),
+    venta('V-3', 'BAJO', 5, { estado: 'cancelada' }),           // cancelada: no cuenta
+    venta('V-4', 'BAJO', 5, { canal: 'mostrador' }),            // mostrador: no es MELI
+  ];
+  // Período de 30 días: el gasto actual/mes es el mismo número que el del período.
+  const hace29 = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const anuncio = (id, sku, inversion, facturacion, ganancia, roas_breakeven) => ({
+    ad_group_id: id, campaign_id: '1', titulo: sku, status: 'ACTIVE', item_ids: ['MLU' + id], variantes: 1,
+    impresiones: 10, clics: 1, inversion, facturacion, unidades: 1, ctr: 10, cpc: inversion, cvr: 100,
+    roas: facturacion / inversion, acos: 0, sku, costo: 1, margen: 40, roas_breakeven, ganancia, estado: 'ganando' });
+  e.adsCampanas = [{ id: '1', nombre: 'C1', inversion: 210, roas: 3 }];
   e.adsAnuncios = {
-    ok: true, periodo: { desde: HOY, hasta: HOY }, campaign_id: '1',
-    totales: { anuncios: 1, impresiones: 10, clics: 1, inversion: 100, facturacion: 300, unidades: 1,
-      roas: 3, ganancia: 0, anuncios_con_costo: 1, anuncios_sin_vincular: 0, anuncios_sku_sin_vincular: 0 },
-    anuncios: [{ ad_group_id: '1', campaign_id: '1', titulo: 'Baúl 45L', status: 'ACTIVE', item_ids: ['MLU1'],
-      variantes: 1, impresiones: 10, clics: 1, inversion: 100, facturacion: 300, unidades: 1, ctr: 10, cpc: 100,
-      cvr: 100, roas: 3, acos: 33, sku: 'ALTO', costo: 400, margen: 40, roas_breakeven: 2.5, estado: 'ganando' }],
+    ok: true, periodo: { desde: hace29, hasta: HOY }, campaign_id: '1',
+    totales: { anuncios: 2, impresiones: 20, clics: 2, inversion: 210, facturacion: 330, unidades: 2,
+      roas: 1.57, ganancia: -30, anuncios_con_costo: 2, anuncios_sin_vincular: 0, anuncios_sku_sin_vincular: 0 },
+    anuncios: [
+      anuncio('1', 'ALTO', 10, 30, 20, 2),       // gasta poco y gana con colchón (3x contra 2x)
+      anuncio('2', 'MEDIO', 200, 300, -50, 2),   // pierde plata
+    ],
   };
   return e;
 }
@@ -94,5 +110,41 @@ test('en $ por unidad segmenta por el monto del margen', async () => {
     assert.deepStrictEqual(await skusDe(crm.page, 'bajo'), ['BAJO']);
     const resumen = (await crm.page.textContent('#ads-margen-resumen')).replace(/\s+/g, ' ');
     assert.match(resumen, /\$500 o más/);
+  } finally { await crm.cerrar(); }
+});
+
+const filaReparto = async (page, seg) =>
+  (await page.textContent(`#ads-presupuesto-tabla tr[data-segmento="${seg}"]`)).replace(/\s+/g, ' ');
+const recoDe = (page, seg) =>
+  page.getAttribute(`#ads-presupuesto-tabla tr[data-segmento="${seg}"]`, 'data-reco');
+
+test('el presupuesto se reparte por margen × ventas y dice qué subir y qué bajar', async () => {
+  const crm = await irAMargen();
+  try {
+    await crm.page.fill('#ads-presupuesto', '1000');
+    await crm.page.waitForSelector('#ads-presupuesto-tabla');
+    // 1000 sobre pesos 1200 / 1200 / 100 → 480 / 480 / 40.
+    assert.match(await filaReparto(crm.page, 'alto'), /\$480/);
+    assert.match(await filaReparto(crm.page, 'medio'), /\$480/);
+    assert.match(await filaReparto(crm.page, 'bajo'), /\$40/);
+    assert.match(await crm.page.textContent('#ads-presupuesto-diario'), /\$33 por día/);
+
+    assert.strictEqual(await recoDe(crm.page, 'alto'), 'subir', 'gasta 10 de 480 sugeridos y gana con colchón');
+    assert.strictEqual(await recoDe(crm.page, 'medio'), 'bajar', 'el ads del segmento pierde plata');
+    assert.match(await filaReparto(crm.page, 'medio'), /pierde \$50/);
+    assert.strictEqual(await recoDe(crm.page, 'bajo'), 'arrancar', 'sin gasto todavía');
+    assert.strictEqual(await crm.page.$('#ads-presupuesto-sobrante'), null);
+    assert.deepStrictEqual(erroresReales(crm.errores), []);
+  } finally { await crm.cerrar(); }
+});
+
+test('más presupuesto del que el margen paga: cada segmento queda en su tope y sobra', async () => {
+  const crm = await irAMargen();
+  try {
+    await crm.page.fill('#ads-presupuesto', '3000');
+    await crm.page.waitForSelector('#ads-presupuesto-sobrante');
+    assert.match(await filaReparto(crm.page, 'alto'), /\$1\.200.*tope/);
+    assert.match(await filaReparto(crm.page, 'bajo'), /\$100.*tope/);
+    assert.match(await crm.page.textContent('#ads-presupuesto-sobrante'), /Bajar el presupuesto total: sobran \$500/);
   } finally { await crm.cerrar(); }
 });

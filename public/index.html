@@ -855,6 +855,36 @@
         <div id="ads-reco-chips" style="padding:12px 16px 0;display:flex;gap:8px;flex-wrap:wrap"></div>
         <div id="ads-reco-lista" style="padding:12px 16px 16px"></div>
       </div>
+
+      <!-- POR MARGEN: el catálogo partido por margen (precio − costo), para armar una
+           campaña por segmento con su propio ROAS objetivo. No depende de MELI: sale de
+           los precios y costos cargados en Stock. -->
+      <div class="table-wrap" style="margin-top:20px">
+        <div class="table-header">
+          <span class="table-title">💰 Productos por margen</span>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select id="ads-margen-modo" onchange="onAdsMargenModo()" style="width:auto;padding:5px 10px;font-size:12px">
+              <option value="pct">Margen en % del precio</option>
+              <option value="monto">Margen en $ por unidad</option>
+            </select>
+            <span style="font-size:12px;color:var(--text-dim)">Alto ≥</span>
+            <input type="number" id="ads-margen-alto" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
+            <span style="font-size:12px;color:var(--text-dim)">Medio ≥</span>
+            <input type="number" id="ads-margen-medio" min="0" step="1" style="width:80px;padding:5px 8px;font-size:12px" onchange="onAdsMargenCortes()">
+            <label style="font-size:12px;color:var(--text-dim);display:flex;gap:4px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="ads-margen-stock" checked onchange="pintarAdsMargen()" style="width:auto"> Sólo con stock
+            </label>
+            <button class="btn btn-ghost btn-sm" onclick="exportMargenCSV()">📊 CSV</button>
+          </span>
+        </div>
+        <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
+          Margen = <b>precio de venta − costo</b>, con el precio y el costo cargados en Stock (no descuenta comisión, envío ni ads).
+          La idea es armar una campaña por segmento: a más margen, más se puede pagar por clic y más bajo puede ser el ROAS objetivo.
+          📣 = tiene un anuncio activo en lo que está cargado arriba.
+        </div>
+        <div id="ads-margen-resumen" class="cards-grid" style="padding:12px 16px 0"></div>
+        <div id="ads-margen-lista" style="padding:12px 16px 16px"></div>
+      </div>
     </div>
   </div>
 
@@ -8598,6 +8628,8 @@ function onAdsPeriodoChange() {
 
 async function renderAds(forzar = false) {
   const sel = document.getElementById('ads-campana');
+  // No espera a MELI: sale de Stock, así que se ve aunque Ads no responda.
+  pintarAdsMargen();
 
   if (!adsState.campanasCargadas || forzar) {
     sel.innerHTML = '<option value="">Cargando campañas...</option>';
@@ -8672,6 +8704,7 @@ async function renderAdsAnuncios() {
     pintarAdsStats();
     pintarAdsAviso();
     pintarAdsTabla();
+    pintarAdsMargen();
   } catch (e) {
     tabla.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   }
@@ -8726,6 +8759,7 @@ async function renderAdsRecomendaciones(forzar = false) {
     const r = await api('GET', `/meli/ads-recomendaciones?${adsRango()}`);
     adsState.reco = r;
     pintarReco();
+    pintarAdsMargen();
   } catch (e) {
     cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   } finally {
@@ -9355,6 +9389,212 @@ async function confirmarVincularAnuncio() {
     btn.disabled = false;
     btn.textContent = 'Vincular';
   }
+}
+
+// ── PRODUCTOS POR MARGEN ─────────────────────────────────────────────────────────────
+// Parte el catálogo por margen (precio − costo) para anunciar cada tramo en su propia
+// campaña: un ROAS objetivo pensado para un producto de 60% de margen hace perder plata en
+// uno de 20%, y uno pensado para el de 20% deja sin alcance al de 60%.
+//
+// Sale de los precios y costos de Stock, no de MELI: así entran también los productos que
+// nunca se anunciaron, que son justamente los que hay que repartir entre campañas.
+const ADS_MARGEN_SEGMENTOS = {
+  alto:       { emoji: '🟢', label: 'Margen alto',  clase: 'green' },
+  medio:      { emoji: '🟡', label: 'Margen medio', clase: 'yellow' },
+  bajo:       { emoji: '🟠', label: 'Margen bajo',  clase: 'blue' },
+  sin_margen: { emoji: '⛔', label: 'Sin margen',   clase: 'red' },
+  sin_datos:  { emoji: '❓', label: 'Sin precio o costo', clase: 'purple' },
+};
+// Cortes por defecto de cada modo. En $ no hay un número que sirva para cualquier
+// catálogo, así que se parte en tercios de lo que hay cargado.
+const ADS_MARGEN_CORTES_PCT = { alto: 40, medio: 20 };
+const ADS_MARGEN_LS = 'ads-margen-cortes';
+
+function adsMargenProductos() {
+  return db.productos.filter(p => !p.discontinuado);
+}
+
+/** Margen de un producto: { monto, pct } o null si falta el precio o el costo. */
+function margenDe(p) {
+  const precio = parseFloat(p.precio) || 0;
+  const costo = parseFloat(p.costo) || 0;
+  if (precio <= 0 || costo <= 0) return null;
+  const monto = precio - costo;
+  return { monto, pct: monto / precio * 100 };
+}
+
+function adsMargenCortesDefault(modo) {
+  if (modo === 'pct') return { ...ADS_MARGEN_CORTES_PCT };
+  const montos = adsMargenProductos().map(margenDe).filter(m => m && m.monto > 0)
+    .map(m => m.monto).sort((a, b) => a - b);
+  if (!montos.length) return { alto: 0, medio: 0 };
+  const tercil = q => Math.round(montos[Math.min(montos.length - 1, Math.floor(montos.length * q))]);
+  return { alto: tercil(2 / 3), medio: tercil(1 / 3) };
+}
+
+function adsMargenLeerGuardado() {
+  try { return JSON.parse(localStorage.getItem(ADS_MARGEN_LS) || '{}') || {}; } catch (e) { return {}; }
+}
+
+function adsMargenGuardar() {
+  const g = adsMargenLeerGuardado();
+  g.modo = document.getElementById('ads-margen-modo').value;
+  g[g.modo] = {
+    alto: parseFloat(document.getElementById('ads-margen-alto').value) || 0,
+    medio: parseFloat(document.getElementById('ads-margen-medio').value) || 0,
+  };
+  try { localStorage.setItem(ADS_MARGEN_LS, JSON.stringify(g)); } catch (e) { /* sin storage: sólo no se recuerda */ }
+}
+
+/** Pone en los inputs los cortes del modo elegido: los guardados, o los de por defecto. */
+function adsMargenCargarCortes(modo) {
+  const c = adsMargenLeerGuardado()[modo] || adsMargenCortesDefault(modo);
+  document.getElementById('ads-margen-alto').value = c.alto;
+  document.getElementById('ads-margen-medio').value = c.medio;
+}
+
+function onAdsMargenModo() {
+  adsMargenCargarCortes(document.getElementById('ads-margen-modo').value);
+  adsMargenGuardar();
+  pintarAdsMargen();
+}
+
+function onAdsMargenCortes() {
+  adsMargenGuardar();
+  pintarAdsMargen();
+}
+
+/** SKUs con un anuncio activo, según lo que ya cargó la pestaña (anuncios + recomendaciones). */
+function adsSkusAnunciados() {
+  const skus = new Set();
+  for (const a of adsState.anuncios || []) {
+    if (a.sku && String(a.status || '').toUpperCase() === 'ACTIVE') skus.add(String(a.sku).toUpperCase());
+  }
+  for (const x of adsState.reco?.recomendaciones || []) {
+    if (x.sku && x.anunciado) skus.add(String(x.sku).toUpperCase());
+  }
+  return skus;
+}
+
+/** Cada producto con su margen y su segmento, ordenado de mayor a menor margen. */
+function adsMargenFilas() {
+  const modoEl = document.getElementById('ads-margen-modo');
+  if (!modoEl) return [];
+  const modo = modoEl.value;
+  // Si los cortes quedaron invertidos (medio > alto), el medio manda hasta el alto.
+  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
+  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const soloStock = document.getElementById('ads-margen-stock').checked;
+  const anunciados = adsSkusAnunciados();
+
+  return adsMargenProductos()
+    .filter(p => !soloStock || (p.stockDep || 0) > 0)
+    .map(p => {
+      const m = margenDe(p);
+      const valor = m ? (modo === 'pct' ? m.pct : m.monto) : null;
+      const segmento = !m ? 'sin_datos'
+        : m.monto <= 0 ? 'sin_margen'
+        : valor >= alto ? 'alto'
+        : valor >= medio ? 'medio'
+        : 'bajo';
+      return {
+        sku: p.sku, nombre: p.nombre, grupo: p.grupo, precio: p.precio, costo: p.costo,
+        stock: p.stockDep || 0,
+        margen: m ? m.monto : null, margen_pct: m ? m.pct : null,
+        segmento, anunciado: anunciados.has(String(p.sku).toUpperCase()),
+      };
+    })
+    .sort((a, b) => (b[modo === 'pct' ? 'margen_pct' : 'margen'] ?? -Infinity)
+                  - (a[modo === 'pct' ? 'margen_pct' : 'margen'] ?? -Infinity));
+}
+
+function pintarAdsMargen() {
+  const resumen = document.getElementById('ads-margen-resumen');
+  const cont = document.getElementById('ads-margen-lista');
+  if (!resumen || !cont) return;
+  // Primera vez: el modo y los cortes que se usaron la última vez, si quedaron guardados.
+  if (document.getElementById('ads-margen-alto').value === '') {
+    const g = adsMargenLeerGuardado();
+    if (g.modo === 'pct' || g.modo === 'monto') document.getElementById('ads-margen-modo').value = g.modo;
+    adsMargenCargarCortes(document.getElementById('ads-margen-modo').value);
+  }
+  const modo = document.getElementById('ads-margen-modo').value;
+
+  const filas = adsMargenFilas();
+  if (!filas.length) {
+    resumen.innerHTML = '';
+    cont.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><p>No hay productos para segmentar.</p></div>';
+    return;
+  }
+
+  const alto = parseFloat(document.getElementById('ads-margen-alto').value) || 0;
+  const medio = Math.min(parseFloat(document.getElementById('ads-margen-medio').value) || 0, alto);
+  const corte = v => modo === 'pct' ? `${v}%` : fmt(v);
+  const rango = {
+    alto: `${corte(alto)} o más`,
+    medio: `${corte(medio)} a ${corte(alto)}`,
+    bajo: `menos de ${corte(medio)}`,
+    sin_margen: 'el costo iguala o supera el precio',
+    sin_datos: 'cargalos en Stock para clasificarlos',
+  };
+
+  const grupos = Object.keys(ADS_MARGEN_SEGMENTOS)
+    .map(k => ({ k, def: ADS_MARGEN_SEGMENTOS[k], filas: filas.filter(f => f.segmento === k) }))
+    .filter(g => g.filas.length);
+
+  resumen.innerHTML = grupos.map(g => {
+    const conM = g.filas.filter(f => f.margen != null);
+    const prom = conM.length
+      ? (modo === 'pct'
+          ? `${(conM.reduce((s, f) => s + f.margen_pct, 0) / conM.length).toFixed(1)}%`
+          : fmt(conM.reduce((s, f) => s + f.margen, 0) / conM.length))
+      : '—';
+    const enAds = g.filas.filter(f => f.anunciado).length;
+    return `<div class="stat-card ${g.def.clase}" data-segmento="${g.k}"><div class="stat-icon">${g.def.emoji}</div>
+      <div class="stat-value">${g.filas.length}</div>
+      <div class="stat-label">${escHtml(g.def.label)} · ${escHtml(rango[g.k])}<br>
+        ${g.k === 'sin_datos' ? '' : `promedio ${prom} · `}${enAds} con anuncio</div></div>`;
+  }).join('');
+
+  const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
+  cont.innerHTML = grupos.map(g => `
+    <div style="margin-bottom:16px" data-segmento-lista="${g.k}">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">${g.def.emoji} ${escHtml(g.def.label)}
+        <span style="font-weight:400;color:var(--text-muted);font-size:11px">· ${escHtml(rango[g.k])} · ${g.filas.length} producto${g.filas.length === 1 ? '' : 's'}</span></div>
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th style="text-align:left">Producto</th><th>Precio</th><th>Costo</th><th>Margen $</th><th>Margen %</th><th>Stock</th><th>Ads</th></tr></thead>
+        <tbody>${g.filas.map(f => `
+          <tr>
+            <td style="text-align:left">${escHtml(f.nombre)} <span style="color:var(--text-muted);font-size:11px">· ${escHtml(f.sku)}</span></td>
+            <td>${f.precio ? fmt(f.precio) : '—'}</td>
+            <td>${f.costo ? fmt(f.costo) : '—'}</td>
+            <td><b>${f.margen != null ? fmt(f.margen) : '—'}</b></td>
+            <td>${fmtPct(f.margen_pct)}</td>
+            <td>${f.stock}</td>
+            <td style="text-align:center">${f.anunciado ? '📣' : ''}</td>
+          </tr>`).join('')}
+        </tbody></table></div>
+    </div>`).join('');
+}
+
+function exportMargenCSV() {
+  const filas = adsMargenFilas();
+  if (!filas.length) return alert('No hay productos para exportar.');
+  const cols = ['segmento', 'sku', 'nombre', 'grupo', 'precio', 'costo', 'margen', 'margen_pct', 'stock', 'anunciado'];
+  const lineas = filas.map(f => cols.map(c => {
+    const v = c === 'segmento' ? ADS_MARGEN_SEGMENTOS[f.segmento].label
+      : c === 'margen_pct' && f.margen_pct != null ? f.margen_pct.toFixed(1)
+      : c === 'anunciado' ? (f.anunciado ? 'si' : 'no')
+      : f[c];
+    return typeof v === 'string' ? `"${v.replace(/"/g, '""')}"` : (v ?? '');
+  }).join(','));
+  const csv = [cols.join(','), ...lineas].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'productos-por-margen.csv';
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function exportAdsCSV() {

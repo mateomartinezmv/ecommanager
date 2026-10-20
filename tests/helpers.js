@@ -121,7 +121,20 @@ function mockearApi(page, estado, fallos = {}) {
       return ok(estado.productos);
     }
     if (ruta === '/ventas') return ok(estado.ventas);
-    if (ruta === '/envios' || ruta === '/clientes' || ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
+    if (ruta === '/envios') {
+      // Un envío nuevo se guarda como lo haría api/envios.js, en snake_case.
+      if (metodo === 'POST') {
+        const e = { id: cuerpo.id, venta_id: cuerpo.ventaId, orden: cuerpo.orden, comprador: cuerpo.comprador,
+          producto: cuerpo.producto, transportista: cuerpo.transportista, tracking: cuerpo.tracking,
+          fecha_despacho: cuerpo.fechaDespacho, estado: cuerpo.estado, direccion: cuerpo.direccion,
+          costo: cuerpo.costo, zona: cuerpo.zona, colecta: cuerpo.colecta, created_at: HOY };
+        (estado.envios = estado.envios || []).push(e);
+        return ok(e);
+      }
+      return ok(estado.envios || []);
+    }
+    if (ruta === '/clientes') return ok(estado.clientes || []);
+    if (ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
     // La pestaña de Ads: cada suite puede poner su propia respuesta en el estado. Las
     // URLs pedidas se guardan porque lo que *no* se manda también es parte del contrato
     // (ej: sin ?comision el endpoint usa la comisión real en vez de un 15% fijo).

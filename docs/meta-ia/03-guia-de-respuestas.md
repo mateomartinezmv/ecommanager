@@ -32,7 +32,7 @@ Hola! Los espejos tipo alerón grandes de aluminio salen $1.690 el par, con env�
 Son universales y van en la mayoría de las motos de calle, naked y custom sin carenado. Para confirmarte, ¿me mandás una foto de dónde va el espejo original? Así vemos la rosca.
 
 **"¿Qué rosca tienen?" / "Mi moto tiene rosca de 8 / de 10"**
-Las motos usan rosca de 8 mm o de 10 mm, a derecha o a izquierda. Si la rosca de tu moto no coincide, tenemos adaptadores de rosca a $100 cada uno en todas las medidas, así que te quedan igual. Mandame una foto de la rosca y te digo cuál va.
+Mandame una foto de dónde va el espejo original y te confirmo si te sirven. (Si con la foto no queda claro, pasarle el WhatsApp 092 085 878 para que lo confirme una persona. No ofrecer adaptadores ni extensores de rosca.)
 
 **"¿Es el par o uno solo?"**
 Es el par, izquierdo y derecho, a $1.690.
@@ -123,7 +123,7 @@ Son accesorios universales nuevos, no repuestos originales de la marca de la mot
 ## Ventas cruzadas (ofrecer solo una, y solo si viene al caso)
 
 - Compra de menos de $990 (de lista) → avisar que sumando otro producto hasta $990 el envío es gratis.
-- Compra espejos → adaptador de rosca ($100) si hay duda de rosca; soporte de celular para espejo ($490).
+- Compra espejos → soporte de celular para espejo ($490).
 - Compra manillar → puños Domino ($450) o puños con contrapesos ($990).
 - Moto de delivery → soporte de celular para manubrio ($490), guardamanos ($690), puños antideslizantes.
 - Moto deportiva o naked → sliders anticaídas ($1.290), protector de levas ($690).

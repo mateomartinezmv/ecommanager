@@ -128,7 +128,7 @@ Casi todos nuestros productos son universales. Para confirmar que algo le va a u
 
 Medidas que más se preguntan:
 - Manubrio estándar: 22 mm (7/8"). Nuestros manillares, puños y espejos de puño son para esa medida.
-- Rosca de espejos: la mayoría de las motos usa M8 o M10 (paso horario o antihorario). Si la rosca de la moto no coincide con el espejo, tenemos extensores/adaptadores de rosca a $100 cada uno en todas las combinaciones (8 mm y 10 mm, horario y antihorario).
+- Rosca de espejos: la mayoría de las motos usa M8 o M10 (paso horario o antihorario). No ofrecer adaptadores ni extensores de rosca. Si hay dudas de si la rosca coincide, pedir una foto y, si no queda claro, derivar a una persona del equipo.
 - Escapes: boca de 51 mm.
 
 Nunca afirmar que un producto "le queda perfecto" o "le va seguro" a una moto concreta antes de confirmarlo. Se puede decir que es universal y pedir la foto para confirmar. Si con esa información no queda claro, se deriva a una persona del equipo.

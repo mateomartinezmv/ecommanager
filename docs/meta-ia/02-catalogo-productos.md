@@ -28,7 +28,7 @@ No se informan cantidades exactas de stock al cliente: solo "hay stock" o "no ha
 - NO SIRVEN PARA MOTOS CON CARENADO: las motos deportivas con carenado (por ejemplo Yamaha R1, R3, R6, R7, R15; Honda CBR; Kawasaki Ninja; Suzuki GSX-R; KTM RC; Bajaj Pulsar RS; Ducati Panigale) tienen los espejos montados en el carenado y no en el manillar, así que estos espejos NO les van. Nunca decir que son compatibles con una moto con carenado.
 - Si la moto tiene carenado: avisar que estos no le van y ofrecer los espejos alerón tipo gaviota (código 2004-107, $2.390), que son para motos con carenado.
 - Si no está claro si la moto tiene carenado: preguntar "¿Tu moto tiene los espejos en el carenado (la parte de adelante) o en el manillar?" o pedir una foto, antes de confirmar.
-- Instalación: reemplazan a los espejos originales. Si la rosca de la moto no coincide, se usa un extensor/adaptador de rosca ($100 c/u).
+- Instalación: reemplazan a los espejos originales y se enroscan donde iba el espejo original. Si hay dudas con la rosca, pedir foto y, si no queda claro, derivar a una persona del equipo.
 - Para confirmar compatibilidad: pedir marca, modelo y año, y una foto de dónde va el espejo original.
 - Mercado Libre: https://articulo.mercadolibre.com.uy/MLU-884316822
 
@@ -67,17 +67,6 @@ No se informan cantidades exactas de stock al cliente: solo "hay stock" o "no ha
 - Qué es: espejos redondos que van en la punta del manubrio.
 - Para qué motos: manubrio 7/8" (22 mm); motos de calle, scooter, delivery, estilo café racer.
 - Mercado Libre: https://articulo.mercadolibre.com.uy/MLU-700264539
-
-### Extensores / adaptadores de rosca para espejos
-- Precio: $100 cada uno
-- Con transferencia (10% off, solo si el cliente quiere pagar así): $90 cada uno
-- Disponibilidad: con stock en todas las combinaciones
-- Qué es: adaptador que se enrosca en la moto y recibe el espejo. Sirve para usar un espejo con rosca distinta a la de la moto, o para levantar un poco el espejo.
-- Combinaciones disponibles (rosca de la moto / rosca del espejo):
-  - 8 mm a 8 mm, 8 mm a 10 mm, 10 mm a 8 mm, 10 mm a 10 mm
-  - En cada caso, con paso horario (derecho) o antihorario (izquierdo) en cada lado.
-- Para elegir el correcto: pedir foto de la rosca de la moto y del espejo, o marca y modelo; si hay dudas, derivar a una persona del equipo.
-- Se venden por mensaje directo (no están en Mercado Libre).
 
 ---
 

@@ -10,43 +10,69 @@ Vendemos por mensaje directo (Instagram, Facebook, WhatsApp), en persona y tambi
 
 Moneda: todos los precios están en pesos uruguayos ($ UYU).
 
+## Contacto y local
+
+- Local para retirar compras: Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo.
+- Horario del local: lunes a viernes de 10 a 18 h, sábados de 10 a 14 h. Domingos el local está cerrado.
+- WhatsApp para hablar con una persona del equipo: 092 085 878 (https://wa.me/59892085878).
+
 ## Cómo se compra
 
 **¿Cómo hago para comprar?**
-Hay dos formas:
-1. Por acá, por mensaje: nos decís qué producto y color querés, tu nombre, y si es envío, la dirección con barrio. Una persona del equipo confirma el pedido, el total y la forma de pago.
-2. Por Mercado Libre: todos nuestros productos principales están publicados en Mercado Libre Uruguay con compra protegida. Si el cliente prefiere esa opción, se le pasa el enlace del producto (está en el catálogo).
+Hay tres formas:
+1. Por acá, por mensaje, con envío: nos decís qué producto y color querés, tu nombre, la dirección (o la agencia UES si sos del interior) y tu teléfono. Para despachar el envío es necesario el pago previo.
+2. Retirando en el local: Pedro Celestino Bauzá 4264, Belvedere, Montevideo, de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
+3. Por Mercado Libre: nuestros productos principales están publicados en Mercado Libre Uruguay. Si el cliente prefiere esa opción, se le pasa el enlace del producto (está en el catálogo).
 
 **¿Puedo comprar ahora mismo?**
-Sí. La IA toma los datos del pedido (producto, color, cantidad, nombre, dirección y barrio, forma de pago preferida) y una persona del equipo lo confirma en el mismo chat.
+Sí. La IA toma los datos del pedido (producto, color, cantidad, nombre, teléfono, dirección o agencia, y si es envío o retiro) y una persona del equipo confirma el pago y despacha.
 
 ## Formas de pago
 
 **¿Qué medios de pago aceptan?**
-Para compras directas: transferencia bancaria, efectivo, tarjeta de débito, tarjeta de crédito y QR.
-En Mercado Libre se pueden usar todos los medios de pago de Mercado Libre, incluidas cuotas con tarjeta.
+- Con envío: el pago es siempre previo, antes de despachar. No hay pago contra entrega.
+- Retirando en el local: se puede pagar en efectivo, además de los otros medios.
+- El efectivo se acepta solo retirando en el local.
+- En Mercado Libre se pueden usar todos los medios de pago de Mercado Libre, incluidas cuotas con tarjeta.
+
+**¿Puedo pagar cuando me llega? / ¿Contra entrega?**
+No. Los envíos se despachan con el pago hecho de antemano. Si el cliente quiere pagar en efectivo, puede retirar en el local.
 
 **¿Se puede pagar en cuotas?**
-En cuotas, la forma más simple es comprar por Mercado Libre. Para cuotas en una compra directa, lo confirma una persona del equipo.
+En cuotas, la forma más simple es comprar por Mercado Libre.
 
-**¿Pago contra entrega?**
-Lo confirma una persona del equipo según la zona.
+**¿Cómo hago el pago para un envío?**
+Los datos para pagar los pasa una persona del equipo al confirmar el pedido.
 
 ## Envíos
 
-**¿Hacen envíos?**
-Sí, a todo Uruguay.
-- Montevideo y área metropolitana (Ciudad de la Costa, Las Piedras, La Paz, Progreso, Pando, Barros Blancos y alrededores): envío por cadetería, normalmente al día hábil siguiente de confirmado el pago.
-- Interior del país: envío por agencia (UES).
-
 **¿Cuánto sale el envío?**
-Depende del barrio o ciudad. Pedile al cliente la dirección con barrio (o ciudad si es del interior) y una persona del equipo le confirma el costo exacto.
+- Compras de $990 o más: envío gratis a cualquier punto del país.
+- Compras de menos de $990: el envío cuesta $200, a cualquier punto del país.
+El monto que cuenta es el total de la compra (se pueden sumar productos para llegar a $990).
 
-**¿Cuánto demora?**
-Montevideo y área metropolitana: normalmente al día hábil siguiente. Interior: normalmente entre 1 y 3 días hábiles, según la agencia.
+**¿Hacen envíos a todo el país?**
+Sí, a todo Uruguay.
+
+**Envíos dentro de Montevideo: ¿cuándo llega?**
+Llega el mismo día si la compra se hace (con el pago confirmado):
+- Lunes a viernes: antes de las 16 h.
+- Sábados: antes de las 13 h.
+- Domingos: antes de las 14 h.
+Si se compra después de esa hora, sale con los envíos del día siguiente.
+
+**Envíos al interior: ¿cómo y cuándo llega?**
+- Se envía por UES. Si el cliente lo pide, también se puede enviar por DAC; si no dice nada, siempre UES.
+- Se despacha el mismo día y demora aproximadamente de 24 a 48 horas.
+- Puede ser a domicilio o a la agencia de UES que elija el cliente.
 
 **¿Si compro por Mercado Libre cómo llega?**
 Con el envío de Mercado Libre, y el costo y plazo los muestra la propia publicación.
+
+## Retiro en el local
+
+**¿Puedo pasar a buscar?**
+Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo.
 
 ## Cambios, devoluciones y garantía
 
@@ -86,11 +112,11 @@ No se ofrecen descuentos, rebajas ni precios especiales por cuenta propia. Si el
 ## Cuándo pasar la conversación a una persona
 
 Derivar siempre que el cliente:
-- Quiere confirmar un pedido, el costo de envío o coordinar entrega o retiro.
+- Ya decidió comprar y hay que confirmar el pago y despachar.
 - Pide descuento, precio mayorista o compra de varias unidades para reventa o flota de delivery.
 - Tiene un reclamo, un producto con falla, un envío demorado o quiere un cambio o devolución.
 - Pregunta algo de compatibilidad que no se puede confirmar con este documento.
 - Pide un producto que no está en el catálogo.
 - Está molesto o pide hablar con una persona.
 
-Al derivar, decir algo como: "Te paso con alguien del equipo que te lo confirma enseguida." y dejar resumidos los datos que ya dio el cliente.
+Al derivar, dejar resumidos los datos que ya dio el cliente y pasarle el WhatsApp del equipo: "Para cerrarlo escribinos al WhatsApp 092 085 878 (https://wa.me/59892085878) y te lo confirmamos enseguida."

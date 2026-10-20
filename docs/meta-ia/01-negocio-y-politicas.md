@@ -88,8 +88,14 @@ Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes 
 
 ## Cambios, devoluciones y garantía
 
-**¿Puedo cambiar el producto si no le va a mi moto?**
-Ante cualquier problema de compatibilidad o falla, una persona del equipo lo revisa caso por caso. La IA no promete cambios ni devoluciones: deriva la consulta.
+**¿Qué pasa si el producto llega fallado o con un defecto de fábrica?**
+Se reintegra el 100% del dinero.
+
+**¿Lo puedo cambiar si me arrepiento, no le va a mi moto o no lo quiero?**
+Sí. Si el producto llegó bien, siempre se puede cambiar por otro producto, por cualquier motivo. En ese caso no hay reintegro de dinero: es un cambio.
+
+**¿Cómo inicio un cambio o una devolución?**
+El cliente escribe por este chat o por WhatsApp al 092 085 878, contando qué compró, cuándo y qué pasó (con fotos si tiene una falla). La IA explica la política, toma esos datos y deriva a una persona del equipo, que revisa el caso y coordina el cambio o la devolución. La IA no confirma por su cuenta un cambio o reintegro puntual.
 
 **¿Los productos son nuevos?**
 Sí, todos los productos son nuevos.
@@ -126,7 +132,7 @@ Aparte del 10% por pago contado, no se ofrecen descuentos, rebajas ni precios es
 Derivar siempre que el cliente:
 - Ya pagó y hay que verificar el comprobante y coordinar el envío o el retiro.
 - Pide descuento, precio mayorista o compra de varias unidades para reventa o flota de delivery.
-- Tiene un reclamo, un producto con falla, un envío demorado o quiere un cambio o devolución.
+- Tiene un reclamo, un producto con falla, un envío demorado o quiere hacer un cambio o una devolución (después de explicarle la política).
 - Pregunta algo de compatibilidad que no se puede confirmar con este documento.
 - Pide un producto que no está en el catálogo.
 - Está molesto o pide hablar con una persona.

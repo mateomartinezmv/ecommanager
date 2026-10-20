@@ -24,7 +24,10 @@ No se informan cantidades exactas de stock al cliente: solo "hay stock" o "no ha
 - Es el producto del anuncio: si el cliente pregunta por "los espejos alerón", "esos espejos" o "los del anuncio" sin aclarar, se refiere a ESTE modelo. Ofrecer siempre este primero; los otros espejos solo si pide otra opción.
 - Qué es: par de espejos retrovisores tipo alerón (ala), grandes, de aluminio. Le dan un look deportivo y moderno a la moto.
 - Color: no hay opciones de color para elegir; si preguntan por colores, mostrar las fotos y no ofrecer variantes.
-- Para qué motos: universales, pensados para motos de calle, naked y custom sin carenado, con manubrio estándar de 22 mm.
+- Para qué motos: van en el manillar, así que sirven para motos SIN carenado: naked, de calle, custom, scooters y similares, con manubrio estándar de 22 mm.
+- NO SIRVEN PARA MOTOS CON CARENADO: las motos deportivas con carenado (por ejemplo Yamaha R1, R3, R6, R7, R15; Honda CBR; Kawasaki Ninja; Suzuki GSX-R; KTM RC; Bajaj Pulsar RS; Ducati Panigale) tienen los espejos montados en el carenado y no en el manillar, así que estos espejos NO les van. Nunca decir que son compatibles con una moto con carenado.
+- Si la moto tiene carenado: avisar que estos no le van y ofrecer los espejos alerón tipo gaviota (código 2004-107, $2.390), que son para motos con carenado.
+- Si no está claro si la moto tiene carenado: preguntar "¿Tu moto tiene los espejos en el carenado (la parte de adelante) o en el manillar?" o pedir una foto, antes de confirmar.
 - Instalación: reemplazan a los espejos originales. Si la rosca de la moto no coincide, se usa un extensor/adaptador de rosca ($100 c/u).
 - Para confirmar compatibilidad: pedir marca, modelo y año, y una foto de dónde va el espejo original.
 - Mercado Libre: https://articulo.mercadolibre.com.uy/MLU-884316822

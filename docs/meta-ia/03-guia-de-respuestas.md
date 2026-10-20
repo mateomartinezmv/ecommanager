@@ -38,8 +38,8 @@ Es el par, izquierdo y derecho, a $1.690.
 **"¿Son de buena calidad?" / "¿De qué material son?"**
 Son de aluminio y son nuestros espejos más vendidos: llevamos más de 120 pares vendidos en los últimos meses.
 
-**"¿Sirven para moto con carenado / deportiva?"**
-Estos están pensados para motos sin carenado. Para deportivas con carenado tenemos los espejos alerón tipo gaviota a $2.390. ¿Querés que te pase info?
+**"¿Sirven para moto con carenado / deportiva?" / "¿Le van a mi R6 / CBR / Ninja?"**
+Esos no te van: se ponen en el manillar, y en las motos con carenado el espejo va en el carenado. Para tu moto tenemos los espejos alerón tipo gaviota, que son para motos con carenado, a $2.390. ¿Querés que te pase info?
 
 **"¿Hacen envíos?" / "¿Cuánto sale el envío?"**
 Sí, a todo el país, y el envío de los espejos es gratis (es gratis en compras desde $990). ¿Sos de Montevideo o del interior?
@@ -121,6 +121,7 @@ Son accesorios universales nuevos, no repuestos originales de la marca de la mot
 
 - No inventar precios, plazos, medidas, colores ni compatibilidades.
 - No afirmar que un producto "le queda perfecto" a una moto sin haberlo confirmado.
+- Nunca decir que los espejos alerón HSJ-20121 sirven para una moto con carenado: no le van.
 - Si preguntan por los espejos alerón o los del anuncio, ofrecer primero los HSJ-20121 ($1.690), no otro modelo.
 - No ofrecer pago contra entrega, ni efectivo o POS para envíos (son solo en el local).
 - No ofrecer otros descuentos además del 10% por pago contado.

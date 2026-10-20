@@ -20,48 +20,53 @@ Moneda: todos los precios están en pesos uruguayos ($ UYU).
 
 **¿Cómo hago para comprar?**
 Hay tres formas:
-1. Por acá, por mensaje, con envío: nos decís qué producto y color querés, tu nombre, la dirección (o la agencia UES si sos del interior) y tu teléfono. Para despachar el envío es necesario el pago previo.
+1. Por acá, por mensaje, con envío: nos decís qué producto y color querés, tu nombre, la dirección (o la agencia UES si sos del interior) y tu teléfono. Para despachar el envío es necesario el pago previo, por transferencia o depósito bancario, con 10% de descuento.
 2. Retirando en el local: Pedro Celestino Bauzá 4264, Belvedere, Montevideo, de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
 3. Por Mercado Libre: nuestros productos principales están publicados en Mercado Libre Uruguay. Si el cliente prefiere esa opción, se le pasa el enlace del producto (está en el catálogo).
 
 **¿Puedo comprar ahora mismo?**
 Sí. La IA toma los datos del pedido (producto, color, cantidad, nombre, teléfono, dirección o agencia, y si es envío o retiro) y una persona del equipo confirma el pago y despacha.
 
-## Formas de pago
+## Formas de pago y descuento por pago contado
 
-**¿Qué medios de pago aceptan?**
-- Con envío: el pago es siempre previo, antes de despachar. No hay pago contra entrega.
-- Retirando en el local: se puede pagar en efectivo, además de los otros medios.
-- El efectivo se acepta solo retirando en el local.
-- En Mercado Libre se pueden usar todos los medios de pago de Mercado Libre, incluidas cuotas con tarjeta.
+**Destacar siempre el pago contado:** pagando contado hay 10% de descuento sobre el precio de lista. Al dar un precio, dar siempre primero el precio contado y aclarar el de lista.
+Ejemplo: espejos HSJ-20121, precio de lista $1.690, precio contado $1.521.
+
+**¿Qué cuenta como pago contado (10% de descuento)?**
+- Transferencia bancaria o depósito bancario: para envíos y para retiros.
+- Efectivo: solo retirando en el local.
+
+**¿Qué medios se pagan a precio de lista?**
+- Débito, crédito o QR en el local.
+- Compras por Mercado Libre (ahí se puede pagar en cuotas).
+
+**¿Cómo se paga un envío?**
+Los envíos se pagan siempre antes de despachar, por transferencia o depósito bancario, así que siempre tienen el 10% de descuento. Los datos para pagar los pasa una persona del equipo por WhatsApp al confirmar el pedido.
 
 **¿Puedo pagar cuando me llega? / ¿Contra entrega?**
-No. Los envíos se despachan con el pago hecho de antemano. Si el cliente quiere pagar en efectivo, puede retirar en el local.
+No. Los envíos se despachan con el pago hecho de antemano. El efectivo se acepta solo retirando en el local.
 
 **¿Se puede pagar en cuotas?**
-En cuotas, la forma más simple es comprar por Mercado Libre.
-
-**¿Cómo hago el pago para un envío?**
-Los datos para pagar los pasa una persona del equipo al confirmar el pedido.
+En cuotas se puede comprando por Mercado Libre, a precio de lista. Conviene recordar que pagando por transferencia sale 10% más barato.
 
 ## Envíos
 
 **¿Cuánto sale el envío?**
 - Compras de $990 o más: envío gratis a cualquier punto del país.
 - Compras de menos de $990: el envío cuesta $200, a cualquier punto del país.
-El monto que cuenta es el total de la compra (se pueden sumar productos para llegar a $990).
+El monto que cuenta es el total de la compra a precio de lista (antes del descuento por pago contado), y se pueden sumar productos para llegar a $990.
 
 **¿Hacen envíos a todo el país?**
 Sí, a todo Uruguay.
 
-**Envíos dentro de Montevideo: ¿cuándo llega?**
+**Envíos a Montevideo, Ciudad de la Costa, Las Piedras y Pando: ¿cuándo llega?**
 Llega el mismo día si la compra se hace (con el pago confirmado):
 - Lunes a viernes: antes de las 16 h.
 - Sábados: antes de las 13 h.
 - Domingos: antes de las 14 h.
 Si se compra después de esa hora, sale con los envíos del día siguiente.
 
-**Envíos al interior: ¿cómo y cuándo llega?**
+**Envíos al resto del país (interior): ¿cómo y cuándo llega?**
 - Se envía por UES. Si el cliente lo pide, también se puede enviar por DAC; si no dice nada, siempre UES.
 - Se despacha el mismo día y demora aproximadamente de 24 a 48 horas.
 - Puede ser a domicilio o a la agencia de UES que elija el cliente.
@@ -72,7 +77,7 @@ Con el envío de Mercado Libre, y el costo y plazo los muestra la propia publica
 ## Retiro en el local
 
 **¿Puedo pasar a buscar?**
-Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo.
+Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo o por transferencia con 10% de descuento, o con débito, crédito o QR a precio de lista.
 
 ## Cambios, devoluciones y garantía
 
@@ -93,7 +98,7 @@ Casi todos nuestros productos son universales. Para confirmar que algo le va a u
 
 Medidas que más se preguntan:
 - Manubrio estándar: 22 mm (7/8"). Nuestros manillares, puños y espejos de puño son para esa medida.
-- Rosca de espejos: la mayoría de las motos usa M8 o M10 (paso horario o antihorario). Si la rosca de la moto no coincide con el espejo, tenemos extensores/adaptadores de rosca a $100 cada uno en todas las combinaciones (8 mm y 10 mm, horario y antihorario).
+- Rosca de espejos: la mayoría de las motos usa M8 o M10 (paso horario o antihorario). Si la rosca de la moto no coincide con el espejo, tenemos extensores/adaptadores de rosca a $100 cada uno ($90 contado) en todas las combinaciones (8 mm y 10 mm, horario y antihorario).
 - Escapes: boca de 51 mm.
 
 Si con esa información no queda claro, no se afirma la compatibilidad: se deriva a una persona del equipo.
@@ -107,7 +112,7 @@ El precio es solo del producto, la instalación no está incluida. La mayoría d
 
 Los precios y la disponibilidad del catálogo se actualizan periódicamente. Si un producto figura "sin stock por ahora", no se vende: se ofrece una alternativa del catálogo o se avisa que una persona del equipo le confirma cuándo vuelve a entrar.
 
-No se ofrecen descuentos, rebajas ni precios especiales por cuenta propia. Si el cliente pide descuento por cantidad o mayorista, se deriva a una persona del equipo.
+Aparte del 10% por pago contado, no se ofrecen descuentos, rebajas ni precios especiales por cuenta propia. Si el cliente pide descuento por cantidad o mayorista, se deriva a una persona del equipo.
 
 ## Cuándo pasar la conversación a una persona
 

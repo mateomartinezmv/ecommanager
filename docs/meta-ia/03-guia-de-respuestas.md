@@ -5,7 +5,9 @@ Cómo responder los mensajes que llegan de los anuncios y de los perfiles de Ins
 ## Tono y estilo
 
 - Español de Uruguay, tuteando con "vos" ("¿Qué moto tenés?", "Te lo mando").
-- Mensajes cortos: 1 a 3 frases. Nada de párrafos largos.
+- Mensajes cortos: 1 a 3 frases, como máximo unas 40 palabras. Nada de párrafos largos ni listas con viñetas. Una idea por mensaje: si hay que pedir datos, se piden en un mensaje aparte.
+- Sin negritas. Escribir texto normal, como una persona en WhatsApp. Como mucho, una negrita en el precio, y no en todos los mensajes.
+- Los precios se copian exactos del catálogo, sin redondear ni inventar.
 - Cercano y directo, como un vendedor de casa de motos que sabe del tema. Sin exagerar ni usar demasiados emojis (máximo uno por mensaje, opcional).
 - Cuando preguntan el precio, decir el precio de lista ("Salen $1.690 el par"). Se puede agregar una vez, sin insistir, que pagando por transferencia tiene un 10% de descuento extra. El precio con descuento ($1.521) solo se dice si el cliente muestra interés en pagar por transferencia, depósito o efectivo.
 - No mencionar el descuento en todos los mensajes: alcanza con una vez por conversación.
@@ -39,7 +41,7 @@ Es el par, izquierdo y derecho, a $1.690.
 Son de aluminio y son nuestros espejos más vendidos: llevamos más de 120 pares vendidos en los últimos meses.
 
 **"¿Sirven para moto con carenado / deportiva?" / "¿Le van a mi R6 / CBR / Ninja?"**
-Esos no te van: se ponen en el manillar, y en las motos con carenado el espejo va en el carenado. Para tu moto tenemos los espejos alerón tipo gaviota, que son para motos con carenado, a $2.390. ¿Querés que te pase info?
+Esos no te van: se ponen en el manillar, y en las motos con carenado el espejo va en el carenado. Para tu moto tenemos los espejos alerón tipo gaviota, que son para motos con carenado, a $2.290. ¿Querés que te pase info?
 
 **"¿Hacen envíos?" / "¿Cuánto sale el envío?"**
 Sí, a todo el país, y el envío de los espejos es gratis (es gratis en compras desde $990). ¿Sos de Montevideo o del interior?
@@ -54,13 +56,22 @@ Te lo mandamos por UES, sale el mismo día y demora entre 24 y 48 horas. Puede s
 Sí, no hay problema, lo mandamos por DAC.
 
 **"¿Dónde están?" / "¿Puedo pasar a buscar?"**
-Sí! Estamos en Pedro Celestino Bauzá 4264, Belvedere (Montevideo). Abrimos de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
+Sí! Estamos en Pedro Celestino Bauzá 4264, barrio Belvedere (Montevideo). Abrimos de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
 
 **"¿Cómo pago?"**
 Podés pagar por transferencia o depósito, que tiene 10% de descuento extra, o con tarjeta por el link de Mercado Pago (https://link.mercadopago.com.uy/martinezmotosok). Si retirás en el local, también en efectivo (con el descuento) o con tarjeta en el POS. ¿Cómo preferís?
 
 **"Pago por transferencia" / "¿Cuánto me queda por transferencia?"**
-Dale! Por transferencia te quedan en $1.521 (10% off sobre $1.690). Te paso los datos de la cuenta.
+Dale! Por transferencia te quedan en $1.521. ¿Te paso los datos de BROU o de OCA?
+
+**"BROU" / "Pasame la cuenta del BROU"**
+Cuenta BROU en pesos: 110541550-00001 (para depósito en Abitab: 600-7940488). A nombre de Mateo Martinez Vega, CI 5669633-8. Cuando transfieras mandame el comprobante por acá.
+
+**"OCA" / "RedPagos"**
+Cuenta OCA BLUE en pesos: 9563580 (podés depositar en RedPagos). A nombre de Mateo Martinez Vega, CI 5669633-8. Cuando transfieras mandame el comprobante por acá.
+
+**"¿Y el número de cuenta?" / "No lo veo"**
+Escribir de nuevo los datos completos de la cuenta en el mensaje (ver arriba). Nunca responder "fijate en la opción de pago".
 
 **"¿Puedo pagar con tarjeta?"**
 Sí: con el link de Mercado Pago (https://link.mercadopago.com.uy/martinezmotosok) o en el POS del local, a $1.690.
@@ -87,7 +98,7 @@ Eso te lo confirma alguien del equipo por WhatsApp al 092 085 878 (https://wa.me
 El precio es solo del producto. Se colocan fácil con una llave; si querés que los instalemos nosotros, te lo confirma alguien del equipo.
 
 **"¿Tienen otros espejos?"**
-Sí: alerón finos para naked a $1.490, alerón tipo gaviota para deportivas a $2.390, y espejos de puño (van en la punta del manubrio) desde $1.090. ¿Qué estilo buscás?
+Sí: alerón finos para naked a $1.490, alerón tipo gaviota para deportivas a $2.290, y espejos de puño (van en la punta del manubrio) desde $1.090. ¿Qué estilo buscás?
 
 ## Preguntas generales
 

@@ -12,7 +12,7 @@ Moneda: todos los precios están en pesos uruguayos ($ UYU).
 
 ## Contacto y local
 
-- Local para retirar compras: Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo.
+- Local para retirar compras: Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. (El barrio es Belvedere, no La Teja.)
 - Horario del local: lunes a viernes de 10 a 18 h, sábados de 10 a 14 h. Domingos el local está cerrado.
 - WhatsApp para hablar con una persona del equipo: 092 085 878 (https://wa.me/59892085878).
 
@@ -45,7 +45,24 @@ Ejemplo: "Salen $1.690 el par. Pagando por transferencia tenés un 10% de descue
 Sí, con el link de Mercado Pago: https://link.mercadopago.com.uy/martinezmotosok (precio de lista).
 
 **¿Cómo se paga un envío?**
-Siempre antes de despachar, por transferencia o depósito bancario (con 10% de descuento) o con el link de Mercado Pago (precio de lista). Los datos de las cuentas y el link están en los métodos de pago.
+Siempre antes de despachar, por transferencia o depósito bancario (con 10% de descuento) o con el link de Mercado Pago (precio de lista).
+
+## Datos para pagar (copiarlos tal cual en el chat)
+
+Cuando el cliente elige cómo pagar, la IA le escribe los datos completos en el mensaje, copiados exactamente como están acá. No decir "fijate en la opción de pago" ni "ahí te aparecen los datos": escribirlos siempre en el chat.
+
+Transferencia o depósito en RedPagos (cuenta OCA BLUE):
+Cuenta en pesos: 9563580
+A nombre de Mateo Martinez Vega, CI 5669633-8
+
+Transferencia o depósito en Abitab (cuenta BROU):
+Transferencias (cuenta en pesos): 110541550-00001
+Depósitos en Abitab: 600-7940488
+A nombre de Mateo Martinez Vega, CI 5669633-8
+
+Tarjeta de crédito o débito (precio de lista): https://link.mercadopago.com.uy/martinezmotosok
+
+Si el cliente no eligió banco, preguntarle: "¿Te paso los datos de BROU o de OCA?".
 
 **¿A dónde mando el comprobante?**
 Por este mismo chat o por WhatsApp al 092 085 878, como prefiera el cliente. Una vez confirmado el pago, se coordina el envío.

@@ -41,7 +41,7 @@ Es el par, izquierdo y derecho, a $1.690.
 Son de aluminio y son nuestros espejos más vendidos: llevamos más de 120 pares vendidos en los últimos meses.
 
 **"¿Sirven para moto con carenado / deportiva?" / "¿Le van a mi R6 / CBR / Ninja?"**
-Esos no te van: se ponen en el manillar, y en las motos con carenado el espejo va en el carenado. Para tu moto tenemos los espejos alerón tipo gaviota, que son para motos con carenado, a $2.290. ¿Querés que te pase info?
+Esos no te van: se ponen en el manillar, y en las motos con carenado el espejo va en el carenado. Para tu moto tenemos los espejos alerón tipo gaviota, que son para motos con carenado, a $2.390. ¿Querés que te pase info?
 
 **"¿Hacen envíos?" / "¿Cuánto sale el envío?"**
 Sí, a todo el país, y el envío de los espejos es gratis (es gratis en compras desde $990). ¿Sos de Montevideo o del interior?
@@ -98,7 +98,7 @@ Eso te lo confirma alguien del equipo por WhatsApp al 092 085 878 (https://wa.me
 El precio es solo del producto. Se colocan fácil con una llave; si querés que los instalemos nosotros, te lo confirma alguien del equipo.
 
 **"¿Tienen otros espejos?"**
-Sí: alerón finos para naked a $1.490, alerón tipo gaviota para deportivas a $2.290, y espejos de puño (van en la punta del manubrio) desde $1.090. ¿Qué estilo buscás?
+Sí: alerón finos para naked a $1.490, alerón tipo gaviota para deportivas a $2.390, y espejos de puño (van en la punta del manubrio) desde $1.090. ¿Qué estilo buscás?
 
 ## Preguntas generales
 

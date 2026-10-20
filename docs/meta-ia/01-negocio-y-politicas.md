@@ -20,12 +20,12 @@ Moneda: todos los precios están en pesos uruguayos ($ UYU).
 
 **¿Cómo hago para comprar?**
 Hay tres formas:
-1. Por acá, por mensaje, con envío: nos decís qué producto y color querés, tu nombre, la dirección (o la agencia UES si sos del interior) y tu teléfono. Para despachar el envío es necesario el pago previo, por transferencia o depósito bancario, con 10% de descuento.
+1. Por acá, por mensaje, con envío: nos decís qué producto y color querés, tu nombre, la dirección (o la agencia UES si sos del interior) y tu teléfono. Para despachar el envío es necesario el pago previo: por transferencia o depósito bancario (con 10% de descuento) o con tarjeta por el link de Mercado Pago (precio de lista).
 2. Retirando en el local: Pedro Celestino Bauzá 4264, Belvedere, Montevideo, de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
 3. Por Mercado Libre: nuestros productos principales están publicados en Mercado Libre Uruguay. Si el cliente prefiere esa opción, se le pasa el enlace del producto (está en el catálogo).
 
 **¿Puedo comprar ahora mismo?**
-Sí. La IA toma los datos del pedido (producto, color, cantidad, nombre, teléfono, dirección o agencia, y si es envío o retiro) y una persona del equipo confirma el pago y despacha.
+Sí. La IA toma los datos del pedido (producto, color, cantidad, nombre, teléfono, dirección o agencia, y si es envío o retiro). El cliente paga, manda el comprobante (por este mismo chat o por WhatsApp) y, una vez confirmado el pago, se coordina el envío.
 
 ## Formas de pago y descuento por pago contado
 
@@ -37,17 +37,24 @@ Ejemplo: espejos HSJ-20121, precio de lista $1.690, precio contado $1.521.
 - Efectivo: solo retirando en el local.
 
 **¿Qué medios se pagan a precio de lista?**
-- Débito, crédito o QR en el local.
-- Compras por Mercado Libre (ahí se puede pagar en cuotas).
+- Tarjeta de crédito o débito con POS: solo en el local, igual que el efectivo.
+- Tarjeta de crédito o débito a distancia: con el link de Mercado Pago https://link.mercadopago.com.uy/martinezmotosok
+- Compras por Mercado Libre.
+
+**¿Puedo pagar con tarjeta si no puedo ir al local?**
+Sí, con el link de Mercado Pago: https://link.mercadopago.com.uy/martinezmotosok (precio de lista).
 
 **¿Cómo se paga un envío?**
-Los envíos se pagan siempre antes de despachar, por transferencia o depósito bancario, así que siempre tienen el 10% de descuento. Los datos para pagar los pasa una persona del equipo por WhatsApp al confirmar el pedido.
+Siempre antes de despachar, por transferencia o depósito bancario (con 10% de descuento) o con el link de Mercado Pago (precio de lista). Los datos de las cuentas y el link están en los métodos de pago.
+
+**¿A dónde mando el comprobante?**
+Por este mismo chat o por WhatsApp al 092 085 878, como prefiera el cliente. Una vez confirmado el pago, se coordina el envío.
 
 **¿Puedo pagar cuando me llega? / ¿Contra entrega?**
-No. Los envíos se despachan con el pago hecho de antemano. El efectivo se acepta solo retirando en el local.
+No. Los envíos se despachan con el pago hecho de antemano. El efectivo y el POS se aceptan solo en el local.
 
 **¿Se puede pagar en cuotas?**
-En cuotas se puede comprando por Mercado Libre, a precio de lista. Conviene recordar que pagando por transferencia sale 10% más barato.
+Comprando por Mercado Libre, a precio de lista. Conviene recordar que pagando por transferencia sale 10% más barato.
 
 ## Envíos
 
@@ -77,7 +84,7 @@ Con el envío de Mercado Libre, y el costo y plazo los muestra la propia publica
 ## Retiro en el local
 
 **¿Puedo pasar a buscar?**
-Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo o por transferencia con 10% de descuento, o con débito, crédito o QR a precio de lista.
+Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo o por transferencia con 10% de descuento, o con tarjeta de crédito o débito (POS) a precio de lista.
 
 ## Cambios, devoluciones y garantía
 
@@ -117,7 +124,7 @@ Aparte del 10% por pago contado, no se ofrecen descuentos, rebajas ni precios es
 ## Cuándo pasar la conversación a una persona
 
 Derivar siempre que el cliente:
-- Ya decidió comprar y hay que confirmar el pago y despachar.
+- Ya pagó y hay que verificar el comprobante y coordinar el envío o el retiro.
 - Pide descuento, precio mayorista o compra de varias unidades para reventa o flota de delivery.
 - Tiene un reclamo, un producto con falla, un envío demorado o quiere un cambio o devolución.
 - Pregunta algo de compatibilidad que no se puede confirmar con este documento.

@@ -15,9 +15,9 @@ Cómo responder los mensajes que llegan de los anuncios y de los perfiles de Ins
 
 1. Responder la pregunta concreta (precio, stock, compatibilidad).
 2. Preguntar la moto (marca, modelo y año) para confirmar que le va.
-3. Ofrecer las formas de compra: con envío pagando por transferencia o depósito (10% off), retiro en el local en Belvedere, o por Mercado Libre a precio de lista (pasar enlace).
+3. Ofrecer las formas de compra: con envío pagando por transferencia o depósito (10% off) o con el link de Mercado Pago (precio de lista), retiro en el local en Belvedere, o por Mercado Libre a precio de lista (pasar enlace).
 4. Si es con envío: pedir nombre, teléfono y dirección (Montevideo, Ciudad de la Costa, Las Piedras o Pando) o ciudad y agencia UES o domicilio (interior). Decir el costo del envío: gratis desde $990 de lista, si no $200.
-5. Pasar a una persona del equipo (WhatsApp 092 085 878) para confirmar el pago y despachar.
+5. Pasar los datos de pago y pedir el comprobante, por este mismo chat o por WhatsApp al 092 085 878. Una vez confirmado el pago, se coordina el envío.
 6. Si suma, ofrecer un complemento lógico (ver "Ventas cruzadas").
 
 ## Preguntas frecuentes del anuncio de espejos tipo alerón (HSJ-20121)
@@ -56,16 +56,22 @@ Sí, no hay problema, lo mandamos por DAC.
 Sí! Estamos en Pedro Celestino Bauzá 4264, Belvedere (Montevideo). Abrimos de lunes a viernes de 10 a 18 h y sábados de 10 a 14 h.
 
 **"¿Cómo pago?"**
-Pagando contado tenés 10% de descuento: por transferencia o depósito bancario quedan en $1.521 (lista $1.690). Para envíos el pago es por transferencia o depósito, antes de despachar; te pasamos los datos por WhatsApp. Si retirás en el local también podés pagar en efectivo con el descuento. Si preferís cuotas, los tenés en Mercado Libre a precio de lista: https://articulo.mercadolibre.com.uy/MLU-884316822
+Pagando contado tenés 10% de descuento: por transferencia o depósito bancario quedan en $1.521 (lista $1.690). Para envíos el pago es antes de despachar: por transferencia o depósito (con el descuento) o con tarjeta por el link de Mercado Pago a precio de lista (https://link.mercadopago.com.uy/martinezmotosok). Si retirás en el local podés pagar en efectivo (con el descuento) o con tarjeta en el POS.
+
+**"¿Puedo pagar con tarjeta?"**
+Sí: con el link de Mercado Pago (https://link.mercadopago.com.uy/martinezmotosok) o en el POS del local, a precio de lista ($1.690). Por transferencia te quedan en $1.521.
+
+**"Ya pagué" / "Te mando el comprobante"**
+Perfecto, mandalo por acá o por WhatsApp al 092 085 878. Apenas confirmamos el pago coordinamos el envío.
 
 **"¿Pago cuando me llega?" / "¿Contra entrega?"**
-No hacemos pago contra entrega: los envíos salen con el pago hecho por transferencia o depósito, y así te queda con 10% de descuento. Si querés pagar en efectivo, podés retirarlo en el local en Belvedere.
+No hacemos pago contra entrega: los envíos salen con el pago hecho, por transferencia o depósito (con 10% de descuento) o por Mercado Pago. Si querés pagar en efectivo, podés retirarlo en el local en Belvedere.
 
 **"¿Los tienen en Mercado Libre?"**
 Sí, acá los tenés a precio de lista: https://articulo.mercadolibre.com.uy/MLU-884316822. Igual comprándonos directo por transferencia te salen 10% más baratos ($1.521).
 
 **"Los quiero" / "¿Cómo hago para comprarlos?"**
-Genial! ¿Te los enviamos o pasás a retirar? Si es envío, pasame tu nombre, teléfono y dirección (o ciudad y agencia UES si sos del interior). Para cerrar el pago escribinos al WhatsApp 092 085 878 (https://wa.me/59892085878).
+Genial! ¿Te los enviamos o pasás a retirar? Si es envío, pasame tu nombre, teléfono y dirección (o ciudad y agencia UES si sos del interior). Te paso los datos para pagar y, cuando tengas el comprobante, mandalo por acá o por WhatsApp al 092 085 878. Con el pago confirmado coordinamos el envío.
 
 **"¿Me hacés un descuento?"**
 Pagando contado (transferencia, depósito o efectivo en el local) ya tenés 10% de descuento: quedan en $1.521 en vez de $1.690.
@@ -105,7 +111,7 @@ Son accesorios universales nuevos, no repuestos originales de la marca de la mot
 ## Lo que nunca hay que hacer
 
 - No inventar precios, plazos, medidas ni compatibilidades.
-- No ofrecer pago contra entrega ni pago en efectivo para envíos.
+- No ofrecer pago contra entrega, ni efectivo o POS para envíos (son solo en el local).
 - No ofrecer otros descuentos además del 10% por pago contado.
 - No prometer descuentos extra, cambios, devoluciones ni reintegros.
 - No decir cantidades exactas de stock.

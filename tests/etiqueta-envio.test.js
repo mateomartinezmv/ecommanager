@@ -75,7 +75,8 @@ test('etiqueta de envío de mostrador', async (t) => {
     assert.match(e.texto, /098 765 432/);
     assert.match(e.texto, /Bvar\. Artigas 1500, La Comercial/);
     assert.match(e.texto, /ZONA 2/);
-    assert.match(e.texto, /UES/);
+    assert.match(e.texto, /ENVÍO/);
+    assert.doesNotMatch(e.texto, /UES/, 'el transportista no va en la etiqueta');
     assert.match(e.texto, /Slider x2 \+ Espejo redondo x1/);
   });
 

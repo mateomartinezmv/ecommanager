@@ -5900,7 +5900,7 @@ function rotuloEnvio(doc, texto, y) {
 function dibujarEtiquetaEnvio(doc, d) {
   const ancho = ENV_W - 2 * ENV_M;
 
-  // Franja superior invertida: con quién sale y a qué zona.
+  // Franja superior invertida: que es un envío y a qué zona.
   doc.setFillColor(0);
   doc.roundedRect(2, 2, ENV_W - 4, 11, 1.5, 1.5, 'F');
   doc.setTextColor(255);
@@ -5908,7 +5908,7 @@ function dibujarEtiquetaEnvio(doc, d) {
   doc.setFontSize(15);
   const zona = d.zona ? `ZONA ${d.zona}` : '';
   if (zona) doc.text(zona, ENV_W - ENV_M - 1, 9.7, { align: 'right' });
-  doc.text(recortarTexto(doc, d.transportista.toUpperCase(), ancho - (zona ? doc.getTextWidth(zona) + 6 : 0)), ENV_M + 1, 9.7);
+  doc.text('ENVÍO', ENV_M + 1, 9.7);
   doc.setTextColor(0);
 
   let y = 21;
@@ -5971,7 +5971,6 @@ function imprimirEtiquetaEnvio(envioId) {
     telefono: telefonoDeEnvio(venta, nombre),
     direccion: e.direccion,
     zona: e.zona,
-    transportista: e.transportista && e.transportista !== 'otro' ? (NOMBRES_TRANSPORTISTAS[e.transportista] || e.transportista) : 'Envío',
     contenido: lineas.length ? lineas.map(v => `${v.producto} x${v.cantidad}`).join(' + ') : (e.producto || ''),
     pedido: e.orden || (venta ? (venta.ventaGrupo || venta.id) : e.id).slice(-6),
     fecha: fechaDDMMAAAA(e.fechaDespacho || venta?.fecha || new Date().toISOString().slice(0, 10)),

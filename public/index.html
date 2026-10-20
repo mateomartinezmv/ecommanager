@@ -1795,6 +1795,8 @@ let pendingEnvioVentaId = null;
 // Cuando el envío es de un carrito, guarda la key del ticket para etiquetarlo con todos
 // sus productos en vez de con el de una sola línea.
 let pendingEnvioGrupo = null;
+// Se pidió la etiqueta de una venta sin envío: sale apenas se guarde el envío.
+let imprimirEtiquetaAlGuardarEnvio = false;
 
 async function api(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -4049,6 +4051,10 @@ async function saveEnvio() {
     pendingEnvioVentaId = null;
     pendingEnvioGrupo = null;
     closeModal('modal-envio'); renderEnvios(); renderVentas();
+    if (imprimirEtiquetaAlGuardarEnvio) {
+      imprimirEtiquetaAlGuardarEnvio = false;
+      imprimirEtiquetaEnvio(envio.id);
+    }
   } catch(e) { alert('Error guardando envío: ' + e.message); }
 }
 
@@ -4071,6 +4077,7 @@ function openEnvioManual(ventaId) {
   const v = db.ventas.find(x => x.id === ventaId);
   pendingEnvioVentaId = ventaId;
   pendingEnvioGrupo = null;
+  imprimirEtiquetaAlGuardarEnvio = false;
   document.getElementById('env-comprador').value = v ? (v.comprador || v.cliente || '') : '';
   document.getElementById('env-fecha').value = v ? v.fecha : new Date().toISOString().slice(0,10);
   document.getElementById('env-costo').value = '';
@@ -5850,6 +5857,141 @@ function descargarEtiquetas() {
 }
 
 // =====================
+// ETIQUETAS DE ENVÍO (impresora térmica, 100 × 150 mm)
+// =====================
+// Para los envíos de ventas de mostrador (MELI ya trae la suya). Lo que mira quien
+// despacha y quien entrega va grande: nombre, teléfono y dirección; el resto, chico abajo.
+const ENV_W = 100, ENV_H = 150, ENV_M = 4;
+
+// El teléfono vive en la ficha del cliente: por el cliente asociado a la venta o, si la
+// venta no tiene uno, por el nombre.
+function telefonoDeEnvio(venta, nombre) {
+  let c = venta?.clienteId ? db.clientes.find(x => x.id === venta.clienteId) : null;
+  const n = (nombre || '').trim().toLowerCase();
+  if (!c && n) c = db.clientes.find(x => (x.nombre || '').trim().toLowerCase() === n);
+  return (c?.telefono || '').trim();
+}
+
+// Escribe `texto` en negrita lo más grande posible (de `max` a `min`) sin pasar de
+// `maxLineas` renglones; devuelve el alto usado.
+function textoAjustado(doc, texto, x, y, ancho, max, min, maxLineas) {
+  let tam = max, lineas;
+  doc.setFont('helvetica', 'bold');
+  for (;;) {
+    doc.setFontSize(tam);
+    lineas = doc.splitTextToSize(texto, ancho);
+    if (lineas.length <= maxLineas || tam <= min) break;
+    tam--;
+  }
+  if (lineas.length > maxLineas) {
+    lineas = [...lineas.slice(0, maxLineas - 1), recortarTexto(doc, lineas.slice(maxLineas - 1).join(' '), ancho)];
+  }
+  const alto = tam * 0.3528 * 1.15; // pt → mm, con el interlineado
+  doc.text(lineas, x, y + tam * 0.3528 * 0.8, { lineHeightFactor: 1.15 });
+  return lineas.length * alto;
+}
+
+function rotuloEnvio(doc, texto, y) {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text(texto, ENV_M, y);
+}
+
+function dibujarEtiquetaEnvio(doc, d) {
+  const ancho = ENV_W - 2 * ENV_M;
+
+  // Franja superior invertida: con quién sale y a qué zona.
+  doc.setFillColor(0);
+  doc.roundedRect(2, 2, ENV_W - 4, 11, 1.5, 1.5, 'F');
+  doc.setTextColor(255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  const zona = d.zona ? `ZONA ${d.zona}` : '';
+  if (zona) doc.text(zona, ENV_W - ENV_M - 1, 9.7, { align: 'right' });
+  doc.text(recortarTexto(doc, d.transportista.toUpperCase(), ancho - (zona ? doc.getTextWidth(zona) + 6 : 0)), ENV_M + 1, 9.7);
+  doc.setTextColor(0);
+
+  let y = 21;
+  rotuloEnvio(doc, 'DESTINATARIO', y);
+  y += 2;
+  y += textoAjustado(doc, d.nombre || '—', ENV_M, y, ancho, 24, 14, 2) + 5;
+
+  rotuloEnvio(doc, 'TELÉFONO', y);
+  y += 2;
+  if (d.telefono) {
+    y += textoAjustado(doc, d.telefono, ENV_M, y, ancho, 22, 14, 1) + 5;
+  } else {
+    // Sin teléfono en la ficha: queda la raya para anotarlo a mano.
+    doc.setLineWidth(0.4);
+    doc.line(ENV_M, y + 8, ENV_W - ENV_M, y + 8);
+    y += 13;
+  }
+
+  rotuloEnvio(doc, 'DIRECCIÓN', y);
+  y += 2;
+  y += textoAjustado(doc, d.direccion || '—', ENV_M, y, ancho, 20, 11, 5) + 4;
+
+  // Abajo, de chico: qué va en el paquete y de quién sale.
+  const pie = 120;
+  doc.setLineWidth(0.5);
+  doc.line(ENV_M, Math.max(y, pie - 4), ENV_W - ENV_M, Math.max(y, pie - 4));
+  let yp = Math.max(y + 4, pie);
+  if (d.contenido) {
+    rotuloEnvio(doc, 'CONTENIDO', yp);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    let lineas = doc.splitTextToSize(d.contenido, ancho);
+    if (lineas.length > 2) lineas = [lineas[0], recortarTexto(doc, lineas.slice(1).join(' '), ancho)];
+    doc.text(lineas, ENV_M, yp + 4.5, { lineHeightFactor: 1.15 });
+    yp += 4.5 + lineas.length * 3.9 + 2;
+  }
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.text(`Pedido ${d.pedido}  ·  ${d.fecha}`, ENV_M, ENV_H - 9);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text(`Remite: ${COMPROBANTE.comercio}`, ENV_M, ENV_H - 4.5);
+}
+
+function imprimirEtiquetaEnvio(envioId) {
+  const e = db.envios.find(x => x.id === envioId);
+  if (!e) { alert('No se encontró el envío.'); return; }
+  if (!e.direccion) {
+    alert('Este envío no tiene dirección cargada. Completala y volvé a imprimir la etiqueta.');
+    abrirEdicionEnvio(e.id);
+    return;
+  }
+  const venta = db.ventas.find(v => v.id === e.ventaId);
+  const lineas = venta
+    ? db.ventas.filter(v => ticketKey(v) === ticketKey(venta)).sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0))
+    : [];
+  const nombre = (e.comprador || venta?.cliente || venta?.comprador || '').trim();
+  const datos = {
+    nombre,
+    telefono: telefonoDeEnvio(venta, nombre),
+    direccion: e.direccion,
+    zona: e.zona,
+    transportista: e.transportista && e.transportista !== 'otro' ? (NOMBRES_TRANSPORTISTAS[e.transportista] || e.transportista) : 'Envío',
+    contenido: lineas.length ? lineas.map(v => `${v.producto} x${v.cantidad}`).join(' + ') : (e.producto || ''),
+    pedido: e.orden || (venta ? (venta.ventaGrupo || venta.id) : e.id).slice(-6),
+    fecha: fechaDDMMAAAA(e.fechaDespacho || venta?.fecha || new Date().toISOString().slice(0, 10)),
+  };
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [ENV_W, ENV_H] });
+  dibujarEtiquetaEnvio(doc, datos);
+  abrirComprobanteParaImprimir(doc, `etiqueta-envio-${String(datos.pedido).replace(/[^\w-]+/g, '_')}.pdf`);
+}
+
+// Botón 🏷️ de una venta de mostrador: si todavía no tiene envío, primero se crea
+// (con la dirección) y al guardarlo sale la etiqueta.
+function etiquetaEnvioDeVenta(ventaId, envioId, grupoKey) {
+  if (envioId) { imprimirEtiquetaEnvio(envioId); return; }
+  if (grupoKey) abrirEnvioDeCarrito(grupoKey);
+  else openEnvioManual(ventaId);
+  imprimirEtiquetaAlGuardarEnvio = true;
+}
+
+// =====================
 // RENDER: VENTAS
 // =====================
 function switchStockTab(tab) {
@@ -6079,6 +6221,7 @@ function renderVentas() {
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="recalcularComisionVenta('${v.id}', this)" title="Recalcular comisión y envío MELI">🔁</button>` : ''}
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         ${v.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteVenta('${v.id}')" title="Imprimir comprobante de venta (sin validez fiscal)">🧾</button>` : ''}
+        ${v.canal === 'mostrador' && !dentroDeCarrito ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="Imprimir etiqueta de envío (100 × 150 mm)">🏷️</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
@@ -6096,7 +6239,8 @@ function renderVentas() {
     const cliente = primera.cliente || primera.comprador || '';
     const tiposEnvio = [...new Set(lineas.map(v => tipoEnvioVenta(v, enviosByVenta)).filter(Boolean))];
     const refCarrito = primera.ordenMeli || (primera.ventaGrupo || primera.id).slice(-6);
-    const envioDelCarrito = lineas.some(v => enviosByVenta[v.id]);
+    const envioCarrito = lineas.map(v => enviosByVenta[v.id]).find(Boolean);
+    const envioDelCarrito = !!envioCarrito;
     // El carrito se factura entero: el check queda en "sí" sólo si todas sus líneas lo están.
     const vistasFact = lineas.map(facturadaVista);
     const factCarrito = { valor: vistasFact.every(f => f.valor), manual: vistasFact.every(f => f.manual) };
@@ -6128,6 +6272,7 @@ function renderVentas() {
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeCarrito('${grupo.key}')" title="${envioDelCarrito ? 'Editar envío del carrito' : 'Crear envío para todo el carrito'}">🚚</button>
         ${primera.canal === 'meli' && primera.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${primera.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         ${primera.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteTicket('${grupo.key}')" title="Imprimir comprobante del carrito (sin validez fiscal)">🧾</button>` : ''}
+        ${primera.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${primera.id}', '${envioCarrito ? envioCarrito.id : ''}', '${grupo.key}')" title="Imprimir etiqueta de envío del carrito (100 × 150 mm)">🏷️</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteGrupoVenta('${grupo.key}')" title="Cancelar el carrito completo">🗑️</button>
       </td>
     </tr>
@@ -6199,6 +6344,7 @@ function renderEnvios() {
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
   const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mmotos_mateo:'MMOTOS MATEO', mercado_envios:'MELI Envíos', otro:'Otro' };
+  const ventasPorId = Object.fromEntries(db.ventas.map(v => [v.id, v]));
   document.getElementById('envios-tbody').innerHTML = envios.map(e => {
     const tipo = tipoEnvioDeTransportista(e.transportista);
     return `
@@ -6229,6 +6375,7 @@ function renderEnvios() {
       <td>
         ${e.pagado ? '<span class="badge badge-green" style="font-size:10px">✓ Pagado</span>' : ''}
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionEnvio('${e.id}')" title="Editar">✏️</button>
+        ${ventasPorId[e.ventaId]?.canal !== 'meli' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirEtiquetaEnvio('${e.id}')" title="Imprimir etiqueta de envío (100 × 150 mm)">🏷️</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteEnvio('${e.id}')">🗑️</button>
       </td>
     </tr>

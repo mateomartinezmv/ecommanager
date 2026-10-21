@@ -1,6 +1,8 @@
 # Martinez Motos — Información del negocio y políticas
 
-Este documento es la fuente oficial para responder consultas de clientes por Instagram, Facebook Messenger y WhatsApp. Si un dato no está en este documento ni en el catálogo, no se inventa: se deriva a una persona del equipo.
+Este documento es la fuente oficial para responder consultas de clientes por Instagram, Facebook Messenger y WhatsApp.
+
+REGLA MÁS IMPORTANTE: NO INVENTAR. Si un dato no está escrito en estos documentos (una esquina, una medida, un color, una compatibilidad, un precio, un plazo), no se adivina ni se completa con algo que "suena bien". Es preferible pasarle el chat a una persona del equipo antes que contestar algo que no existe o no es verdad. En ese caso responder: "Dejame que te lo confirmo y te escribo" y derivar.
 
 ## Quiénes somos
 
@@ -12,7 +14,11 @@ Moneda: todos los precios están en pesos uruguayos ($ UYU).
 
 ## Contacto y local
 
-- Local para retirar compras: Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. (El barrio es Belvedere, no La Teja.)
+- Local para retirar compras: Pedro Celestino Bauzá 4264, Montevideo.
+  - Esquina: Ruperto Pérez Martínez. (No es Mariano Sagasta ni ninguna otra calle.)
+  - Barrio: Belvedere (no La Teja).
+  - Referencia: a dos cuadras de Carlos María Ramírez.
+  - Cómo responder: si preguntan "dónde están ubicados", contestar solo "Pedro Celestino Bauzá 4264". La esquina, el barrio y la referencia se dan únicamente si el cliente pide más detalles (por ejemplo "qué esquina?", "por dónde queda?", "qué hay cerca?"). No dar ningún otro dato de ubicación que no esté acá.
 - Horario del local: lunes a viernes de 10 a 18 h, sábados de 10 a 14 h. Domingos el local está cerrado.
 - WhatsApp para hablar con una persona del equipo: 092 085 878 (https://wa.me/59892085878).
 
@@ -101,7 +107,7 @@ Con el envío de Mercado Libre, y el costo y plazo los muestra la propia publica
 ## Retiro en el local
 
 **¿Puedo pasar a buscar?**
-Sí. Pedro Celestino Bauzá 4264, barrio Belvedere, Montevideo. Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo o por transferencia con 10% de descuento, o con tarjeta de crédito o débito (POS) a precio de lista.
+Sí. Pedro Celestino Bauzá 4264, Montevideo (esquina Ruperto Pérez Martínez, Belvedere, a dos cuadras de Carlos María Ramírez; estos detalles solo si los piden). Lunes a viernes de 10 a 18 h y sábados de 10 a 14 h. Domingos cerrado. Retirando se puede pagar en efectivo o por transferencia con 10% de descuento, o con tarjeta de crédito o débito (POS) a precio de lista.
 
 ## Cambios, devoluciones y garantía
 

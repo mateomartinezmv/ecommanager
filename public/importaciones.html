@@ -559,6 +559,11 @@ const SIN_PROV = '__sin';
 // Compras por proveedor: hasta cuántos días de venta se completa un producto para llegar al
 // mínimo. Pasado eso es plata inmovilizada: mejor avisar que no llega que sobrestockear.
 const TOPE_COBERTURA_DIAS = 180;
+// Costo puesto en Uruguay estimado = costo en China × factor (flete, nacionalización, IVA,
+// manejo). Los baúles de 45L ocupan tanto volumen (CBM) que encarecen el flete de toda la
+// importación, así que si la compra los trae se usa el factor más alto.
+const FACTOR_URUGUAY = 2.5;
+const FACTOR_URUGUAY_BAUL45 = 3;
 // Estados de 📅 Reposición que no son una compra pendiente (igual que en reposicion.html).
 const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
 const URGENTE = ['quiebre_confirmado', 'ordenar_ya', 'insuficiente'];
@@ -865,12 +870,35 @@ function recalcTotals() {
 function recalcMinimo() {
   const el = document.getElementById('new-minimo');
   const prov = proveedorPorId(document.getElementById('new-proveedor').value);
-  const costo = costoChinaDeItems(leerItems('#line-items-body'));
-  if (!prov) { el.innerHTML = costo ? `Costo en China: <b class="mono">${usd(costo)}</b>` : ''; return; }
+  const items = leerItems('#line-items-body');
+  const costo = costoChinaDeItems(items);
+  const uy = costo ? `<div id="new-uy" style="margin-top:4px">${costoUruguayHtml(items)}</div>` : '';
+  if (!prov) { el.innerHTML = costo ? `Costo en China: <b class="mono">${usd(costo)}</b>${uy}` : ''; return; }
   const min = minimoDe(prov);
-  el.innerHTML = costo >= min
+  el.innerHTML = (costo >= min
     ? `<span style="color:var(--green)">✓ Costo en China ${usd(costo)} — llega al mínimo de ${escapeHtml(prov.nombre)} (${usd(min)})</span>`
-    : `<span style="color:var(--yellow)">Costo en China ${usd(costo)} — faltan ${usd(min - costo)} para el mínimo de ${escapeHtml(prov.nombre)} (${usd(min)})</span>`;
+    : `<span style="color:var(--yellow)">Costo en China ${usd(costo)} — faltan ${usd(min - costo)} para el mínimo de ${escapeHtml(prov.nombre)} (${usd(min)})</span>`) + uy;
+}
+
+// ¿El artículo es un baúl de 45L? Se mira el nombre del renglón y, si no lo tiene (se cargó
+// sólo el SKU), el del producto.
+function esBaul45(it) {
+  const nombre = [it.nombre, productos.find(p => p.sku === it.sku)?.nombre].filter(Boolean).join(' ');
+  return /ba[uú]l/i.test(nombre) && /\b45\s*l(ts?|itros?)?\b/i.test(nombre);
+}
+
+// `items`: [{ sku, nombre, qty, costo }]. Sólo cuentan los renglones con cantidad.
+function costoUruguay(items) {
+  const conBaul45 = items.some(it => (Number(it.qty) || 0) > 0 && esBaul45(it));
+  const factor = conBaul45 ? FACTOR_URUGUAY_BAUL45 : FACTOR_URUGUAY;
+  return { factor, conBaul45, total: costoChinaDeItems(items) * factor };
+}
+
+function costoUruguayHtml(items) {
+  const uy = costoUruguay(items);
+  if (!uy.total) return '';
+  const factor = `(costo en China ×${uy.factor}${uy.conBaul45 ? ' — lleva baúles de 45L, que suben el CBM' : ''})`;
+  return `Costo puesto en Uruguay estimado: <b class="mono compra-uy-total">${usd(uy.total)}</b> <span class="compra-uy-factor">${factor}</span>`;
 }
 
 function leerItems(selector) {
@@ -921,7 +949,7 @@ function addLineItem(it = {}) {
         <div class="sku-dd"></div>
       </div>
     </td>
-    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${escapeHtml(it.nombre || '')}"></td>
+    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${escapeHtml(it.nombre || '')}" oninput="recalcTotals()"></td>
     <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" oninput="recalcTotals()" value="${it.qty ?? ''}"></td>
     <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" oninput="recalcTotals()" value="${it.costo ?? ''}"></td>
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove();recalcTotals()">✕</button></td>`;
@@ -1685,6 +1713,7 @@ function tarjetaCompra(c) {
         <div><span class="ayuda">Total costo en China</span> <b class="mono compra-total" style="font-size:16px">—</b></div>
         <div class="minimo-bar"><div class="minimo-fill"></div></div>
         <div class="ayuda compra-minimo" style="margin-top:4px"></div>
+        <div class="ayuda compra-uy" style="margin-top:6px"></div>
       </div>
       <button class="btn btn-primary" onclick="crearImportacionDesdeCompra('${id}')">📥 Crear importación con esto</button>
     </div>
@@ -1734,6 +1763,10 @@ function actualizarTotalesCompra(provId) {
   card.querySelector('.compra-minimo').innerHTML = llega
     ? `<span style="color:var(--green)">✓ Llega al mínimo de ${usd(c.minimo)}</span>`
     : `<span style="color:var(--yellow)">Faltan ${usd(c.minimo - total)} para el mínimo de ${usd(c.minimo)}</span>`;
+  const sinCosto = c.lineas.some(l => l.cantidad > 0 && !l.costo);
+  card.querySelector('.compra-uy').innerHTML = costoUruguayHtml(
+    c.lineas.map(l => ({ sku: l.sku, nombre: l.nombre, qty: l.cantidad, costo: l.costo || 0 }))
+  ) + (sinCosto && total ? ' <span>· sin contar los productos sin costo</span>' : '');
 }
 
 function crearImportacionDesdeCompra(provId) {

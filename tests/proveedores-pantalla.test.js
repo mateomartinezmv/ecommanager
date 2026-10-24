@@ -31,6 +31,8 @@ function estadoBase() {
       // Ni los usados ni los descatalogados se vuelven a comprar: no se piden asignar.
       { sku: 'USADO', nombre: 'Casco usado', tipo: 'usado', stock_dep: 1, proveedor_id: null },
       { sku: 'VIEJO', nombre: 'Espejo viejo', tipo: 'nuevo', stock_dep: 0, proveedor_id: null, discontinuado: true },
+      // Sin ventas ni reposición: sólo está para reconocer el baúl de 45L por el SKU.
+      { sku: 'BAUL45', nombre: 'Baúl Trasero Moto 45L PP Alta Resistencia', tipo: 'nuevo', stock_dep: 5, proveedor_id: 'PROV-2' },
     ],
     importaciones: [
       { id: 'IMP2', fecha: '2026-08-01', llegada: '2026-10-20', estado: 'recibido', proveedor_id: 'PROV-2', total: 120,
@@ -183,6 +185,9 @@ test('desde el selector se da de alta un proveedor nuevo y queda elegido', async
   assert.match(await ui.page.textContent('#new-minimo'), /USD 50\.00 — faltan USD 250\.00 para el mínimo de Ningbo Parts/);
   await ui.page.click('#modal-nueva button:text("Guardar importación")');
   await ui.page.waitForSelector('#modal-nueva.open', { state: 'hidden' });
+  // El modal se cierra antes de que la página relea los productos: se espera a que la tabla
+  // se redibuje para que la limpieza de abajo no la pise esa relectura.
+  await ui.page.waitForSelector('tr[data-id="IMP-NUEVA"]');
   const post = ultimoPost('/importaciones');
   assert.strictEqual(post.cuerpo.proveedor_id, 'PROV-NUEVO');
   assert.deepStrictEqual(post.cuerpo.items, [{ sku: 'GZ-N', nombre: '', qty: 5, costo: 10 }]);
@@ -241,11 +246,14 @@ test('la compra recomendada completa lo necesario hasta el mínimo del proveedor
   assert.match(await (await fila('BAUL')).textContent(), /\+11 para el mínimo/);
   assert.strictEqual(await card.locator('.compra-total').textContent(), 'USD 300.00');
   assert.match(await card.locator('.compra-minimo').textContent(), /Llega al mínimo/);
+  // El baúl de esta compra es de 28L: factor normal.
+  assert.match(await card.locator('.compra-uy').textContent(), /Costo puesto en Uruguay estimado: USD 750\.00 \(costo en China ×2\.5\)/);
 
   // Editar una cantidad recalcula el total y avisa cuánto falta.
   await (await fila('BAUL')).locator('.compra-qty').fill('1');
   assert.strictEqual(await card.locator('.compra-total').textContent(), 'USD 180.00');
   assert.match(await card.locator('.compra-minimo').textContent(), /Faltan USD 120\.00/);
+  assert.match(await card.locator('.compra-uy').textContent(), /USD 450\.00/, 'se recalcula con la cantidad editada');
   await (await fila('BAUL')).locator('.compra-qty').fill('11');
 
   // El proveedor sin nada para reponer dice cuándo toca la próxima compra.
@@ -263,6 +271,35 @@ test('la compra recomendada se convierte en una importación de ese proveedor', 
   assert.deepStrictEqual(items, [
     { sku: 'GZ-N', qty: '14', costo: '8' }, { sku: 'GZ-R', qty: '7', costo: '8' }, { sku: 'BAUL', qty: '11', costo: '12' }]);
   assert.match(await ui.page.textContent('#new-minimo'), /llega al mínimo de Yiwu Trading/);
+  await ui.page.click('#modal-nueva button:text("Cancelar")');
+});
+
+test('el costo puesto en Uruguay es ×2.5, o ×3 si la importación trae baúles de 45L', async () => {
+  await ui.page.click('button:text("+ Nueva Importación")');
+  await ui.page.waitForSelector('#modal-nueva.open');
+  const fila = ui.page.locator('#line-items-body tr').first();
+  await fila.locator('.li-sku').fill('GZ-N');
+  await fila.locator('.li-qty').fill('2');
+  await fila.locator('.li-cost').fill('10');
+  assert.match(await ui.page.textContent('#new-uy'), /USD 50\.00 \(costo en China ×2\.5\)/);
+
+  // Reconocido por el nombre del renglón…
+  await ui.page.click('#modal-nueva button:text("+ Agregar ítem")');
+  const otra = ui.page.locator('#line-items-body tr').nth(1);
+  await otra.locator('.li-name').fill('Baúl Trasero Moto 45L');
+  await otra.locator('.li-qty').fill('1');
+  await otra.locator('.li-cost').fill('10');
+  assert.match(await ui.page.textContent('#new-uy'), /USD 90\.00 \(costo en China ×3 — lleva baúles de 45L/, '30 × 3');
+
+  // …y por el SKU, cuando el renglón no tiene nombre.
+  await otra.locator('.li-name').fill('');
+  await otra.locator('.li-sku').fill('BAUL45');
+  assert.match(await ui.page.textContent('#new-uy'), /USD 90\.00 \(costo en China ×3/);
+
+  // Un baúl de otro tamaño no cuenta.
+  await otra.locator('.li-sku').fill('');
+  await otra.locator('.li-name').fill('Baúl Trasero Moto 28L');
+  assert.match(await ui.page.textContent('#new-uy'), /USD 75\.00 \(costo en China ×2\.5\)/);
   await ui.page.click('#modal-nueva button:text("Cancelar")');
 });
 

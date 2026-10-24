@@ -6,9 +6,34 @@
 
 const { getSupabase } = require('./_supabase');
 const { applyImportArrival } = require('./_stockSync');
+const { faltaMigracionProveedores, skusDeItems, sincronizarProveedorProductos } = require('./_proveedores');
 
 // Estados que representan que la mercadería ya está físicamente disponible
 const ARRIVED_STATES = ['arrived', 'recibido', 'en_deposito'];
+
+// Escribe la fila con proveedor_id y, si la columna todavía no existe en la base, repite el
+// write sin ella: un deploy adelantado a la migración no puede impedir cargar una
+// importación. La respuesta lo avisa con `migracionProveedorPendiente`.
+async function escribirConProveedor(escribir, fila) {
+  const primero = await escribir(fila);
+  if (!('proveedor_id' in fila) || !faltaMigracionProveedores(primero.error)) {
+    return { ...primero, migracionProveedorPendiente: false };
+  }
+  const { proveedor_id, ...sinProveedor } = fila;
+  const reintento = await escribir(sinProveedor);
+  return { ...reintento, migracionProveedorPendiente: !reintento.error };
+}
+
+// Cada producto queda asignado al proveedor de su importación más reciente. Un error acá no
+// deshace la importación ya guardada: se devuelve para que la pantalla lo muestre.
+async function asignarProveedorProductos(supabase, skus) {
+  try {
+    return await sincronizarProveedorProductos(supabase, skus);
+  } catch (err) {
+    console.error('Error asignando proveedor a productos:', err);
+    return { error: err.message };
+  }
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -43,7 +68,7 @@ module.exports = async (req, res) => {
       const subtotal = total / 1.22;   // base imponible
       const iva      = total - subtotal;
 
-      const { data, error } = await supabase.from('importaciones').insert({
+      const fila = {
         id:       'IMP' + Date.now(),
         fecha:    b.fecha,
         llegada:  b.llegada || null,
@@ -56,8 +81,14 @@ module.exports = async (req, res) => {
         iva,
         total,
         saldo_pendiente: b.saldo_pendiente === true,
-      }).select().single();
+      };
+      if (b.proveedor_id) fila.proveedor_id = b.proveedor_id;
+
+      const { data, error, migracionProveedorPendiente } = await escribirConProveedor(
+        f => supabase.from('importaciones').insert(f).select().single(), fila);
       if (error) throw error;
+      if (migracionProveedorPendiente) data.migracionProveedorPendiente = true;
+      if (data.proveedor_id) data.proveedor_sync = await asignarProveedorProductos(supabase, skusDeItems(items));
       return res.json(data);
     }
 
@@ -66,8 +97,9 @@ module.exports = async (req, res) => {
       if (!id) return res.status(400).json({ error: 'Falta ?id=' });
       const b = req.body || {};
 
+      // select('*') y no una lista de columnas: proveedor_id puede no existir todavía.
       const { data: actual, error: actualErr } = await supabase
-        .from('importaciones').select('estado, items').eq('id', id).single();
+        .from('importaciones').select('*').eq('id', id).single();
       if (actualErr) throw actualErr;
 
       const fields = {};
@@ -76,10 +108,23 @@ module.exports = async (req, res) => {
       if (b.llegada         !== undefined) fields.llegada         = b.llegada || null;
       if (b.saldo_pendiente !== undefined) fields.saldo_pendiente = b.saldo_pendiente === true;
       if (b.items           !== undefined) fields.items           = Array.isArray(b.items) ? b.items : [];
+      if (b.proveedor_id    !== undefined) fields.proveedor_id    = b.proveedor_id || null;
 
-      const { data, error } = await supabase.from('importaciones')
-        .update(fields).eq('id', id).select().single();
+      const { data, error, migracionProveedorPendiente } = await escribirConProveedor(
+        f => supabase.from('importaciones').update(f).eq('id', id).select().single(), fields);
       if (error) throw error;
+      if (migracionProveedorPendiente) data.migracionProveedorPendiente = true;
+
+      // Sólo se recalcula el proveedor de los productos si cambió a quién se le compró o
+      // qué SKUs trae la importación: editar una nota de una compra vieja no tiene que pisar
+      // una asignación hecha a mano después.
+      const skusAntes   = skusDeItems(actual.items);
+      const skusAhora   = skusDeItems(data.items);
+      const cambioProv  = (actual.proveedor_id || null) !== (data.proveedor_id || null);
+      const cambioSkus  = skusAntes.length !== skusAhora.length || skusAhora.some(s => !skusAntes.includes(s));
+      if (!migracionProveedorPendiente && (data.proveedor_id || actual.proveedor_id) && (cambioProv || cambioSkus)) {
+        data.proveedor_sync = await asignarProveedorProductos(supabase, [...new Set([...skusAntes, ...skusAhora])]);
+      }
 
       // Si la importación acaba de pasar a un estado de "llegada", sumamos el
       // stock de cada ítem una sola vez (idempotente: solo dispara en la transición).

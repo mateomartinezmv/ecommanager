@@ -275,4 +275,4 @@ function leerTarjetas(page, selector) {
   })));
 }
 
-module.exports = { HOY, haceDias, estadoDemo, abrirCRM, erroresReales, leerTarjetas };
+module.exports = { HOY, haceDias, estadoDemo, abrirCRM, erroresReales, leerTarjetas, servirPublic };

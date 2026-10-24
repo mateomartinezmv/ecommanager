@@ -17,6 +17,7 @@
 //                                 | 'cubierto' | 'sin_ventas'
 //   - already_ordered          = true if the SKU appears in a non-arrived import (kept for compat)
 //   - gap_cierra_fecha         = si hay quiebre_confirmado, fecha en la que el próximo envío lo cierra
+//   - agota_con_transito       = fecha en la que se termina el stock actual + todo lo que está en camino
 //   - periodos_sin_stock       = tramos dentro de la ventana de ventas donde el stock reconstruido dio 0
 //                                 (excluidos de active_days para no diluir la velocidad real)
 //
@@ -82,8 +83,13 @@ function stdev(arr) {
 // total" (stock + tránsito, sin fechas) no puede ver: un pedido de 40 unidades
 // que llega en 46 días no tapa que hoy, con stock 0, no se vende nada durante
 // esos 46 días.
+//
+// Devuelve también `agotaFecha`: el día en que, vendiendo a este ritmo, se termina el stock
+// actual MÁS todo lo que está en camino. Es lo que explica el "pedí N más" de un producto
+// que ya tiene pedido: si los envíos pendientes se agotan antes de lo que tarda en llegar
+// una compra nueva (más el colchón), hay que volver a comprar aunque algo venga en camino.
 function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, today) {
-  if (dailyVelocity <= 0 || !transito.length) return { tieneQuiebre: false, gapCierraFecha: null };
+  if (dailyVelocity <= 0 || !transito.length) return { tieneQuiebre: false, gapCierraFecha: null, agotaFecha: null };
 
   const events = transito
     .map(t => {
@@ -112,7 +118,10 @@ function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, to
     currentDay = ev.day;
   }
 
-  return { tieneQuiebre, gapCierraFecha };
+  const agotaDia   = currentDay + currentStock / dailyVelocity;
+  const agotaFecha = new Date(today.getTime() + agotaDia * MS_PER_DAY).toISOString().slice(0, 10);
+
+  return { tieneQuiebre, gapCierraFecha, agotaFecha };
 }
 
 // Reconstruye, hacia atrás desde el stock actual, en qué tramos el producto
@@ -454,7 +463,7 @@ module.exports = async (req, res) => {
 
       // Simula si el stock físico se agota antes de que llegue el próximo envío,
       // en vez de sumar todo el tránsito como si estuviera disponible hoy.
-      const { tieneQuiebre, gapCierraFecha } = computeStockoutGap(
+      const { tieneQuiebre, gapCierraFecha, agotaFecha } = computeStockoutGap(
         stock, dailyVelocity, transito, LEAD_DAYS, today
       );
 
@@ -522,6 +531,7 @@ module.exports = async (req, res) => {
         cantidad_sugerida:          cantidadSugerida,
         restock_status:             restockStatus,
         gap_cierra_fecha:           restockStatus === 'quiebre_confirmado' ? gapCierraFecha : null,
+        agota_con_transito:         agotaFecha,     // fin del stock actual + todo lo que viene en camino
         already_ordered,
         en_transito:                transito,       // full detail array
         qty_en_transito,

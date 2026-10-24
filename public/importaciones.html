@@ -164,6 +164,55 @@
   .totals-row.grand { font-size: 16px; font-weight: 700; color: var(--green); border-top: 1px solid var(--border); padding-top: 8px; }
   .totals-val { font-family: 'JetBrains Mono', monospace; }
 
+  /* Solapas de la sección (Importaciones / Proveedores / Compras), estilo buscador */
+  .main-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
+  .main-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 18px; color: var(--text-muted); font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: color 0.15s; }
+  .main-tab:hover { color: var(--text); }
+  .main-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-count { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 20px; background: var(--surface2); border: 1px solid var(--border); font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+  .tab-count.warn { color: var(--yellow); border-color: rgba(245,158,11,0.3); }
+
+  .aviso { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--yellow); border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 18px; line-height: 1.5; }
+  .aviso code { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .ayuda { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+  /* Proveedores: una "pestaña" por proveedor */
+  .prov-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .prov-chip { padding: 7px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .prov-chip:hover { color: var(--text); border-color: var(--text-muted); }
+  .prov-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(79,142,247,0.1); }
+  .prov-chip.warn { color: var(--yellow); border-color: rgba(245,158,11,0.35); }
+  .prov-chip.warn.active { background: rgba(245,158,11,0.1); border-color: var(--yellow); }
+  .prov-chip.nuevo { border-style: dashed; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 18px; }
+  .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .panel-title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .datos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .dato-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .dato-val { font-size: 13px; font-weight: 500; word-break: break-word; }
+  .dato-val a { color: var(--accent); text-decoration: none; }
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 20px; font-weight: 700; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .asignar-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .asignar-bar select, .asignar-bar input[type=text] { width: auto; min-width: 200px; }
+  .chk { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+  /* Compras por proveedor */
+  .compra-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 18px; overflow: hidden; }
+  .compra-card.ya { border-color: rgba(239,68,68,0.45); }
+  .compra-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .compra-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 14px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; background: var(--surface2); }
+  .minimo-bar { height: 8px; border-radius: 4px; background: var(--surface2); overflow: hidden; width: 260px; max-width: 100%; margin-top: 6px; }
+  .minimo-fill { height: 100%; border-radius: 4px; background: var(--yellow); transition: width 0.2s; }
+  .minimo-fill.ok { background: var(--green); }
+  .compra-card td input { width: 76px; padding: 5px 8px; font-size: 12px; }
+  .relleno { color: var(--accent); font-size: 11px; }
+  .badge-orange { background: rgba(249,115,22,0.15); color: #f97316; }
+
   @media (max-width: 900px) {
     #sidebar { width: 60px; }
     .nav-item span:not(.icon) { display: none; }
@@ -200,21 +249,57 @@
 
 <main id="main">
   <div class="topbar">
-    <div class="page-title">📥 Historial de Importaciones</div>
+    <div class="page-title">📥 Importaciones</div>
     <div class="topbar-actions">
+      <button class="btn btn-ghost" onclick="openProveedor()">+ Nuevo proveedor</button>
       <button class="btn btn-primary" onclick="openNew()">+ Nueva Importación</button>
     </div>
   </div>
   <div class="content">
-    <div class="table-wrap">
-      <div class="table-header">
-        <span class="table-title">Órdenes de compra</span>
-        <span id="total-count" style="font-size:13px;color:var(--text-muted)"></span>
-      </div>
-      <div id="imports-table-container">
-        <div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div>
-      </div>
+    <div class="main-tabs" role="tablist">
+      <button class="main-tab active" id="tab-importaciones" onclick="switchTab('importaciones')">📥 Importaciones</button>
+      <button class="main-tab" id="tab-proveedores" onclick="switchTab('proveedores')">🏭 Proveedores <span class="tab-count" id="count-proveedores"></span></button>
+      <button class="main-tab" id="tab-compras" onclick="switchTab('compras')">🛒 Compras por proveedor</button>
     </div>
+
+    <div id="aviso-migracion" class="aviso" style="display:none">
+      ⚠️ Falta crear la tabla de proveedores en Supabase: corré
+      <code>supabase/migrations/20261024000000_add_proveedores.sql</code> en el SQL Editor.
+      Hasta entonces las importaciones se cargan igual, pero sin proveedor.
+    </div>
+
+    <!-- ── IMPORTACIONES ── -->
+    <section id="sec-importaciones">
+      <div class="table-wrap">
+        <div class="table-header">
+          <span class="table-title">Órdenes de compra</span>
+          <div style="display:flex;gap:12px;align-items:center">
+            <select id="filtro-prov-imp" onchange="render()" style="width:auto"></select>
+            <span id="total-count" style="font-size:13px;color:var(--text-muted)"></span>
+          </div>
+        </div>
+        <div id="imports-table-container">
+          <div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── PROVEEDORES ── -->
+    <section id="sec-proveedores" style="display:none">
+      <div class="prov-chips" id="prov-chips"></div>
+      <div id="prov-panel"></div>
+    </section>
+
+    <!-- ── COMPRAS POR PROVEEDOR ── -->
+    <section id="sec-compras" style="display:none">
+      <p class="ayuda" style="margin-bottom:18px">
+        Junta lo que hay que reponer de cada proveedor (según 📅 Reposición) y, si no llega a su mínimo de compra
+        —calculado sobre el costo en China, cantidad × costo unitario de la última importación—, lo completa con más
+        unidades de los productos de ese proveedor que antes se van a quedar sin stock. Las cantidades se pueden
+        cambiar antes de crear la importación.
+      </p>
+      <div id="compras-container"><div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div></div>
+    </section>
   </div>
 </main>
 
@@ -223,6 +308,11 @@
   <div class="modal">
     <div class="modal-title">Nueva Importación</div>
     <div class="form-grid">
+      <div class="form-group form-full">
+        <label class="form-label">Proveedor / importador *</label>
+        <select id="new-proveedor" onchange="onProveedorSelect(this);recalcTotals()"></select>
+        <span class="ayuda" id="new-proveedor-ayuda"></span>
+      </div>
       <div class="form-group">
         <label class="form-label">Fecha de orden *</label>
         <input type="date" id="new-order-date">
@@ -265,6 +355,7 @@
         </table>
       </div>
       <p id="items-error" style="font-size:12px;color:var(--red);margin-top:6px;display:none">Agregá al menos un artículo.</p>
+      <div id="new-minimo" class="ayuda" style="margin-top:8px"></div>
     </div>
 
     <!-- Costos adicionales -->
@@ -328,6 +419,10 @@
     <div class="modal-title">✏️ Editar Importación</div>
     <input type="hidden" id="edit-id">
     <div class="form-grid">
+      <div class="form-group form-full">
+        <label class="form-label">Proveedor / importador</label>
+        <select id="edit-proveedor" onchange="onProveedorSelect(this)"></select>
+      </div>
       <div class="form-group">
         <label class="form-label">Fecha de orden</label>
         <input type="date" id="edit-order-date">
@@ -379,10 +474,94 @@
   </div>
 </div>
 
+<!-- ── PROVEEDOR MODAL (alta y edición) ──────────────────────────────────────── -->
+<!-- Va después de los otros modales y más arriba: se puede abrir desde Nueva Importación. -->
+<div class="modal-overlay" id="modal-proveedor" style="z-index:600">
+  <div class="modal" style="width:620px">
+    <div class="modal-title" id="prov-modal-title">Nuevo proveedor</div>
+    <input type="hidden" id="prov-id">
+    <div class="form-grid">
+      <div class="form-group form-full">
+        <label class="form-label">Nombre *</label>
+        <input type="text" id="prov-nombre" placeholder="ej: Importadora Yiwu">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contacto</label>
+        <input type="text" id="prov-contacto" placeholder="Persona con la que hablás">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teléfono / WhatsApp</label>
+        <input type="text" id="prov-telefono" placeholder="+86 …">
+      </div>
+      <div class="form-group">
+        <label class="form-label">WeChat</label>
+        <input type="text" id="prov-wechat">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="text" id="prov-email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ubicación</label>
+        <input type="text" id="prov-ubicacion" placeholder="Ciudad, país">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Web / tienda</label>
+        <input type="text" id="prov-web" placeholder="https://…">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Compra mínima (USD de costo en China)</label>
+        <input type="number" id="prov-minimo" step="1" min="0" value="300">
+      </div>
+      <div class="form-group form-full">
+        <label class="form-label">Notas</label>
+        <textarea id="prov-notas" placeholder="Condiciones de pago, tiempos, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="cerrarProveedor()">Cancelar</button>
+      <button class="btn btn-primary" id="prov-guardar" onclick="submitProveedor()">Guardar proveedor</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ASIGNAR PRODUCTOS A UN PROVEEDOR ──────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-asignar">
+  <div class="modal">
+    <div class="modal-title" id="asignar-title">Asignar productos</div>
+    <input type="text" id="asignar-q" placeholder="Buscar por SKU o nombre…" oninput="renderAsignarLista()" style="margin-bottom:10px">
+    <div class="items-table-wrap" style="max-height:50vh;overflow-y:auto">
+      <table>
+        <thead><tr><th></th><th>SKU</th><th>Producto</th><th>Proveedor actual</th></tr></thead>
+        <tbody id="asignar-lista"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-asignar')">Cancelar</button>
+      <button class="btn btn-primary" id="asignar-guardar" onclick="submitAsignarModal()">Asignar seleccionados</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 let imports  = [];
 let productos = [];
+let proveedores = [];
+let migracionProveedores = false; // la tabla de proveedores todavía no existe en Supabase
+let restock = null;               // respuesta de /api/restock, se pide al abrir Compras
+let restockError = null;
+let tabActual = 'importaciones';
+let provSel = null;               // id del proveedor elegido en la solapa Proveedores, o SIN_PROV
+let compras = {};                 // proveedor_id -> resultado de armarCompra (con las cantidades editables)
+const SIN_PROV = '__sin';
+
+// Compras por proveedor: hasta cuántos días de venta se completa un producto para llegar al
+// mínimo. Pasado eso es plata inmovilizada: mejor avisar que no llega que sobrestockear.
+const TOPE_COBERTURA_DIAS = 180;
+// Estados de 📅 Reposición que no son una compra pendiente (igual que en reposicion.html).
+const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
+const URGENTE = ['quiebre_confirmado', 'ordenar_ya', 'insuficiente'];
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 async function apiFetch(method, path, body) {
@@ -397,15 +576,113 @@ async function apiFetch(method, path, body) {
 // ─── Load ─────────────────────────────────────────────────────────────────────
 async function load() {
   try {
-    [imports, productos] = await Promise.all([
+    let provResp;
+    [imports, productos, provResp] = await Promise.all([
       apiFetch('GET', '/api/importaciones'),
       apiFetch('GET', '/api/productos').catch(() => []),
+      apiFetch('GET', '/api/proveedores').catch(() => ({ proveedores: [], migracionPendiente: true })),
     ]);
-    render();
+    proveedores = provResp.proveedores || [];
+    migracionProveedores = !!provResp.migracionPendiente;
+    document.getElementById('aviso-migracion').style.display = migracionProveedores ? 'block' : 'none';
+    renderTodo();
   } catch(e) {
     document.getElementById('imports-table-container').innerHTML =
-      `<div class="empty-state"><div class="empty-icon">❌</div><p>${e.message}</p></div>`;
+      `<div class="empty-state"><div class="empty-icon">❌</div><p>${escapeHtml(e.message)}</p></div>`;
   }
+}
+
+function renderTodo() {
+  renderFiltroProveedor();
+  render();
+  actualizarContadores();
+  if (tabActual === 'proveedores') renderProveedores();
+  if (tabActual === 'compras') renderCompras();
+}
+
+async function refrescarProductos() {
+  try { productos = await apiFetch('GET', '/api/productos'); } catch (e) { /* se queda con lo que tenía */ }
+}
+
+// ─── Solapas ──────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  tabActual = tab;
+  ['importaciones', 'proveedores', 'compras'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+    document.getElementById('sec-' + t).style.display = t === tab ? 'block' : 'none';
+  });
+  try { history.replaceState(null, '', tab === 'importaciones' ? location.pathname : '#' + tab); } catch (e) {}
+  if (tab === 'proveedores') renderProveedores();
+  return tab === 'compras' ? cargarCompras() : Promise.resolve();
+}
+
+function actualizarContadores() {
+  const el = document.getElementById('count-proveedores');
+  const sin = productosActivos().filter(p => !p.proveedor_id).length;
+  el.textContent = proveedores.length;
+  el.classList.toggle('warn', sin > 0 && !migracionProveedores);
+  el.title = sin > 0 ? `${sin} productos sin proveedor asignado` : '';
+}
+
+// ─── Helpers de proveedores ───────────────────────────────────────────────────
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+function proveedorPorId(id) { return proveedores.find(p => p.id === id) || null; }
+function nombreProveedor(id) { const p = proveedorPorId(id); return p ? p.nombre : null; }
+function minimoDe(prov) { const n = Number(prov?.minimo_usd); return Number.isFinite(n) ? n : 300; }
+
+// Lo que se puede volver a comprar: ni usados ni descatalogados (igual que /api/restock).
+function productosActivos() {
+  return productos.filter(p => p.tipo !== 'usado' && !p.discontinuado);
+}
+
+// Lo que costó en China cada unidad de un SKU, según la importación más reciente que lo
+// trae con costo cargado. Si se pasa un proveedor, se prefieren sus importaciones: el mismo
+// producto puede salir distinto en otro importador.
+function ultimoCosto(sku, proveedorId) {
+  let mejor = null;
+  for (const imp of imports) {
+    const estado = imp.estado || imp.status;
+    if (estado === 'cancelled') continue;
+    for (const it of (imp.items || [])) {
+      if (it.sku !== sku || !(Number(it.costo) > 0)) continue;
+      const cand = { costo: Number(it.costo), fecha: imp.fecha || '', mismoProv: !!proveedorId && imp.proveedor_id === proveedorId };
+      if (!mejor
+          || (cand.mismoProv && !mejor.mismoProv)
+          || (cand.mismoProv === mejor.mismoProv && cand.fecha > mejor.fecha)) mejor = cand;
+    }
+  }
+  return mejor;
+}
+
+function costoChinaDeItems(items) {
+  return (items || []).reduce((s, it) => s + (Number(it.qty) || 0) * (Number(it.costo) || 0), 0);
+}
+
+// Opciones de un <select> de proveedor; `vacio` es el texto de la opción sin proveedor.
+function opcionesProveedor(seleccionado, { vacio = '— Elegí un proveedor —' } = {}) {
+  return `<option value="">${vacio}</option>` +
+    proveedores.map(p => `<option value="${escapeHtml(p.id)}"${p.id === seleccionado ? ' selected' : ''}>${escapeHtml(p.nombre)}</option>`).join('') +
+    (migracionProveedores ? '' : `<option value="__nuevo">+ Nuevo proveedor…</option>`);
+}
+
+let selectQuePideProveedor = null; // el <select> que abrió el alta, para elegir ahí al nuevo
+function onProveedorSelect(sel) {
+  if (sel.value !== '__nuevo') return;
+  sel.value = '';
+  openProveedor(null, sel);
+}
+
+function renderFiltroProveedor() {
+  const sel = document.getElementById('filtro-prov-imp');
+  const actual = sel.value;
+  sel.style.display = proveedores.length ? '' : 'none';
+  sel.innerHTML = `<option value="">Todos los proveedores</option><option value="${SIN_PROV}">Sin proveedor</option>` +
+    proveedores.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.nombre)}</option>`).join('');
+  sel.value = [...sel.options].some(o => o.value === actual) ? actual : '';
 }
 
 // ─── Render table ─────────────────────────────────────────────────────────────
@@ -434,24 +711,31 @@ function usd(v) { return 'USD ' + Number(v || 0).toFixed(2); }
 
 function render() {
   const el = document.getElementById('imports-table-container');
-  document.getElementById('total-count').textContent = imports.length
-    ? `${imports.length} registro${imports.length !== 1 ? 's' : ''}`
+  const filtro = document.getElementById('filtro-prov-imp').value;
+  const lista = !filtro ? imports
+    : filtro === SIN_PROV ? imports.filter(i => !i.proveedor_id)
+    : imports.filter(i => i.proveedor_id === filtro);
+  document.getElementById('total-count').textContent = lista.length
+    ? `${lista.length} registro${lista.length !== 1 ? 's' : ''}`
     : '';
 
-  if (!imports.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>No hay importaciones registradas. Creá la primera.</p></div>`;
+  if (!lista.length) {
+    el.innerHTML = imports.length
+      ? `<div class="empty-state"><div class="empty-icon">📭</div><p>No hay importaciones de este proveedor.</p></div>`
+      : `<div class="empty-state"><div class="empty-icon">📭</div><p>No hay importaciones registradas. Creá la primera.</p></div>`;
     return;
   }
 
-  const rows = imports.map(imp => {
+  const rows = lista.map(imp => {
     const estado = imp.status || imp.estado;
     const canArrive = estado !== 'arrived' && estado !== 'recibido' && estado !== 'en_deposito' && estado !== 'cancelled';
     const fecha  = imp.order_date || imp.fecha;
     const llegada = imp.estimated_arrival_date || imp.llegada;
     const items  = imp.items || imp.import_items || [];
     return `
-    <tr>
+    <tr data-id="${escapeHtml(imp.id)}">
       <td>${fmtDate(fecha)}</td>
+      <td class="celda-prov">${celdaProveedor(imp)}</td>
       <td>${fmtDate(llegada)}</td>
       <td>${statusBadge(estado)}</td>
       <td style="text-align:center">${items.length}</td>
@@ -478,6 +762,7 @@ function render() {
       <thead>
         <tr>
           <th>Fecha orden</th>
+          <th>Proveedor</th>
           <th>Llegada est.</th>
           <th>Estado</th>
           <th>Ítems</th>
@@ -489,6 +774,41 @@ function render() {
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// La importación ya llegada no se puede abrir con ✏️ Editar, así que el proveedor se elige
+// acá mismo: es la forma de completar las importaciones cargadas antes de que existiera
+// el campo, y con eso la API le asigna el proveedor a sus productos.
+function celdaProveedor(imp, editando = false) {
+  if (migracionProveedores) return `<span style="color:var(--text-muted)">—</span>`;
+  if (imp.proveedor_id && !editando) {
+    return `<a href="#proveedores" onclick="event.preventDefault();verProveedor('${escapeHtml(imp.proveedor_id)}')" style="color:var(--text);text-decoration:none;font-weight:600">${escapeHtml(nombreProveedor(imp.proveedor_id) || '—')}</a>
+      <button class="btn btn-ghost btn-sm" style="padding:1px 6px;margin-left:4px" title="Cambiar proveedor" onclick="editarCeldaProveedor('${escapeHtml(imp.id)}')">✎</button>`;
+  }
+  return `<select class="sel-prov-imp" style="width:auto;padding:4px 8px;font-size:12px${imp.proveedor_id ? '' : ';border-color:rgba(245,158,11,0.5)'}"
+    onchange="onProveedorSelect(this); if (this.value) asignarProveedorImport('${escapeHtml(imp.id)}', this.value)">
+    ${opcionesProveedor(imp.proveedor_id || '', { vacio: '— asignar —' })}</select>`;
+}
+
+function editarCeldaProveedor(id) {
+  const imp = imports.find(i => i.id === id);
+  const td = document.querySelector(`tr[data-id="${CSS.escape(id)}"] .celda-prov`);
+  if (imp && td) td.innerHTML = celdaProveedor(imp, true);
+}
+
+async function asignarProveedorImport(id, proveedorId) {
+  if (proveedorId === '__nuevo') return;
+  try {
+    const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, { proveedor_id: proveedorId });
+    const idx = imports.findIndex(i => i.id === id);
+    if (idx !== -1) imports[idx] = { ...imports[idx], ...updated };
+    if (updated.proveedor_sync) await refrescarProductos();
+    compras = {};
+    renderTodo();
+    avisarSyncProveedor(updated);
+  } catch (e) {
+    alert('Error asignando proveedor: ' + e.message);
+  }
 }
 
 // ─── Search dropdown ──────────────────────────────────────────────────────────
@@ -538,11 +858,39 @@ function recalcTotals() {
   document.getElementById('tot-base').textContent  = usd(base);
   document.getElementById('tot-iva').textContent   = usd(iva);
   document.getElementById('tot-total').textContent = usd(total);
+  recalcMinimo();
+}
+
+// Costo en China de lo cargado (cantidad × costo unitario) contra el mínimo del proveedor.
+function recalcMinimo() {
+  const el = document.getElementById('new-minimo');
+  const prov = proveedorPorId(document.getElementById('new-proveedor').value);
+  const costo = costoChinaDeItems(leerItems('#line-items-body'));
+  if (!prov) { el.innerHTML = costo ? `Costo en China: <b class="mono">${usd(costo)}</b>` : ''; return; }
+  const min = minimoDe(prov);
+  el.innerHTML = costo >= min
+    ? `<span style="color:var(--green)">✓ Costo en China ${usd(costo)} — llega al mínimo de ${escapeHtml(prov.nombre)} (${usd(min)})</span>`
+    : `<span style="color:var(--yellow)">Costo en China ${usd(costo)} — faltan ${usd(min - costo)} para el mínimo de ${escapeHtml(prov.nombre)} (${usd(min)})</span>`;
+}
+
+function leerItems(selector) {
+  return Array.from(document.querySelectorAll(selector + ' tr')).map(tr => ({
+    sku:    tr.querySelector('.li-sku').value.trim(),
+    nombre: tr.querySelector('.li-name').value.trim(),
+    qty:    parseInt(tr.querySelector('.li-qty').value) || 0,
+    costo:  parseFloat(tr.querySelector('.li-cost').value) || 0,
+  })).filter(i => (i.sku || i.nombre) && i.qty > 0);
 }
 
 // ─── New Import Modal ─────────────────────────────────────────────────────────
-function openNew() {
+// `pre` llega desde 🛒 Compras por proveedor: { proveedor_id, items } ya armados.
+function openNew(pre) {
   const today = new Date().toISOString().slice(0,10);
+  const selProv = document.getElementById('new-proveedor');
+  selProv.innerHTML = opcionesProveedor(pre?.proveedor_id || '');
+  document.getElementById('new-proveedor-ayuda').textContent = migracionProveedores
+    ? 'La tabla de proveedores todavía no existe: la importación se guarda sin proveedor.'
+    : (!proveedores.length ? 'Todavía no cargaste ningún proveedor: elegí “+ Nuevo proveedor…”.' : '');
   document.getElementById('new-order-date').value = today;
   document.getElementById('new-est-arrival').value = '';
   document.getElementById('new-notes').value = '';
@@ -553,27 +901,29 @@ function openNew() {
   document.getElementById('new-saldo-pendiente').checked = false;
   document.getElementById('line-items-body').innerHTML = '';
   document.getElementById('items-error').style.display = 'none';
+  const preItems = pre?.items || [];
+  preItems.forEach(it => addLineItem(it));
+  if (!preItems.length) addLineItem();
   recalcTotals();
-  addLineItem();
   document.getElementById('modal-nueva').classList.add('open');
 }
 
-function addLineItem() {
+function addLineItem(it = {}) {
   const tbody = document.getElementById('line-items-body');
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td>
       <div class="sku-wrap">
-        <input type="text" placeholder="SKU o nombre..." class="li-sku"
+        <input type="text" placeholder="SKU o nombre..." class="li-sku" value="${escapeHtml(it.sku || '')}"
                oninput="buscarProd(this);recalcTotals()"
                onblur="cerrarDd(this,200)"
                onkeydown="if(event.key==='Escape')cerrarDd(this,0)">
         <div class="sku-dd"></div>
       </div>
     </td>
-    <td><input type="text" placeholder="Nombre del producto" class="li-name"></td>
-    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" oninput="recalcTotals()"></td>
-    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" oninput="recalcTotals()"></td>
+    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${escapeHtml(it.nombre || '')}"></td>
+    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" oninput="recalcTotals()" value="${it.qty ?? ''}"></td>
+    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" oninput="recalcTotals()" value="${it.costo ?? ''}"></td>
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove();recalcTotals()">✕</button></td>`;
   tbody.appendChild(tr);
 }
@@ -582,16 +932,16 @@ async function submitNew() {
   const fecha = document.getElementById('new-order-date').value;
   if (!fecha) { alert('Ingresá la fecha de orden.'); return; }
 
+  // Desde ahora toda importación sale de un proveedor: es lo que deja asignar cada producto
+  // a su importador y armar las compras contra el mínimo. Sólo se saltea si la tabla
+  // todavía no existe en la base.
+  const proveedorId = document.getElementById('new-proveedor').value;
+  if (!proveedorId && !migracionProveedores) { alert('Elegí de qué proveedor es la importación.'); return; }
+
   const totalPagado = parseFloat(document.getElementById('new-total-pagado').value) || 0;
   if (!totalPagado) { alert('Ingresá el total pagado con IVA.'); return; }
 
-  const rows  = Array.from(document.querySelectorAll('#line-items-body tr'));
-  const items = rows.map(tr => ({
-    sku:    tr.querySelector('.li-sku').value.trim(),
-    nombre: tr.querySelector('.li-name').value.trim(),
-    qty:    parseInt(tr.querySelector('.li-qty').value) || 0,
-    costo:  parseFloat(tr.querySelector('.li-cost').value) || 0,
-  })).filter(i => (i.sku || i.nombre) && i.qty > 0);
+  const items = leerItems('#line-items-body');
 
   if (!items.length) {
     document.getElementById('items-error').style.display = 'block';
@@ -613,12 +963,26 @@ async function submitNew() {
       nacional,
       total:            totalPagado,
       saldo_pendiente:  document.getElementById('new-saldo-pendiente').checked,
+      ...(proveedorId ? { proveedor_id: proveedorId } : {}),
     });
     imports.unshift(rec);
-    render();
     closeModal('modal-nueva');
+    // La API le asignó a cada SKU el proveedor de la importación: se relee para que
+    // Proveedores y Compras lo muestren sin recargar la página.
+    if (rec.proveedor_sync) await refrescarProductos();
+    compras = {};
+    renderTodo();
+    avisarSyncProveedor(rec);
   } catch(e) {
     alert('Error: ' + e.message);
+  }
+}
+
+function avisarSyncProveedor(rec) {
+  if (rec.migracionProveedorPendiente) {
+    alert('La importación se guardó, pero sin proveedor: falta correr la migración 20261024000000_add_proveedores.sql en Supabase.');
+  } else if (rec.proveedor_sync?.error) {
+    alert('La importación se guardó, pero no se pudo asignar el proveedor a los productos: ' + rec.proveedor_sync.error);
   }
 }
 
@@ -715,7 +1079,9 @@ function verDetalle(id) {
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Fecha orden</span><div style="font-weight:600;margin-top:2px">${fmtDate(fecha)}</div></div>
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Estado</span><div style="margin-top:4px">${statusBadge(estado)}</div></div>
       <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Llegada estimada</span><div style="font-weight:600;margin-top:2px">${fmtDate(llegada)}</div></div>
-      ${imp.notas ? `<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Notas</span><div style="margin-top:2px;font-size:13px">${imp.notas}</div></div>` : ''}
+      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Proveedor</span><div style="font-weight:600;margin-top:2px">${escapeHtml(nombreProveedor(imp.proveedor_id) || '—')}</div></div>
+      <div><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Costo en China</span><div style="font-weight:600;margin-top:2px" class="mono">${usd(costoChinaDeItems(items))}</div></div>
+      ${imp.notas ? `<div style="grid-column:1/-1"><span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px">Notas</span><div style="margin-top:2px;font-size:13px">${escapeHtml(imp.notas)}</div></div>` : ''}
     </div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">Artículos (${items.length})</div>
     <div class="items-list">${itemsHtml}</div>
@@ -749,6 +1115,8 @@ function openEdit(id) {
   document.getElementById('edit-est-arrival').value  = imp.llegada || '';
   document.getElementById('edit-status').value       = imp.estado || imp.status || 'ordered';
   document.getElementById('edit-notes').value        = imp.notas || '';
+  document.getElementById('edit-proveedor').innerHTML = opcionesProveedor(imp.proveedor_id || '', { vacio: '— Sin proveedor —' });
+  document.getElementById('edit-proveedor').disabled  = migracionProveedores;
 
   // Populate items
   const tbody = document.getElementById('edit-line-items-body');
@@ -766,14 +1134,14 @@ function addEditLineItem(sku = '', nombre = '', qty = '', costo = '') {
   tr.innerHTML = `
     <td>
       <div class="sku-wrap">
-        <input type="text" placeholder="SKU o nombre..." class="li-sku" value="${sku}"
+        <input type="text" placeholder="SKU o nombre..." class="li-sku" value="${escapeHtml(sku)}"
                oninput="buscarProdEdit(this)"
                onblur="cerrarDd(this,200)"
                onkeydown="if(event.key==='Escape')cerrarDd(this,0)">
         <div class="sku-dd"></div>
       </div>
     </td>
-    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${nombre}"></td>
+    <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${escapeHtml(nombre)}"></td>
     <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" value="${qty}"></td>
     <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" value="${costo}"></td>
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
@@ -813,13 +1181,7 @@ async function submitEdit() {
   const notas   = document.getElementById('edit-notes').value.trim();
   const fecha   = document.getElementById('edit-order-date').value;
 
-  const rows = Array.from(document.querySelectorAll('#edit-line-items-body tr'));
-  const items = rows.map(tr => ({
-    sku:    tr.querySelector('.li-sku').value.trim(),
-    nombre: tr.querySelector('.li-name').value.trim(),
-    qty:    parseInt(tr.querySelector('.li-qty').value) || 0,
-    costo:  parseFloat(tr.querySelector('.li-cost').value) || 0,
-  })).filter(i => (i.sku || i.nombre) && i.qty > 0);
+  const items = leerItems('#edit-line-items-body');
 
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
@@ -827,14 +1189,560 @@ async function submitEdit() {
       estado,
       notas:   notas || null,
       items,
+      ...(migracionProveedores ? {} : { proveedor_id: document.getElementById('edit-proveedor').value || null }),
     });
     const idx = imports.findIndex(i => i.id === id);
     if (idx !== -1) imports[idx] = { ...imports[idx], ...updated };
-    render();
     closeModal('modal-editar');
+    if (updated.proveedor_sync) await refrescarProductos();
+    compras = {};
+    renderTodo();
+    avisarSyncProveedor(updated);
   } catch(e) {
     alert('Error guardando: ' + e.message);
   }
+}
+
+// ─── Proveedor: alta y edición ────────────────────────────────────────────────
+const CAMPOS_PROV = ['nombre', 'contacto', 'telefono', 'wechat', 'email', 'ubicacion', 'web', 'notas'];
+
+function openProveedor(id, desdeSelect = null) {
+  selectQuePideProveedor = desdeSelect;
+  if (migracionProveedores) {
+    alert('Falta correr la migración 20261024000000_add_proveedores.sql en Supabase para poder cargar proveedores.');
+    return;
+  }
+  const prov = id ? proveedorPorId(id) : null;
+  document.getElementById('prov-modal-title').textContent = prov ? `Editar ${prov.nombre}` : 'Nuevo proveedor';
+  document.getElementById('prov-id').value = prov ? prov.id : '';
+  CAMPOS_PROV.forEach(c => { document.getElementById('prov-' + c).value = prov?.[c] || ''; });
+  document.getElementById('prov-minimo').value = prov ? minimoDe(prov) : 300;
+  document.getElementById('modal-proveedor').classList.add('open');
+  document.getElementById('prov-nombre').focus();
+}
+
+function cerrarProveedor() {
+  selectQuePideProveedor = null;
+  closeModal('modal-proveedor');
+}
+
+async function submitProveedor() {
+  const id = document.getElementById('prov-id').value;
+  const body = {};
+  CAMPOS_PROV.forEach(c => { body[c] = document.getElementById('prov-' + c).value.trim(); });
+  body.minimo_usd = document.getElementById('prov-minimo').value;
+  if (!body.nombre) { alert('Poné el nombre del proveedor.'); return; }
+
+  try {
+    const guardado = id
+      ? await apiFetch('PUT', `/api/proveedores?id=${encodeURIComponent(id)}`, body)
+      : await apiFetch('POST', '/api/proveedores', body);
+    const idx = proveedores.findIndex(p => p.id === guardado.id);
+    if (idx !== -1) proveedores[idx] = guardado; else proveedores.push(guardado);
+    proveedores.sort((a, b) => a.nombre.localeCompare(b.nombre));
+    closeModal('modal-proveedor');
+
+    // Si se abrió desde el selector de una importación, queda elegido ahí.
+    const sel = selectQuePideProveedor;
+    selectQuePideProveedor = null;
+    if (sel && !id) {
+      const nuevo = sel.querySelector('option[value="__nuevo"]');
+      sel.insertBefore(new Option(guardado.nombre, guardado.id), nuevo);
+      sel.value = guardado.id;
+      sel.dispatchEvent(new Event('change'));
+    }
+    if (!id && tabActual === 'proveedores') provSel = guardado.id;
+    compras = {};
+    renderTodo();
+  } catch (e) {
+    alert('Error guardando el proveedor: ' + e.message);
+  }
+}
+
+async function eliminarProveedor(id) {
+  const prov = proveedorPorId(id);
+  if (!prov) return;
+  const nProd = productos.filter(p => p.proveedor_id === id).length;
+  const nImp  = imports.filter(i => i.proveedor_id === id).length;
+  if (!confirm(`¿Eliminar a ${prov.nombre}? Sus ${nImp} importaciones y ${nProd} productos quedan sin proveedor (no se borran).`)) return;
+  try {
+    await apiFetch('DELETE', `/api/proveedores?id=${encodeURIComponent(id)}`);
+    proveedores = proveedores.filter(p => p.id !== id);
+    imports.forEach(i => { if (i.proveedor_id === id) i.proveedor_id = null; });
+    productos.forEach(p => { if (p.proveedor_id === id) p.proveedor_id = null; });
+    provSel = null;
+    compras = {};
+    renderTodo();
+  } catch (e) {
+    alert('Error eliminando el proveedor: ' + e.message);
+  }
+}
+
+// ─── Solapa Proveedores ───────────────────────────────────────────────────────
+function verProveedor(id) {
+  provSel = id;
+  switchTab('proveedores');
+}
+
+function renderProveedores() {
+  const chips = document.getElementById('prov-chips');
+  const panel = document.getElementById('prov-panel');
+  const sinProv = productosActivos().filter(p => !p.proveedor_id);
+
+  if (migracionProveedores) {
+    chips.innerHTML = '';
+    panel.innerHTML = `<div class="empty-state"><div class="empty-icon">🏭</div><p>Los proveedores se activan cuando corras la migración en Supabase.</p></div>`;
+    return;
+  }
+
+  // Por defecto, el primer proveedor; si no hay ninguno, la lista de productos sin asignar.
+  if (provSel !== SIN_PROV && !proveedorPorId(provSel)) provSel = proveedores[0]?.id || SIN_PROV;
+
+  chips.innerHTML = proveedores.map(p => {
+    const n = productos.filter(x => x.proveedor_id === p.id).length;
+    return `<button class="prov-chip${p.id === provSel ? ' active' : ''}" onclick="provSel='${escapeHtml(p.id)}';renderProveedores()">${escapeHtml(p.nombre)} <span class="tab-count">${n}</span></button>`;
+  }).join('') +
+    `<button class="prov-chip warn${provSel === SIN_PROV ? ' active' : ''}" id="chip-sin-proveedor" onclick="provSel='${SIN_PROV}';renderProveedores()">⚠️ Sin proveedor <span class="tab-count warn">${sinProv.length}</span></button>` +
+    `<button class="prov-chip nuevo" onclick="openProveedor()">+ Nuevo proveedor</button>`;
+
+  panel.innerHTML = provSel === SIN_PROV ? panelSinProveedor(sinProv) : panelProveedor(proveedorPorId(provSel));
+}
+
+function linkSeguro(url) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  const href = /^https?:\/\//i.test(u) ? u : 'https://' + u;
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`;
+}
+
+function panelProveedor(prov) {
+  const imps  = imports.filter(i => i.proveedor_id === prov.id);
+  const prods = productos.filter(p => p.proveedor_id === prov.id);
+  const activas = imps.filter(i => (i.estado || i.status) !== 'cancelled');
+  const compradoChina = activas.reduce((s, i) => s + costoChinaDeItems(i.items), 0);
+  const pagado = activas.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const ultima = activas.map(i => i.fecha).filter(Boolean).sort().pop();
+  const tel = String(prov.telefono || '').replace(/[^\d]/g, '');
+
+  const dato = (label, val) => `<div><div class="dato-label">${label}</div><div class="dato-val">${val || '<span style="color:var(--text-muted)">—</span>'}</div></div>`;
+
+  const filasProd = prods.map(p => {
+    const c = ultimoCosto(p.sku, prov.id);
+    return `<tr>
+      <td class="mono" style="font-size:11px">${escapeHtml(p.sku)}</td>
+      <td>${escapeHtml(p.nombre)}${p.discontinuado ? ' <span class="badge badge-gray">descatalogado</span>' : ''}</td>
+      <td class="mono">${p.stock_dep ?? 0}</td>
+      <td class="mono">${c ? usd(c.costo) : '<span style="color:var(--text-muted)">sin costo</span>'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="asignarProductos(['${escapeHtml(p.sku)}'], null)" title="Dejar sin proveedor">Quitar</button></td>
+    </tr>`;
+  }).join('');
+
+  const filasImp = imps.map(i => `<tr>
+      <td>${fmtDate(i.fecha)}</td>
+      <td>${statusBadge(i.estado || i.status)}</td>
+      <td style="text-align:center">${(i.items || []).length}</td>
+      <td class="mono" style="color:var(--accent)">${usd(costoChinaDeItems(i.items))}</td>
+      <td class="mono" style="color:var(--green)">${usd(i.total)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="verDetalle('${escapeHtml(i.id)}')">📋 Ver</button></td>
+    </tr>`).join('');
+
+  return `
+    <div class="panel" id="panel-proveedor" data-id="${escapeHtml(prov.id)}">
+      <div class="panel-head">
+        <div>
+          <div class="panel-title">🏭 ${escapeHtml(prov.nombre)}</div>
+          <div class="ayuda">Compra mínima: <b class="mono">${usd(minimoDe(prov))}</b> de costo en China</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="openProveedor('${escapeHtml(prov.id)}')">✏️ Editar datos</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarProveedor('${escapeHtml(prov.id)}')">🗑</button>
+        </div>
+      </div>
+      <div class="datos-grid">
+        ${dato('Contacto', escapeHtml(prov.contacto))}
+        ${dato('Teléfono / WhatsApp', prov.telefono ? `<a href="https://wa.me/${tel}" target="_blank" rel="noopener">${escapeHtml(prov.telefono)}</a>` : '')}
+        ${dato('WeChat', escapeHtml(prov.wechat))}
+        ${dato('Email', prov.email ? `<a href="mailto:${escapeHtml(prov.email)}">${escapeHtml(prov.email)}</a>` : '')}
+        ${dato('Ubicación', escapeHtml(prov.ubicacion))}
+        ${dato('Web / tienda', linkSeguro(prov.web))}
+      </div>
+      ${prov.notas ? `<div style="margin-top:14px">${dato('Notas', escapeHtml(prov.notas).replace(/\n/g, '<br>'))}</div>` : ''}
+    </div>
+
+    <div class="stats-row" id="prov-stats">
+      <div class="stat-card"><div class="stat-label">Importaciones</div><div class="stat-value">${activas.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Comprado en China</div><div class="stat-value" style="color:var(--accent)">${usd(compradoChina)}</div></div>
+      <div class="stat-card"><div class="stat-label">Total pagado</div><div class="stat-value" style="color:var(--green)">${usd(pagado)}</div></div>
+      <div class="stat-card"><div class="stat-label">Última compra</div><div class="stat-value" style="font-size:16px">${fmtDate(ultima)}</div></div>
+      <div class="stat-card"><div class="stat-label">Productos</div><div class="stat-value">${prods.length}</div></div>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom:18px">
+      <div class="table-header">
+        <span class="table-title">Productos de ${escapeHtml(prov.nombre)}</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" onclick="verComprasDe('${escapeHtml(prov.id)}')">🛒 Ver compra recomendada</button>
+          <button class="btn btn-primary btn-sm" onclick="openAsignar('${escapeHtml(prov.id)}')">+ Asignar productos</button>
+        </div>
+      </div>
+      ${prods.length
+        ? `<table id="prov-productos"><thead><tr><th>SKU</th><th>Producto</th><th>Stock</th><th>Último costo China</th><th></th></tr></thead><tbody>${filasProd}</tbody></table>`
+        : `<div class="empty-state"><div class="empty-icon">📦</div><p>Todavía no tiene productos. Se asignan solos al cargarle una importación, o a mano con “+ Asignar productos”.</p></div>`}
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-header"><span class="table-title">Importaciones de ${escapeHtml(prov.nombre)}</span></div>
+      ${imps.length
+        ? `<table><thead><tr><th>Fecha orden</th><th>Estado</th><th>Ítems</th><th>Costo China</th><th>Total pagado</th><th></th></tr></thead><tbody>${filasImp}</tbody></table>`
+        : `<div class="empty-state"><div class="empty-icon">🛳️</div><p>Sin importaciones registradas con este proveedor.</p></div>`}
+    </div>`;
+}
+
+function panelSinProveedor(sinProv) {
+  if (!sinProv.length) {
+    return `<div class="empty-state"><div class="empty-icon">✅</div><p>Todos los productos activos tienen proveedor asignado.</p></div>`;
+  }
+  const filas = sinProv.map(p => `<tr>
+      <td><input type="checkbox" class="chk chk-sin" value="${escapeHtml(p.sku)}"></td>
+      <td class="mono" style="font-size:11px">${escapeHtml(p.sku)}</td>
+      <td>${escapeHtml(p.nombre)}</td>
+      <td style="color:var(--text-muted);font-size:12px">${escapeHtml(p.grupo || '—')}</td>
+      <td class="mono">${p.stock_dep ?? 0}</td>
+    </tr>`).join('');
+  return `
+    <p class="ayuda" style="margin-bottom:12px">
+      Estos productos no tienen proveedor, así que no entran en 🛒 Compras por proveedor. Se asignan solos cuando
+      les cargás una importación con proveedor (también editando el proveedor de una importación vieja); acá los podés
+      asignar a mano de a varios.
+    </p>
+    <div class="table-wrap">
+      <div class="asignar-bar">
+        <input type="text" id="sin-q" placeholder="Filtrar por SKU o nombre…" oninput="filtrarSinProveedor(this.value)">
+        <span class="ayuda">Asignar seleccionados a</span>
+        <select id="sin-destino">${opcionesProveedor('', { vacio: '— Elegí un proveedor —' }).replace(/<option value="__nuevo">.*?<\/option>/, '')}</select>
+        <button class="btn btn-primary btn-sm" onclick="asignarSeleccionSin()">Asignar</button>
+      </div>
+      <table id="tabla-sin-proveedor">
+        <thead><tr><th><input type="checkbox" class="chk" title="Todos" onchange="document.querySelectorAll('#tabla-sin-proveedor tr:not([hidden]) .chk-sin').forEach(c => c.checked = this.checked)"></th><th>SKU</th><th>Producto</th><th>Grupo</th><th>Stock</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>`;
+}
+
+function filtrarSinProveedor(q) {
+  const t = q.trim().toLowerCase();
+  document.querySelectorAll('#tabla-sin-proveedor tbody tr').forEach(tr => {
+    tr.hidden = !!t && !tr.textContent.toLowerCase().includes(t);
+  });
+}
+
+function asignarSeleccionSin() {
+  const destino = document.getElementById('sin-destino').value;
+  const skus = [...document.querySelectorAll('.chk-sin:checked')].map(c => c.value);
+  if (!destino) { alert('Elegí a qué proveedor asignarlos.'); return; }
+  if (!skus.length) { alert('Marcá al menos un producto.'); return; }
+  asignarProductos(skus, destino);
+}
+
+async function asignarProductos(skus, proveedorId) {
+  try {
+    await apiFetch('POST', '/api/proveedores?accion=asignar', { proveedor_id: proveedorId, skus });
+    productos.forEach(p => { if (skus.includes(p.sku)) p.proveedor_id = proveedorId; });
+    compras = {};
+    renderTodo();
+    return true;
+  } catch (e) {
+    alert('Error asignando productos: ' + e.message);
+    return false;
+  }
+}
+
+// Modal para sumar productos a un proveedor: primero los que no tienen ninguno.
+let asignarDestino = null;
+function openAsignar(provId) {
+  asignarDestino = provId;
+  document.getElementById('asignar-title').textContent = `Asignar productos a ${nombreProveedor(provId)}`;
+  document.getElementById('asignar-q').value = '';
+  renderAsignarLista();
+  document.getElementById('modal-asignar').classList.add('open');
+}
+
+function renderAsignarLista() {
+  const q = document.getElementById('asignar-q').value.trim().toLowerCase();
+  const lista = productosActivos()
+    .filter(p => p.proveedor_id !== asignarDestino)
+    .filter(p => !q || (p.sku + ' ' + p.nombre).toLowerCase().includes(q))
+    .sort((a, b) => (a.proveedor_id ? 1 : 0) - (b.proveedor_id ? 1 : 0) || a.sku.localeCompare(b.sku));
+  document.getElementById('asignar-lista').innerHTML = lista.length
+    ? lista.map(p => `<tr>
+        <td><input type="checkbox" class="chk chk-asignar" value="${escapeHtml(p.sku)}"></td>
+        <td class="mono" style="font-size:11px">${escapeHtml(p.sku)}</td>
+        <td>${escapeHtml(p.nombre)}</td>
+        <td>${p.proveedor_id ? escapeHtml(nombreProveedor(p.proveedor_id) || '—') : '<span style="color:var(--yellow)">Sin proveedor</span>'}</td>
+      </tr>`).join('')
+    : `<tr><td colspan="4" style="color:var(--text-muted);text-align:center">No hay productos para asignar.</td></tr>`;
+}
+
+async function submitAsignarModal() {
+  const skus = [...document.querySelectorAll('.chk-asignar:checked')].map(c => c.value);
+  if (!skus.length) { alert('Marcá al menos un producto.'); return; }
+  if (await asignarProductos(skus, asignarDestino)) closeModal('modal-asignar');
+}
+
+// ─── Solapa Compras por proveedor ─────────────────────────────────────────────
+// /api/restock se pide una sola vez por visita, aunque se entre a la solapa varias veces
+// mientras todavía está calculando.
+let cargaRestock = null;
+async function cargarCompras() {
+  if (!restock && !restockError) {
+    document.getElementById('compras-container').innerHTML =
+      `<div class="empty-state"><div class="empty-icon">⏳</div><p>Calculando reposición…</p></div>`;
+    cargaRestock = cargaRestock || apiFetch('GET', '/api/restock')
+      .then(r => { restock = r; })
+      .catch(e => { restockError = e.message; });
+    await cargaRestock;
+  }
+  if (tabActual === 'compras') renderCompras();
+}
+
+async function verComprasDe(provId) {
+  await switchTab('compras');
+  document.getElementById('compra-' + provId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function sumarDias(fechaStr, dias) {
+  const d = new Date(fechaStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + Math.round(dias));
+  return d.toISOString().slice(0, 10);
+}
+
+// Arma la compra recomendada de un proveedor a partir de 📅 Reposición:
+//   1. Lo necesario: la cantidad sugerida de cada producto que hay que reponer.
+//   2. Si eso no llega al mínimo del proveedor (en costo en China), se completa sumando de
+//      a un pack al producto que antes se queda sin stock —el de menos días de cobertura
+//      contando lo pedido—, hasta llegar al mínimo o hasta que todos tengan
+//      TOPE_COBERTURA_DIAS de venta cubiertos. Así el relleno va primero a lo que más rota y
+//      lo que se agrega igual se va a vender pronto.
+// Los productos sin costo conocido entran en lo necesario pero no suman al mínimo.
+function armarCompra(prov, filas, leadTime, hoy) {
+  const lineas = filas.map(r => {
+    const necesario = NO_ACCIONABLE.includes(r.restock_status) ? 0 : (r.cantidad_sugerida || 0);
+    const c = ultimoCosto(r.sku, prov.id);
+    // Hasta cuándo se puede esperar para pedir sin volver a quedarse sin stock: con
+    // pedidos en camino, desde que se termina todo lo que viene; si no, desde que se
+    // termina el stock actual.
+    const agota = r.agota_con_transito || r.stockout_date;
+    return {
+      sku: r.sku, nombre: r.nombre, estado: r.restock_status,
+      stock: r.stock || 0, transito: r.qty_en_transito || 0,
+      vel: r.daily_velocity || 0, upv: r.unidades_por_venta || 1,
+      costo: c ? c.costo : null,
+      necesario, relleno: 0, cantidad: necesario,
+      limite: agota ? sumarDias(agota, -leadTime) : null,
+      restockDate: r.restock_date,
+    };
+  });
+
+  const minimo = minimoDe(prov);
+  const cobertura = l => l.vel > 0 ? (l.stock + l.transito + l.cantidad) / l.vel : Infinity;
+  const total = () => lineas.reduce((s, l) => s + l.cantidad * (l.costo || 0), 0);
+  const hayNecesario = lineas.some(l => l.necesario > 0);
+
+  let alcanzaTope = false;
+  if (hayNecesario && total() < minimo) {
+    for (let guard = 0; guard < 20000 && total() < minimo; guard++) {
+      const candidatas = lineas.filter(l => l.vel > 0 && l.costo > 0 && cobertura(l) < TOPE_COBERTURA_DIAS);
+      if (!candidatas.length) { alcanzaTope = true; break; }
+      const l = candidatas.reduce((a, b) => cobertura(b) < cobertura(a) ? b : a);
+      l.relleno += l.upv;
+      l.cantidad += l.upv;
+    }
+  }
+
+  const necesarias = lineas.filter(l => l.necesario > 0);
+  const limite = necesarias.map(l => l.limite).filter(Boolean).sort()[0] || null;
+  const urgente = necesarias.some(l => URGENTE.includes(l.estado)) || (limite && limite <= hoy);
+  // Sin nada para reponer, la próxima compra es cuando el primero de sus productos llegue
+  // a su fecha de pedido.
+  const proxima = lineas.filter(l => l.vel > 0).map(l => l.limite || l.restockDate).filter(Boolean).sort()[0] || null;
+
+  return {
+    prov, minimo, lineas, alcanzaTope,
+    estado: !hayNecesario ? 'nada' : urgente ? 'ya' : 'programar',
+    limite, proxima,
+    sinCosto: necesarias.filter(l => !l.costo),
+  };
+}
+
+function renderCompras() {
+  const el = document.getElementById('compras-container');
+  if (migracionProveedores) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🛒</div><p>Las compras por proveedor se activan cuando corras la migración en Supabase.</p></div>`;
+    return;
+  }
+  if (restockError) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p>No se pudo calcular la reposición: ${escapeHtml(restockError)}</p></div>`;
+    return;
+  }
+  if (!restock) return;
+
+  const hoy  = new Date().toISOString().slice(0, 10);
+  const lead = restock.lead_time_promedio ?? 85;
+  const provDeSku = {};
+  productos.forEach(p => { provDeSku[p.sku] = p.proveedor_id || null; });
+
+  const porProv = {};
+  const sinProvNecesarios = [];
+  for (const r of (restock.productos || [])) {
+    const provId = provDeSku[r.sku];
+    if (provId && proveedorPorId(provId)) (porProv[provId] = porProv[provId] || []).push(r);
+    else if (!NO_ACCIONABLE.includes(r.restock_status) && r.cantidad_sugerida > 0) sinProvNecesarios.push(r);
+  }
+
+  // Las cantidades editadas a mano se conservan mientras no cambien los datos de base.
+  for (const prov of proveedores) {
+    if (!compras[prov.id]) compras[prov.id] = armarCompra(prov, porProv[prov.id] || [], lead, hoy);
+  }
+
+  const RANK = { ya: 0, programar: 1, nada: 2 };
+  const orden = proveedores.map(p => compras[p.id])
+    .sort((a, b) => RANK[a.estado] - RANK[b.estado] || String(a.limite || a.proxima || '9').localeCompare(String(b.limite || b.proxima || '9')));
+
+  let html = '';
+  if (!proveedores.length) {
+    html += `<div class="empty-state"><div class="empty-icon">🏭</div><p>Cargá tus proveedores en 🏭 Proveedores para ver las compras agrupadas.</p></div>`;
+  }
+  if (sinProvNecesarios.length) {
+    html += `<div class="aviso" id="aviso-sin-proveedor">
+      ⚠️ ${sinProvNecesarios.length} producto${sinProvNecesarios.length !== 1 ? 's' : ''} para reponer no ${sinProvNecesarios.length !== 1 ? 'tienen' : 'tiene'} proveedor y no ${sinProvNecesarios.length !== 1 ? 'entran' : 'entra'} en ninguna compra:
+      ${sinProvNecesarios.slice(0, 8).map(r => `<b class="mono">${escapeHtml(r.sku)}</b>`).join(', ')}${sinProvNecesarios.length > 8 ? '…' : ''}.
+      <a href="#proveedores" style="color:var(--accent)" onclick="event.preventDefault();verProveedor('${SIN_PROV}')">Asignalos en 🏭 Proveedores</a>.
+    </div>`;
+  }
+  html += orden.map(tarjetaCompra).join('');
+  el.innerHTML = html;
+  orden.forEach(c => actualizarTotalesCompra(c.prov.id));
+}
+
+function tarjetaCompra(c) {
+  const id = escapeHtml(c.prov.id);
+  const estadoBadge = c.estado === 'ya'
+    ? `<span class="badge badge-red">🔴 Comprar ya</span>`
+    : c.estado === 'programar'
+      ? `<span class="badge badge-yellow">🗓️ Pedir antes del ${fmtDate(c.limite)}</span>`
+      : `<span class="badge badge-gray">✓ Nada para reponer${c.proxima ? ` — próxima compra ~${fmtDate(c.proxima)}` : ''}</span>`;
+
+  if (c.estado === 'nada') {
+    return `<div class="compra-card" id="compra-${id}" data-estado="nada">
+      <div class="compra-head">
+        <div><div class="panel-title">🏭 ${escapeHtml(c.prov.nombre)}</div>
+        <div class="ayuda">${c.lineas.length} producto${c.lineas.length !== 1 ? 's' : ''} · mínimo ${usd(c.minimo)}</div></div>
+        <div>${estadoBadge}</div>
+      </div>
+    </div>`;
+  }
+
+  // Primero lo necesario (más urgente arriba), después lo que entra sólo como relleno.
+  const RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5 };
+  const lineas = c.lineas
+    .map((l, i) => ({ l, i }))
+    .sort((a, b) => (b.l.necesario > 0) - (a.l.necesario > 0) || RANK[a.l.estado] - RANK[b.l.estado] || (a.l.vel > 0 ? (a.l.stock + a.l.transito) / a.l.vel : 1e9) - (b.l.vel > 0 ? (b.l.stock + b.l.transito) / b.l.vel : 1e9));
+
+  const filas = lineas.map(({ l, i }) => `<tr data-sku="${escapeHtml(l.sku)}">
+      <td class="mono" style="font-size:11px">${escapeHtml(l.sku)}</td>
+      <td>${escapeHtml(l.nombre)}</td>
+      <td>${badgeReposicion(l.estado)}</td>
+      <td class="mono">${l.stock}${l.transito ? ` <span style="color:var(--text-muted)">+${l.transito}</span>` : ''}</td>
+      <td class="mono">${l.vel ? l.vel.toFixed(2) : '—'}</td>
+      <td class="mono">${l.necesario || '—'}${l.relleno ? `<div class="relleno">+${l.relleno} para el mínimo</div>` : ''}</td>
+      <td><input type="number" min="0" step="${l.upv}" class="compra-qty" value="${l.cantidad}" oninput="cambiarCantidad('${id}', ${i}, this.value)"></td>
+      <td class="mono">${l.costo ? usd(l.costo) : '<span style="color:var(--yellow)">sin costo</span>'}</td>
+      <td class="mono compra-sub">—</td>
+      <td class="mono compra-cob" style="color:var(--text-muted)">—</td>
+    </tr>`).join('');
+
+  const avisos = [];
+  if (c.sinCosto.length) avisos.push(`⚠️ Sin costo conocido (no suman al mínimo): ${c.sinCosto.map(l => escapeHtml(l.sku)).join(', ')}. Se toma de la última importación que los trae.`);
+  if (c.alcanzaTope) avisos.push(`ℹ️ Ni completando sus productos hasta ${TOPE_COBERTURA_DIAS} días de venta se llega al mínimo: o se suman productos nuevos de este proveedor o conviene esperar a que haya más para reponer.`);
+
+  return `<div class="compra-card${c.estado === 'ya' ? ' ya' : ''}" id="compra-${id}" data-estado="${c.estado}">
+    <div class="compra-head">
+      <div>
+        <div class="panel-title">🏭 ${escapeHtml(c.prov.nombre)}</div>
+        <div class="ayuda">${c.lineas.filter(l => l.necesario > 0).length} para reponer · mínimo ${usd(c.minimo)} de costo en China</div>
+      </div>
+      <div style="text-align:right">${estadoBadge}</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>SKU</th><th>Producto</th><th>Reposición</th><th>Stock + camino</th><th>Vel./día</th><th>Necesario</th><th>Pedir</th><th>Costo China/u</th><th>Subtotal</th><th>Cubre</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+    ${avisos.length ? `<div class="ayuda" style="padding:10px 20px;border-top:1px solid var(--border)">${avisos.join('<br>')}</div>` : ''}
+    <div class="compra-foot">
+      <div>
+        <div><span class="ayuda">Total costo en China</span> <b class="mono compra-total" style="font-size:16px">—</b></div>
+        <div class="minimo-bar"><div class="minimo-fill"></div></div>
+        <div class="ayuda compra-minimo" style="margin-top:4px"></div>
+      </div>
+      <button class="btn btn-primary" onclick="crearImportacionDesdeCompra('${id}')">📥 Crear importación con esto</button>
+    </div>
+  </div>`;
+}
+
+function badgeReposicion(estado) {
+  const map = {
+    quiebre_confirmado: ['badge-red', '🚨 Sin stock'],
+    ordenar_ya:         ['badge-red', '🔴 Ordenar ya'],
+    insuficiente:       ['badge-orange', '🟠 Insuficiente'],
+    proximo:            ['badge-blue', '🔵 Próximo'],
+    cubierto:           ['badge-gray', '✓ Cubierto'],
+    sin_ventas:         ['badge-gray', '— Sin ventas'],
+  };
+  const [cls, label] = map[estado] || ['badge-gray', estado];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function cambiarCantidad(provId, idx, valor) {
+  const c = compras[provId];
+  if (!c) return;
+  c.lineas[idx].cantidad = Math.max(0, parseInt(valor) || 0);
+  actualizarTotalesCompra(provId);
+}
+
+// Recalcula subtotales, cobertura y la barra del mínimo sin redibujar la tarjeta (para no
+// perder el foco del input que se está editando).
+function actualizarTotalesCompra(provId) {
+  const c = compras[provId];
+  const card = document.getElementById('compra-' + provId);
+  if (!c || !card || c.estado === 'nada') return;
+  let total = 0;
+  c.lineas.forEach(l => {
+    const tr = card.querySelector(`tr[data-sku="${CSS.escape(l.sku)}"]`);
+    const sub = l.cantidad * (l.costo || 0);
+    total += sub;
+    if (!tr) return;
+    tr.querySelector('.compra-sub').textContent = l.costo ? usd(sub) : '—';
+    tr.querySelector('.compra-cob').textContent = l.vel > 0 ? Math.round((l.stock + l.transito + l.cantidad) / l.vel) + ' días' : '—';
+  });
+  const pct = c.minimo > 0 ? Math.min(100, total / c.minimo * 100) : 100;
+  const llega = total >= c.minimo;
+  card.querySelector('.compra-total').textContent = usd(total);
+  card.querySelector('.minimo-fill').style.width = pct + '%';
+  card.querySelector('.minimo-fill').classList.toggle('ok', llega);
+  card.querySelector('.compra-minimo').innerHTML = llega
+    ? `<span style="color:var(--green)">✓ Llega al mínimo de ${usd(c.minimo)}</span>`
+    : `<span style="color:var(--yellow)">Faltan ${usd(c.minimo - total)} para el mínimo de ${usd(c.minimo)}</span>`;
+}
+
+function crearImportacionDesdeCompra(provId) {
+  const c = compras[provId];
+  if (!c) return;
+  const items = c.lineas.filter(l => l.cantidad > 0)
+    .map(l => ({ sku: l.sku, nombre: l.nombre, qty: l.cantidad, costo: l.costo ?? '' }));
+  if (!items.length) { alert('No hay cantidades para pedir.'); return; }
+  openNew({ proveedor_id: provId, items });
 }
 
 // ─── Modal helpers ────────────────────────────────────────────────────────────
@@ -846,7 +1754,12 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-load();
+// #proveedores y #compras abren directo esa solapa (sirve para volver con el botón atrás o
+// para dejar un acceso directo).
+load().then(() => {
+  const tab = location.hash.slice(1);
+  if (['proveedores', 'compras'].includes(tab)) switchTab(tab);
+});
 </script>
 </body>
 </html>

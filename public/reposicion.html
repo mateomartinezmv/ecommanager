@@ -73,6 +73,7 @@
   .badge-red    { background: rgba(239,68,68,0.15);  color: var(--red); }
   .badge-gray   { background: rgba(100,116,139,0.15);color: var(--text-muted); }
   .badge-blue   { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-nota { font-size: 10px; color: var(--text-muted); margin-top: 3px; max-width: 280px; line-height: 1.4; }
 
   /* ── Filters bar ── */
   .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
@@ -503,24 +504,65 @@ function urgencyBadge(p, cls) {
     insuficiente: ['badge-orange', '🟠 Insuficiente'],
   };
   let [css, label] = map[cls] || ['badge-gray', cls];
-  const SUGGESTABLE = ['stocked-out', 'overdue', 'urgent', 'soon', 'insuficiente', 'quiebre-confirmado'];
+
+  // El quiebre confirmado son DOS avisos distintos y antes iban en el mismo cartel ("Sin
+  // stock — pedido no llega a tiempo — pedí 14 más"), que se leía como "pedí más para tapar
+  // el hueco". El hueco ya no se tapa: una compra nueva tarda más que el pedido en camino.
+  // Lo que sí se puede hacer es la segunda parte: que lo que viene en camino no alcance
+  // para esperar la compra siguiente. Por eso van separados, cada uno con su explicación.
+  if (cls === 'quiebre-confirmado') {
+    const cierraTxt = p.gap_cierra_fecha ? fmtDate(p.gap_cierra_fecha) : (p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—');
+    let html = `<span class="badge ${css}">🚨 Sin stock hasta el ${cierraTxt}</span>
+      <div class="badge-nota">Ese hueco ya no se tapa: una compra nueva tardaría ~${leadTimePromedio ?? 85} días.</div>`;
+    if (p.cantidad_sugerida > 0) {
+      html += `<div style="margin-top:6px"><span class="badge badge-orange">🛒 Además, pedí ${p.cantidad_sugerida} más</span></div>${porQuePedirHtml(p)}`;
+    }
+    return html;
+  }
+
+  const SUGGESTABLE = ['stocked-out', 'overdue', 'urgent', 'soon', 'insuficiente'];
   if (SUGGESTABLE.includes(cls) && p.cantidad_sugerida > 0) {
     label += ` — pedí ${p.cantidad_sugerida} más`;
   }
   let html = `<span class="badge ${css}">${label}</span>`;
   if (cls === 'insuficiente') {
     const llegaTxt = p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—';
-    html += `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
+    html += `<div class="badge-nota">
       ${p.qty_en_transito} en camino (llegan ~${llegaTxt}) — cobertura hasta ahí, después quedás sin stock.
-    </div>`;
-  }
-  if (cls === 'quiebre-confirmado') {
-    const cierraTxt = p.gap_cierra_fecha ? fmtDate(p.gap_cierra_fecha) : (p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—');
-    html += `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">
-      Te quedás sin stock ahora mismo — el pedido en camino recién cubre a partir del ${cierraTxt}.
-    </div>`;
+    </div>${porQuePedirHtml(p)}`;
   }
   return html;
+}
+
+function sumarDias(fechaStr, dias) {
+  const d = new Date(fechaStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + Math.round(dias));
+  return d.toISOString().slice(0, 10);
+}
+
+// Por qué hay que pedir aunque algo venga en camino: el punto de pedido es la venta
+// esperada durante lo que tarda una compra nueva (lead time) más un colchón por
+// variabilidad. Si stock + pedidos no llega a ese número, lo que viene en camino se termina
+// antes de que pueda llegar la próxima compra. Y si todavía queda margen, se dice hasta
+// cuándo se puede esperar para juntar el pedido con otros del mismo proveedor.
+function porQuePedirHtml(p) {
+  if (!(p.cantidad_sugerida > 0) || !p.punto_pedido_uds) return '';
+  const lead     = leadTimePromedio ?? 85;
+  const hoy      = p.today || new Date().toISOString().slice(0, 10);
+  const tiene    = (p.stock || 0) + (p.qty_en_transito || 0);
+  const objetivo = Math.max(p.punto_pedido_uds, p.alerta_min || 0);
+  const partes = [];
+  if (p.agota_con_transito && p.qty_en_transito) {
+    partes.push(`Los ${p.qty_en_transito} en camino duran hasta ~${fmtDate(p.agota_con_transito)}.`);
+  }
+  partes.push(`Para cubrir los ${lead} días que tarda la próxima compra + colchón hacen falta ~${objetivo} uds (hay ${tiene}).`);
+  if (p.agota_con_transito) {
+    const limite = sumarDias(p.agota_con_transito, -lead);
+    partes.push(limite > hoy
+      ? `Pedila antes del ~${fmtDate(limite)}: hasta entonces la podés juntar con otros productos del mismo proveedor.`
+      : `Ya pasó la fecha para pedir sin volver a quedarte sin stock: pedila cuanto antes.`);
+  }
+  return `<div class="badge-nota">${partes.join(' ')}</div>`;
 }
 
 // Tramos donde se reconstruyó stock 0 dentro de la ventana de ventas, excluidos

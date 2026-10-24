@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS proveedores (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Igual que el resto de las tablas: RLS prendido y sin políticas. La API escribe con la
+-- service key (que lo saltea); la anon key no puede leer los contactos de los proveedores.
+ALTER TABLE proveedores ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE importaciones ADD COLUMN IF NOT EXISTS proveedor_id TEXT
   REFERENCES proveedores(id) ON DELETE SET NULL;
 ALTER TABLE productos ADD COLUMN IF NOT EXISTS proveedor_id TEXT

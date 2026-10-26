@@ -282,7 +282,7 @@
         <button class="tab active" onclick="switchStockTab('all')">Todos</button>
         <button class="tab" onclick="switchStockTab('nuevo')">🆕 Nuevos</button>
         <button class="tab" onclick="switchStockTab('usado')">🔄 Usados</button>
-        <button class="tab" onclick="switchStockTab('disc')">⛔ Discontinuados</button>
+        <button class="tab" onclick="switchStockTab('disc')">⛔ Descatalogados</button>
       </div>
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <select id="stock-grupo" onchange="onGrupoFiltroChange()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
@@ -290,6 +290,13 @@
         </select>
         <select id="stock-subgrupo" onchange="renderStock()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
           <option value="">Todos los subgrupos</option>
+        </select>
+        <!-- Se combina con las pestañas: ⛔ + "Con stock" son los descatalogados que quedan por liquidar. -->
+        <select id="stock-nivel" onchange="renderStock()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+          <option value="">Cualquier stock</option>
+          <option value="con">📦 Con stock</option>
+          <option value="sin">🚫 Sin stock</option>
+          <option value="bajo">⚠️ Stock bajo</option>
         </select>
         <select id="stock-motivo" onchange="renderStock()" style="display:none;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
           <option value="">Todos los motivos</option>
@@ -5312,6 +5319,7 @@ function limpiarFiltrosStock() {
   document.getElementById('stock-search').value = '';
   document.getElementById('stock-grupo').value = '';
   document.getElementById('stock-subgrupo').value = '';
+  document.getElementById('stock-nivel').value = '';
   document.getElementById('stock-motivo').value = '';
   syncStockFiltros();
   renderStock();
@@ -5421,6 +5429,7 @@ function renderStock() {
   const fGrupo = document.getElementById('stock-grupo')?.value || '';
   const fSub = document.getElementById('stock-subgrupo')?.value || '';
   const fMotivo = document.getElementById('stock-motivo')?.value || '';
+  const fNivel = document.getElementById('stock-nivel')?.value || '';
 
   const filtered = db.productos.filter(p => {
     const matchQ = p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
@@ -5428,6 +5437,14 @@ function renderStock() {
     const matchGrupo = !fGrupo || p.grupo === fGrupo;
     const matchSub = !fSub || p.subgrupo === fSub;
     if (!matchQ || !matchGrupo || !matchSub) return false;
+    // Mismo criterio que la columna Estado: cuenta lo vendible (packs completos), no las
+    // unidades sueltas del depósito.
+    if (fNivel) {
+      const vendible = packsDe(p);
+      if (fNivel === 'con' && vendible <= 0) return false;
+      if (fNivel === 'sin' && vendible > 0) return false;
+      if (fNivel === 'bajo' && (vendible <= 0 || p.stockDep > p.alertaMin)) return false;
+    }
     if (stockTabFilter === 'disc') {
       if (!p.discontinuado) return false;
       // '__sin__' agrupa a los descatalogados sin motivo registrado (los de antes del campo).
@@ -5698,7 +5715,7 @@ function renderStockDisc() {
 
   document.getElementById('stock-disc-stats').innerHTML = `
     <div class="stat-card red"><div class="stat-icon">⛔</div><div class="stat-value">${discos.length}</div><div class="stat-label">Descatalogados sobre ${db.productos.length} del catálogo</div></div>
-    <div class="stat-card yellow"><div class="stat-icon">📦</div><div class="stat-value">${udsRemanentes}</div><div class="stat-label">Unidades por liquidar, en ${conStock.length} producto${conStock.length === 1 ? '' : 's'}</div></div>
+    <div class="stat-card yellow" style="cursor:pointer" title="Ver sólo los descatalogados que todavía tienen stock" onclick="document.getElementById('stock-nivel').value='con';renderStock()"><div class="stat-icon">📦</div><div class="stat-value">${udsRemanentes}</div><div class="stat-label">Unidades por liquidar, en ${conStock.length} producto${conStock.length === 1 ? '' : 's'}</div></div>
     <div class="stat-card purple"><div class="stat-icon">💰</div><div class="stat-value">${fmt(capital)}</div><div class="stat-label">Costo inmovilizado en esas unidades</div></div>
     <div class="stat-card blue"><div class="stat-icon">🔎</div><div class="stat-value" style="${chico}">${topMotivo ? topMotivo.label : '—'}</div><div class="stat-label">${topMotivo ? `Motivo más frecuente · ${topMotivo.valor} producto${topMotivo.valor === 1 ? '' : 's'}` : 'Todavía no hay motivos cargados'}</div></div>
     <div class="stat-card green"><div class="stat-icon">🗂</div><div class="stat-value" style="${chico}">${topGrupo ? escHtml(topGrupo.grupo) : '—'}</div><div class="stat-label">${topGrupo ? `Grupo más castigado · ${topGrupo.cantidad} de ${topGrupo.total}` : 'Sin grupos con bajas'}</div></div>

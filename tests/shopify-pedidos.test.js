@@ -22,6 +22,13 @@ require.cache[stockSyncPath] = {
       p.stock_dep = nuevo;
       return { stockDep: nuevo, stockPublicado: nuevo, meli: { sincronizadas: [], errores: [] }, shopify: {} };
     },
+    // Las ventas restan con descontar_stock (atómico en la base): acá, sobre la fila.
+    descontarStock: async (supabase, producto, unidades) => {
+      const p = supabase._tablas.productos.find(x => x.sku === producto.sku);
+      p.stock_dep = Math.max(0, p.stock_dep - unidades);
+      movimientos.push({ sku: producto.sku, nuevo: p.stock_dep });
+      return { stockDep: p.stock_dep, stockPublicado: p.stock_dep, meli: { sincronizadas: [], errores: [] }, shopify: {} };
+    },
     resumenSync: (sku, s) => `${sku}: ${s.stockDep}`,
   },
 };

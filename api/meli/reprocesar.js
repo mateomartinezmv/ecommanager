@@ -5,7 +5,7 @@ const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
-const { sincronizarStock, resumenSync } = require('../_stockSync');
+const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 
@@ -125,19 +125,15 @@ module.exports = async (req, res) => {
       log.push(`✅ Producto: ${producto.sku} - ${producto.nombre}`);
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;
-      const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single();
-      if (ventaExistente) { log.push(`ℹ️ Venta ${ventaId} ya existe`); resultados.push({ item: meliItemId, estado: 'ya_existe', ventaId }); continue; }
-
-      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
-      log.push(`✅ Stock: ${resumenSync(producto.sku, sync)}`);
 
       const comisionItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
         : Math.abs(item.sale_fee || 0);
       log.push(`💰 Comisión: $${comisionItem} | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);
 
-      const { error: ventaErr } = await supabase.from('ventas').insert({
+      // Venta primero y stock sólo si la insertó este llamado: el webhook puede
+      // estar procesando la misma orden en paralelo.
+      const alta = await ventaNueva(supabase, {
         id: ventaId, canal: 'meli',
         fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
         orden_meli: String(order.id), pack_id: packId, meli_item_id: meliItemId,
@@ -147,8 +143,12 @@ module.exports = async (req, res) => {
         total: precioUnit * cantidad, estado: 'pagada',
         genera_envio: !!shippingId, notas: 'Reprocesada manualmente',
       });
-      if (ventaErr) { log.push(`❌ Error venta: ${ventaErr.message}`); resultados.push({ item: meliItemId, error: ventaErr.message }); continue; }
+      if (alta.error) { log.push(`❌ Error venta: ${alta.error.message}`); resultados.push({ item: meliItemId, error: alta.error.message }); continue; }
+      if (!alta.nueva) { log.push(`ℹ️ Venta ${ventaId} ya existe`); resultados.push({ item: meliItemId, estado: 'ya_existe', ventaId }); continue; }
       log.push(`✅ Venta registrada: ${ventaId}`);
+
+      const sync = await descontarStock(supabase, producto, unidadesDeDeposito(cantidad, producto));
+      log.push(`✅ Stock: ${resumenSync(producto.sku, sync)}`);
 
       resultados.push({ item: meliItemId, estado: 'registrada', ventaId, comision: comisionItem, tipoEnvio, zona: zonaEnvio, costo: costoEnvioFinal });
     }

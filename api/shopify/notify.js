@@ -16,7 +16,7 @@
 // reintento o por la sincronización periódica, y sólo la primera vez mueve stock.
 
 const { getSupabase } = require('../_supabase');
-const { sincronizarStock, resumenSync } = require('../_stockSync');
+const { descontarStock, sincronizarStock, resumenSync } = require('../_stockSync');
 const { getShopifyToken } = require('../_shopifyToken');
 const { unidadesDeDeposito } = require('../_packs');
 const { detectarZona, COSTOS_ENVIOSUY } = require('../_flexZonas');
@@ -302,8 +302,8 @@ async function procesarOrden(order, supabase, log) {
     // `cantidad` viene en unidades vendidas (packs); el depósito se lleva
     // unidades_por_venta unidades por cada una. Shopify ya se descontó lo suyo, pero con
     // packs su cuenta no coincide con la nuestra, así que igual se le fija el valor.
-    const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(imp.cantidad, producto));
-    const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+    // La resta es atómica: otro pedido del mismo SKU procesándose a la vez no la pisa.
+    const sync = await descontarStock(supabase, producto, unidadesDeDeposito(imp.cantidad, producto));
     const linea = resumenSync(producto.sku, sync);
     console.log('📉 Venta Shopify:', linea);
     if (log) log.push(linea);

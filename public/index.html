@@ -366,6 +366,7 @@
       </select>
       <button class="btn btn-ghost btn-sm" onclick="exportVentasCSV()" title="Exportar a Excel/CSV">⬇ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="exportVentasPDF()" title="Exportar a PDF">🖨️ PDF</button>
+      <button class="btn btn-ghost btn-sm" id="btn-traer-shopify" onclick="traerPedidosShopify(this)" title="Trae los pedidos de Shopify de los últimos 7 días que todavía no estén en el CRM (también corre solo cada 30 minutos)">🛍️ Traer pedidos Shopify</button>
     </div>
     <div class="content">
       <div class="tabs">
@@ -5998,7 +5999,33 @@ function imprimirEtiquetaEnvio(envioId) {
   abrirComprobanteParaImprimir(doc, `etiqueta-envio-${String(datos.pedido).replace(/[^\w-]+/g, '_')}.pdf`);
 }
 
-// Botón 🏷️ de una venta de mostrador: si todavía no tiene envío, primero se crea
+// Canales que imprimen la etiqueta del CRM. MELI no: usa la que da Mercado Libre (📄).
+const CANALES_CON_ETIQUETA_PROPIA = ['mostrador', 'shopify'];
+
+// Trae a mano los pedidos de Shopify que no hayan llegado por webhook. Lo mismo corre solo
+// cada 30 minutos; el botón es para no esperar.
+async function traerPedidosShopify(btn) {
+  const texto = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Trayendo…';
+  try {
+    const r = await api('GET', '/shopify/notify?accion=sincronizar&dias=7');
+    await loadAll();
+    renderVentas(); renderEnvios(); renderStock();
+    const lineas = [`🛍️ ${r.revisados} pedido(s) revisados de los últimos 7 días.`,
+      r.nuevos ? `✅ ${r.nuevos} venta(s) nueva(s) registrada(s), con su envío.` : 'No había ventas nuevas.',
+      r.actualizados ? `🔄 ${r.actualizados} actualizada(s) (cobradas o canceladas).` : null,
+      ...(r.log || [])].filter(Boolean);
+    alert(lineas.join('\n'));
+  } catch (e) {
+    alert('No se pudieron traer los pedidos de Shopify: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = texto;
+  }
+}
+
+// Botón 🏷️ de una venta de mostrador o Shopify: si todavía no tiene envío, primero se crea
 // (con la dirección) y al guardarlo sale la etiqueta.
 function etiquetaEnvioDeVenta(ventaId, envioId, grupoKey) {
   if (envioId) { imprimirEtiquetaEnvio(envioId); return; }
@@ -6237,7 +6264,7 @@ function renderVentas() {
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="recalcularComisionVenta('${v.id}', this)" title="Recalcular comisión y envío MELI">🔁</button>` : ''}
         ${v.canal === 'meli' && v.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${v.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         ${v.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteVenta('${v.id}')" title="Imprimir comprobante de venta (sin validez fiscal)">🧾</button>` : ''}
-        ${v.canal === 'mostrador' && !dentroDeCarrito ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="Imprimir etiqueta de envío (100 × 150 mm)">🏷️</button>` : ''}
+        ${CANALES_CON_ETIQUETA_PROPIA.includes(v.canal) && !dentroDeCarrito ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="Imprimir etiqueta de envío (100 × 150 mm)">🏷️</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="openCrearDevolucion('${v.id}')" title="Registrar devolución">↩️</button>
         <button class="btn btn-danger btn-sm" onclick="deleteVenta('${v.id}')">🗑️</button>
       </td>
@@ -6288,7 +6315,7 @@ function renderVentas() {
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeCarrito('${grupo.key}')" title="${envioDelCarrito ? 'Editar envío del carrito' : 'Crear envío para todo el carrito'}">🚚</button>
         ${primera.canal === 'meli' && primera.ordenMeli ? `<button class="btn btn-ghost btn-sm" onclick="abrirEtiquetaMeli('${primera.ordenMeli}')" title="Ver etiqueta PDF de envío">📄</button>` : ''}
         ${primera.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="imprimirComprobanteTicket('${grupo.key}')" title="Imprimir comprobante del carrito (sin validez fiscal)">🧾</button>` : ''}
-        ${primera.canal === 'mostrador' ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${primera.id}', '${envioCarrito ? envioCarrito.id : ''}', '${grupo.key}')" title="Imprimir etiqueta de envío del carrito (100 × 150 mm)">🏷️</button>` : ''}
+        ${CANALES_CON_ETIQUETA_PROPIA.includes(primera.canal) ? `<button class="btn btn-ghost btn-sm" onclick="etiquetaEnvioDeVenta('${primera.id}', '${envioCarrito ? envioCarrito.id : ''}', '${grupo.key}')" title="Imprimir etiqueta de envío del carrito (100 × 150 mm)">🏷️</button>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteGrupoVenta('${grupo.key}')" title="Cancelar el carrito completo">🗑️</button>
       </td>
     </tr>

@@ -3,7 +3,8 @@
 // Lo que se protege: que salga con el nombre, el teléfono (que vive en la ficha del
 // cliente, no en el envío) y la dirección; que un carrito lleve todos sus productos; que
 // una venta sin envío pida primero la dirección y la etiqueta salga al guardarlo; y que
-// las ventas de MELI no tengan este botón (usan la etiqueta que da MELI).
+// las ventas de MELI no tengan este botón (usan la etiqueta que da MELI). Las de Shopify
+// sí lo tienen: el envío llega armado con el pedido y la etiqueta es la misma.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -21,15 +22,22 @@ estado.ventas.push(
   { id: 'V-4', canal: 'mostrador', fecha: HOY, venta_grupo: 'G-9', sku: 'SKU2', producto: 'Espejo redondo', cantidad: 1,
     precio_unit: 700, comision: 0, total: 700, estado: 'pagada', metodo_pago: 'efectivo',
     cliente: 'Ana Gómez', created_at: HOY },
+  // Pedido de Shopify: el cliente y el envío los cargó el webhook.
+  { id: 'V_SHOP_1_2', canal: 'shopify', fecha: HOY, sku: 'SKU2', producto: 'Porta matrícula', cantidad: 1,
+    precio_unit: 1290, comision: 0, descuento_monto: 129, total: 1161, estado: 'pendiente', metodo_pago: 'transferencia',
+    comprador: 'Andres Chamorro', cliente: 'Andres Chamorro', cliente_id: 'CLI_SHOP_7', created_at: HOY },
 );
 estado.clientes = [
   { id: 'C-1', nombre: 'Juan Pérez', telefono: '099 123 456' },
   { id: 'C-2', nombre: 'Ana Gómez', telefono: '098 765 432' },
+  { id: 'CLI_SHOP_7', nombre: 'Andres Chamorro', telefono: '+598 96 883 838' },
 ];
 estado.envios = [
   { id: 'E-1', venta_id: 'V-3', orden: 'G-9', comprador: 'Ana Gómez', producto: 'Slider x2 + Espejo redondo x1',
     transportista: 'ues', fecha_despacho: HOY, estado: 'pendiente', direccion: 'Bvar. Artigas 1500, La Comercial',
     zona: 2, costo: 150, created_at: HOY },
+  { id: 'E_SHOP_1', venta_id: 'V_SHOP_1_2', orden: '#MM1013', comprador: 'Andres Chamorro', producto: 'Porta matrícula',
+    transportista: 'enviosuy', estado: 'pendiente', direccion: 'Defensa 1827, Apto 201, Montevideo', costo: 0, created_at: HOY },
 ];
 
 // jsPDF viene de un CDN que no carga offline: se reemplaza por uno que anota lo escrito,
@@ -91,6 +99,16 @@ test('etiqueta de envío de mostrador', async (t) => {
     assert.match(e.texto, /099 123 456/, 'el teléfono sale de la ficha vinculada a la venta');
     assert.match(e.texto, /Av\. Italia 3000, Malvín/);
     assert.ok(estado.envios.some(x => x.venta_id === 'V-2'), 'el envío quedó guardado');
+  });
+
+  await t.test('venta de Shopify: etiqueta con la dirección y el teléfono del pedido', async () => {
+    await page.click('#ventas-tbody tr:has-text("Porta matrícula") button[title^="Imprimir etiqueta de envío"]');
+    const [e] = await page.evaluate(() => window.__etiquetas.splice(0));
+    assert.deepStrictEqual(e.formato, [100, 150]);
+    assert.match(e.texto, /Andres Chamorro/);
+    assert.match(e.texto, /\+598 96 883 838/);
+    assert.match(e.texto, /Defensa 1827, Apto 201, Montevideo/);
+    assert.match(e.texto, /Pedido #MM1013/);
   });
 
   await t.test('desde la lista de envíos también se imprime', async () => {

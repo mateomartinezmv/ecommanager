@@ -4,7 +4,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
-const { sincronizarStock, resumenSync } = require('../_stockSync');
+const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { unidadesDeDeposito } = require('../_packs');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const {
@@ -175,49 +175,53 @@ async function handleOrder(resource) {
     }
 
     const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
-    const { data: ventaExistente } = await supabase
-      .from('ventas').select('id').eq('id', ventaId).single();
+    const comisionItem = totalDeduction !== null
+      ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
+      : Math.abs(item.sale_fee || 0);
 
-    if (!ventaExistente) {
-      // MELI vende packs (1 par de sliders = cantidad 1); el depósito pierde
-      // unidades_por_venta unidades por cada uno.
-      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
+    // Primero la venta, después el stock. MELI manda varios avisos de la misma
+    // orden en el mismo segundo; antes se descontaba y recién después se
+    // insertaba, así que cada aviso que entraba en el medio volvía a descontar
+    // (una venta de 1 bajó 3 unidades). Ahora sólo descuenta el aviso que
+    // logró insertar la venta.
+    const alta = await ventaNueva(supabase, {
+      id: ventaId,
+      canal: 'meli',
+      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      orden_meli: String(order.id),
+      // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
+      // venta por el número que figura en pantalla no la encuentra. Además es lo
+      // que ata las órdenes de un mismo carrito: una compra, un envío.
+      pack_id: packId,
+      // Un SKU puede tener varias publicaciones: sin esto no queda registro de
+      // cuál vendió, porque la venta guarda el nombre interno del producto.
+      meli_item_id: meliItemId,
+      comprador: order.buyer?.nickname || '',
+      sku: producto.sku,
+      producto: producto.nombre,
+      cantidad,
+      precio_unit: precioUnit,
+      comision: comisionItem,
+      total: precioUnit * cantidad,
+      estado: 'pagada',
+      genera_envio: !!shippingId,
+    });
 
-      // MELI sólo descuenta la publicación que vendió: las hermanas y Shopify
-      // quedan mostrando stock de más si no se las baja acá.
-      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
-      console.log('📉 Venta MELI:', resumenSync(producto.sku, sync));
-
-      const comisionItem = totalDeduction !== null
-        ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
-        : Math.abs(item.sale_fee || 0);
-
-      await supabase.from('ventas').insert({
-        id: ventaId,
-        canal: 'meli',
-        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli: String(order.id),
-        // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
-        // venta por el número que figura en pantalla no la encuentra. Además es lo
-        // que ata las órdenes de un mismo carrito: una compra, un envío.
-        pack_id: packId,
-        // Un SKU puede tener varias publicaciones: sin esto no queda registro de
-        // cuál vendió, porque la venta guarda el nombre interno del producto.
-        meli_item_id: meliItemId,
-        comprador: order.buyer?.nickname || '',
-        sku: producto.sku,
-        producto: producto.nombre,
-        cantidad,
-        precio_unit: precioUnit,
-        comision: comisionItem,
-        total: precioUnit * cantidad,
-        estado: 'pagada',
-        genera_envio: !!shippingId,
-      });
-      console.log(`✅ Venta MELI registrada: orden ${order.id}`);
-    } else {
-      console.log(`ℹ️ Venta ya existente: orden ${order.id} — omitiendo`);
+    if (alta.error) {
+      console.error(`❌ No se pudo registrar la venta de la orden ${order.id}: ${alta.error.message} — stock sin tocar`);
+      continue;
     }
+    if (!alta.nueva) {
+      console.log(`ℹ️ Venta ya existente: orden ${order.id} — omitiendo`);
+      continue;
+    }
+    console.log(`✅ Venta MELI registrada: orden ${order.id}`);
+
+    // MELI vende packs (1 par de sliders = cantidad 1); el depósito pierde
+    // unidades_por_venta unidades por cada uno. MELI sólo descuenta la
+    // publicación que vendió: las hermanas y Shopify se bajan acá.
+    const sync = await descontarStock(supabase, producto, unidadesDeDeposito(cantidad, producto));
+    console.log('📉 Venta MELI:', resumenSync(producto.sku, sync));
   }
 
   // ── Un solo envío por paquete ───────────────────────────────────────────

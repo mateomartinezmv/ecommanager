@@ -23,7 +23,7 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet } = require('../_meliPublicaciones');
 const { shopifyFetch } = require('../_stockSync');
 const { fotosDe } = require('../meli/_fotos');
-const { armarPlan, alDia } = require('./_fotos');
+const { armarPlan, alDia, claveImagen, variantesDesactualizadas } = require('./_fotos');
 
 const LOTE_MELI = 20;     // multiget de MELI
 const LOTE_SHOPIFY = 50;  // nodes() de GraphQL
@@ -64,7 +64,7 @@ async function productosShopify(token, variantIds) {
       method: 'POST',
       body: JSON.stringify({
         query: `query($ids:[ID!]!){ nodes(ids:$ids){ ... on ProductVariant {
-          id product { id title images(first:100){ edges{ node{ id url } } } } } } }`,
+          id position image { url } product { id title images(first:100){ edges{ node{ id url } } } } } } }`,
         variables: { ids: lote.map(id => `gid://shopify/ProductVariant/${id}`) },
       }),
     });
@@ -75,6 +75,8 @@ async function productosShopify(token, variantIds) {
         productId: n.product.id.split('/').pop(),
         titulo: n.product.title,
         imagenes: (n.product.images?.edges || []).map(e => ({ id: e.node.id.split('/').pop(), url: e.node.url })),
+        posicion: n.position ?? 0,
+        imagenVariante: n.image?.url || null,
       };
     }
   }
@@ -139,6 +141,7 @@ module.exports = async (req, res) => {
         productos: productos.map(f => ({
           productId: f.productId, titulo: f.titulo, skus: f.skus, meli_ids: f.meli_ids, alDia: f.alDia,
           en_shopify: f.imagenes.length, en_meli: f.objetivo.length, nuevas: f.nuevas, sacadas: f.sacadas,
+          variantes_a_reasignar: f.aReasignar,
         })),
         sinResolver,
       });
@@ -156,17 +159,40 @@ module.exports = async (req, res) => {
       if (Date.now() - inicio > TOPE_MS) { pendientes++; continue; }
       const base = { productId: fila.productId, titulo: fila.titulo, skus: fila.skus };
       try {
-        const data = await shopifyFetch(shopifyToken, `/products/${fila.productId}.json`, {
-          method: 'PUT',
-          body: JSON.stringify({ product: { id: Number(fila.productId), images: fila.cuerpo } }),
-        });
-        // Lo que quedó lo dice Shopify, no lo que mandamos.
-        const quedaron = (data.product?.images || []).map(i => ({ id: String(i.id), url: i.src }));
+        let imagenes = fila.imagenes;
+        let aviso = null;
+        if (!fila.fotosAlDia) {
+          const data = await shopifyFetch(shopifyToken, `/products/${fila.productId}.json`, {
+            method: 'PUT',
+            body: JSON.stringify({ product: { id: Number(fila.productId), images: fila.cuerpo } }),
+          });
+          // Lo que quedó lo dice Shopify, no lo que mandamos.
+          imagenes = (data.product?.images || []).map(i => ({ id: String(i.id), url: i.src }));
+          if (!alDia(fila.objetivo, imagenes)) {
+            aviso = `Shopify dejó ${imagenes.length} de las ${fila.objetivo.length} fotos de MELI, o en otro orden. Revisá el producto.`;
+          }
+        }
+
+        // Cada color con su foto. Si el PUT cambió las imágenes, las variantes pueden haber
+        // quedado sin la suya (Shopify suelta la asociación de una imagen que se borra), así
+        // que se vuelven a mirar todas.
+        const variantes = fila.fotosAlDia ? fila.variantes : fila.variantes.map(v => ({ ...v, actual: null }));
+        const porClave = new Map(imagenes.map(i => [claveImagen(i.url), i.id]));
+        const reasignadas = [];
+        for (const v of variantesDesactualizadas(variantes)) {
+          const imageId = porClave.get(claveImagen(v.portada.url));
+          if (!imageId) { aviso = `${aviso ? aviso + ' ' : ''}No se encontró la portada de ${v.sku} entre las fotos del producto.`; continue; }
+          await shopifyFetch(shopifyToken, `/variants/${v.variantId}.json`, {
+            method: 'PUT',
+            body: JSON.stringify({ variant: { id: Number(v.variantId), image_id: Number(imageId) } }),
+          });
+          reasignadas.push(v.sku);
+        }
+
         resultados.push({
-          ...base, ok: true, antes: fila.imagenes.length, ahora: quedaron.length, nuevas: fila.nuevas, sacadas: fila.sacadas,
-          aviso: alDia(fila.objetivo, quedaron)
-            ? null
-            : `Shopify dejó ${quedaron.length} de las ${fila.objetivo.length} fotos de MELI, o en otro orden. Revisá el producto.`,
+          ...base, ok: true, antes: fila.imagenes.length, ahora: imagenes.length,
+          nuevas: fila.fotosAlDia ? 0 : fila.nuevas, sacadas: fila.fotosAlDia ? 0 : fila.sacadas,
+          variantes_reasignadas: reasignadas, aviso,
         });
       } catch (err) {
         resultados.push({ ...base, ok: false, error: err.message });

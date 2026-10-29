@@ -9,10 +9,12 @@
 //   · El producto queda con las fotos de MELI en el orden de MELI, y lo que sobra se saca.
 //   · Dos SKUs que son variantes del mismo producto no ponen dos veces la misma foto.
 //   · Un producto que ya está al día no se toca.
+//   · Cada variante de color muestra la portada de SU publicación: si no, al elegir "Negro" en
+//     la tienda queda a la vista la foto de otro color. Y la galería arranca por el primer color.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { claveImagen, fotosObjetivo, cuerpoImagenes, alDia, armarPlan } = require('../api/shopify/_fotos');
+const { claveImagen, fotosObjetivo, cuerpoImagenes, alDia, variantesDesactualizadas, armarPlan } = require('../api/shopify/_fotos');
 
 const meli = n => ({ id: `${n}00000-MLU${n}0000000_082026`, url: `https://http2.mlstatic.com/D_${n}00000-MLU${n}0000000_082026-O.jpg` });
 const enShopify = (n, id = `${n}`) => ({
@@ -78,4 +80,31 @@ test('armarPlan junta las variantes de un mismo producto y deja afuera lo que no
   assert.strictEqual(a.alDia, false);
   assert.strictEqual(d.alDia, true);
   assert.deepStrictEqual(sinResolver.map(s => s.sku), ['B', 'C']);
+});
+
+test('cada variante tiene que mostrar la portada de su publicación', () => {
+  const negro = { sku: 'N', variantId: '1', portada: meli(1), actual: enShopify(1).url };
+  const azul = { sku: 'A', variantId: '2', portada: meli(4), actual: enShopify(1).url };
+  const rojo = { sku: 'R', variantId: '3', portada: meli(7), actual: null };
+  assert.deepStrictEqual(variantesDesactualizadas([negro, azul, rojo]).map(v => v.sku), ['A', 'R']);
+  // Con un solo SKU no hay color que elegir: no se toca la imagen de la variante.
+  assert.deepStrictEqual(variantesDesactualizadas([rojo]), []);
+});
+
+test('armarPlan ordena por la posición de la variante y marca las que hay que reasignar', () => {
+  const { productos } = armarPlan(
+    [
+      { sku: 'AZUL', nombre: 'G', variantId: '2', original: { meli_id: 'MLU2', fotos: [meli(4), meli(5)] } },
+      { sku: 'NEGRO', nombre: 'G', variantId: '1', original: { meli_id: 'MLU1', fotos: [meli(1), meli(2)] } },
+    ],
+    {
+      1: { productId: 'P', titulo: 'G', posicion: 1, imagenVariante: enShopify(4).url, imagenes: [enShopify(1, '10'), enShopify(2, '20'), enShopify(4, '40'), enShopify(5, '50')] },
+      2: { productId: 'P', titulo: 'G', posicion: 2, imagenVariante: enShopify(4).url, imagenes: [enShopify(1, '10'), enShopify(2, '20'), enShopify(4, '40'), enShopify(5, '50')] },
+    }
+  );
+  const [g] = productos;
+  assert.deepStrictEqual(g.skus, ['NEGRO', 'AZUL']);
+  assert.strictEqual(g.fotosAlDia, true);
+  assert.deepStrictEqual(g.aReasignar, ['NEGRO']);
+  assert.strictEqual(g.alDia, false);
 });

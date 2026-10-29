@@ -66,13 +66,23 @@ function alDia(objetivo, existentes) {
   return unas.length === otras.length && unas.every((c, i) => c === otras[i]);
 }
 
+// La foto que tiene que mostrar cada variante: la primera de su publicación de MELI, que es la
+// del color. Sin esto, al elegir "Negro" en la tienda se queda a la vista la foto de otro color.
+// Sólo tiene sentido si el producto tiene más de un SKU enlazado.
+function variantesDesactualizadas(variantes) {
+  if ((variantes || []).length < 2) return [];
+  return variantes.filter(v => v.portada && claveImagen(v.actual) !== claveDe(v.portada));
+}
+
 // Arma el plan por producto de Shopify. Varios SKUs del CRM pueden ser variantes del mismo
-// producto (un color por SKU): las fotos de todos se juntan en un solo producto, sin repetir.
+// producto (un color por SKU): las fotos de todos se juntan en un solo producto, sin repetir,
+// en el orden de las variantes en la tienda —la galería arranca con el primer color— y cada
+// variante queda apuntando a la portada de su publicación.
 //
 // `productos`: [{ sku, nombre, variantId, original }] donde original es la publicación de
 //              MELI con sus fotos (o null si no se pudo leer).
-// `shopify`:   { [variantId]: { productId, titulo, imagenes: [{ id, url }] } } (falta si la
-//              variante ya no existe en la tienda).
+// `shopify`:   { [variantId]: { productId, titulo, imagenes: [{ id, url }], posicion,
+//              imagenVariante } } (falta si la variante ya no existe en la tienda).
 function armarPlan(productos, shopify) {
   const porProducto = new Map();
   const sinResolver = [];
@@ -83,23 +93,36 @@ function armarPlan(productos, shopify) {
     if (!p.original?.fotos?.length) { sinResolver.push({ sku: p.sku, nombre: p.nombre, motivo: 'No se pudieron leer fotos de la publicación de MELI.' }); continue; }
 
     if (!porProducto.has(s.productId)) {
-      porProducto.set(s.productId, { productId: s.productId, titulo: s.titulo, skus: [], meli_ids: [], listas: [], imagenes: s.imagenes || [] });
+      porProducto.set(s.productId, { productId: s.productId, titulo: s.titulo, imagenes: s.imagenes || [], variantes: [] });
     }
-    const fila = porProducto.get(s.productId);
-    fila.skus.push(p.sku);
-    fila.meli_ids.push(p.original.meli_id);
-    fila.listas.push(p.original.fotos);
+    porProducto.get(s.productId).variantes.push({
+      sku: p.sku,
+      variantId: p.variantId,
+      posicion: s.posicion ?? 0,
+      meli_id: p.original.meli_id,
+      fotos: p.original.fotos,
+      portada: p.original.fotos[0],
+      actual: s.imagenVariante || null,
+    });
   }
 
-  const filas = [...porProducto.values()].map(({ listas, ...fila }) => {
-    const objetivo = fotosObjetivo(listas);
+  const filas = [...porProducto.values()].map(({ variantes: crudas, ...fila }) => {
+    const variantes = [...crudas].sort((x, y) => x.posicion - y.posicion);
+    const objetivo = fotosObjetivo(variantes.map(v => v.fotos));
     const cuerpo = cuerpoImagenes(objetivo, fila.imagenes);
     const conservadas = new Set(cuerpo.filter(c => c.id).map(c => c.id));
+    const fotosAlDia = alDia(objetivo, fila.imagenes);
+    const aReasignar = variantesDesactualizadas(variantes);
     return {
       ...fila,
+      skus: variantes.map(v => v.sku),
+      meli_ids: variantes.map(v => v.meli_id),
+      variantes: variantes.map(({ fotos, ...v }) => v),
       objetivo,
       cuerpo,
-      alDia: alDia(objetivo, fila.imagenes),
+      fotosAlDia,
+      aReasignar: aReasignar.map(v => v.sku),
+      alDia: fotosAlDia && !aReasignar.length,
       nuevas: cuerpo.filter(c => c.src).length,
       sacadas: fila.imagenes.filter(i => !conservadas.has(Number(i.id))).length,
     };
@@ -108,4 +131,4 @@ function armarPlan(productos, shopify) {
   return { productos: filas, sinResolver };
 }
 
-module.exports = { claveImagen, fotosObjetivo, cuerpoImagenes, alDia, armarPlan };
+module.exports = { claveImagen, fotosObjetivo, cuerpoImagenes, alDia, variantesDesactualizadas, armarPlan };

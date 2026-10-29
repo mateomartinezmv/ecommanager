@@ -454,6 +454,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">MELI Envíos</option>
@@ -522,6 +523,7 @@
               <option value="enviosuy">EnviosUy</option>
               <option value="gestionpost">GestionPost</option>
               <option value="ues">UES</option>
+              <option value="dac">DAC</option>
               <option value="mmotos_mateo">MMOTOS MATEO</option>
               <option value="mercado_envios">MELI Envíos</option>
             </select>
@@ -1319,6 +1321,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">Mercado Envíos</option>
@@ -1390,6 +1393,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">Mercado Envíos</option>
@@ -1460,6 +1464,7 @@
           <option value="enviosuy">EnviosUy</option>
           <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
+          <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
 
           <option value="mercado_envios">MELI Envíos</option>
@@ -6132,12 +6137,13 @@ const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', 
 
 // Clasifica un transportista en uno de los 3 buckets de tipo de envío.
 // Flex = todo envío que despachamos nosotros con un transportista propio
-// (no solo EnviosUy: también GestionPost, UES o MMOTOS MATEO).
+// (no solo EnviosUy: también GestionPost, UES, DAC o MMOTOS MATEO).
 const TIPO_ENVIO_POR_TRANSPORTISTA = {
   mercado_envios: 'meli_envios',
   enviosuy: 'flex',
   gestionpost: 'flex',
   ues: 'flex',
+  dac: 'flex',
   mmotos_mateo: 'flex',
   otro: 'otros',
 };
@@ -6460,7 +6466,7 @@ function renderEnvios() {
   if (envios.length === 0) { document.getElementById('envios-tbody').innerHTML = ''; document.getElementById('envios-empty').style.display = 'block'; return; }
   document.getElementById('envios-empty').style.display = 'none';
   const estadoLabels = { pendiente:'Pendiente', en_camino:'En camino', entregado:'Entregado', problema:'Problema' };
-  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', mmotos_mateo:'MMOTOS MATEO', mercado_envios:'MELI Envíos', otro:'Otro' };
+  const transportistas = { enviosuy:'EnviosUy', gestionpost:'GestionPost', ues:'UES', dac:'DAC', mmotos_mateo:'MMOTOS MATEO', mercado_envios:'MELI Envíos', otro:'Otro' };
   const ventasPorId = Object.fromEntries(db.ventas.map(v => [v.id, v]));
   document.getElementById('envios-tbody').innerHTML = envios.map(e => {
     const tipo = tipoEnvioDeTransportista(e.transportista);
@@ -8123,7 +8129,7 @@ function loadImport(e) {
 // TRANSPORTISTAS
 // =====================
 const NOMBRES_TRANSPORTISTAS = {
-  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES', mmotos_mateo: 'MMOTOS MATEO',
+  enviosuy: 'EnviosUy', gestionpost: 'GestionPost', ues: 'UES', dac: 'DAC', mmotos_mateo: 'MMOTOS MATEO',
   mercado_envios: 'MELI Envíos', otro: 'Otro'
 };
 

@@ -193,3 +193,44 @@ Para corregir el motivo de uno ya descatalogado, hacé clic en su badge de la co
 
 Los productos que ya estaban descatalogados de antes aparecen como **"Sin motivo
 registrado"**: se les puede poner el motivo a mano desde el badge de la columna Estado.
+
+---
+
+## Waitlist: avisar a un cliente cuando vuelve un producto (Clientes → 🔔 / Stock → 🔔 Waitlist)
+
+Para el cliente que pide algo que está agotado: se lo anota con el SKU que espera y, cuando
+llega la importación que lo trae, el CRM te lo marca para que le mandes el WhatsApp.
+
+**Antes de usarla hay que crear la tabla una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261029000000_add_avisos_stock.sql`
+3. **Run**
+
+Si todavía no corriste la migración, el resto del CRM funciona igual y la pestaña 🔔 te avisa
+qué archivo falta.
+
+**Anotar a un cliente:** en **Clientes**, el botón **🔔** de cada fila. Buscás el producto por
+SKU o por nombre, ponés cuántas unidades quiere y una nota opcional ("lo quiere en negro").
+Si el cliente no tiene teléfono te lo pide ahí mismo y lo guarda en su ficha, porque es a
+donde le va a llegar el aviso. Un cliente puede esperar varios productos, pero no el mismo
+dos veces mientras el aviso siga abierto. El botón muestra cuántos productos espera y se pone
+azul cuando alguno ya llegó.
+
+**Cuándo se dispara:** cuando una importación pasa a **recibida** (✅ Marcar llegada en
+Importaciones), todos los clientes que esperaban alguno de sus SKUs pasan a **📲 Para
+avisar**, y el aviso de llegada te dice cuántos son. Un ajuste de stock a mano, una devolución
+o una venta cancelada **no** disparan nada: lo que cuenta es que entró mercadería nueva.
+
+**Avisar:** en **Stock → 🔔 Waitlist** están todos los productos que alguien espera,
+agrupados por SKU, con un filtro por SKU y otro por estado:
+
+- **📲 Para avisar**: ya llegó su importación. El botón **📱 Avisar** abre WhatsApp con el
+  mensaje armado ("Hola Juan! … Ya nos volvió a entrar …") y el aviso pasa a **✅ Avisado**.
+- **⏳ Esperando**: todavía no llegó. Al lado del SKU se ve si viene en una importación en
+  camino (y cuándo llega) o si no hay ninguna pedida: la tarjeta **Pedidos sin importación en
+  camino** es lo que te están pidiendo y todavía no compraste.
+- **✕** saca al cliente de la lista (ya no lo quiere, se lo consiguió en otro lado).
+
+Dentro de cada SKU el que se anotó primero aparece primero, que es a quien corresponde
+avisarle antes si llegan pocas unidades.

@@ -142,6 +142,10 @@ function mockearApi(page, estado, fallos = {}) {
         (estado.envios = estado.envios || []).push(e);
         return ok(e);
       }
+      if (metodo === 'PUT') {
+        (estado.enviosPut = estado.enviosPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        return ok(cuerpo);
+      }
       return ok(estado.envios || []);
     }
     if (ruta === '/clientes') {

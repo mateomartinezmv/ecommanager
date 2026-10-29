@@ -1,17 +1,20 @@
 // api/shopify/fotos.js
-// GET  /api/shopify/fotos              → qué fotos de MELI le faltan a cada producto de la tienda
-// POST /api/shopify/fotos              → las sube, en todos los productos enlazados
+// GET  /api/shopify/fotos              → qué productos de la tienda no tienen las fotos de MELI
+// POST /api/shopify/fotos              → les pone las fotos de MELI, en todos los productos enlazados
 // POST /api/shopify/fotos { sku }      → sólo al producto de ese SKU
 // GET  /api/shopify/fotos?accion=subir[&sku=X] → lo mismo que el POST, para lanzarlo desde el navegador
 //
-// Las fotos se toman de la publicación principal de MELI (meli_ids[0]) y se agregan al final
-// del producto de Shopify, en el orden de MELI. Nada se borra: lo que ya está en la tienda se
-// queda, y una foto de MELI que ya estaba cargada no se vuelve a subir (ver _fotos.js).
+// Las fotos se toman de la publicación principal de MELI (meli_ids[0]) y el producto de
+// Shopify queda con exactamente esas, en el orden de MELI: lo que tenía de más se saca. Una
+// foto de MELI que ya estaba cargada no se vuelve a subir (ver _fotos.js).
 //
-// Shopify descarga cada foto desde el CDN de MELI en el momento del alta, así que cada una
-// tarda: una pasada sobre todo el catálogo puede no entrar en los 60s de la función. Se sube
-// lo que entre y se avisa cuántas quedaron; volver a llamar sigue desde ahí, porque lo ya
-// subido deja de figurar como faltante.
+// Cada producto es un solo PUT con la lista completa de imágenes: si Shopify no puede bajar
+// alguna, rechaza el PUT entero y el producto queda como estaba, nunca a medias.
+//
+// Shopify descarga cada foto nueva desde el CDN de MELI en el momento, así que cada producto
+// tarda: una pasada sobre todo el catálogo puede no entrar en los 60s de la función. Se hace
+// lo que entre y se avisa cuántos quedaron; volver a llamar sigue desde ahí, porque los ya
+// hechos quedan al día.
 
 const { getMeliToken } = require('../_meliToken');
 const { getShopifyToken } = require('../_shopifyToken');
@@ -20,11 +23,11 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet } = require('../_meliPublicaciones');
 const { shopifyFetch } = require('../_stockSync');
 const { fotosDe } = require('../meli/_fotos');
-const { armarPlan } = require('./_fotos');
+const { armarPlan, alDia } = require('./_fotos');
 
 const LOTE_MELI = 20;     // multiget de MELI
 const LOTE_SHOPIFY = 50;  // nodes() de GraphQL
-const TOPE_MS = 50000;    // la función se corta a los 60s (vercel.json)
+const TOPE_MS = 45000;    // la función se corta a los 60s (vercel.json) y un PUT puede tardar
 
 // La publicación principal de cada producto con sus fotos. Si la principal no tiene fotos
 // legibles, la primera de sus publicaciones que sí tenga.
@@ -61,7 +64,7 @@ async function productosShopify(token, variantIds) {
       method: 'POST',
       body: JSON.stringify({
         query: `query($ids:[ID!]!){ nodes(ids:$ids){ ... on ProductVariant {
-          id product { id title images(first:100){ edges{ node{ url } } } } } } }`,
+          id product { id title images(first:100){ edges{ node{ id url } } } } } } }`,
         variables: { ids: lote.map(id => `gid://shopify/ProductVariant/${id}`) },
       }),
     });
@@ -71,7 +74,7 @@ async function productosShopify(token, variantIds) {
       mapa[n.id.split('/').pop()] = {
         productId: n.product.id.split('/').pop(),
         titulo: n.product.title,
-        imagenes: (n.product.images?.edges || []).map(e => e.node.url),
+        imagenes: (n.product.images?.edges || []).map(e => ({ id: e.node.id.split('/').pop(), url: e.node.url })),
       };
     }
   }
@@ -112,58 +115,65 @@ module.exports = async (req, res) => {
   try {
     const supabase = getSupabase();
     const skuFiltro = String(req.body?.sku || req.query?.sku || '').trim();
-    const { productos, sinResolver, shopifyToken } = await planificar(supabase, skuFiltro);
-
-    const resumen = (filas) => filas.map(f => ({
-      productId: f.productId, titulo: f.titulo, skus: f.skus, meli_ids: f.meli_ids,
-      en_shopify: f.imagenes.length, faltan: f.faltan.map(x => x.url),
-    }));
-
     const subir = req.method === 'POST' || (req.method === 'GET' && req.query?.accion === 'subir');
+    if (!subir && req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
-    if (req.method === 'GET' && !subir) {
+    const { productos, sinResolver, shopifyToken } = await planificar(supabase, skuFiltro);
+    const desactualizados = productos.filter(f => !f.alDia);
+
+    if (!subir) {
       return res.json({
         ok: true,
         resumen: {
           productos: productos.length,
-          con_faltantes: productos.filter(f => f.faltan.length).length,
-          fotos_faltantes: productos.reduce((s, f) => s + f.faltan.length, 0),
+          a_actualizar: desactualizados.length,
+          fotos_nuevas: desactualizados.reduce((s, f) => s + f.nuevas, 0),
+          fotos_sacadas: desactualizados.reduce((s, f) => s + f.sacadas, 0),
           sin_resolver: sinResolver.length,
         },
-        productos: resumen(productos),
+        productos: productos.map(f => ({
+          productId: f.productId, titulo: f.titulo, skus: f.skus, meli_ids: f.meli_ids, alDia: f.alDia,
+          en_shopify: f.imagenes.length, en_meli: f.objetivo.length, nuevas: f.nuevas, sacadas: f.sacadas,
+        })),
         sinResolver,
       });
     }
 
-    if (!subir) return res.status(405).json({ ok: false, error: 'Method not allowed' });
     if (skuFiltro && !productos.length && !sinResolver.length) {
       return res.status(404).json({ ok: false, error: `${skuFiltro} no está enlazado a MELI y a Shopify.` });
     }
 
-    // No corta ante un fallo: una foto que Shopify no pudo bajar no deja sin fotos al resto.
+    // No corta ante un fallo: un producto que Shopify rechaza no deja sin fotos al resto.
     const inicio = Date.now();
     const resultados = [];
     let pendientes = 0;
-    for (const fila of productos) {
-      for (const foto of fila.faltan) {
-        if (Date.now() - inicio > TOPE_MS) { pendientes++; continue; }
-        try {
-          await shopifyFetch(shopifyToken, `/products/${fila.productId}/images.json`, {
-            method: 'POST',
-            body: JSON.stringify({ image: { src: foto.url } }),
-          });
-          resultados.push({ productId: fila.productId, titulo: fila.titulo, url: foto.url, ok: true });
-        } catch (err) {
-          resultados.push({ productId: fila.productId, titulo: fila.titulo, url: foto.url, ok: false, error: err.message });
-        }
+    for (const fila of desactualizados) {
+      if (Date.now() - inicio > TOPE_MS) { pendientes++; continue; }
+      const base = { productId: fila.productId, titulo: fila.titulo, skus: fila.skus };
+      try {
+        const data = await shopifyFetch(shopifyToken, `/products/${fila.productId}.json`, {
+          method: 'PUT',
+          body: JSON.stringify({ product: { id: Number(fila.productId), images: fila.cuerpo } }),
+        });
+        // Lo que quedó lo dice Shopify, no lo que mandamos.
+        const quedaron = (data.product?.images || []).map(i => ({ id: String(i.id), url: i.src }));
+        resultados.push({
+          ...base, ok: true, antes: fila.imagenes.length, ahora: quedaron.length, nuevas: fila.nuevas, sacadas: fila.sacadas,
+          aviso: alDia(fila.objetivo, quedaron)
+            ? null
+            : `Shopify dejó ${quedaron.length} de las ${fila.objetivo.length} fotos de MELI, o en otro orden. Revisá el producto.`,
+        });
+      } catch (err) {
+        resultados.push({ ...base, ok: false, error: err.message });
       }
     }
 
     return res.json({
       ok: true,
-      subidas: resultados.filter(r => r.ok).length,
-      fallidas: resultados.filter(r => !r.ok).length,
+      actualizados: resultados.filter(r => r.ok).length,
+      fallidos: resultados.filter(r => !r.ok).length,
       pendientes,
+      al_dia: productos.length - desactualizados.length,
       resultados,
       sinResolver,
     });

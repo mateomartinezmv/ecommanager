@@ -6,6 +6,7 @@
 
 const { getSupabase } = require('./_supabase');
 const { applyImportArrival } = require('./_stockSync');
+const { marcarAvisosListos } = require('./_avisosStock');
 const { faltaMigracionProveedores, skusDeItems, sincronizarProveedorProductos } = require('./_proveedores');
 
 // Estados que representan que la mercadería ya está físicamente disponible
@@ -138,6 +139,11 @@ module.exports = async (req, res) => {
           console.error('Error actualizando stock tras llegada de importación:', syncErr);
           data.stock_sync = { error: syncErr.message };
         }
+        // Los clientes que esperaban estos SKUs quedan listos para avisar. Sólo los SKUs a
+        // los que de verdad se les sumó stock: uno que no existe en productos o cuyo stock
+        // no se pudo guardar no volvió.
+        const llegaron = (data.stock_sync?.aplicados || []).map(a => a.sku);
+        data.avisos_stock = await marcarAvisosListos(supabase, llegaron, id);
       }
 
       return res.json(data);

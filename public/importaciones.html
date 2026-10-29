@@ -1044,6 +1044,14 @@ async function marcarLlegado(id) {
         if (sync.errores?.length) {
           partes.push('⚠️ Errores al sincronizar: ' + sync.errores.map(e => `${e.sku}: ${e.error}`).join(' | '));
         }
+        const listos = updated.avisos_stock?.listos || [];
+        if (listos.length) {
+          const skus = [...new Set(listos.map(a => a.sku))];
+          partes.push(`🔔 ${listos.length} cliente${listos.length === 1 ? '' : 's'} esperaba${listos.length === 1 ? '' : 'n'} ${skus.join(', ')}. ` +
+            'Avisales por WhatsApp desde Stock → 🔔 Waitlist.');
+        } else if (updated.avisos_stock?.error) {
+          partes.push('⚠️ No se pudo revisar la waitlist: ' + updated.avisos_stock.error);
+        }
         if (partes.length) alert(partes.join('\n\n'));
       }
     }

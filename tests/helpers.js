@@ -133,8 +133,45 @@ function mockearApi(page, estado, fallos = {}) {
       }
       return ok(estado.envios || []);
     }
-    if (ruta === '/clientes') return ok(estado.clientes || []);
-    if (ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
+    if (ruta === '/clientes') {
+      // PUT reemplaza la ficha entera, como api/clientes.js.
+      if (metodo === 'PUT') {
+        const c = (estado.clientes || []).find(x => x.id === url.searchParams.get('id'));
+        if (!c) return error(404, 'cliente inexistente');
+        Object.assign(c, { nombre: cuerpo.nombre, telefono: cuerpo.telefono || null, email: cuerpo.email || null,
+          canal_origen: cuerpo.canal_origen, meli_nickname: cuerpo.meli_nickname || null, notas: cuerpo.notas || null });
+        return ok(c);
+      }
+      return ok(estado.clientes || []);
+    }
+    if (ruta === '/importaciones') return ok(estado.importaciones || []);
+    if (ruta === '/devoluciones') return ok([]);
+    // La waitlist, como api/avisos-stock.js. `sinAvisos` imita a una base donde la migración
+    // todavía no corrió.
+    if (ruta === '/avisos-stock') {
+      if (estado.sinAvisos) {
+        return metodo === 'GET' ? ok({ avisos: [], migracionPendiente: true }) : error(503, 'Falta correr la migración');
+      }
+      const avisos = estado.avisos = estado.avisos || [];
+      if (metodo === 'POST') {
+        if (avisos.some(a => a.cliente_id === cuerpo.cliente_id && a.sku === cuerpo.sku && ['esperando', 'listo'].includes(a.estado))) {
+          return error(409, `Este cliente ya está esperando ${cuerpo.sku}`);
+        }
+        const a = { id: 'AVI' + Date.now() + '-' + avisos.length, cliente_id: cuerpo.cliente_id, sku: cuerpo.sku,
+          cantidad: cuerpo.cantidad || 1, nota: cuerpo.nota || null, estado: 'esperando', importacion_id: null,
+          created_at: new Date().toISOString(), listo_at: null, avisado_at: null };
+        avisos.unshift(a);
+        return ok(a);
+      }
+      if (metodo === 'PUT') {
+        const a = avisos.find(x => x.id === url.searchParams.get('id'));
+        if (!a) return error(404, 'aviso inexistente');
+        a.estado = cuerpo.estado;
+        if (cuerpo.estado === 'avisado') a.avisado_at = new Date().toISOString();
+        return ok(a);
+      }
+      return ok({ avisos, migracionPendiente: false });
+    }
     // La pestaña de Ads: cada suite puede poner su propia respuesta en el estado. Las
     // URLs pedidas se guardan porque lo que *no* se manda también es parte del contrato
     // (ej: sin ?comision el endpoint usa la comisión real en vez de un 15% fijo).

@@ -283,8 +283,9 @@
         <button class="tab" onclick="switchStockTab('nuevo')">🆕 Nuevos</button>
         <button class="tab" onclick="switchStockTab('usado')">🔄 Usados</button>
         <button class="tab" onclick="switchStockTab('disc')">⛔ Descatalogados</button>
+        <button class="tab" onclick="switchStockTab('wait')">🔔 Waitlist <span id="stock-wait-count"></span></button>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <div id="stock-filtros" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
         <select id="stock-grupo" onchange="onGrupoFiltroChange()" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
           <option value="">Todos los grupos</option>
         </select>
@@ -326,7 +327,37 @@
           </div>
         </div>
       </div>
-      <div class="table-wrap">
+      <!-- Waitlist: clientes que esperan que vuelva un producto. Se anotan desde Clientes → 🔔
+           y pasan a "Para avisar" cuando llega una importación que trae el SKU. -->
+      <div id="stock-wait-panel" style="display:none">
+        <div id="stock-wait-aviso"></div>
+        <div class="cards-grid" id="stock-wait-stats"></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+          <select id="wait-sku" onchange="renderWaitlist()" style="width:auto;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer;max-width:340px">
+            <option value="">Todos los SKU</option>
+          </select>
+          <select id="wait-estado" onchange="renderWaitlist()" style="width:auto;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+            <option value="abiertos">Abiertos (para avisar + esperando)</option>
+            <option value="listo">📲 Para avisar</option>
+            <option value="esperando">⏳ Esperando</option>
+            <option value="avisado">✅ Avisados</option>
+            <option value="cancelado">✕ Cancelados</option>
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header">
+            <span class="table-title">🔔 Clientes esperando por producto</span>
+            <span id="wait-count" style="font-size:12px;color:var(--text-muted)"></span>
+          </div>
+          <table>
+            <thead><tr><th>Cliente</th><th>Teléfono</th><th>Cant.</th><th>Anotado</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <tbody id="wait-tbody"></tbody>
+          </table>
+          <div id="wait-empty" class="empty-state" style="display:none"><div class="empty-icon">🔔</div><p>No hay clientes esperando con estos filtros. Se anotan desde <strong>Clientes → 🔔</strong>.</p></div>
+        </div>
+      </div>
+      <div class="table-wrap" id="stock-tabla">
         <div class="table-header">
           <span class="table-title">Productos en inventario</span>
           <span id="stock-count" style="font-size:12px;color:var(--text-muted)"></span>
@@ -1572,6 +1603,35 @@
   </div>
 </div>
 
+<!-- MODAL: AVISAR CUANDO VUELVA (waitlist de un cliente) -->
+<div class="modal-overlay" id="modal-aviso-stock">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-title">🔔 Avisar cuando vuelva</div>
+    <div id="aviso-cliente-info" style="margin-bottom:14px;font-size:13px;color:var(--text-dim)"></div>
+    <div id="aviso-migracion"></div>
+    <input type="hidden" id="aviso-cliente-id">
+    <div class="form-grid">
+      <div class="form-group form-full">
+        <label class="form-label">Producto que espera (SKU o nombre) *</label>
+        <div style="position:relative">
+          <input type="text" id="aviso-producto-search" placeholder="ej: CAS-SHIRO-M o casco" autocomplete="off" oninput="avisoProductoSearch()">
+          <div id="aviso-producto-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        </div>
+        <input type="hidden" id="aviso-sku">
+        <div id="aviso-producto-sel" style="margin-top:8px;font-size:12px"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Cantidad que quiere</label><input type="number" id="aviso-cantidad" min="1" value="1"></div>
+      <div class="form-group" id="aviso-telefono-group"><label class="form-label">Teléfono para WhatsApp *</label><input type="text" id="aviso-telefono" placeholder="ej: 099 123 456"></div>
+      <div class="form-group form-full"><label class="form-label">Nota</label><input type="text" id="aviso-nota" placeholder="ej: lo quiere en negro, pagó seña..."></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-aviso-stock')">Cerrar</button>
+      <button class="btn btn-primary" id="btn-aviso-guardar" onclick="avisoGuardar()">+ Agregar a la waitlist</button>
+    </div>
+    <div id="aviso-lista" style="margin-top:18px"></div>
+  </div>
+</div>
+
 <!-- MODAL: NUEVA IMPORTACIÓN -->
 <div class="modal-overlay" id="modal-importacion">
   <div class="modal" style="max-width:780px">
@@ -1791,7 +1851,9 @@
 // DATA LAYER
 // =====================
 let db = { productos: [], ventas: [], envios: [], clientes: [], importaciones: [], devoluciones: [], opiniones: [], opinionesMeta: { cargada: false, ok: true, error: null, actualizado: null }, angulos: [], angulosMeta: { cargada: false, objetivo: 3, error: null, historial: [] }, movimientos: [], movCategorias: [], movimientosMeta: { cargada: false, error: null }, // Se prende si la API avisa que las columnas del motivo de descatalogado todavía no existen.
-  motivoDiscMigracion: false };
+  motivoDiscMigracion: false,
+  // Waitlist (Stock → 🔔): clientes esperando que vuelva un SKU.
+  avisos: [], avisosMeta: { cargada: false, migracionPendiente: false, error: null } };
 let ventasTabFilter = 'all';
 let stockTabFilter = 'all';
 let stockAgrupado = false;              // vista plana vs. agrupada por grupo/subgrupo
@@ -1845,6 +1907,7 @@ async function loadAll() {
       db.movCategorias = [];
       db.movimientosMeta = { cargada: false, error: e.message };
     }
+    await cargarAvisos();
   } catch(e) {
     console.error('Error cargando datos:', e);
     alert('⚠️ Error conectando con la base de datos: ' + e.message);
@@ -1875,6 +1938,9 @@ function normProducto(p) {
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+}
+function normAviso(a) {
+  return { id: a.id, clienteId: a.cliente_id, sku: a.sku, cantidad: a.cantidad || 1, nota: a.nota || '', estado: a.estado, importacionId: a.importacion_id || null, creado: a.created_at, listoAt: a.listo_at || null, avisadoAt: a.avisado_at || null };
 }
 function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
@@ -5426,6 +5492,14 @@ function renderStock() {
   syncStockFiltros();
   syncStockMotivoSelect();
   renderStockDisc();
+  // La waitlist es otra lista (clientes por SKU), no un filtro de productos: tapa la tabla
+  // de inventario y sus filtros mientras está abierta.
+  const esWait = stockTabFilter === 'wait';
+  document.getElementById('stock-wait-panel').style.display = esWait ? 'block' : 'none';
+  document.getElementById('stock-filtros').style.display = esWait ? 'none' : 'flex';
+  document.getElementById('stock-tabla').style.display = esWait ? 'none' : '';
+  renderWaitCount();
+  if (esWait) { renderWaitlist(); return; }
   const q = (document.getElementById('stock-search')?.value || '').toLowerCase();
   const fGrupo = document.getElementById('stock-grupo')?.value || '';
   const fSub = document.getElementById('stock-subgrupo')?.value || '';
@@ -6043,7 +6117,7 @@ function switchStockTab(tab) {
   // quede filtrando en silencio al volver.
   if (tab !== 'disc') document.getElementById('stock-motivo').value = '';
   document.querySelectorAll('#page-stock .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['all','nuevo','usado','disc'][i] === tab);
+    t.classList.toggle('active', ['all','nuevo','usado','disc','wait'][i] === tab);
   });
   renderStock();
 }
@@ -8409,16 +8483,22 @@ function canalOrigenBadge(canal) {
   return '<span class="badge badge-blue">🏪 Mostrador</span>';
 }
 
-function abrirWhatsApp(clienteId) {
-  const c = db.clientes.find(x => x.id === clienteId);
-  if (!c || !c.telefono) return;
-  let n = c.telefono.replace(/\D/g, '');
+// "099 123 456" → "59899123456", el formato que pide wa.me.
+function numeroWhatsApp(telefono) {
+  let n = String(telefono || '').replace(/\D/g, '');
+  if (!n) return '';
   if (!n.startsWith('598')) {
     if (n.startsWith('0')) n = n.slice(1);
     n = '598' + n;
   }
+  return n;
+}
+
+function abrirWhatsApp(clienteId) {
+  const c = db.clientes.find(x => x.id === clienteId);
+  if (!c || !c.telefono) return;
   const msg = encodeURIComponent(`Hola ${c.nombre}! Te escribimos desde Martinez Motos. Tenemos productos nuevos que pueden interesarte 🏍️`);
-  window.open(`https://wa.me/${n}?text=${msg}`, '_blank');
+  window.open(`https://wa.me/${numeroWhatsApp(c.telefono)}?text=${msg}`, '_blank');
 }
 
 function renderClientes() {
@@ -8464,6 +8544,7 @@ function renderClientes() {
         <button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="clienteVerDetalle(this.dataset.id)" title="Ver detalle">🔍</button>
         <button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="clientesOpenModal(this.dataset.id)" title="Editar">✏️</button>
         ${c.telefono ? `<button class="btn btn-ghost btn-sm" data-id="${c.id}" onclick="abrirWhatsApp(this.dataset.id)" title="WhatsApp">📱</button>` : ''}
+        ${avisoBotonCliente(c.id)}
         <button class="btn btn-danger btn-sm" data-id="${c.id}" onclick="clienteEliminar(this.dataset.id)" title="Eliminar">🗑️</button>
       </td>
     </tr>
@@ -8575,6 +8656,368 @@ async function clienteVerDetalle(id) {
 
     openModal('modal-detalle-cliente');
   } catch(e) { alert('Error cargando detalle del cliente: ' + e.message); }
+}
+
+// =====================
+// WAITLIST: AVISAR CUANDO VUELVE UN PRODUCTO
+// =====================
+// Un cliente pide algo que no hay: se lo anota desde Clientes → 🔔 con el SKU que espera.
+// Cuando llega una importación que trae ese SKU, /api/importaciones pasa sus avisos a
+// "listo" (api/_avisosStock.js) y aparecen en Stock → 🔔 Waitlist para mandarles el
+// WhatsApp. Un ajuste de stock a mano o una devolución no disparan nada: lo que cuenta es
+// que entró mercadería nueva.
+
+const AVISO_ESTADO = {
+  esperando: ['badge-yellow', '⏳ Esperando'],
+  listo:     ['badge-green',  '📲 Para avisar'],
+  avisado:   ['badge-blue',   '✅ Avisado'],
+  cancelado: ['badge-gray',   '✕ Cancelado'],
+};
+const AVISO_ABIERTOS = ['esperando', 'listo'];
+// Orden dentro de cada SKU: primero a quién hay que escribirle hoy.
+const AVISO_ORDEN = { listo: 0, esperando: 1, avisado: 2, cancelado: 3 };
+// Los mismos estados de "llegó" que api/importaciones.js (ARRIVED_STATES).
+const IMP_LLEGADA = ['arrived', 'recibido', 'en_deposito'];
+
+async function cargarAvisos() {
+  try {
+    const r = await api('GET', '/avisos-stock');
+    db.avisos = (r.avisos || []).map(normAviso);
+    db.avisosMeta = { cargada: true, migracionPendiente: !!r.migracionPendiente, error: null };
+  } catch (e) {
+    db.avisos = [];
+    db.avisosMeta = { cargada: false, migracionPendiente: false, error: e.message };
+  }
+}
+
+function avisosMigracionHtml() {
+  if (db.avisosMeta.migracionPendiente) {
+    return `<div style="margin-bottom:16px;padding:14px 16px;border-radius:var(--radius);border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px;line-height:1.6">
+      ⚠️ <strong>Falta correr la migración de la waitlist en Supabase.</strong>
+      Corré <code>supabase/migrations/20261029000000_add_avisos_stock.sql</code> en el SQL Editor
+      y recargá la página.
+    </div>`;
+  }
+  if (db.avisosMeta.error) {
+    return `<div style="margin-bottom:16px;padding:14px 16px;border-radius:var(--radius);border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);font-size:13px">
+      ⚠️ No se pudo cargar la waitlist: ${escHtml(db.avisosMeta.error)}
+    </div>`;
+  }
+  return '';
+}
+
+function avisoEstadoBadge(a) {
+  const [cls, label] = AVISO_ESTADO[a.estado] || ['badge-gray', a.estado];
+  const fecha = a.estado === 'avisado' ? a.avisadoAt : a.estado === 'listo' ? a.listoAt : null;
+  return `<span class="badge ${cls}">${label}</span>${fecha ? `<div style="font-size:10px;color:var(--text-muted);margin-top:3px">${String(fecha).slice(0, 10)}</div>` : ''}`;
+}
+
+// La importación que todavía no llegó (ni se canceló) y trae el SKU; si hay varias, la que
+// llega antes.
+function importacionEnCamino(sku) {
+  return db.importaciones
+    .filter(i => !IMP_LLEGADA.includes(i.estado) && i.estado !== 'cancelled'
+      && (i.items || []).some(it => String(it.sku || '').trim() === sku))
+    .sort((a, b) => String(a.llegada || '9999').localeCompare(String(b.llegada || '9999')))[0] || null;
+}
+
+function avisoImportacionHtml(sku) {
+  const imp = importacionEnCamino(sku);
+  if (!imp) return '<span style="color:var(--red)">Sin importación en camino</span>';
+  return `<span style="color:var(--accent)">✈️ En una importación en camino${imp.llegada ? ` · llega ${imp.llegada}` : ''}</span>`;
+}
+
+function avisosAbiertosDeCliente(clienteId) {
+  return db.avisos.filter(a => a.clienteId === clienteId && AVISO_ABIERTOS.includes(a.estado));
+}
+
+function avisoBotonCliente(clienteId) {
+  const abiertos = avisosAbiertosDeCliente(clienteId);
+  const listos = abiertos.filter(a => a.estado === 'listo').length;
+  const n = abiertos.length;
+  const titulo = n
+    ? `Espera ${n} producto${n === 1 ? '' : 's'}${listos ? ` (${listos} para avisar)` : ''}`
+    : 'Avisar cuando vuelva un producto';
+  return `<button class="btn ${listos ? 'btn-primary' : 'btn-ghost'} btn-sm" data-id="${clienteId}" onclick="avisoOpenModal(this.dataset.id)" title="${titulo}">🔔${n ? ` ${n}` : ''}</button>`;
+}
+
+// ── Modal: anotar a un cliente ───────────────────────────────────────────────
+function avisoOpenModal(clienteId) {
+  const c = db.clientes.find(x => x.id === clienteId);
+  if (!c) return;
+  document.getElementById('aviso-cliente-id').value = c.id;
+  document.getElementById('aviso-telefono').value = '';
+  avisoLimpiarForm();
+  renderAvisoModal();
+  openModal('modal-aviso-stock');
+}
+
+function avisoLimpiarForm() {
+  ['aviso-producto-search', 'aviso-sku', 'aviso-nota'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('aviso-cantidad').value = '1';
+  document.getElementById('aviso-producto-sel').innerHTML = '';
+  document.getElementById('aviso-producto-dd').style.display = 'none';
+}
+
+function renderAvisoModal() {
+  const c = db.clientes.find(x => x.id === document.getElementById('aviso-cliente-id').value);
+  if (!c) return;
+  document.getElementById('aviso-cliente-info').innerHTML = `<strong style="color:var(--text)">${escHtml(c.nombre)}</strong>`
+    + (c.telefono ? ` · 📱 <span style="font-family:'JetBrains Mono',monospace">${escHtml(c.telefono)}</span>`
+                  : ' · <span style="color:var(--yellow)">sin teléfono: cargalo abajo para poder avisarle</span>');
+  // Sin teléfono no hay a dónde mandar el WhatsApp: se pide acá y se guarda en la ficha.
+  document.getElementById('aviso-telefono-group').style.display = c.telefono ? 'none' : '';
+  document.getElementById('aviso-migracion').innerHTML = avisosMigracionHtml();
+  document.getElementById('btn-aviso-guardar').disabled = !db.avisosMeta.cargada || db.avisosMeta.migracionPendiente;
+
+  const avisos = db.avisos.filter(a => a.clienteId === c.id)
+    .sort((a, b) => (AVISO_ORDEN[a.estado] - AVISO_ORDEN[b.estado]) || String(b.creado).localeCompare(String(a.creado)));
+  document.getElementById('aviso-lista').innerHTML = !avisos.length
+    ? '<div style="font-size:13px;color:var(--text-muted)">Todavía no espera ningún producto.</div>'
+    : `<div class="table-wrap"><div class="table-header"><span class="table-title">Productos que espera</span></div><table>
+        <thead><tr><th>Producto</th><th>Cant.</th><th>Anotado</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${avisos.map(a => {
+          const p = db.productos.find(x => x.sku === a.sku);
+          return `<tr>
+            <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${escHtml(a.sku)}</span><br>${escHtml(p ? p.nombre : '(producto borrado)')}${a.nota ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(a.nota)}</div>` : ''}</td>
+            <td style="text-align:center">${a.cantidad}</td>
+            <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${String(a.creado || '').slice(0, 10) || '—'}</td>
+            <td style="white-space:nowrap">${avisoEstadoBadge(a)}</td>
+            <td style="white-space:nowrap">${avisoAccionesHtml(a)}</td>
+          </tr>`;
+        }).join('')}</tbody></table></div>`;
+}
+
+function avisoProductoSearch() {
+  document.getElementById('aviso-sku').value = '';
+  document.getElementById('aviso-producto-sel').innerHTML = '';
+  const q = document.getElementById('aviso-producto-search').value.trim().toLowerCase();
+  const dd = document.getElementById('aviso-producto-dd');
+  if (!q) { dd.style.display = 'none'; return; }
+  // Los que no tienen stock primero: es lo que normalmente se anota.
+  const res = db.productos
+    .filter(p => p.sku.toLowerCase().includes(q) || p.nombre.toLowerCase().includes(q))
+    .sort((a, b) => (packsDe(a) > 0) - (packsDe(b) > 0))
+    .slice(0, 8);
+  dd.innerHTML = res.length
+    ? res.map(p => {
+        const vendible = packsDe(p);
+        return `<div data-sku="${escHtml(p.sku)}" onclick="avisoProductoPick(this.dataset.sku)" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${escHtml(p.sku)}</span>
+          <span style="font-weight:600;margin-left:6px">${escHtml(p.nombre)}</span>
+          <span style="margin-left:6px;font-size:11px;color:${vendible > 0 ? 'var(--text-muted)' : 'var(--red)'}">${vendible > 0 ? `${vendible} en stock` : 'sin stock'}</span>
+        </div>`;
+      }).join('')
+    : '<div style="padding:7px 10px;font-size:13px;color:var(--text-muted)">No hay productos con ese SKU o nombre</div>';
+  dd.style.display = 'block';
+}
+
+function avisoProductoPick(sku) {
+  const p = db.productos.find(x => x.sku === sku);
+  if (!p) return;
+  document.getElementById('aviso-sku').value = p.sku;
+  document.getElementById('aviso-producto-search').value = `${p.sku} — ${p.nombre}`;
+  document.getElementById('aviso-producto-dd').style.display = 'none';
+  const vendible = packsDe(p);
+  const lineas = [
+    vendible > 0
+      ? `<span style="color:var(--yellow)">⚠️ Hoy tiene ${vendible} en stock. El aviso igual sale recién cuando llegue una importación con este SKU.</span>`
+      : '<span style="color:var(--text-muted)">Sin stock.</span>',
+    avisoImportacionHtml(p.sku),
+  ];
+  if (p.discontinuado) lineas.push('<span style="color:var(--red)">⛔ Está descatalogado: no se vuelve a importar salvo que lo reactives.</span>');
+  document.getElementById('aviso-producto-sel').innerHTML = lineas.map(l => `<div style="margin-top:3px">${l}</div>`).join('');
+}
+
+async function avisoGuardar() {
+  const c = db.clientes.find(x => x.id === document.getElementById('aviso-cliente-id').value);
+  if (!c) return;
+  const sku = document.getElementById('aviso-sku').value;
+  if (!sku) { alert('Buscá el producto y elegilo de la lista.'); return; }
+  if (avisosAbiertosDeCliente(c.id).some(a => a.sku === sku)) { alert(`${c.nombre} ya está esperando ${sku}.`); return; }
+
+  const telefonoNuevo = c.telefono ? null : document.getElementById('aviso-telefono').value.trim();
+  // 598 + 8 dígitos: un celular o un fijo uruguayo completo.
+  if (!c.telefono && numeroWhatsApp(telefonoNuevo).length < 11) {
+    alert('Cargá el teléfono del cliente: es a donde le va a llegar el aviso por WhatsApp.');
+    return;
+  }
+
+  try {
+    if (telefonoNuevo) {
+      // PUT /clientes reemplaza la ficha entera: se manda con todo lo que ya tenía.
+      await api('PUT', `/clientes?id=${c.id}`, {
+        nombre: c.nombre, telefono: telefonoNuevo, email: c.email, canal_origen: c.canalOrigen,
+        meli_nickname: c.meliNickname, notas: c.notas,
+      });
+      c.telefono = telefonoNuevo;
+    }
+    const nuevo = await api('POST', '/avisos-stock', {
+      cliente_id: c.id,
+      sku,
+      cantidad: Number(document.getElementById('aviso-cantidad').value) || 1,
+      nota: document.getElementById('aviso-nota').value.trim(),
+    });
+    db.avisos.unshift(normAviso(nuevo));
+    avisoLimpiarForm();
+    refrescarAvisos();
+  } catch (e) { alert('No se pudo agregar a la waitlist: ' + e.message); }
+}
+
+// ── Acciones sobre un aviso (desde el modal y desde la Waitlist) ─────────────
+function avisoAccionesHtml(a) {
+  const botones = [];
+  if (a.estado === 'listo') {
+    botones.push(`<button class="btn btn-primary btn-sm" data-id="${a.id}" onclick="avisoEnviarWhatsApp(this.dataset.id)" title="Abrir WhatsApp con el mensaje armado">📱 Avisar</button>`);
+  }
+  if (AVISO_ABIERTOS.includes(a.estado)) {
+    botones.push(`<button class="btn btn-ghost btn-sm" data-id="${a.id}" onclick="avisoCancelar(this.dataset.id)" title="Ya no lo espera">✕</button>`);
+  }
+  return botones.join(' ');
+}
+
+function mensajeAvisoStock(cliente, producto, aviso) {
+  const nombre = String(cliente.nombre || '').trim().split(/\s+/)[0];
+  return `Hola ${nombre}! Te escribimos desde Martinez Motos 🏍️ Ya nos volvió a entrar ${producto ? producto.nombre : aviso.sku}, que nos habías consultado. Si todavía te interesa, respondenos y te lo reservamos.`;
+}
+
+async function avisoEnviarWhatsApp(id) {
+  const a = db.avisos.find(x => x.id === id);
+  const c = a && db.clientes.find(x => x.id === a.clienteId);
+  if (!a || !c) return;
+  if (!c.telefono) { alert(`${c.nombre} no tiene teléfono cargado. Cargáselo desde Clientes → ✏️.`); return; }
+  const p = db.productos.find(x => x.sku === a.sku);
+  // Se abre antes de cualquier await: después el navegador lo toma como popup y lo bloquea.
+  window.open(`https://wa.me/${numeroWhatsApp(c.telefono)}?text=${encodeURIComponent(mensajeAvisoStock(c, p, a))}`, '_blank');
+  await avisoCambiarEstado(id, 'avisado');
+}
+
+async function avisoCancelar(id) {
+  const a = db.avisos.find(x => x.id === id);
+  const c = a && db.clientes.find(x => x.id === a.clienteId);
+  if (!a || !confirm(`¿Sacar a ${c ? c.nombre : 'este cliente'} de la waitlist de ${a.sku}?`)) return;
+  await avisoCambiarEstado(id, 'cancelado');
+}
+
+async function avisoCambiarEstado(id, estado) {
+  try {
+    const r = await api('PUT', `/avisos-stock?id=${id}`, { estado });
+    const i = db.avisos.findIndex(x => x.id === id);
+    if (i !== -1) db.avisos[i] = normAviso(r);
+    refrescarAvisos();
+  } catch (e) { alert('No se pudo actualizar el aviso: ' + e.message); }
+}
+
+function refrescarAvisos() {
+  renderWaitCount();
+  renderClientes();
+  if (document.getElementById('modal-aviso-stock').classList.contains('open')) renderAvisoModal();
+  if (stockTabFilter === 'wait') renderWaitlist();
+}
+
+// ── Stock → 🔔 Waitlist ──────────────────────────────────────────────────────
+function renderWaitCount() {
+  const listos = db.avisos.filter(a => a.estado === 'listo').length;
+  const esperando = db.avisos.filter(a => a.estado === 'esperando').length;
+  document.getElementById('stock-wait-count').innerHTML = listos
+    ? `<span class="badge badge-green" style="font-size:10px">${listos}</span>`
+    : esperando ? `<span class="badge badge-gray" style="font-size:10px">${esperando}</span>` : '';
+}
+
+// Las opciones del filtro por SKU: todos los que alguien pidió alguna vez, los que tienen
+// más gente esperando arriba.
+function syncWaitSkuSelect() {
+  const sel = document.getElementById('wait-sku');
+  const actual = sel.value;
+  const porSku = {};
+  for (const a of db.avisos) {
+    porSku[a.sku] = porSku[a.sku] || { abiertos: 0 };
+    if (AVISO_ABIERTOS.includes(a.estado)) porSku[a.sku].abiertos++;
+  }
+  const skus = Object.keys(porSku).sort((a, b) => (porSku[b].abiertos - porSku[a].abiertos) || a.localeCompare(b));
+  sel.innerHTML = '<option value="">Todos los SKU</option>' + skus.map(sku => {
+    const p = db.productos.find(x => x.sku === sku);
+    const n = porSku[sku].abiertos;
+    return `<option value="${escHtml(sku)}">${escHtml(sku)} — ${escHtml(p ? p.nombre : '(producto borrado)')}${n ? ` (${n} esperando)` : ''}</option>`;
+  }).join('');
+  sel.value = skus.includes(actual) ? actual : '';
+}
+
+function renderWaitlist() {
+  document.getElementById('stock-wait-aviso').innerHTML = avisosMigracionHtml();
+  syncWaitSkuSelect();
+
+  const abiertos = db.avisos.filter(a => AVISO_ABIERTOS.includes(a.estado));
+  const listos = abiertos.filter(a => a.estado === 'listo');
+  const esperando = abiertos.filter(a => a.estado === 'esperando');
+  const skusAbiertos = [...new Set(abiertos.map(a => a.sku))];
+  const skusSinImp = [...new Set(esperando.map(a => a.sku))].filter(sku => !importacionEnCamino(sku));
+  const uds = abiertos.reduce((s, a) => s + a.cantidad, 0);
+  document.getElementById('stock-wait-stats').innerHTML = `
+    <div class="stat-card green" style="cursor:pointer" title="Ver sólo los que hay que avisar" onclick="document.getElementById('wait-estado').value='listo';renderWaitlist()"><div class="stat-icon">📲</div><div class="stat-value">${listos.length}</div><div class="stat-label">Para avisar: ya llegó su importación</div></div>
+    <div class="stat-card yellow" style="cursor:pointer" title="Ver sólo los que siguen esperando" onclick="document.getElementById('wait-estado').value='esperando';renderWaitlist()"><div class="stat-icon">⏳</div><div class="stat-value">${esperando.length}</div><div class="stat-label">Esperando que llegue una importación</div></div>
+    <div class="stat-card blue"><div class="stat-icon">📦</div><div class="stat-value">${skusAbiertos.length}</div><div class="stat-label">Productos pedidos · ${uds} uds en total</div></div>
+    <div class="stat-card red" title="${escHtml(skusSinImp.join(', '))}"><div class="stat-icon">🚫</div><div class="stat-value">${skusSinImp.length}</div><div class="stat-label">Pedidos sin importación en camino</div></div>`;
+
+  const q = (document.getElementById('stock-search')?.value || '').trim().toLowerCase();
+  const fSku = document.getElementById('wait-sku').value;
+  const fEstado = document.getElementById('wait-estado').value;
+  const filtrados = db.avisos.filter(a => {
+    if (fSku && a.sku !== fSku) return false;
+    if (fEstado === 'abiertos' ? !AVISO_ABIERTOS.includes(a.estado) : (fEstado && a.estado !== fEstado)) return false;
+    if (!q) return true;
+    const p = db.productos.find(x => x.sku === a.sku);
+    const c = db.clientes.find(x => x.id === a.clienteId);
+    return a.sku.toLowerCase().includes(q) || (p?.nombre || '').toLowerCase().includes(q)
+      || (c?.nombre || '').toLowerCase().includes(q) || (c?.telefono || '').includes(q);
+  });
+
+  const personas = new Set(filtrados.map(a => a.clienteId)).size;
+  document.getElementById('wait-count').textContent = `${filtrados.length} aviso${filtrados.length === 1 ? '' : 's'} · ${personas} cliente${personas === 1 ? '' : 's'}`;
+  const tbody = document.getElementById('wait-tbody');
+  const empty = document.getElementById('wait-empty');
+  if (!filtrados.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  const grupos = {};
+  for (const a of filtrados) (grupos[a.sku] = grupos[a.sku] || []).push(a);
+  const cuenta = (lista, estado) => lista.filter(a => a.estado === estado).length;
+  const orden = Object.keys(grupos).sort((x, y) =>
+    (cuenta(grupos[y], 'listo') - cuenta(grupos[x], 'listo')) || (grupos[y].length - grupos[x].length) || x.localeCompare(y));
+
+  tbody.innerHTML = orden.map(sku => {
+    const p = db.productos.find(x => x.sku === sku);
+    // El que se anotó primero, primero: es a quien corresponde avisarle antes.
+    const lista = grupos[sku].sort((a, b) =>
+      (AVISO_ORDEN[a.estado] - AVISO_ORDEN[b.estado]) || String(a.creado).localeCompare(String(b.creado)));
+    const udsSku = lista.filter(a => AVISO_ABIERTOS.includes(a.estado)).reduce((s, a) => s + a.cantidad, 0);
+    const llego = lista.find(a => a.estado === 'listo' && a.importacionId);
+    const imp = llego && db.importaciones.find(i => String(i.id) === String(llego.importacionId));
+    const origen = llego
+      ? `<span style="color:var(--green)">📦 Llegó${imp ? ` en la importación del ${imp.fecha}` : ''}</span>`
+      : lista.some(a => a.estado === 'esperando') ? avisoImportacionHtml(sku) : '';
+    const cabecera = `<tr style="background:var(--surface2)">
+      <td colspan="6" style="padding:10px 14px">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700">${escHtml(sku)}</span>
+        <span style="font-weight:600;margin-left:8px">${escHtml(p ? p.nombre : '(producto borrado)')}</span>
+        <span style="margin-left:12px;font-size:12px;color:var(--text-muted)">Stock: ${p ? packsDe(p) : '—'}</span>
+        ${udsSku ? `<span style="margin-left:12px;font-size:12px;color:var(--text-muted)">Piden ${udsSku} ud${udsSku === 1 ? '' : 's'}</span>` : ''}
+        ${origen ? `<span style="margin-left:12px;font-size:12px">${origen}</span>` : ''}
+      </td>
+    </tr>`;
+    return cabecera + lista.map(a => {
+      const c = db.clientes.find(x => x.id === a.clienteId);
+      const dias = a.creado ? Math.floor((Date.now() - new Date(a.creado)) / 86400000) : null;
+      return `<tr>
+        <td><strong>${escHtml(c ? c.nombre : '(cliente borrado)')}</strong>${a.nota ? `<div style="font-size:11px;color:var(--text-muted)">${escHtml(a.nota)}</div>` : ''}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px">${escHtml(c?.telefono || '—')}</td>
+        <td style="text-align:center">${a.cantidad}</td>
+        <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${String(a.creado || '').slice(0, 10) || '—'}${dias !== null ? `<div style="font-size:10px">hace ${dias} día${dias === 1 ? '' : 's'}</div>` : ''}</td>
+        <td style="white-space:nowrap">${avisoEstadoBadge(a)}</td>
+        <td style="white-space:nowrap">${avisoAccionesHtml(a)}</td>
+      </tr>`;
+    }).join('');
+  }).join('');
 }
 
 // ── Selector de cliente en modal Mostrador ──────────────────────────────────

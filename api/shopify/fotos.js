@@ -81,6 +81,8 @@ async function productosShopify(token, variantIds) {
   return mapa;
 }
 
+// Con un SKU se trabaja sobre su producto de Shopify entero: si se mirara sólo ese SKU, un
+// producto con varias variantes quedaría con las fotos de un solo color.
 async function planificar(supabase, skuFiltro = '') {
   const { data, error } = await supabase
     .from('productos')
@@ -89,9 +91,7 @@ async function planificar(supabase, skuFiltro = '') {
     .order('nombre');
   if (error) throw error;
 
-  const productos = (data || [])
-    .filter(p => meliIdsDe(p).length)
-    .filter(p => !skuFiltro || p.sku === skuFiltro);
+  const productos = (data || []).filter(p => meliIdsDe(p).length);
 
   const [meliToken, shopifyToken] = await Promise.all([getMeliToken(), getShopifyToken()]);
   const [orig, shopify] = await Promise.all([
@@ -103,7 +103,12 @@ async function planificar(supabase, skuFiltro = '') {
     productos.map(p => ({ sku: p.sku, nombre: p.nombre, variantId: String(p.shopify_id), original: orig[p.sku] })),
     shopify
   );
-  return { ...plan, shopifyToken };
+  if (!skuFiltro) return { ...plan, shopifyToken };
+  return {
+    productos: plan.productos.filter(f => f.skus.includes(skuFiltro)),
+    sinResolver: plan.sinResolver.filter(x => x.sku === skuFiltro),
+    shopifyToken,
+  };
 }
 
 module.exports = async (req, res) => {

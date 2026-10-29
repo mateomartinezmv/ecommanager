@@ -120,7 +120,18 @@ function mockearApi(page, estado, fallos = {}) {
       }
       return ok(estado.productos);
     }
-    if (ruta === '/ventas') return ok(estado.ventas);
+    if (ruta === '/ventas') {
+      // Lo que manda el front al registrar una venta, tal cual, para verificar el cuerpo.
+      if (metodo === 'POST') {
+        (estado.ventasPost = estado.ventasPost || []).push(cuerpo);
+        return ok({ venta: cuerpo });
+      }
+      if (metodo === 'PUT') {
+        (estado.ventasPut = estado.ventasPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        return ok(cuerpo);
+      }
+      return ok(estado.ventas);
+    }
     if (ruta === '/envios') {
       // Un envío nuevo se guarda como lo haría api/envios.js, en snake_case.
       if (metodo === 'POST') {
@@ -140,6 +151,12 @@ function mockearApi(page, estado, fallos = {}) {
         if (!c) return error(404, 'cliente inexistente');
         Object.assign(c, { nombre: cuerpo.nombre, telefono: cuerpo.telefono || null, email: cuerpo.email || null,
           canal_origen: cuerpo.canal_origen, meli_nickname: cuerpo.meli_nickname || null, notas: cuerpo.notas || null });
+        return ok(c);
+      }
+      if (metodo === 'POST') {
+        const c = { id: 'CLI' + Date.now(), nombre: cuerpo.nombre, telefono: cuerpo.telefono || null, email: null,
+          canal_origen: cuerpo.canal_origen || 'mostrador', meli_nickname: null, notas: null, created_at: HOY };
+        (estado.clientes = estado.clientes || []).push(c);
         return ok(c);
       }
       return ok(estado.clientes || []);

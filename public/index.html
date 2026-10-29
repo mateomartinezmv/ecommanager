@@ -1202,10 +1202,12 @@
         <label class="form-label">Cliente</label>
         <div style="position:relative">
           <input type="text" id="vmos-cliente-search" placeholder="Buscar o escribir nombre..." autocomplete="off"
-            oninput="vmosClienteSearch()" onkeydown="vmosClienteKeydown(event)">
-          <div id="vmos-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:180px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+            oninput="vmosClienteSearch()" onkeydown="vmosClienteKeydown(event)"
+            onblur="setTimeout(() => document.getElementById('vmos-cliente-dd').style.display = 'none', 150)">
+          <div id="vmos-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
         </div>
         <input type="hidden" id="vmos-cliente-id">
+        <div id="vmos-cliente-estado" style="font-size:11px;margin-top:4px;min-height:14px"></div>
       </div>
       <div class="form-group"><label class="form-label">Método de pago</label><select id="vmos-pago" onchange="vmosOnPagoChange()"><option value="efectivo">Efectivo</option><option value="debito">Débito</option><option value="credito">Crédito</option><option value="transferencia">Transferencia</option><option value="qr">QR / Billetera</option></select></div>
       <div class="form-group" id="vmos-descuento-wrap" style="display:none;justify-content:flex-end">
@@ -3365,6 +3367,7 @@ function vmosOpenModal() {
   document.getElementById('vmos-cliente-search').value = '';
   document.getElementById('vmos-cliente-id').value = '';
   document.getElementById('vmos-cliente-dd').style.display = 'none';
+  vmosClienteEstado();
   document.getElementById('vmos-notas').value = '';
   vmosRenderCart();
   openModal('modal-venta-mostrador');
@@ -3798,8 +3801,9 @@ async function saveVenta(canal) {
   } else {
     if (!vmosCart.length) { alert('Agregá al menos un producto al carrito.'); return; }
     const fecha = document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10);
-    const cliente = document.getElementById('vmos-cliente-search').value.trim();
-    const clienteId = document.getElementById('vmos-cliente-id').value || null;
+    const clienteId = vmosResolverCliente();
+    const elegido = clienteId && db.clientes.find(c => c.id === clienteId);
+    const cliente = elegido ? elegido.nombre : document.getElementById('vmos-cliente-search').value.trim();
     const metodoPago = document.getElementById('vmos-pago').value;
     const notas = document.getElementById('vmos-notas').value.trim();
     const totales = vmosCalcTotales();
@@ -3869,6 +3873,14 @@ async function guardarEdicionVenta() {
     metodoPago: document.getElementById('ev-metodo').value || null,
     notas: document.getElementById('ev-notas').value.trim(),
   };
+  // Corregir el nombre de una venta de mostrador la pasa a la ficha de ese cliente (si
+  // hay uno solo que se llame así); si no se tocó el nombre, el vínculo queda como estaba.
+  if (v.canal === 'mostrador' && normNombre(updates.cliente) !== normNombre(v.cliente)) {
+    updates.clienteId = clienteExactoPorNombre(updates.cliente)?.id || null;
+  } else if (v.canal === 'mostrador' && !v.clienteId) {
+    const exacto = clienteExactoPorNombre(updates.cliente);
+    if (exacto) updates.clienteId = exacto.id;
+  }
   try {
     await api('PUT', `/ventas?id=${id}`, updates);
     await loadAll();
@@ -9029,23 +9041,102 @@ function renderWaitlist() {
 }
 
 // ── Selector de cliente en modal Mostrador ──────────────────────────────────
+// Los nombres se escriben a las apuradas en el mostrador: sin tildes, en minúscula, con
+// C o con K. Para encontrar al cliente se compara sin tildes ni mayúsculas y, además, por
+// cómo suena (Cristian = Kristian, Ezequiel = Esequiel, Valentín = Balentin).
+function normNombre(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+function sonidoNombre(s) {
+  return normNombre(s)
+    .replace(/qu/g, 'k').replace(/c([ei])/g, 's$1').replace(/c/g, 'k').replace(/z/g, 's')
+    .replace(/v/g, 'b').replace(/ll/g, 'y').replace(/h/g, '').replace(/w/g, 'u')
+    .replace(/([a-z])\1+/g, '$1');
+}
+
+// Qué tan bien calza un cliente con lo escrito (0 = nada). Cada palabra escrita tiene
+// que ser el principio de alguna palabra del nombre: "juan mart" encuentra a "Juan
+// Alberto Gutierrez Martinez".
+function puntajeCliente(c, q) {
+  const nombre = normNombre(c.nombre);
+  const qn = normNombre(q);
+  if (!qn) return 0;
+  if (nombre === qn) return 100;
+  if (sonidoNombre(c.nombre) === sonidoNombre(q)) return 90;
+  if (nombre.startsWith(qn)) return 80;
+  const prefijos = (palabras, partes) => partes.every(p => palabras.some(w => w.startsWith(p)));
+  if (prefijos(nombre.split(' '), qn.split(' '))) return 70;
+  if (prefijos(sonidoNombre(c.nombre).split(' '), sonidoNombre(q).split(' '))) return 60;
+  if (nombre.includes(qn)) return 50;
+  const digitos = qn.replace(/\D/g, '');
+  if (digitos.length >= 3 && (c.telefono || '').replace(/\D/g, '').includes(digitos)) return 40;
+  if (qn.length >= 3 && (c.email || '').toLowerCase().includes(qn)) return 40;
+  return 0;
+}
+
+function clientesSugeridos(q, max = 6) {
+  return db.clientes
+    .map(c => ({ c, p: puntajeCliente(c, q) }))
+    .filter(x => x.p > 0)
+    .sort((a, b) => b.p - a.p || (b.c.totalCompras || 0) - (a.c.totalCompras || 0))
+    .slice(0, max)
+    .map(x => x.c);
+}
+
+// El cliente que corresponde sin dudas a un nombre: mismo nombre (sin tildes ni
+// mayúsculas) y uno solo. Con dos homónimos no se elige por el usuario.
+function clienteExactoPorNombre(nombre) {
+  const n = normNombre(nombre);
+  if (!n) return null;
+  const iguales = db.clientes.filter(c => normNombre(c.nombre) === n);
+  return iguales.length === 1 ? iguales[0] : null;
+}
+
+let vmosClienteIndex = 0;
+let vmosClienteResultados = [];
+
 function vmosClienteSearch() {
   document.getElementById('vmos-cliente-id').value = '';
-  const q = document.getElementById('vmos-cliente-search').value.trim().toLowerCase();
-  const dd = document.getElementById('vmos-cliente-dd');
-  if (!q) { dd.style.display = 'none'; return; }
-  const results = db.clientes
-    .filter(c => c.nombre.toLowerCase().includes(q) || (c.telefono||'').includes(q) || (c.email||'').toLowerCase().includes(q))
-    .slice(0, 6);
   const nombre = document.getElementById('vmos-cliente-search').value.trim();
-  const items = results.map(c =>
-    `<div onclick="vmosClientePick('${c.id}')" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">
-      <span style="font-weight:600">${c.nombre}</span>${c.telefono ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">${c.telefono}</span>` : ''}
+  const dd = document.getElementById('vmos-cliente-dd');
+  vmosClienteResultados = nombre ? clientesSugeridos(nombre) : [];
+  vmosClienteIndex = 0;
+  vmosClienteEstado();
+  if (!nombre) { dd.style.display = 'none'; return; }
+  vmosClienteRenderDd();
+  dd.style.display = 'block';
+}
+
+function vmosClienteRenderDd() {
+  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  const fila = 'padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px';
+  const items = vmosClienteResultados.map((c, i) =>
+    `<div class="vmos-cli-opt" data-id="${escHtml(c.id)}" onmousedown="event.preventDefault();vmosClientePick(this.dataset.id)" onmouseenter="vmosClienteIndex=${i};vmosClienteRenderDd()" style="${fila};${i === vmosClienteIndex ? 'background:var(--surface2)' : ''}">
+      <span style="font-weight:600">${escHtml(c.nombre)}</span>${c.telefono ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">${escHtml(c.telefono)}</span>` : ''}${c.totalCompras ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">· ${c.totalCompras} compra${c.totalCompras === 1 ? '' : 's'}</span>` : ''}
     </div>`
   );
-  items.push(`<div onclick="vmosClienteCrearNuevo()" style="padding:7px 10px;cursor:pointer;font-size:13px;color:var(--accent)" onmouseenter="this.style.background='var(--surface2)'" onmouseleave="this.style.background=''">+ Crear cliente "${nombre}"</div>`);
-  dd.innerHTML = items.join('');
-  dd.style.display = 'block';
+  // Si ya existe uno con ese mismo nombre no se ofrece crearlo de nuevo: así no quedan duplicados.
+  if (!clienteExactoPorNombre(nombre)) {
+    const i = vmosClienteResultados.length;
+    items.push(`<div class="vmos-cli-nuevo" onmousedown="event.preventDefault();vmosClienteCrearNuevo()" onmouseenter="vmosClienteIndex=${i};vmosClienteRenderDd()" style="padding:7px 10px;cursor:pointer;font-size:13px;color:var(--accent);${i === vmosClienteIndex ? 'background:var(--surface2)' : ''}">+ Crear cliente "${escHtml(nombre)}"</div>`);
+  }
+  document.getElementById('vmos-cliente-dd').innerHTML = items.join('');
+}
+
+// Debajo del campo: a qué cliente se le va a guardar la compra, o que todavía no hay ninguno.
+function vmosClienteEstado() {
+  const el = document.getElementById('vmos-cliente-estado');
+  if (!el) return;
+  const id = document.getElementById('vmos-cliente-id').value;
+  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  const c = id && db.clientes.find(x => x.id === id);
+  if (c) {
+    el.innerHTML = `<span style="color:var(--green)">✓ Se guarda en la ficha de ${escHtml(c.nombre)}</span>`;
+  } else if (nombre) {
+    el.innerHTML = `<span style="color:var(--yellow)">Sin vincular: elegí un cliente de la lista o creálo</span>`;
+  } else {
+    el.innerHTML = '';
+  }
 }
 
 function vmosClientePick(id) {
@@ -9054,6 +9145,7 @@ function vmosClientePick(id) {
   document.getElementById('vmos-cliente-search').value = c.nombre;
   document.getElementById('vmos-cliente-id').value = id;
   document.getElementById('vmos-cliente-dd').style.display = 'none';
+  vmosClienteEstado();
 }
 
 async function vmosClienteCrearNuevo() {
@@ -9064,11 +9156,42 @@ async function vmosClienteCrearNuevo() {
     const nuevo = await api('POST', '/clientes', { nombre, canal_origen: 'mostrador' });
     db.clientes.push(normCliente({ ...nuevo, total_compras: 0, monto_total: 0, ultima_compra: null, ticket_promedio: 0 }));
     document.getElementById('vmos-cliente-id').value = nuevo.id;
+    vmosClienteEstado();
   } catch(e) { alert('Error creando cliente: ' + e.message); }
 }
 
 function vmosClienteKeydown(e) {
-  if (e.key === 'Escape') document.getElementById('vmos-cliente-dd').style.display = 'none';
+  const dd = document.getElementById('vmos-cliente-dd');
+  const abierto = dd.style.display !== 'none';
+  if (e.key === 'Escape') { dd.style.display = 'none'; return; }
+  if (!abierto) return;
+  const total = dd.children.length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    vmosClienteIndex = (vmosClienteIndex + (e.key === 'ArrowDown' ? 1 : -1) + total) % total;
+    vmosClienteRenderDd();
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    // Enter (o Tab) se queda con la sugerencia marcada, que de entrada es la primera.
+    const c = vmosClienteResultados[vmosClienteIndex];
+    if (c) { if (e.key === 'Enter') e.preventDefault(); vmosClientePick(c.id); }
+    else if (e.key === 'Enter') { e.preventDefault(); vmosClienteCrearNuevo(); }
+  }
+}
+
+// Al registrar la venta: si no se eligió a nadie pero lo escrito es el nombre de un
+// cliente, se le guarda a ese; si se parece a alguno, se pregunta antes de guardarla suelta.
+function vmosResolverCliente() {
+  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  const id = document.getElementById('vmos-cliente-id').value;
+  if (id || !nombre) return id || null;
+  const exacto = clienteExactoPorNombre(nombre);
+  if (exacto) return exacto.id;
+  const parecido = clientesSugeridos(nombre, 1)[0];
+  if (parecido && puntajeCliente(parecido, nombre) >= 60 &&
+      confirm(`¿"${nombre}" es ${parecido.nombre}${parecido.telefono ? ' (' + parecido.telefono + ')' : ''}?\n\nAceptar: guardar la compra en su ficha.\nCancelar: guardarla sin cliente.`)) {
+    return parecido.id;
+  }
+  return null;
 }
 
 // =====================

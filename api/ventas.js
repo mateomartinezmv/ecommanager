@@ -73,6 +73,9 @@ module.exports = async (req, res) => {
         orden_meli: v.ordenMeli || null,
         comprador: v.comprador || null,
         cliente: v.cliente || null,
+        // Sin esto la venta queda suelta aunque se haya elegido el cliente en el modal:
+        // la ficha del cliente sólo suma las ventas que tienen su cliente_id.
+        cliente_id: v.clienteId || null,
         sku: v.sku,
         producto: v.producto,
         cantidad: v.cantidad,
@@ -113,12 +116,13 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, facturada, notas } = req.body;
+      const { fecha, estado, comprador, cliente, clienteId, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, facturada, notas } = req.body;
       const updateData = {};
       if (fecha !== undefined) updateData.fecha = fecha;
       if (estado !== undefined) updateData.estado = estado;
       if (comprador !== undefined) updateData.comprador = comprador;
       if (cliente !== undefined) updateData.cliente = cliente;
+      if (clienteId !== undefined) updateData.cliente_id = clienteId;
       if (cantidad !== undefined) updateData.cantidad = cantidad;
       if (precioUnit !== undefined) updateData.precio_unit = precioUnit;
       if (comision !== undefined) updateData.comision = comision;

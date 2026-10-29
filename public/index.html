@@ -1202,8 +1202,7 @@
         <label class="form-label">Cliente</label>
         <div style="position:relative">
           <input type="text" id="vmos-cliente-search" placeholder="Buscar o escribir nombre..." autocomplete="off"
-            oninput="vmosClienteSearch()" onkeydown="vmosClienteKeydown(event)"
-            onblur="setTimeout(() => document.getElementById('vmos-cliente-dd').style.display = 'none', 150)">
+            oninput="cliSelSearch('vmos')" onkeydown="cliSelKeydown('vmos', event)" onblur="cliSelBlur('vmos')">
           <div id="vmos-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
         </div>
         <input type="hidden" id="vmos-cliente-id">
@@ -1319,7 +1318,15 @@
   <div class="modal">
     <div class="modal-title" id="modal-envio-title">🚚 Datos de envío</div>
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="env-comprador" placeholder="Nombre del comprador"></div>
+      <div class="form-group"><label class="form-label">Comprador</label>
+        <div style="position:relative">
+          <input type="text" id="env-comprador" placeholder="Buscar cliente o escribir nombre..." autocomplete="off"
+            oninput="cliSelSearch('env')" onkeydown="cliSelKeydown('env', event)" onblur="cliSelBlur('env')">
+          <div id="env-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        </div>
+        <input type="hidden" id="env-cliente-id">
+        <div id="env-cliente-estado" style="font-size:11px;margin-top:4px;min-height:14px"></div>
+      </div>
       <div class="form-group"><label class="form-label">Transportista</label>
         <select id="env-transportista" onchange="autoCompletarCostoEnvio('env')">
           <option value="enviosuy">EnviosUy</option>
@@ -1391,7 +1398,15 @@
     <div class="modal-title">✏️ Editar Envío</div>
     <input type="hidden" id="ee-id">
     <div class="form-grid">
-      <div class="form-group"><label class="form-label">Comprador</label><input type="text" id="ee-comprador" placeholder="Nombre del comprador"></div>
+      <div class="form-group"><label class="form-label">Comprador</label>
+        <div style="position:relative">
+          <input type="text" id="ee-comprador" placeholder="Buscar cliente o escribir nombre..." autocomplete="off"
+            oninput="cliSelSearch('ee')" onkeydown="cliSelKeydown('ee', event)" onblur="cliSelBlur('ee')">
+          <div id="ee-cliente-dd" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;max-height:220px;overflow-y:auto;z-index:300;margin-top:2px"></div>
+        </div>
+        <input type="hidden" id="ee-cliente-id">
+        <div id="ee-cliente-estado" style="font-size:11px;margin-top:4px;min-height:14px"></div>
+      </div>
       <div class="form-group"><label class="form-label">Transportista</label>
         <select id="ee-transportista" onchange="autoCompletarCostoEnvio('ee')">
           <option value="enviosuy">EnviosUy</option>
@@ -3364,10 +3379,7 @@ function vmosOpenModal() {
   document.getElementById('vmos-precio').value = '';
   document.getElementById('vmos-dropdown').style.display = 'none';
   document.getElementById('vmos-fecha').value = new Date().toISOString().slice(0,10);
-  document.getElementById('vmos-cliente-search').value = '';
-  document.getElementById('vmos-cliente-id').value = '';
-  document.getElementById('vmos-cliente-dd').style.display = 'none';
-  vmosClienteEstado();
+  cliSelSet('vmos', '', null);
   document.getElementById('vmos-notas').value = '';
   vmosRenderCart();
   openModal('modal-venta-mostrador');
@@ -3789,7 +3801,7 @@ async function saveVenta(canal) {
       if (venta.generaEnvio) {
         pendingEnvioVentaId = venta.id;
         setTimeout(() => {
-          document.getElementById('env-comprador').value = venta.comprador || '';
+          cliSelSet('env', venta.comprador, null, false);
           document.getElementById('env-fecha').value = venta.fecha;
           document.getElementById('env-costo').value = '';
           document.getElementById('modal-envio-title').textContent = `🚚 Envío — Orden ${venta.ordenMeli || venta.id}`;
@@ -3801,7 +3813,7 @@ async function saveVenta(canal) {
   } else {
     if (!vmosCart.length) { alert('Agregá al menos un producto al carrito.'); return; }
     const fecha = document.getElementById('vmos-fecha').value || new Date().toISOString().slice(0,10);
-    const clienteId = vmosResolverCliente();
+    const clienteId = cliSelResolver('vmos');
     const elegido = clienteId && db.clientes.find(c => c.id === clienteId);
     const cliente = elegido ? elegido.nombre : document.getElementById('vmos-cliente-search').value.trim();
     const metodoPago = document.getElementById('vmos-pago').value;
@@ -3883,6 +3895,11 @@ async function guardarEdicionVenta() {
   }
   try {
     await api('PUT', `/ventas?id=${id}`, updates);
+    // El cliente es de toda la compra: pasa a las otras líneas del carrito y al envío.
+    if (v.canal === 'mostrador' && updates.cliente && normNombre(updates.cliente) !== normNombre(v.cliente)) {
+      await sincronizarClienteDeVenta(v, updates.cliente, updates.clienteId ?? v.clienteId, v.id);
+      await sincronizarDestinatarioDeEnvio(v, updates.cliente);
+    }
     await loadAll();
     closeModal('modal-editar-venta');
     renderVentas();
@@ -4138,8 +4155,13 @@ async function saveEnvio() {
     const v = db.ventas.find(x => x.id === pendingEnvioVentaId);
     if (v) { envio.orden = v.ordenMeli || v.id; envio.producto = v.producto; }
   }
+  const venta = pendingEnvioVentaId && db.ventas.find(x => x.id === pendingEnvioVentaId);
+  const dest = venta?.canal === 'mostrador' && envio.comprador ? destinatarioDeEnvio('env') : null;
+  if (dest) envio.comprador = dest.nombre;
   try {
     await api('POST', '/envios', envio);
+    // El destinatario es el cliente de la venta: queda en la venta y en su ficha.
+    if (dest) await sincronizarClienteDeVenta(venta, dest.nombre, dest.clienteId);
     await loadAll();
     pendingEnvioVentaId = null;
     pendingEnvioGrupo = null;
@@ -4171,7 +4193,7 @@ function openEnvioManual(ventaId) {
   pendingEnvioVentaId = ventaId;
   pendingEnvioGrupo = null;
   imprimirEtiquetaAlGuardarEnvio = false;
-  document.getElementById('env-comprador').value = v ? (v.comprador || v.cliente || '') : '';
+  cliSelSet('env', v ? (v.comprador || v.cliente || '') : '', v?.clienteId, v?.canal === 'mostrador');
   document.getElementById('env-fecha').value = v ? v.fecha : new Date().toISOString().slice(0,10);
   document.getElementById('env-costo').value = '';
   document.getElementById('env-zona').value = '';
@@ -4214,7 +4236,12 @@ function abrirEdicionEnvio(id) {
   const e = db.envios.find(x => x.id === id);
   if (!e) return;
   document.getElementById('ee-id').value = e.id;
-  document.getElementById('ee-comprador').value = e.comprador || '';
+  // El destinatario se busca entre los clientes sólo en un envío de mostrador. Si ya es el
+  // cliente de la venta queda marcado; si no (ej: la venta se cargó sin cliente), al
+  // guardar se resuelve por el nombre.
+  const ve = db.ventas.find(v => v.id === e.ventaId);
+  const cliVenta = ve?.clienteId && db.clientes.find(c => c.id === ve.clienteId);
+  cliSelSet('ee', e.comprador || '', cliVenta && normNombre(cliVenta.nombre) === normNombre(e.comprador) ? cliVenta.id : null, ve?.canal === 'mostrador');
   document.getElementById('ee-transportista').value = e.transportista || 'otro';
   document.getElementById('ee-tracking').value = e.tracking || '';
   document.getElementById('ee-costo').value = e.costo || '';
@@ -4249,8 +4276,13 @@ async function guardarEdicionEnvio() {
     fechaDespacho: document.getElementById('ee-fecha').value,
     direccion: dirComponerDireccion('ee'),
   };
+  const envio = db.envios.find(x => x.id === id);
+  const venta = envio && db.ventas.find(v => v.id === envio.ventaId);
+  const dest = venta?.canal === 'mostrador' && updates.comprador ? destinatarioDeEnvio('ee') : null;
+  if (dest) updates.comprador = dest.nombre;
   try {
     await api('PUT', `/envios?id=${id}`, updates);
+    if (dest) await sincronizarClienteDeVenta(venta, dest.nombre, dest.clienteId);
     await loadAll();
     closeModal('modal-editar-envio');
     renderEnvios();
@@ -9092,46 +9124,67 @@ function clienteExactoPorNombre(nombre) {
   return iguales.length === 1 ? iguales[0] : null;
 }
 
-let vmosClienteIndex = 0;
-let vmosClienteResultados = [];
+// El mismo buscador sirve en tres lugares: el cliente de la venta de mostrador y el
+// destinatario del envío (al crearlo y al editarlo). Cada uno tiene su campo de texto,
+// el id elegido escondido, la lista desplegable y el aviso de a qué ficha va.
+const CLI_SEL = {
+  vmos: { input: 'vmos-cliente-search', id: 'vmos-cliente-id', dd: 'vmos-cliente-dd', estado: 'vmos-cliente-estado', destino: 'la compra' },
+  env:  { input: 'env-comprador', id: 'env-cliente-id', dd: 'env-cliente-dd', estado: 'env-cliente-estado', destino: 'la venta' },
+  ee:   { input: 'ee-comprador', id: 'ee-cliente-id', dd: 'ee-cliente-dd', estado: 'ee-cliente-estado', destino: 'la venta' },
+};
+const cliSelState = { vmos: { idx: 0, res: [], activo: true }, env: { idx: 0, res: [], activo: true }, ee: { idx: 0, res: [], activo: true } };
+const cliSelEl = (p, k) => document.getElementById(CLI_SEL[p][k]);
 
-function vmosClienteSearch() {
-  document.getElementById('vmos-cliente-id').value = '';
-  const nombre = document.getElementById('vmos-cliente-search').value.trim();
-  const dd = document.getElementById('vmos-cliente-dd');
-  vmosClienteResultados = nombre ? clientesSugeridos(nombre) : [];
-  vmosClienteIndex = 0;
-  vmosClienteEstado();
+// Prepara el campo al abrir el modal. `activo` = false para un envío de MELI: ahí el
+// comprador es el nickname y no se busca entre los clientes.
+function cliSelSet(p, nombre, clienteId, activo = true) {
+  cliSelState[p].activo = activo;
+  cliSelEl(p, 'input').value = nombre || '';
+  cliSelEl(p, 'id').value = clienteId || '';
+  cliSelEl(p, 'dd').style.display = 'none';
+  cliSelEstado(p);
+}
+
+function cliSelSearch(p) {
+  if (!cliSelState[p].activo) return;
+  cliSelEl(p, 'id').value = '';
+  const nombre = cliSelEl(p, 'input').value.trim();
+  const dd = cliSelEl(p, 'dd');
+  cliSelState[p].res = nombre ? clientesSugeridos(nombre) : [];
+  cliSelState[p].idx = 0;
+  cliSelEstado(p);
   if (!nombre) { dd.style.display = 'none'; return; }
-  vmosClienteRenderDd();
+  cliSelRenderDd(p);
   dd.style.display = 'block';
 }
 
-function vmosClienteRenderDd() {
-  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+function cliSelRenderDd(p) {
+  const st = cliSelState[p];
+  const nombre = cliSelEl(p, 'input').value.trim();
   const fila = 'padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px';
-  const items = vmosClienteResultados.map((c, i) =>
-    `<div class="vmos-cli-opt" data-id="${escHtml(c.id)}" onmousedown="event.preventDefault();vmosClientePick(this.dataset.id)" onmouseenter="vmosClienteIndex=${i};vmosClienteRenderDd()" style="${fila};${i === vmosClienteIndex ? 'background:var(--surface2)' : ''}">
+  const items = st.res.map((c, i) =>
+    `<div class="cli-opt" data-id="${escHtml(c.id)}" onmousedown="event.preventDefault();cliSelPick('${p}', this.dataset.id)" onmouseenter="cliSelState.${p}.idx=${i};cliSelRenderDd('${p}')" style="${fila};${i === st.idx ? 'background:var(--surface2)' : ''}">
       <span style="font-weight:600">${escHtml(c.nombre)}</span>${c.telefono ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">${escHtml(c.telefono)}</span>` : ''}${c.totalCompras ? `<span style="color:var(--text-muted);margin-left:6px;font-size:11px">· ${c.totalCompras} compra${c.totalCompras === 1 ? '' : 's'}</span>` : ''}
     </div>`
   );
   // Si ya existe uno con ese mismo nombre no se ofrece crearlo de nuevo: así no quedan duplicados.
   if (!clienteExactoPorNombre(nombre)) {
-    const i = vmosClienteResultados.length;
-    items.push(`<div class="vmos-cli-nuevo" onmousedown="event.preventDefault();vmosClienteCrearNuevo()" onmouseenter="vmosClienteIndex=${i};vmosClienteRenderDd()" style="padding:7px 10px;cursor:pointer;font-size:13px;color:var(--accent);${i === vmosClienteIndex ? 'background:var(--surface2)' : ''}">+ Crear cliente "${escHtml(nombre)}"</div>`);
+    const i = st.res.length;
+    items.push(`<div class="cli-nuevo" onmousedown="event.preventDefault();cliSelCrearNuevo('${p}')" onmouseenter="cliSelState.${p}.idx=${i};cliSelRenderDd('${p}')" style="padding:7px 10px;cursor:pointer;font-size:13px;color:var(--accent);${i === st.idx ? 'background:var(--surface2)' : ''}">+ Crear cliente "${escHtml(nombre)}"</div>`);
   }
-  document.getElementById('vmos-cliente-dd').innerHTML = items.join('');
+  cliSelEl(p, 'dd').innerHTML = items.join('');
 }
 
-// Debajo del campo: a qué cliente se le va a guardar la compra, o que todavía no hay ninguno.
-function vmosClienteEstado() {
-  const el = document.getElementById('vmos-cliente-estado');
+// Debajo del campo: a qué cliente se le va a guardar, o que todavía no hay ninguno.
+function cliSelEstado(p) {
+  const el = cliSelEl(p, 'estado');
   if (!el) return;
-  const id = document.getElementById('vmos-cliente-id').value;
-  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+  if (!cliSelState[p].activo) { el.innerHTML = ''; return; }
+  const id = cliSelEl(p, 'id').value;
+  const nombre = cliSelEl(p, 'input').value.trim();
   const c = id && db.clientes.find(x => x.id === id);
   if (c) {
-    el.innerHTML = `<span style="color:var(--green)">✓ Se guarda en la ficha de ${escHtml(c.nombre)}</span>`;
+    el.innerHTML = `<span style="color:var(--green)">✓ ${CLI_SEL[p].destino === 'la compra' ? 'Se guarda' : 'La venta queda'} en la ficha de ${escHtml(c.nombre)}</span>`;
   } else if (nombre) {
     el.innerHTML = `<span style="color:var(--yellow)">Sin vincular: elegí un cliente de la lista o creálo</span>`;
   } else {
@@ -9139,59 +9192,101 @@ function vmosClienteEstado() {
   }
 }
 
-function vmosClientePick(id) {
+function cliSelPick(p, id) {
   const c = db.clientes.find(x => x.id === id);
   if (!c) return;
-  document.getElementById('vmos-cliente-search').value = c.nombre;
-  document.getElementById('vmos-cliente-id').value = id;
-  document.getElementById('vmos-cliente-dd').style.display = 'none';
-  vmosClienteEstado();
+  cliSelEl(p, 'input').value = c.nombre;
+  cliSelEl(p, 'id').value = id;
+  cliSelEl(p, 'dd').style.display = 'none';
+  cliSelEstado(p);
 }
 
-async function vmosClienteCrearNuevo() {
-  const nombre = document.getElementById('vmos-cliente-search').value.trim();
+async function cliSelCrearNuevo(p) {
+  const nombre = cliSelEl(p, 'input').value.trim();
   if (!nombre) return;
-  document.getElementById('vmos-cliente-dd').style.display = 'none';
+  cliSelEl(p, 'dd').style.display = 'none';
   try {
     const nuevo = await api('POST', '/clientes', { nombre, canal_origen: 'mostrador' });
     db.clientes.push(normCliente({ ...nuevo, total_compras: 0, monto_total: 0, ultima_compra: null, ticket_promedio: 0 }));
-    document.getElementById('vmos-cliente-id').value = nuevo.id;
-    vmosClienteEstado();
+    cliSelEl(p, 'id').value = nuevo.id;
+    cliSelEstado(p);
   } catch(e) { alert('Error creando cliente: ' + e.message); }
 }
 
-function vmosClienteKeydown(e) {
-  const dd = document.getElementById('vmos-cliente-dd');
-  const abierto = dd.style.display !== 'none';
+function cliSelKeydown(p, e) {
+  const dd = cliSelEl(p, 'dd');
+  const st = cliSelState[p];
   if (e.key === 'Escape') { dd.style.display = 'none'; return; }
-  if (!abierto) return;
+  if (dd.style.display === 'none') return;
   const total = dd.children.length;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
-    vmosClienteIndex = (vmosClienteIndex + (e.key === 'ArrowDown' ? 1 : -1) + total) % total;
-    vmosClienteRenderDd();
+    st.idx = (st.idx + (e.key === 'ArrowDown' ? 1 : -1) + total) % total;
+    cliSelRenderDd(p);
   } else if (e.key === 'Enter' || e.key === 'Tab') {
     // Enter (o Tab) se queda con la sugerencia marcada, que de entrada es la primera.
-    const c = vmosClienteResultados[vmosClienteIndex];
-    if (c) { if (e.key === 'Enter') e.preventDefault(); vmosClientePick(c.id); }
-    else if (e.key === 'Enter') { e.preventDefault(); vmosClienteCrearNuevo(); }
+    const c = st.res[st.idx];
+    if (c) { if (e.key === 'Enter') e.preventDefault(); cliSelPick(p, c.id); }
+    else if (e.key === 'Enter') { e.preventDefault(); cliSelCrearNuevo(p); }
   }
 }
 
-// Al registrar la venta: si no se eligió a nadie pero lo escrito es el nombre de un
-// cliente, se le guarda a ese; si se parece a alguno, se pregunta antes de guardarla suelta.
-function vmosResolverCliente() {
-  const nombre = document.getElementById('vmos-cliente-search').value.trim();
-  const id = document.getElementById('vmos-cliente-id').value;
+function cliSelBlur(p) {
+  setTimeout(() => { cliSelEl(p, 'dd').style.display = 'none'; }, 150);
+}
+
+// Al guardar: si no se eligió a nadie pero lo escrito es el nombre de un cliente, va a
+// ese; si se parece a alguno, se pregunta antes de dejarlo sin cliente.
+function cliSelResolver(p) {
+  const nombre = cliSelEl(p, 'input').value.trim();
+  const id = cliSelEl(p, 'id').value;
   if (id || !nombre) return id || null;
   const exacto = clienteExactoPorNombre(nombre);
   if (exacto) return exacto.id;
   const parecido = clientesSugeridos(nombre, 1)[0];
   if (parecido && puntajeCliente(parecido, nombre) >= 60 &&
-      confirm(`¿"${nombre}" es ${parecido.nombre}${parecido.telefono ? ' (' + parecido.telefono + ')' : ''}?\n\nAceptar: guardar la compra en su ficha.\nCancelar: guardarla sin cliente.`)) {
+      confirm(`¿"${nombre}" es ${parecido.nombre}${parecido.telefono ? ' (' + parecido.telefono + ')' : ''}?\n\nAceptar: guardar ${CLI_SEL[p].destino} en su ficha.\nCancelar: guardarla sin cliente.`)) {
     return parecido.id;
   }
   return null;
+}
+
+// ── Venta de mostrador ↔ envío ↔ cliente ────────────────────────────────────
+// El cliente de una venta de mostrador y el destinatario de su envío son la misma
+// persona: cambiar uno actualiza el otro, en todas las líneas del carrito.
+function lineasDelTicket(venta) {
+  const key = ticketKey(venta);
+  return db.ventas.filter(v => ticketKey(v) === key);
+}
+
+// Pone a ese cliente en todas las líneas de la venta. Devuelve cuántas cambió.
+async function sincronizarClienteDeVenta(venta, nombre, clienteId, exceptoId = null) {
+  if (!venta || venta.canal !== 'mostrador') return 0;
+  let cambiadas = 0;
+  for (const v of lineasDelTicket(venta)) {
+    if (v.id === exceptoId) continue;
+    if ((v.cliente || '') === (nombre || '') && (v.clienteId || null) === (clienteId || null)) continue;
+    await api('PUT', `/ventas?id=${v.id}`, { cliente: nombre || null, clienteId: clienteId || null });
+    cambiadas++;
+  }
+  return cambiadas;
+}
+
+// Pone ese nombre como destinatario del envío de la venta (si tiene uno).
+async function sincronizarDestinatarioDeEnvio(venta, nombre) {
+  if (!venta || venta.canal !== 'mostrador' || !nombre) return false;
+  const ids = new Set(lineasDelTicket(venta).map(v => v.id));
+  const envio = db.envios.find(e => ids.has(e.ventaId));
+  if (!envio || (envio.comprador || '') === nombre) return false;
+  await api('PUT', `/envios?id=${envio.id}`, { comprador: nombre });
+  return true;
+}
+
+// Cliente y nombre a guardar desde el campo de destinatario de un envío.
+function destinatarioDeEnvio(p) {
+  const clienteId = cliSelResolver(p);
+  const c = clienteId && db.clientes.find(x => x.id === clienteId);
+  return { clienteId, nombre: c ? c.nombre : cliSelEl(p, 'input').value.trim() };
 }
 
 // =====================

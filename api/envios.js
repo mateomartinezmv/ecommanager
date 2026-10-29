@@ -43,7 +43,10 @@ module.exports = async (req, res) => {
     if (req.method === 'PUT') {
       const id = req.query.id;
       const { estado, tracking, costo, zona, colecta, transportista, comprador, fechaDespacho, direccion } = req.body;
-      const updateData = { estado, tracking };
+      // Sólo lo que viene: renombrar el destinatario desde la venta no toca estado ni tracking.
+      const updateData = {};
+      if (estado !== undefined) updateData.estado = estado;
+      if (tracking !== undefined) updateData.tracking = tracking;
       if (costo !== undefined) updateData.costo = costo;
       if (zona !== undefined) updateData.zona = zona;
       if (colecta !== undefined) updateData.colecta = colecta;

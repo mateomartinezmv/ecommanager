@@ -393,6 +393,7 @@
         <option value="">Todos los envíos</option>
         <option value="meli_envios">📦 MELI Envíos</option>
         <option value="flex">⚡ Flex</option>
+        <option value="interior">🛣️ Interior</option>
         <option value="otros">🚚 Otros</option>
       </select>
       <button class="btn btn-ghost btn-sm" onclick="exportVentasCSV()" title="Exportar a Excel/CSV">⬇ CSV</button>
@@ -464,6 +465,7 @@
           <option value="">Todos los envíos</option>
           <option value="meli_envios">📦 MELI Envíos</option>
           <option value="flex">⚡ Flex</option>
+          <option value="interior">🛣️ Interior</option>
           <option value="otros">🚚 Otros</option>
         </select>
         <select id="envios-zona" onchange="renderEnvios()" title="Zona" style="padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
@@ -6133,17 +6135,17 @@ function switchVentasTab(tab) {
   renderVentas();
 }
 
-const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', otros: '🚚 Otro' };
+const TIPO_ENVIO_LABELS = { meli_envios: '📦 MELI Envíos', flex: '⚡ Flex', interior: '🛣️ Interior', otros: '🚚 Otro' };
 
-// Clasifica un transportista en uno de los 3 buckets de tipo de envío.
+// Clasifica un transportista en uno de los 4 buckets de tipo de envío.
 // Flex = todo envío que despachamos nosotros con un transportista propio
-// (no solo EnviosUy: también GestionPost, UES, DAC o MMOTOS MATEO).
+// en Montevideo (EnviosUy, GestionPost o MMOTOS MATEO). Interior = UES y DAC.
 const TIPO_ENVIO_POR_TRANSPORTISTA = {
   mercado_envios: 'meli_envios',
   enviosuy: 'flex',
   gestionpost: 'flex',
-  ues: 'flex',
-  dac: 'flex',
+  ues: 'interior',
+  dac: 'interior',
   mmotos_mateo: 'flex',
   otro: 'otros',
 };
@@ -6429,7 +6431,7 @@ async function toggleColecta(checkbox) {
   } catch(err) { console.error('Error toggling colecta:', err); }
 }
 
-const TIPO_ENVIO_ICONS = { flex: '⚡', meli_envios: '📦', otros: '🚚' };
+const TIPO_ENVIO_ICONS = { flex: '⚡', interior: '🛣️', meli_envios: '📦', otros: '🚚' };
 
 function renderEnvios() {
   const q = (document.getElementById('envios-search')?.value || '').toLowerCase();

@@ -747,6 +747,7 @@
         <button class="tab active" onclick="switchReportesTab('resumen')">📈 Resumen</button>
         <button class="tab" onclick="switchReportesTab('comisiones')">📊 Comisiones MELI</button>
         <button class="tab" onclick="switchReportesTab('canceladas')">❌ Canceladas</button>
+        <button class="tab" onclick="switchReportesTab('envios')">🚚 Envíos</button>
       </div>
       <!-- Panel Resumen -->
       <div id="panel-resumen">
@@ -825,6 +826,25 @@
             <div class="empty-icon">✅</div>
             <p>No hay ventas canceladas en el período.</p>
           </div>
+        </div>
+      </div>
+
+      <!-- Panel Envíos -->
+      <div id="panel-envios-reporte" style="display:none">
+        <div class="cards-grid" id="envrep-stats"></div>
+        <div class="cards-grid" id="envrep-tipos"></div>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <span class="table-title">💳 Gasto por transportista</span>
+            <span style="font-size:11px;color:var(--text-muted)">Costo del envío + colecta ($75)</span>
+          </div>
+          <div id="envrep-transportistas"></div>
+        </div>
+        <div class="table-wrap" style="margin-bottom:20px">
+          <div class="table-header">
+            <span class="table-title">📦 Envíos por tipo y por origen de la venta</span>
+          </div>
+          <div id="envrep-tipos-tabla"></div>
         </div>
       </div>
 
@@ -7285,6 +7305,7 @@ function onCustomRangeChange() {
     const tab = active ? active.getAttribute('onclick').match(/'(\w+)'/)[1] : 'resumen';
     if (tab === 'comisiones') renderComisiones();
     else if (tab === 'canceladas') renderCanceladas();
+    else if (tab === 'envios') renderEnviosReporte();
     else renderReportes();
   }
 }
@@ -7318,19 +7339,156 @@ function onReportePeriodoChange() {
   const tab = active ? active.getAttribute('onclick').match(/'(\w+)'/)[1] : 'resumen';
   if (tab === 'comisiones') renderComisiones();
   else if (tab === 'canceladas') renderCanceladas();
+  else if (tab === 'envios') renderEnviosReporte();
   else renderReportes();
 }
 
 function switchReportesTab(tab) {
   document.querySelectorAll('#page-reportes .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['resumen','comisiones','canceladas'][i] === tab);
+    t.classList.toggle('active', ['resumen','comisiones','canceladas','envios'][i] === tab);
   });
   document.getElementById('panel-resumen').style.display = tab === 'resumen' ? '' : 'none';
   document.getElementById('panel-comisiones').style.display = tab === 'comisiones' ? '' : 'none';
   document.getElementById('panel-canceladas').style.display = tab === 'canceladas' ? '' : 'none';
+  document.getElementById('panel-envios-reporte').style.display = tab === 'envios' ? '' : 'none';
   if (tab === 'comisiones') renderComisiones();
   else if (tab === 'canceladas') renderCanceladas();
+  else if (tab === 'envios') renderEnviosReporte();
   else renderReportes();
+}
+
+// =====================
+// REPORTE: ENVÍOS
+// =====================
+// Cuánto se gastó por transportista y cuántos envíos salieron de cada tipo en el período.
+// El gasto es el mismo que suma el Resumen (costo del envío + $75 de colecta) y el período
+// se mide por la fecha en que se cargó el envío, igual que ahí, para que los totales cuadren.
+// Lo que MELI cobra por sus envíos no está en el envío sino en la venta (costoEnvioMeli) y
+// ya va descontado dentro de la comisión, así que se muestra aparte y no se suma al gasto.
+const ENVREP_CANALES = [
+  { id: 'meli', label: '🟡 MELI' },
+  { id: 'mostrador', label: '🏪 Mostrador' },
+  { id: 'shopify', label: '🛍️ Shopify' },
+  { id: 'sin_venta', label: '— Sin venta' },
+];
+
+function costoEnvioTotal(e) {
+  return (e.costo || 0) + (e.colecta ? 75 : 0);
+}
+
+function calcularReporteEnvios(envios, ventas) {
+  const ventasPorId = Object.fromEntries(ventas.map(v => [v.id, v]));
+  const porTransportista = {};
+  const porTipo = {};
+  const porCanal = {};
+  // Lo que MELI cobró por envío se cuenta una vez por venta (un envío puede cubrir un carrito).
+  const ventasMeliContadas = new Set();
+
+  envios.forEach(e => {
+    const costo = costoEnvioTotal(e);
+    const tipo = tipoEnvioDeTransportista(e.transportista);
+    const venta = ventasPorId[e.ventaId];
+    const canal = venta ? (venta.canal || 'sin_venta') : 'sin_venta';
+
+    const t = porTransportista[e.transportista] ||= { transportista: e.transportista, tipo, envios: 0, gasto: 0, pagado: 0, pendiente: 0, colectas: 0, costoMeli: 0 };
+    t.envios++;
+    t.gasto += costo;
+    if (e.pagado) t.pagado += costo; else t.pendiente += costo;
+    if (e.colecta) t.colectas++;
+    if (venta && venta.canal === 'meli' && !ventasMeliContadas.has(venta.id)) {
+      ventasMeliContadas.add(venta.id);
+      t.costoMeli += venta.costoEnvioMeli || 0;
+    }
+
+    const tp = porTipo[tipo] ||= { tipo, envios: 0, gasto: 0, porCanal: {} };
+    tp.envios++;
+    tp.gasto += costo;
+    tp.porCanal[canal] = (tp.porCanal[canal] || 0) + 1;
+
+    const c = porCanal[canal] ||= { canal, envios: 0, gasto: 0 };
+    c.envios++;
+    c.gasto += costo;
+  });
+
+  const total = envios.length;
+  const gasto = envios.reduce((a, e) => a + costoEnvioTotal(e), 0);
+  const pendiente = envios.filter(e => !e.pagado).reduce((a, e) => a + costoEnvioTotal(e), 0);
+  return {
+    total, gasto, pendiente,
+    promedio: total > 0 ? gasto / total : 0,
+    transportistas: Object.values(porTransportista).sort((a, b) => b.gasto - a.gasto || b.envios - a.envios),
+    porTipo, porCanal,
+  };
+}
+
+function renderEnviosReporte() {
+  const { desde, hasta } = getReporteFiltro();
+  const envios = desde === null
+    ? db.envios
+    : db.envios.filter(e => { const d = (e.creado || '').slice(0, 10); return d >= desde && d <= hasta; });
+  const r = calcularReporteEnvios(envios, db.ventas);
+  const pct = (n, tot) => tot > 0 ? Math.round(n / tot * 100) : 0;
+
+  document.getElementById('envrep-stats').innerHTML = `
+    <div class="stat-card blue"><div class="stat-icon">🚚</div><div class="stat-value">${r.total}</div><div class="stat-label">Envíos en el período</div></div>
+    <div class="stat-card red"><div class="stat-icon">💸</div><div class="stat-value">${fmt(r.gasto)}</div><div class="stat-label">Gasto total en envíos</div></div>
+    <div class="stat-card purple"><div class="stat-icon">📏</div><div class="stat-value">${fmt(r.promedio)}</div><div class="stat-label">Costo promedio por envío</div></div>
+    <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(r.pendiente)}</div><div class="stat-label">Pendiente de pagar</div></div>
+  `;
+
+  // Una tarjeta por tipo de envío y otra para los que salieron de una venta de mostrador
+  // (esos se cuentan además dentro de su tipo: Flex, Interior, etc.).
+  const colorTipo = { meli_envios: 'yellow', flex: 'blue', interior: 'purple', otros: 'red' };
+  const tarjetasTipo = ['meli_envios', 'flex', 'interior', 'otros'].map(tipo => {
+    const n = r.porTipo[tipo]?.envios || 0;
+    return `<div class="stat-card ${colorTipo[tipo]}"><div class="stat-value">${n}</div><div class="stat-label">${TIPO_ENVIO_LABELS[tipo]} · ${pct(n, r.total)}%</div></div>`;
+  }).join('');
+  const nMostrador = r.porCanal.mostrador?.envios || 0;
+  document.getElementById('envrep-tipos').innerHTML = tarjetasTipo +
+    `<div class="stat-card green"><div class="stat-value">${nMostrador}</div><div class="stat-label">🏪 De mostrador · ${pct(nMostrador, r.total)}%</div></div>`;
+
+  // ── Tabla por transportista
+  const filasT = r.transportistas.map(t => `
+    <tr>
+      <td>${TIPO_ENVIO_ICONS[t.tipo]} <strong>${NOMBRES_TRANSPORTISTAS[t.transportista] || t.transportista || '—'}</strong></td>
+      <td style="text-align:center">${t.envios}</td>
+      <td style="text-align:center">${t.colectas || '—'}</td>
+      <td style="color:var(--yellow);font-weight:700">${fmt(t.gasto)}${t.costoMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400" title="Lo que MELI descontó por el envío. Ya está incluido en las comisiones MELI, por eso no se suma al gasto.">+ ${fmt(t.costoMeli)} cobrado por MELI</span>` : ''}</td>
+      <td>${fmt(t.envios > 0 ? t.gasto / t.envios : 0)}</td>
+      <td>${pct(t.gasto, r.gasto)}%</td>
+      <td style="color:var(--green)">${fmt(t.pagado)}</td>
+      <td style="color:${t.pendiente > 0 ? 'var(--red)' : 'var(--text-muted)'}">${fmt(t.pendiente)}</td>
+    </tr>`).join('');
+  document.getElementById('envrep-transportistas').innerHTML = r.transportistas.length === 0
+    ? '<div class="empty-state"><div class="empty-icon">🚚</div><p>No hay envíos en el período.</p></div>'
+    : `<table><thead><tr><th>Transportista</th><th style="text-align:center">Envíos</th><th style="text-align:center">Colectas</th><th>Gasto</th><th>Promedio</th><th>% del gasto</th><th>Pagado</th><th>Pendiente</th></tr></thead>
+       <tbody>${filasT}</tbody>
+       <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+         <td>Total</td><td style="text-align:center">${r.total}</td><td style="text-align:center">${r.transportistas.reduce((a, t) => a + t.colectas, 0) || '—'}</td>
+         <td style="color:var(--yellow)">${fmt(r.gasto)}</td><td>${fmt(r.promedio)}</td><td>100%</td>
+         <td style="color:var(--green)">${fmt(r.gasto - r.pendiente)}</td><td style="color:var(--red)">${fmt(r.pendiente)}</td>
+       </tr></tfoot></table>`;
+
+  // ── Tabla por tipo × canal de la venta
+  const canales = ENVREP_CANALES.filter(c => r.porCanal[c.id]);
+  const filasTipo = ['meli_envios', 'flex', 'interior', 'otros'].filter(t => r.porTipo[t]).map(tipo => {
+    const tp = r.porTipo[tipo];
+    return `<tr>
+      <td><strong>${TIPO_ENVIO_LABELS[tipo]}</strong></td>
+      ${canales.map(c => `<td style="text-align:center">${tp.porCanal[c.id] || '—'}</td>`).join('')}
+      <td style="text-align:center;font-weight:700">${tp.envios}</td>
+      <td>${pct(tp.envios, r.total)}%</td>
+      <td style="color:var(--yellow);font-weight:600">${fmt(tp.gasto)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('envrep-tipos-tabla').innerHTML = r.total === 0
+    ? '<div class="empty-state"><p>No hay envíos en el período.</p></div>'
+    : `<table><thead><tr><th>Tipo de envío</th>${canales.map(c => `<th style="text-align:center">${c.label}</th>`).join('')}<th style="text-align:center">Total</th><th>%</th><th>Gasto</th></tr></thead>
+       <tbody>${filasTipo}</tbody>
+       <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+         <td>Total</td>${canales.map(c => `<td style="text-align:center">${r.porCanal[c.id].envios}</td>`).join('')}
+         <td style="text-align:center">${r.total}</td><td>100%</td><td style="color:var(--yellow)">${fmt(r.gasto)}</td>
+       </tr></tfoot></table>`;
 }
 
 function renderComisiones() {

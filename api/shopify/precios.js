@@ -4,6 +4,7 @@
 // GET  /api/shopify/precios?sku=X                 → lo mismo, sólo ese SKU
 // POST /api/shopify/precios [{ sku }]             → los copia a Shopify
 // GET  /api/shopify/precios?accion=aplicar[&sku=X] → lo mismo que el POST, para lanzarlo desde el navegador
+// ?excluir=A,B (o { excluir: [...] } en el POST)   → deja afuera esos SKUs
 //
 // Copiar un descuento es dejar la variante de Shopify con:
 //   compare_at_price = precio de lista de MELI   (la tienda lo muestra tachado)
@@ -76,7 +77,7 @@ async function variantesShopify(token, variantIds) {
   return mapa;
 }
 
-async function planificar(supabase, skuFiltro = '') {
+async function planificar(supabase, skuFiltro = '', excluir = new Set()) {
   const { data, error } = await supabase
     .from('productos')
     .select('sku, nombre, meli_id, meli_ids, shopify_id, discontinuado')
@@ -85,7 +86,8 @@ async function planificar(supabase, skuFiltro = '') {
 
   const productos = (data || [])
     .filter(p => !p.discontinuado && meliIdsDe(p).length)
-    .filter(p => !skuFiltro || p.sku === skuFiltro);
+    .filter(p => !skuFiltro || p.sku === skuFiltro)
+    .filter(p => !excluir.has(p.sku));
 
   const [meliToken, shopifyToken] = await Promise.all([getMeliToken(), getShopifyToken()]);
   const variantIds = [...new Set(productos.map(p => p.shopify_id).filter(Boolean).map(String))];
@@ -136,7 +138,10 @@ module.exports = async (req, res) => {
     if (!aplicar && req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
     const skuFiltro = String(req.body?.sku || req.query?.sku || '').trim();
-    const { filas, sinShopify, revisados, shopifyToken } = await planificar(getSupabase(), skuFiltro);
+    const excluirCrudo = req.body?.excluir ?? req.query?.excluir ?? [];
+    const excluir = new Set((Array.isArray(excluirCrudo) ? excluirCrudo : String(excluirCrudo).split(','))
+      .map(s => String(s).trim()).filter(Boolean));
+    const { filas, sinShopify, revisados, shopifyToken } = await planificar(getSupabase(), skuFiltro, excluir);
     const pendientesDeCambio = filas.filter(f => !f.alDia);
 
     if (!aplicar) {

@@ -334,6 +334,7 @@ module.exports = {
   sincronizarStock,
   ventaNueva,
   resumenSync,
+  shopifyFetch,
   syncMeliStock,
   syncMeliStockProducto,
   syncShopifyStockProducto,

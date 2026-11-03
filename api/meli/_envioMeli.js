@@ -9,22 +9,27 @@
 //   Mercado Envíos, paga comprador cost 0                → panel: Envíos $0
 //   Flex, envío gratis             cost 135,2 save 33,8  charge_flex 0
 //                                                        → panel: Anulaciones de cargos +$33,80
-//   Flex, paga comprador           cost 0     save 0     → sin bonificación
+//   Flex, paga comprador           cost 0     save 0     receiver.cost_details → vendedor 200
+//                                                        → panel: Envíos +$200
 //
 //   · Mercado Envíos: el vendedor paga `cost`. El `save` es el descuento que MELI aplica sobre
 //     la tarifa entera ($270 → $135): ya está descontado de `cost`, no es plata que vuelve.
 //   · Flex: el envío lo hace el vendedor, así que `cost` no se cobra (lo que se cobra es
 //     `charges.charge_flex`), y `save` es la bonificación por envío que MELI le devuelve al
-//     vendedor como "Anulación de cargos".
+//     vendedor como "Anulación de cargos". Si el envío lo paga el comprador, esa plata va al
+//     vendedor: `receiver.cost_details` la asigna a su sender_id.
 //
 // Nada de esto viene en el pago (que además la API no deja leer: /payments da 404), así que la
 // comisión del CRM, que es todo lo que MELI se queda, se arma a mano:
-//   comision = cargos por venta + cobro de envío − bonificación de envío
+//   comision = cargos por venta + cobro de envío − bonificación o envío cobrado al comprador
 // y la parte de envío queda desglosada en `ventas.costo_envio_meli`, con signo: positivo es
-// un cobro, negativo una bonificación.
+// un cobro, negativo plata que MELI le pasa al vendedor. La comisión puede quedar negativa
+// (Flex de $820 con $163 de cargos y $200 de envío del comprador: −$36,98), y está bien:
+// total − comisión sigue siendo lo que el vendedor cobra.
 //
 // Si /costs no responde se cae al shipment: en Mercado Envíos list_cost − cost da lo mismo que
-// `cost`; en Flex con envío gratis, base_cost − list_cost da la bonificación ($169 − $135,2).
+// `cost`; en Flex con envío gratis, base_cost − list_cost da la bonificación ($169 − $135,2),
+// y con envío pago, shipping_option.cost es lo que pagó el comprador.
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -39,7 +44,8 @@ function remitente(shipData, costs) {
 
 /**
  * Cuánto mueve el envío entero (todo el paquete) en lo que MELI se queda.
- * > 0: MELI le cobra al vendedor el envío. < 0: MELI le bonifica el envío. 0: ninguno.
+ * > 0: MELI le cobra al vendedor el envío. < 0: MELI le pasa plata por el envío (bonificación
+ * Flex o lo que pagó el comprador en Flex). 0: ninguno.
  */
 function ajusteEnvio(shipData, costs) {
   if (!shipData || shipData.error) return 0;
@@ -48,9 +54,15 @@ function ajusteEnvio(shipData, costs) {
   const opt = shipData.shipping_option || {};
 
   if (esFlex) {
-    if (s) return r2(num(s.charges?.charge_flex) - num(s.save));
-    const gratis = opt.cost !== null && opt.cost !== undefined && num(opt.cost) === 0;
-    return gratis ? -r2(Math.max(0, num(shipData.base_cost) - num(opt.list_cost))) : 0;
+    if (s) {
+      const delComprador = (costs?.receiver?.cost_details || [])
+        .filter(d => String(d.sender_id) === String(s.user_id))
+        .reduce((a, d) => a + num(d.amount), 0);
+      return r2(num(s.charges?.charge_flex) - num(s.save) - delComprador);
+    }
+    if (opt.cost === null || opt.cost === undefined) return 0;
+    if (num(opt.cost) > 0) return -r2(num(opt.cost));
+    return -r2(Math.max(0, num(shipData.base_cost) - num(opt.list_cost)));
   }
 
   if (s) return r2(Math.max(0, num(s.cost)));
@@ -74,18 +86,19 @@ function envioDeLinea(shipData, costs, lineaTotal, ordenTotal) {
 }
 
 /**
- * Comisión de la línea = cargos por venta + ajuste de envío (cobro o bonificación).
+ * Comisión de la línea = cargos por venta + ajuste de envío (cobro, bonificación o envío
+ * pagado por el comprador en Flex).
  *
  * `cargos` es lo que salió del pago (total − neto) o el sale_fee. Si alguna vez MELI ya trae
  * el cobro de envío adentro del neto, la deducción da exactamente cargos por venta + envío: en
- * ese caso no se vuelve a sumar. Nunca baja de 0.
+ * ese caso no se vuelve a sumar. Puede quedar negativa: ver arriba.
  */
 function comisionConEnvio({ cargos, saleFee, envio }) {
   const c = num(cargos);
   const e = num(envio);
   if (e === 0) return r2(c);
   const yaIncluido = e > 0 && num(saleFee) > 0 && Math.abs(c - (num(saleFee) + e)) < 1;
-  return r2(Math.max(0, yaIncluido ? c : c + e));
+  return r2(yaIncluido ? c : c + e);
 }
 
 /** GET /shipments/{id}/costs. No lanza: sin costs, ajusteEnvio usa el shipment. */

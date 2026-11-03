@@ -5,7 +5,7 @@
 //   · Espejos, Mercado Envíos con envío gratis: $1.373 − $205,95 cargos − $135 envío = $1.032,05
 //   · Puños, Mercado Envíos, paga el comprador: $414,68 − $77,20 cargos − $0 envío  = $337,48
 //   · Espejos, Flex con envío gratis:           $1.458 − $218,70 cargos + $33,80 bonif. = $1.273,10
-//   · Manillar, Flex, paga el comprador:        sin bonificación
+//   · Manillar, Flex, paga el comprador:        $820,14 − $163,02 cargos + $200 envío = $857,12
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -32,7 +32,8 @@ const flexGratis = {
 const flexPagaComprador = {
   ship: { logistic_type: 'self_service', sender_id: VENDEDOR, base_cost: 200, order_cost: 820.14,
     shipping_option: { list_cost: 200, cost: 200 } },
-  costs: remitente({ cost: 0, save: 0 }),
+  costs: { ...remitente({ cost: 0, save: 0 }),
+    receiver: { cost: 200, cost_details: [{ sender_id: VENDEDOR, amount: 200 }] } },
 };
 
 const neto = (total, cargos, c) => {
@@ -53,15 +54,16 @@ test('Flex con envío gratis: la bonificación baja la comisión, como en el pan
   assert.deepStrictEqual(neto(1458, 218.7, flexGratis), { envio: -33.8, comision: 184.9, neto: 1273.1 });
 });
 
-test('Flex pagado por el comprador: sin bonificación', () => {
-  assert.strictEqual(ajusteEnvio(flexPagaComprador.ship, flexPagaComprador.costs), 0);
+test('Flex pagado por el comprador: el envío que pagó le llega al vendedor, como en el panel', () => {
+  // La comisión queda negativa: MELI le pasa más de lo que le cobra, y total − comisión = cobrado.
+  assert.deepStrictEqual(neto(820.14, 163.02, flexPagaComprador), { envio: -200, comision: -36.98, neto: 857.12 });
 });
 
 test('sin /costs se usa el shipment y da lo mismo', () => {
   assert.strictEqual(ajusteEnvio(meGratis.ship, null), 135);
   assert.strictEqual(ajusteEnvio(mePagaComprador.ship, null), 0);
   assert.strictEqual(ajusteEnvio(flexGratis.ship, null), -33.8);
-  assert.strictEqual(ajusteEnvio(flexPagaComprador.ship, null), 0);
+  assert.strictEqual(ajusteEnvio(flexPagaComprador.ship, null), -200);
 });
 
 test('ventas sin shipment no tocan la comisión', () => {
@@ -80,6 +82,6 @@ test('si el neto del pago ya trae el envío, no se suma dos veces', () => {
   assert.strictEqual(comisionConEnvio({ cargos: 340.95, saleFee: 205.95, envio: 135 }), 340.95);
 });
 
-test('una bonificación nunca deja la comisión negativa', () => {
-  assert.strictEqual(comisionConEnvio({ cargos: 10, saleFee: 10, envio: -33.8 }), 0);
+test('lo que MELI le pasa al vendedor nunca se compara contra el neto del pago', () => {
+  assert.strictEqual(comisionConEnvio({ cargos: 10, saleFee: 10, envio: -33.8 }), -23.8);
 });

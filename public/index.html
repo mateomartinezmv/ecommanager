@@ -1313,7 +1313,7 @@
       <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1"></div>
       <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01"></div>
       <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01"></div>
-      <div class="form-group" id="ev-envio-meli-wrap" style="display:none"><label class="form-label" title="Positivo: lo que MELI cobra por el envío (Mercado Envíos con envío gratis). Negativo: la bonificación por envío Flex. Ya está incluido en la comisión.">Envío MELI (incluido en comisión, − = bonificación)</label><input type="number" id="ev-costo-envio-meli" step="0.01"></div>
+      <div class="form-group" id="ev-envio-meli-wrap" style="display:none"><label class="form-label" title="Positivo: lo que MELI cobra por el envío (Mercado Envíos con envío gratis). Negativo: lo que MELI pasa a favor en Flex (bonificación o envío que pagó el comprador). Ya está incluido en la comisión, que por eso puede quedar negativa.">Envío MELI (incluido en comisión, − = a favor)</label><input type="number" id="ev-costo-envio-meli" step="0.01"></div>
       <div class="form-group"><label class="form-label">Método de pago</label>
         <select id="ev-metodo">
           <option value="">—</option>
@@ -6260,10 +6260,11 @@ function agruparTickets(ventas) {
 }
 
 // costoEnvioMeli ya va adentro de la comisión: positivo es lo que MELI cobró por el envío
-// (Mercado Envíos con envío gratis), negativo lo que bonificó (Flex).
+// (Mercado Envíos con envío gratis), negativo lo que pasó a favor (Flex: bonificación, o el
+// envío que pagó el comprador). Por eso la comisión de una venta Flex puede quedar negativa.
 function etiquetaEnvioMeli(monto) {
   if (monto > 0) return `<br><span style="font-size:11px;color:var(--text-muted)">incl. ${fmt(monto)} envío</span>`;
-  if (monto < 0) return `<br><span style="font-size:11px;color:var(--green)">incl. bonif. envío ${fmt(-monto)}</span>`;
+  if (monto < 0) return `<br><span style="font-size:11px;color:var(--green)">incl. +${fmt(-monto)} envío a favor</span>`;
   return '';
 }
 
@@ -6405,7 +6406,7 @@ function renderVentas() {
       <td>${dentroDeCarrito ? '' : canalBadge(v.canal)}${tipoEnvioLabel ? `${dentroDeCarrito ? '' : '<br>'}<span style="font-size:10px;color:var(--text-muted)">${tipoEnvioLabel}</span>` : ''}</td>
       <td>${v.producto}<br><span style="font-size:11px;color:var(--text-muted)">x${v.cantidad}</span></td>
       <td>${v.cantidad}</td>
-      <td>${fmt(v.total)}${v.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(v.descuentoMonto)} promo ${v.descuentoPct}%</span>` : ''}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${etiquetaEnvioMeli(v.costoEnvioMeli)}</td>
+      <td>${fmt(v.total)}${v.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(v.descuentoMonto)} promo ${v.descuentoPct}%</span>` : ''}${v.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(v.comision)} com.</span>` : ''}${v.comision < 0 ? `<br><span style="font-size:11px;color:var(--green)">+${fmt(-v.comision)} neto MELI</span>` : ''}${etiquetaEnvioMeli(v.costoEnvioMeli)}</td>
       <td>
         <select class="badge" onchange="cambiarEstadoVenta('${v.id}',this.value)" style="background:transparent;border:none;cursor:pointer;font-size:11px;padding:2px 6px">
           ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${v.estado===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
@@ -6455,7 +6456,7 @@ function renderVentas() {
         <br><span style="font-size:11px;color:var(--text-muted)">${lineas.map(v => v.producto).join(' · ')}</span>
       </td>
       <td>${t.cantidad}</td>
-      <td><strong>${fmt(t.total)}</strong>${t.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(t.descuentoMonto)} promo</span>` : ''}${t.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(t.comision)} com.</span>` : ''}${etiquetaEnvioMeli(t.costoEnvioMeli)}</td>
+      <td><strong>${fmt(t.total)}</strong>${t.descuentoMonto > 0 ? `<br><span style="font-size:11px;color:var(--green)">-${fmt(t.descuentoMonto)} promo</span>` : ''}${t.comision > 0 ? `<br><span style="font-size:11px;color:var(--text-muted)">-${fmt(t.comision)} com.</span>` : ''}${t.comision < 0 ? `<br><span style="font-size:11px;color:var(--green)">+${fmt(-t.comision)} neto MELI</span>` : ''}${etiquetaEnvioMeli(t.costoEnvioMeli)}</td>
       <td onclick="event.stopPropagation()">
         ${estados.length > 1
           ? '<span class="badge badge-gray" style="font-size:11px">Mixto</span>'
@@ -7461,7 +7462,7 @@ function renderEnviosReporte() {
       <td>${TIPO_ENVIO_ICONS[t.tipo]} <strong>${NOMBRES_TRANSPORTISTAS[t.transportista] || t.transportista || '—'}</strong></td>
       <td style="text-align:center">${t.envios}</td>
       <td style="text-align:center">${t.colectas || '—'}</td>
-      <td style="color:var(--yellow);font-weight:700">${fmt(t.gasto)}${t.costoMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400" title="Lo que MELI descontó por el envío. Ya está incluido en las comisiones MELI, por eso no se suma al gasto.">+ ${fmt(t.costoMeli)} cobrado por MELI</span>` : ''}${t.costoMeli < 0 ? `<br><span style="font-size:11px;color:var(--green);font-weight:400" title="Lo que MELI bonificó por envíos Flex. Ya está descontado de las comisiones MELI, por eso no se resta del gasto.">− ${fmt(-t.costoMeli)} bonificado por MELI</span>` : ''}</td>
+      <td style="color:var(--yellow);font-weight:700">${fmt(t.gasto)}${t.costoMeli > 0 ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400" title="Lo que MELI descontó por el envío. Ya está incluido en las comisiones MELI, por eso no se suma al gasto.">+ ${fmt(t.costoMeli)} cobrado por MELI</span>` : ''}${t.costoMeli < 0 ? `<br><span style="font-size:11px;color:var(--green);font-weight:400" title="Lo que MELI pasó a favor por envíos Flex (bonificaciones y envíos que pagó el comprador). Ya está descontado de las comisiones MELI, por eso no se resta del gasto.">− ${fmt(-t.costoMeli)} a favor desde MELI</span>` : ''}</td>
       <td>${fmt(t.envios > 0 ? t.gasto / t.envios : 0)}</td>
       <td>${pct(t.gasto, r.gasto)}%</td>
       <td style="color:var(--green)">${fmt(t.pagado)}</td>

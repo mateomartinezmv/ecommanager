@@ -904,7 +904,8 @@
         <div class="table-header">
           <span class="table-title">📣 Anuncios de la campaña</span>
           <span style="font-size:11px;color:var(--text-muted)" id="ads-tabla-leyenda">
-            ROAS BE = ROAS de equilibrio (y el margen es el ACOS de equilibrio) · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo<br>
+            ROAS BE = ROAS de equilibrio · 🟢 15% o más arriba · 🟡 al filo · 🔴 debajo<br>
+            <b>IVA:</b> MELI factura el gasto con IVA 22%. La inversión y la ganancia van con IVA; ROAS, ACOS y CPC quedan como los mide MELI (sin IVA) y el equilibrio ya trae el IVA adentro (1,22 ÷ margen).<br>
             El margen sale de <b>precio − costo − comisión real − envío</b>: la comisión es la que MELI te cobró en las ventas de ese SKU, no un 15% fijo.<br>
             <b>Sin vender todavía (🔵 en prueba):</b> <b>CPC</b> = lo que pagás por clic contra el máximo que podrías pagar y seguir ganando.
             <b>Inversión</b> = lo gastado contra lo que deja una sola venta (🟢 ya se pagó · 🟡 una venta lo cubre · 🔴 ya quemó más de una venta sin vender).
@@ -973,6 +974,7 @@
             <span id="ads-presupuesto-diario" style="font-size:12px;color:var(--text-muted)"></span>
           </div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+            El monto es <b>con IVA</b> (lo que sale de la cuenta); el diario que se carga en MELI va sin IVA.
             Se reparte por la <b>ganancia que deja cada segmento</b>: margen $ × unidades vendidas en MELI en los últimos 30 días
             (los que no vendieron cuentan como 1, para que tengan algo con qué probar). Ningún segmento recibe más de lo que deja
             de margen en el mes: pasado eso, el anuncio cuesta más de lo que gana, y lo que sobra pasa a los otros.
@@ -4336,7 +4338,7 @@ function renderDashboard() {
     <div class="stat-card yellow"><div class="stat-icon">🛒</div><div class="stat-value">${ventasMes.length}</div><div class="stat-label">Ventas este mes</div></div>
     <div class="stat-card purple"><div class="stat-icon">🚚</div><div class="stat-value">${enviosPendientes}</div><div class="stat-label">Envíos en curso</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(costoEnviosMes)}</div><div class="stat-label">Costo envíos este mes</div></div>
-    <div class="stat-card red" id="dash-ads-card"><div class="stat-icon">📢</div><div class="stat-value" id="dash-ads-value">...</div><div class="stat-label">Gasto en Ads (mes)</div></div>
+    <div class="stat-card red" id="dash-ads-card"><div class="stat-icon">📢</div><div class="stat-value" id="dash-ads-value">...</div><div class="stat-label">Gasto en Ads c/IVA (mes)</div></div>
     <div class="stat-card yellow" id="dash-opiniones-card" onclick="goPage('opiniones')" style="cursor:pointer"><div class="stat-icon">⭐</div><div class="stat-value" id="dash-opiniones-value">...</div><div class="stat-label">Publicaciones a republicar</div></div>
   `;
   loadDashAds();
@@ -6805,6 +6807,19 @@ function renderReportes() {
 // =====================
 // ADS: HELPERS
 // =====================
+// MELI informa el gasto de Ads SIN IVA (es la cifra de su panel), pero en la factura mensual
+// ("Cargos por publicidad") le suma el IVA básico: 22%. Con IVA mínimo ese IVA no se
+// recupera, así que es costo. Regla en todo el CRM:
+//   · plata (gasto, ganancia, margen, déficit) → con IVA;
+//   · ROAS, ACOS y CPC → como los mide MELI (sin IVA), porque son los de su panel y con los
+//     que se carga el ROAS objetivo. Lo que sube es el equilibrio: 1,22 / margen.
+// El backend usa la misma constante en api/meli/_adsIva.js.
+const ADS_IVA = 0.22;
+const ADS_FACTOR_IVA = 1 + ADS_IVA;
+const ADS_IVA_TXT = `IVA ${Math.round(ADS_IVA * 100)}%`;
+/** Gasto de MELI (sin IVA) → lo que de verdad se paga. */
+const adsConIva = v => (parseFloat(v) || 0) * ADS_FACTOR_IVA;
+
 async function fetchAdsData(desde, hasta) {
   const res = await fetch(`/api/meli/ads?desde=${desde}&hasta=${hasta}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -6822,13 +6837,14 @@ async function loadDashAds() {
       const label = el.closest('.stat-card').querySelector('.stat-label');
       if (label) label.innerHTML = 'Gasto en Ads <span style="font-size:10px;font-weight:400">· Sin datos</span>';
     } else {
-      el.textContent = fmt(data.total_spend);
+      el.textContent = fmt(adsConIva(data.total_spend));
       const card = el.closest('.stat-card');
+      if (card) card.title = `${fmt(data.total_spend)} sin IVA en el panel de MELI + ${ADS_IVA_TXT} que suma en la factura`;
       const label = card?.querySelector('.stat-label');
       if (label) {
         const roasStr = data.roas ? ` · ROAS ${data.roas}x` : '';
         const factStr = data.total_facturacion ? ` · Fact. ${fmt(data.total_facturacion)}` : '';
-        label.innerHTML = `Gasto en Ads (mes)<br><span style="font-size:10px;font-weight:400;opacity:.8">${roasStr}${factStr}</span>`;
+        label.innerHTML = `Gasto en Ads c/IVA (mes)<br><span style="font-size:10px;font-weight:400;opacity:.8">${roasStr}${factStr}</span>`;
       }
     }
   } catch {
@@ -6849,7 +6865,9 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
     const hastaQ = hasta || new Date().toISOString().slice(0, 10);
     const data = await fetch(`/api/meli/ads-historico?desde=${desdeQ}&hasta=${hastaQ}`).then(r => r.json());
 
-    const adsSpend = data.total_spend || 0;
+    // Lo que factura MELI: el gasto del panel más el IVA. Es lo que sale de la cuenta.
+    const adsSpendMeli = data.total_spend || 0;
+    const adsSpend = adsConIva(adsSpendMeli);
     const gananciaConAds = ganancia - adsSpend;
     const margenConAds = totalIngresos > 0 ? ((gananciaConAds / totalIngresos) * 100).toFixed(1) : 0;
 
@@ -6861,8 +6879,9 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
       : '';
 
     const adsHtml = adsSpend > 0
-      ? `<div class="stat-value" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
+      ? `<div class="stat-value" id="reporte-ads-gasto" style="font-size:28px;font-weight:700;margin-bottom:8px">${fmt(adsSpend)}</div>
          <div style="font-size:12px;color:var(--text-muted)">
+           Con ${ADS_IVA_TXT} · ${fmt(adsSpendMeli)} sin IVA en el panel de MELI<br>
            ${data.dias_con_datos} día${data.dias_con_datos === 1 ? '' : 's'} con datos${data.roas ? ` · ROAS ${data.roas}x` : ''}${avisoFaltantes}
          </div>`
       : `<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Sin datos de Ads para el período.<br>Hacé clic en "Actualizar desde MELI" para traerlos.</div>`;
@@ -6891,9 +6910,9 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
               ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
-              − Gasto en Ads: ${fmt(adsSpend)}<br>
+              − Gasto en Ads (con ${ADS_IVA_TXT}): ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
-                = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
+                = <strong class="reporte-ganancia-con-ads" style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
                 <span style="color:var(--text-muted)"> · ${margenConAds}% margen real</span>
               </span>
             </div>
@@ -6911,11 +6930,11 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
 // Se eligen hasta dos métricas: la primera va en barras y la segunda en línea, con su propio eje.
 const DIARIO_METRICAS = {
   facturacion: { label: 'Facturación', tipo: 'money', tip: 'Ingresos por ventas, todos los canales' },
-  ads:         { label: 'Gasto en Ads', tipo: 'money', tip: 'Inversión en Mercado Ads' },
-  ganancia:    { label: 'Ganancia', tipo: 'money', tip: 'Facturación − comisiones − costo de productos − envíos − Ads. No descuenta costos fijos ni otros gastos' },
+  ads:         { label: 'Gasto en Ads', tipo: 'money', tip: 'Inversión en Mercado Ads, con el IVA que MELI suma en la factura' },
+  ganancia:    { label: 'Ganancia', tipo: 'money', tip: 'Facturación − comisiones − costo de productos − envíos − Ads (con IVA). No descuenta costos fijos ni otros gastos' },
   ventas:      { label: 'Ventas', tipo: 'num', tip: 'Tickets: un carrito con varios productos cuenta como una venta' },
   unidades:    { label: 'Unidades', tipo: 'num', tip: 'Unidades vendidas' },
-  roas:        { label: 'ROAS', tipo: 'ratio', tip: 'Facturación atribuida a Ads ÷ gasto en Ads, según MELI' },
+  roas:        { label: 'ROAS', tipo: 'ratio', tip: 'Facturación atribuida a Ads ÷ gasto en Ads sin IVA, como lo mide MELI' },
   clics:       { label: 'Clics', tipo: 'num', tip: 'Clics en los anuncios' },
 };
 let diarioSel = ['facturacion', 'ads'];
@@ -6938,7 +6957,8 @@ function serieDiaria(desde, hasta, ads) {
   const idx = {};
   for (let f = desde; f <= hasta; f = sumarDias(f, 1)) {
     idx[f] = dias.length;
-    dias.push({ fecha: f, lineas: [], facturacion: 0, comisiones: 0, costoProd: 0, envios: 0, ads: 0, adsFact: 0, clics: 0, unidades: 0 });
+    // ads = con IVA (lo que se paga); adsMeli = sin IVA, sólo para el ROAS como lo mide MELI.
+    dias.push({ fecha: f, lineas: [], facturacion: 0, comisiones: 0, costoProd: 0, envios: 0, ads: 0, adsMeli: 0, adsFact: 0, clics: 0, unidades: 0 });
   }
   for (const v of db.ventas) {
     const d = dias[idx[(v.fecha || '').slice(0, 10)]];
@@ -6957,23 +6977,23 @@ function serieDiaria(desde, hasta, ads) {
   for (const a of (ads && ads.por_dia) || []) {
     const d = dias[idx[a.fecha]];
     if (!d) continue;
-    d.ads += a.spend; d.adsFact += a.facturacion; d.clics += a.clicks;
+    d.ads += adsConIva(a.spend); d.adsMeli += a.spend || 0; d.adsFact += a.facturacion; d.clics += a.clicks;
   }
   for (const d of dias) {
     d.ventas = contarTickets(d.lineas);
     d.ganancia = d.facturacion - d.comisiones - d.costoProd - d.envios - d.ads;
-    d.roas = d.ads > 0 ? d.adsFact / d.ads : null;
+    d.roas = d.adsMeli > 0 ? d.adsFact / d.adsMeli : null;
   }
   return dias;
 }
 
 function totalesDiario(dias) {
   const s = k => dias.reduce((a, d) => a + d[k], 0);
-  const ads = s('ads');
+  const adsMeli = s('adsMeli');
   return {
-    facturacion: s('facturacion'), ads, ganancia: s('ganancia'),
+    facturacion: s('facturacion'), ads: s('ads'), ganancia: s('ganancia'),
     ventas: contarTickets(dias.flatMap(d => d.lineas)), unidades: s('unidades'),
-    roas: ads > 0 ? s('adsFact') / ads : null, clics: s('clics'),
+    roas: adsMeli > 0 ? s('adsFact') / adsMeli : null, clics: s('clics'),
   };
 }
 
@@ -7221,7 +7241,9 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
       return;
     }
 
-    const adsSpend = data.total_spend || 0;
+    // Con IVA: es lo que factura MELI. El del panel (sin IVA) queda como referencia.
+    const adsSpendMeli = data.total_spend || 0;
+    const adsSpend = adsConIva(adsSpendMeli);
     const adsFact = data.total_facturacion || 0;
     const adsRoas = data.roas || 0;
     const gananciaConAds = ganancia - adsSpend;
@@ -7248,8 +7270,9 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
           <div style="padding:20px">
             <div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:12px">
               <div>
-                <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">GASTO</div>
-                <div class="stat-value" style="font-size:26px;font-weight:700">${fmt(adsSpend)}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">GASTO C/${ADS_IVA_TXT.toUpperCase()}</div>
+                <div class="stat-value" id="reporte-ads-gasto" style="font-size:26px;font-weight:700">${fmt(adsSpend)}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${fmt(adsSpendMeli)} sin IVA en MELI</div>
               </div>
               <div>
                 <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">FACTURACIÓN POR ADS</div>
@@ -7276,9 +7299,9 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
               ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
-              − Gasto en Ads: ${fmt(adsSpend)}<br>
+              − Gasto en Ads (con ${ADS_IVA_TXT}): ${fmt(adsSpend)}<br>
               <span style="border-top:1px solid var(--border);display:block;padding-top:6px;margin-top:4px">
-                = <strong style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
+                = <strong class="reporte-ganancia-con-ads" style="color:${gananciaConAds >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt(gananciaConAds)}</strong>
                 <span style="color:var(--text-muted)"> · ${margenConAds}% margen real</span>
               </span>
             </div>
@@ -8603,7 +8626,8 @@ async function adsHistorico(desde, hasta) {
 
 async function adsDelPeriodo(desde, hasta) {
   const data = await adsHistorico(desde, hasta);
-  return data ? (data.total_spend || 0) : null;
+  // Con IVA: es lo que factura MELI y lo que se resta de la ganancia.
+  return data ? adsConIva(data.total_spend) : null;
 }
 
 // Métricas de la comparación, compartidas entre la tabla y el PDF.
@@ -8625,7 +8649,7 @@ function metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB) {
     { nombre: 'Comisiones MELI', a: mA.comisiones, b: mB.comisiones, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de productos', a: mA.costoProductos, b: mB.costoProductos, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de envíos', a: mA.costoEnvios, b: mB.costoEnvios, tipo: 'money', mejor: 'menor' },
-    { nombre: 'Gasto en Ads' + (sinAds ? ' (sin datos)' : ''), a: adsA || 0, b: adsB || 0, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Gasto en Ads c/IVA' + (sinAds ? ' (sin datos)' : ''), a: adsA || 0, b: adsB || 0, tipo: 'money', mejor: 'menor' },
     { nombre: 'Ganancia estimada', a: gA, b: gB, tipo: 'money', mejor: 'mayor' },
     { nombre: 'Margen neto', a: margen(gA, mA.ingresos), b: margen(gB, mB.ingresos), tipo: 'pct', mejor: 'mayor' },
   ];
@@ -9700,7 +9724,7 @@ const ADS_COLUMNAS = [
   { campo: 'clics',          label: 'Clics' },
   { campo: 'ctr',            label: 'CTR' },
   { campo: 'cpc',            label: 'CPC' },
-  { campo: 'inversion',      label: 'Inversión' },
+  { campo: 'inversion',      label: 'Inversión c/IVA' },
   { campo: 'unidades',       label: 'Vtas' },
   { campo: 'unidades_organicas', label: 'Orgán.' },
   { campo: 'facturacion',    label: 'Facturación' },
@@ -9771,10 +9795,10 @@ async function renderAds(forzar = false) {
       // importa es el de todo lo que se está gastando junto.
       const conGasto = adsState.campanas.filter(c => c.inversion > 0);
       const opcionTodas = conGasto.length > 1
-        ? `<option value="todas">🔀 Todas las campañas — ${fmt(conGasto.reduce((a, c) => a + c.inversion, 0))}</option>`
+        ? `<option value="todas">🔀 Todas las campañas — ${fmt(adsConIva(conGasto.reduce((a, c) => a + c.inversion, 0)))} c/IVA</option>`
         : '';
       sel.innerHTML = opcionTodas + adsState.campanas.map(c =>
-        `<option value="${c.id}">${escHtml(c.nombre)} — ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</option>`
+        `<option value="${c.id}">${escHtml(c.nombre)} — ${fmt(adsConIva(c.inversion))} c/IVA · ROAS ${c.roas.toFixed(2)}x</option>`
       ).join('') || '<option value="">Sin campañas</option>';
       if (previa && adsState.campanas.some(c => c.id === previa)) sel.value = previa;
       pintarAdsCampanas();
@@ -10005,7 +10029,7 @@ function pintarReco() {
     <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">
       ${res.evaluados} productos publicados evaluados · ${res.anunciados} con anuncio activo ·
       ${res.sin_anunciar} sin anunciar · ${res.con_historico} con historial de ads
-      ${ref.cpc ? `<br>Referencia de la cuenta: CPC ${fmt(ref.cpc)} · conversión ${ref.cvr}% · traer una venta cuesta ${ref.cpa != null ? fmt(ref.cpa) : '—'}` : ''}
+      ${ref.cpc ? `<br>Referencia de la cuenta: CPC ${fmt(ref.cpc)} · conversión ${ref.cvr}% · traer una venta cuesta ${ref.cpa != null ? fmt(adsConIva(ref.cpa)) + ' con IVA' : '—'}` : ''}
       <br>Histórico: ${r.periodo_historico.desde} → ${r.periodo_historico.hasta}${res.snapshot_historico ? ' + lo guardado de antes' : ''}
       ${res.mostrados < res.con_recomendacion ? ` · mostrando ${res.mostrados} de ${res.con_recomendacion}` : ''}
       ${ocultos ? `<br><b>${ocultos} escondido${ocultos === 1 ? '' : 's'} por venir pagando.</b> No hay nada que hacerles: el botón de arriba los devuelve.` : ''}
@@ -10027,7 +10051,7 @@ function pintarReco() {
           ? `en <b>${x.campanas_activas.map(escHtml).join('</b> + <b>')}</b>`
           : null,
         ads && ads.inversion > 0
-          ? `ads <b>${fmt(ads.inversion)}</b> a ROAS ${ads.roas.toFixed(2)}x`
+          ? `ads <b>${fmt(adsConIva(ads.inversion))}</b> c/IVA a ROAS ${ads.roas.toFixed(2)}x`
             + (x.compartido_con > 1
                 ? ` <span style="color:var(--yellow)" title="MELI agrupa las variantes en un solo anuncio y no abre las métricas por variante. Lo que se muestra es la parte que le toca a este SKU: ${x.compartido_con} productos comparten el anuncio.">(su parte de un anuncio que comparte con ${x.compartido_con - 1} más)</span>`
                 : '')
@@ -10040,7 +10064,7 @@ function pintarReco() {
       const hist = !x.historico ? '' : `
         <div style="font-size:11px;margin-top:5px;color:var(--text-muted)">
           ${x.anunciado ? '📈 Acumulado' : '📜'} ${x.historico.desde || '?'} → ${x.historico.hasta || '?'}:
-          ${fmt(x.historico.inversion)} invertidos · ${x.historico.unidades} unidades ·
+          ${fmt(adsConIva(x.historico.inversion))} invertidos c/IVA · ${x.historico.unidades} unidades ·
           ROAS ${x.historico.roas.toFixed(2)}x
           ${v ? `· <b style="color:${v.color}">${escHtml(x.anunciado ? v.presente : v.pasado)}</b>` : ''}
           ${x.historico.fuente === 'local' ? ' <span title="Sale del snapshot diario guardado, no de la API de MELI">(histórico guardado)</span>' : ''}
@@ -10124,17 +10148,19 @@ function pintarAdsStats() {
     const eco = t.economia || {};
     const detalle = `margen ${t.margen_ponderado}% · comisión ${eco.comision_pct}%${eco.comision_es_manual ? ' (a mano)' : ''}`
       + (eco.envio_unitario ? ` · envío ${fmt(eco.envio_unitario)}/u` : ' · sin envío');
-    return `<div class="stat-card ${clase}" title="${escHtml(detalle)}"><div class="stat-icon">⚖️</div>
+    const tituloBe = `${detalle}. Incluye el ${ADS_IVA_TXT} que MELI le suma al gasto en la factura: `
+      + `está en ROAS de MELI (sobre el gasto sin IVA), comparable con el de su panel y con el ROAS objetivo.`;
+    return `<div class="stat-card ${clase}" title="${escHtml(tituloBe)}"><div class="stat-icon">⚖️</div>
       <div class="stat-value">${be.toFixed(2)}x</div>
-      <div class="stat-label">ROAS de equilibrio · ${escHtml(detalle)}</div></div>`;
+      <div class="stat-label">ROAS de equilibrio (con ${ADS_IVA_TXT}) · ${escHtml(detalle)}</div></div>`;
   })();
   document.getElementById('ads-stats').innerHTML = `
-    <div class="stat-card yellow"><div class="stat-icon">💸</div><div class="stat-value">${fmt(c.inversion)}</div><div class="stat-label">Inversión en ads</div></div>
+    <div class="stat-card yellow" id="ads-card-inversion" title="Lo que factura MELI: el gasto de su panel más el ${ADS_IVA_TXT}"><div class="stat-icon">💸</div><div class="stat-value">${fmt(adsConIva(c.inversion))}</div><div class="stat-label">Inversión en ads c/IVA · ${fmt(c.inversion)} sin IVA en MELI</div></div>
     <div class="stat-card green"><div class="stat-icon">💰</div><div class="stat-value">${fmt(c.facturacion)}</div><div class="stat-label">Facturación atribuida</div></div>
-    <div class="stat-card blue"><div class="stat-icon">📈</div><div class="stat-value">${c.roas.toFixed(2)}x</div><div class="stat-label">ROAS de la campaña</div></div>
+    <div class="stat-card blue" title="Como lo mide MELI: facturación ÷ gasto sin IVA"><div class="stat-icon">📈</div><div class="stat-value">${c.roas.toFixed(2)}x</div><div class="stat-label">ROAS de la campaña</div></div>
     <div class="stat-card purple"><div class="stat-icon">📦</div><div class="stat-value">${c.unidades}</div><div class="stat-label">Unidades vendidas</div></div>
     <div class="stat-card blue"><div class="stat-icon">🖱️</div><div class="stat-value">${c.clics.toLocaleString('es-AR')}</div><div class="stat-label">Clics · ${c.impresiones.toLocaleString('es-AR')} impresiones</div></div>
-    <div class="stat-card ${gananciaClase}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
+    <div class="stat-card ${gananciaClase}" title="Lo que dejan las ventas por ads menos el gasto con ${ADS_IVA_TXT}"><div class="stat-icon">🧮</div><div class="stat-value">${fmt(t.ganancia)}</div><div class="stat-label">Ganancia real, ads c/IVA (${t.anuncios_con_costo}/${t.anuncios} con costo)</div></div>
     ${beCard}
     ${organicaCard()}
   `;
@@ -10171,7 +10197,7 @@ function pintarAdsAviso() {
   // El desglose es lo que permite comparar dos campañas sin cambiar de pantalla.
   if (t.campana?.campanas?.length > 1) {
     const filas = t.campana.campanas.map(c =>
-      `<li style="margin-top:3px"><b>${escHtml(c.nombre)}</b>: ${fmt(c.inversion)} · ROAS ${c.roas.toFixed(2)}x</li>`
+      `<li style="margin-top:3px"><b>${escHtml(c.nombre)}</b>: ${fmt(adsConIva(c.inversion))} c/IVA · ROAS ${c.roas.toFixed(2)}x</li>`
     ).join('');
     avisos.push(`<div style="background:rgba(59,130,246,0.10);border:1px solid var(--accent);border-radius:var(--radius);padding:12px 16px;margin-bottom:10px;font-size:13px">
       🔀 <b>Mirando ${t.campana.campanas.length} campañas juntas.</b> El ROAS de equilibrio de arriba es el del conjunto;
@@ -10188,7 +10214,7 @@ function pintarAdsAviso() {
       📊 <b>La campaña gastó ${fmt(d.inversion)} más de lo que suman sus anuncios</b>
       (${fmt(t.campana.inversion)} contra ${fmt(t.inversion)}${d.clics ? `, y ${d.clics.toLocaleString('es-AR')} clics de diferencia` : ''}).
       Es gasto de anuncios que estuvieron en la campaña durante el período pero ya no están en ella.
-      Las tarjetas de arriba muestran el total de la campaña, que es el que coincide con el panel de MELI;
+      Los montos de este aviso van sin IVA, como en el panel de MELI. Las tarjetas de arriba muestran el total de la campaña (con IVA), que es el que coincide con MELI;
       la tabla sólo puede abrir los anuncios que MELI todavía devuelve.
       ${d.facturacion ? `<br>Facturación sin atribuir a un anuncio listado: ${fmt(d.facturacion)}.` : ''}
     </div>`);
@@ -10372,8 +10398,8 @@ function pintarAdsTabla() {
         const inversionTitulo = a.contribucion == null ? ''
           : a.deficit <= 0
             ? `Ya se pagó solo. ${vts(a.unidades)} × ${fmt(a.contribucion)} que deja cada una `
-              + `− ${fmt(a.inversion)} de ads = ${fmt(-a.deficit)} de ganancia.`
-            : `Gastaste ${fmt(a.inversion)} en ads`
+              + `− ${fmt(adsConIva(a.inversion))} de ads con ${ADS_IVA_TXT} = ${fmt(-a.deficit)} de ganancia.`
+            : `Gastaste ${fmt(adsConIva(a.inversion))} en ads con ${ADS_IVA_TXT} (${fmt(a.inversion)} sin IVA en MELI)`
               + (a.unidades
                   ? ` y recuperaste ${fmt(a.contribucion * a.unidades)} con ${vts(a.unidades)}.`
                   : ' y todavía no vendió.')
@@ -10397,21 +10423,26 @@ function pintarAdsTabla() {
             + (a.envio_unitario ? ` − ${fmt(a.envio_unitario)} de envío` : ' (sin envío)')
             + ` = ${fmt(a.contribucion)} limpios, que es el ${a.margen.toFixed(1)}% del precio.`
             + (be != null
-                ? ` Para recuperar un peso de ads hacen falta ${be.toFixed(2)} de facturación.`
+                ? ` Por cada peso de gasto en MELI (sin IVA) hacen falta ${be.toFixed(2)} de facturación:`
+                  + ` el peso más el ${ADS_IVA_TXT} que suma la factura.`
                 : ' Con margen negativo no hay ROAS que alcance.')
             + (fuente ? ` Comisión y envío: ${fuente}.` : '');
 
         const roasColor = be == null ? 'var(--text)' : a.roas >= be ? 'var(--green)' : 'var(--red)';
         const pausado = String(a.status || '').toUpperCase() !== 'ACTIVE';
-        // El ACOS de equilibrio es el margen: por encima de él la venta no paga el anuncio.
-        // Verde con colchón (hasta el 80% del margen), amarillo al filo, rojo por encima.
+        // El ACOS de equilibrio es el margen sin el IVA del gasto: el ACOS de MELI es sin IVA,
+        // y cada peso suyo cuesta 1,22. Por encima de él la venta no paga el anuncio.
+        // Verde con colchón (hasta el 80% del equilibrio), amarillo al filo, rojo por encima.
+        const acosBe = a.margen == null ? null : (a.acos_breakeven ?? a.margen / ADS_FACTOR_IVA);
+        const acosIva = a.acos * ADS_FACTOR_IVA;   // lo que de verdad se lleva la publicidad
         const acosColor = a.margen == null ? 'var(--text)' : a.acos === 0 ? 'var(--text-muted)'
-          : a.acos <= a.margen * 0.8 ? 'var(--green)' : a.acos <= a.margen ? 'var(--yellow)' : 'var(--red)';
+          : a.acos <= acosBe * 0.8 ? 'var(--green)' : a.acos <= acosBe ? 'var(--yellow)' : 'var(--red)';
         const acosTitulo = a.margen == null ? '' : a.margen <= 0
           ? `Este producto no deja margen a ${fmt(a.precio_real)}: ningún ACOS lo hace rentable.`
-          : `ACOS ${a.acos.toFixed(1)}% contra ${a.margen.toFixed(1)}% de margen: `
-            + (a.acos <= a.margen ? `de cada $100 vendidos quedan ${(a.margen - a.acos).toFixed(1)} después de ads.`
-                                  : `cada $100 vendidos pierden ${(a.acos - a.margen).toFixed(1)} después de ads.`);
+          : `ACOS ${a.acos.toFixed(1)}% en MELI = ${acosIva.toFixed(1)}% con ${ADS_IVA_TXT}, contra ${a.margen.toFixed(1)}% de margen: `
+            + (acosIva <= a.margen ? `de cada $100 vendidos quedan ${(a.margen - acosIva).toFixed(1)} después de ads.`
+                                   : `cada $100 vendidos pierden ${(acosIva - a.margen).toFixed(1)} después de ads.`)
+            + ` El equilibrio en ACOS de MELI es ${acosBe.toFixed(1)}%.`;
         const titulo = a.permalink
           ? `<a href="${escHtml(a.permalink)}" target="_blank" style="color:var(--text);text-decoration:none">${escHtml(a.titulo)} ↗</a>`
           : escHtml(a.titulo);
@@ -10439,7 +10470,7 @@ function pintarAdsTabla() {
           <td style="text-align:right">${a.clics.toLocaleString('es-AR')}</td>
           <td style="text-align:right">${a.ctr.toFixed(2)}%</td>
           <td style="text-align:right;font-weight:600;color:${cpcColor}" title="${escHtml(cpcTitulo)}">${fmt(a.cpc)}</td>
-          <td style="text-align:right;font-weight:600;color:${inversionColor}" title="${escHtml(inversionTitulo)}">${fmt(a.inversion)}</td>
+          <td style="text-align:right;font-weight:600;color:${inversionColor}" title="${escHtml(inversionTitulo)}">${fmt(adsConIva(a.inversion))}</td>
           <td style="text-align:right">${a.unidades}</td>
           <td style="text-align:right;color:var(--text-muted)" title="Ventas que llegaron sin pasar por el anuncio${a.facturacion_organica ? ': ' + fmt(a.facturacion_organica) : ''}">${a.unidades_organicas ?? 0}</td>
           <td style="text-align:right">${fmt(a.facturacion)}</td>
@@ -10477,7 +10508,7 @@ function pieAdsTabla(filas) {
     <td style="text-align:right">${clics.toLocaleString('es-AR')}</td>
     <td style="text-align:right">${impr > 0 ? ((clics / impr) * 100).toFixed(2) + '%' : '—'}</td>
     <td style="text-align:right">${clics > 0 ? fmt(inv / clics) : '—'}</td>
-    <td style="text-align:right">${fmt(inv)}</td>
+    <td style="text-align:right">${fmt(adsConIva(inv))}</td>
     <td style="text-align:right">${s('unidades')}</td>
     <td style="text-align:right;color:var(--text-muted)">${s('unidades_organicas')}</td>
     <td style="text-align:right">${fmt(fact)}</td>
@@ -10627,8 +10658,9 @@ function margenRealDe(p) {
   const monto = m.monto - comision - envio;
   return {
     monto, pct: monto / precio * 100, comision, envio, comision_pct: e.comision_pct, fuente: e.fuente,
-    // Por debajo de este ROAS cada venta traída con ads pierde plata.
-    roas_be: monto > 0 ? precio / monto : null,
+    // Por debajo de este ROAS cada venta traída con ads pierde plata. En ROAS de MELI (sobre
+    // el gasto sin IVA), con el IVA que suma la factura adentro.
+    roas_be: monto > 0 ? precio / monto * ADS_FACTOR_IVA : null,
   };
 }
 
@@ -10863,7 +10895,8 @@ function roasObjetivoSegmento(filas) {
     contrib += f.margen_real * u;
   }
   if (!(contrib > 0)) return { roas_be: null, roas_objetivo: null };
-  const be = fact / contrib;
+  // En ROAS de MELI (sobre el gasto sin IVA): cada peso que cobra cuesta 1,22 con el IVA.
+  const be = fact / contrib * ADS_FACTOR_IVA;
   // Redondeado para arriba a 0,1: es el número que se tipea en MELI.
   return { roas_be: be, roas_objetivo: Math.ceil(be * ADS_ROAS_COLCHON * 10) / 10 };
 }
@@ -10888,7 +10921,8 @@ function adsGastoPorSegmento(filas) {
     if (a.roas_breakeven != null && a.facturacion > 0) { t.be_x_fact += a.roas_breakeven * a.facturacion; t.fact_con_be += a.facturacion; }
   }
   for (const t of Object.values(out)) {
-    t.mensual = t.inversion / dias * 30;
+    // El mensual es plata que sale: con IVA. El ROAS, como lo mide MELI (sin IVA).
+    t.mensual = adsConIva(t.inversion) / dias * 30;
     t.roas = t.inversion > 0 ? t.facturacion / t.inversion : 0;
     t.roas_be = t.fact_con_be > 0 ? t.be_x_fact / t.fact_con_be : null;
   }
@@ -10941,7 +10975,9 @@ function pintarAdsPresupuesto(filas) {
     try { input.value = localStorage.getItem(ADS_PRESUPUESTO_LS) || ''; } catch (e) { /* sin storage */ }
   }
   const presupuesto = parseFloat(input.value) || 0;
-  diarioEl.textContent = presupuesto > 0 ? `≈ ${fmt(presupuesto / 30)} por día` : '';
+  // El presupuesto es lo que sale de la cuenta (con IVA); en MELI se carga sin IVA.
+  diarioEl.textContent = presupuesto > 0
+    ? `con ${ADS_IVA_TXT} · ≈ ${fmt(presupuesto / 30)} por día, ${fmt(presupuesto / 30 / ADS_FACTOR_IVA)} para cargar en MELI (sin IVA)` : '';
   if (presupuesto <= 0) {
     cont.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">Poné un monto para ver cuánto le toca a cada campaña.</div>';
     return;
@@ -10976,8 +11012,8 @@ function pintarAdsPresupuesto(filas) {
   cont.innerHTML = `
     <div style="overflow-x:auto"><table id="ads-presupuesto-tabla">
       <thead><tr><th style="text-align:left">Campaña</th><th>Productos</th><th>Vendió (30 d)</th>
-        <th>Margen que deja/mes</th><th>% del presupuesto</th><th>Mensual</th><th>Diario</th>
-        <th>Gasto actual/mes</th><th title="Equilibrio del segmento con margen real × ${ADS_ROAS_COLCHON} de colchón">ROAS objetivo</th>
+        <th>Margen que deja/mes</th><th>% del presupuesto</th><th>Mensual c/IVA</th><th title="El presupuesto diario que se carga en MELI: sin IVA, porque MELI le suma el ${ADS_IVA_TXT} al facturar">Diario en MELI</th>
+        <th>Gasto actual/mes c/IVA</th><th title="Equilibrio del segmento con margen real × ${ADS_ROAS_COLCHON} de colchón">ROAS objetivo</th>
         <th style="text-align:left">Campaña en MELI</th><th style="text-align:left">Recomendación</th></tr></thead>
       <tbody>${segmentos.map((x, i) => {
         const def = ADS_MARGEN_SEGMENTOS[x.segmento];
@@ -10990,7 +11026,7 @@ function pintarAdsPresupuesto(filas) {
           <td>${fmt(x.peso)}</td>
           <td>${x.pct.toFixed(1)}%</td>
           <td><b>${fmt(x.monto)}</b>${x.al_tope ? ` <span style="color:var(--yellow)" title="Más que esto cuesta más de lo que el segmento deja de margen en un mes">⚠️ tope</span>` : ''}</td>
-          <td>${fmt(x.monto / 30)}</td>
+          <td title="${fmt(x.monto / 30)} por día con IVA">${fmt(x.monto / 30 / ADS_FACTOR_IVA)}</td>
           <td>${real ? fmt(real.mensual) : '—'}</td>
           <td class="roas-objetivo" title="${x.roas_be ? `Equilibrio ${x.roas_be.toFixed(2)}x con margen real` : 'Hace falta el margen real (comisión y envío) para calcularlo'}">${x.roas_objetivo ? `<b>${x.roas_objetivo.toFixed(1)}x</b>` : '—'}</td>
           <td style="text-align:left;font-size:12px">${celdaCampanaSegmento(x, campanasDeSeg(x.segmento))}</td>
@@ -11192,7 +11228,7 @@ function pintarAdsCampanas() {
 
   cont.innerHTML = `<div style="overflow-x:auto"><table>
     <thead><tr><th style="text-align:left">Campaña</th><th>Estado</th><th>Presupuesto/día</th><th>Estrategia</th>
-      <th>ROAS objetivo</th><th>ROAS equilibrio</th><th>ROAS real</th><th>Gasto</th><th style="text-align:left">Diagnóstico</th><th>Acciones</th></tr></thead>
+      <th>ROAS objetivo</th><th title="Con el ${ADS_IVA_TXT} que MELI suma al gasto, en ROAS de MELI">ROAS equilibrio</th><th>ROAS real</th><th>Gasto c/IVA</th><th style="text-align:left">Diagnóstico</th><th>Acciones</th></tr></thead>
     <tbody>${cs.map(c => {
       const activa = String(c.status || '').toLowerCase() === 'active';
       const objetivo = c.acos_objetivo > 0 ? 100 / c.acos_objetivo : null;
@@ -11213,7 +11249,7 @@ function pintarAdsCampanas() {
         <td><b>${objetivo != null ? objetivo.toFixed(2) + 'x' : '—'}</b>${c.acos_objetivo ? ` <span style="font-size:10px;color:var(--text-muted)">(ACOS ${c.acos_objetivo}%)</span>` : ''}</td>
         <td>${be != null ? be.toFixed(2) + 'x' : '—'}</td>
         <td style="color:${roasColor}">${c.inversion ? c.roas.toFixed(2) + 'x' : '—'}</td>
-        <td>${fmt(c.inversion)}</td>
+        <td title="${fmt(c.inversion)} sin IVA en MELI">${fmt(adsConIva(c.inversion))}</td>
         <td style="text-align:left;font-size:12px;max-width:340px">${diag}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" title="Cambiar el presupuesto diario" onclick="accionCampana('${escHtml(String(c.id))}','presupuesto')">💵</button>
@@ -11279,7 +11315,7 @@ async function accionAnuncio(adGroupId) {
   if (!a) return;
   const activo = String(a.status || '').toUpperCase() === 'ACTIVE';
   const nuevo = activo ? 'paused' : 'active';
-  const detalle = a.ganancia != null ? `\nEn el período: ${fmt(a.inversion)} de ads, ganancia ${fmt(a.ganancia)}.` : '';
+  const detalle = a.ganancia != null ? `\nEn el período: ${fmt(adsConIva(a.inversion))} de ads con IVA, ganancia ${fmt(a.ganancia)}.` : '';
   return enviarAccionAds({
     nivel: 'anuncio', ad_group_id: a.ad_group_id, titulo: a.titulo,
     campaign_id: a.campaign_id, campaign_name: a.campaign_name,
@@ -11292,7 +11328,8 @@ async function aplicarRepartoACampana(segmento, campaignId) {
   const x = adsState.reparto?.[segmento];
   const c = (adsState.campanas || []).find(k => String(k.id) === String(campaignId));
   if (!x || !c) return;
-  const diario = Math.round(x.monto / 30);
+  // El presupuesto de MELI es sin IVA: el reparto es plata con IVA, así que se le saca.
+  const diario = Math.round(x.monto / 30 / ADS_FACTOR_IVA);
   if (!(diario > 0)) return alert('El reparto no le asigna presupuesto a este segmento.');
   const objetivoActual = c.acos_objetivo > 0 ? +(100 / c.acos_objetivo).toFixed(2) : null;
   const cambios = { presupuesto: diario };
@@ -11369,27 +11406,30 @@ function pintarAdsEvolucion() {
   let fueraMeli = 0;
   for (const f of filas) {
     const seg = segDe.get(f.sku);
-    if (!seg) { fueraMeli += f.inversion; continue; }
-    const t = acc[seg] || (acc[seg] = { inversion: 0, facturacion: 0, unidades: 0, antes_ads: 0, semanas: {} });
+    // El snapshot guarda el gasto de MELI (sin IVA): la plata se cuenta con IVA y el ROAS sin.
+    const invIva = adsConIva(f.inversion);
+    if (!seg) { fueraMeli += invIva; continue; }
+    const t = acc[seg] || (acc[seg] = { inversion: 0, inversionMeli: 0, facturacion: 0, unidades: 0, antes_ads: 0, semanas: {} });
     const deja = (contrib.get(f.sku) || 0) * f.unidades;
-    t.inversion += f.inversion;
+    t.inversion += invIva;
+    t.inversionMeli += f.inversion;
     t.facturacion += f.facturacion;
     t.unidades += f.unidades;
     t.antes_ads += deja;
-    t.semanas[f.semana] = (t.semanas[f.semana] || 0) + deja - f.inversion;
+    t.semanas[f.semana] = (t.semanas[f.semana] || 0) + deja - invIva;
   }
   const segs = Object.keys(ADS_MARGEN_SEGMENTOS).filter(k => acc[k]);
   const fmtSem = w => `${w.slice(8, 10)}/${w.slice(5, 7)}`;
 
   cont.innerHTML = `<div style="overflow-x:auto"><table id="ads-evolucion-tabla">
-    <thead><tr><th style="text-align:left">Segmento</th><th>Invertido en ads</th><th>Vendido por ads</th><th>ROAS</th>
-      <th title="Lo que deja cada venta (antes de ads) − lo gastado en ads">Ganancia después de ads</th>
+    <thead><tr><th style="text-align:left">Segmento</th><th>Invertido en ads c/IVA</th><th>Vendido por ads</th><th>ROAS</th>
+      <th title="Lo que deja cada venta (antes de ads) − lo gastado en ads con ${ADS_IVA_TXT}">Ganancia después de ads</th>
       <th style="text-align:left">Cada $100 en ads…</th>
       <th style="text-align:left" title="Ganancia después de ads de cada semana, de la más vieja a la más nueva">Por semana (${fmtSem(semanas[0])} → ${fmtSem(semanas[semanas.length - 1])})</th></tr></thead>
     <tbody>${segs.map(k => {
       const t = acc[k];
       const ganancia = t.antes_ads - t.inversion;
-      const roas = t.inversion > 0 ? t.facturacion / t.inversion : null;
+      const roas = t.inversionMeli > 0 ? t.facturacion / t.inversionMeli : null;
       const por100 = t.inversion > 0 ? ganancia / t.inversion * 100 : null;
       const veredicto = por100 == null ? '—'
         : por100 >= 0 ? `<span style="color:var(--green)">dejaron <b>${fmt(por100)}</b> de ganancia</span>`
@@ -11410,7 +11450,7 @@ function pintarAdsEvolucion() {
       </tr>`;
     }).join('')}</tbody></table></div>
     ${r.inversion_sin_sku > 0 || fueraMeli > 0 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">
-      ${r.inversion_sin_sku > 0 ? `${fmt(r.inversion_sin_sku)} de gasto en anuncios sin SKU vinculado` : ''}${r.inversion_sin_sku > 0 && fueraMeli > 0 ? ' y ' : ''}${fueraMeli > 0 ? `${fmt(fueraMeli)} en productos descatalogados o sin publicación` : ''}
+      ${r.inversion_sin_sku > 0 ? `${fmt(adsConIva(r.inversion_sin_sku))} de gasto (c/IVA) en anuncios sin SKU vinculado` : ''}${r.inversion_sin_sku > 0 && fueraMeli > 0 ? ' y ' : ''}${fueraMeli > 0 ? `${fmt(fueraMeli)} en productos descatalogados o sin publicación` : ''}
       no entran en ningún segmento.</div>` : ''}
     ${semanas.length < 4 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:4px">El histórico guardado arranca el ${fmtSem(semanas[0])}: con más semanas la comparación se vuelve más confiable.</div>` : ''}`;
 }
@@ -11454,7 +11494,7 @@ function pintarAdsCambios() {
     : campo === 'roas_objetivo' ? `${parseFloat(v).toFixed(2)}x`
     : v === 'paused' ? 'pausado' : v === 'active' ? 'activo' : v;
   const ventana = t => !t || !t.dias ? '—'
-    : `${fmt(t.ganancia_dia)}/día · ROAS ${t.roas != null ? t.roas.toFixed(2) + 'x' : '—'} · ${fmt(t.inversion_dia)}/día de ads`;
+    : `${fmt(t.ganancia_dia)}/día · ROAS ${t.roas != null ? t.roas.toFixed(2) + 'x' : '—'} · ${fmt(t.inversion_dia)}/día de ads c/IVA`;
   cont.innerHTML = `${r.sin_snapshot ? '<div style="font-size:11px;color:var(--yellow);margin-bottom:6px">Sin el snapshot diario (migración de meli_ads_anuncios) no se puede calcular el antes y después.</div>' : ''}
     <div style="overflow-x:auto"><table id="ads-cambios-tabla">
     <thead><tr><th style="text-align:left">Fecha</th><th style="text-align:left">Qué</th><th>Cambio</th>
@@ -11510,7 +11550,7 @@ async function guardarCambioManual() {
 function exportAdsCSV() {
   if (!adsFiltrados().length) return alert('No hay anuncios para exportar.');
   const cols = ['titulo', 'sku', 'status', 'variantes', 'impresiones', 'clics', 'ctr', 'cpc', 'inversion',
-    'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'margen',
+    'inversion_iva', 'unidades', 'facturacion', 'roas', 'roas_breakeven', 'acos', 'acos_breakeven', 'margen',
     'comision_pct', 'envio_unitario', 'economia_fuente', 'cpa_max', 'cpc_max',
     'cpc_max_estimado', 'cpc_max_es_estimado', 'cvr_referencia', 'deficit', 'ventas_para_empatar',
     'ganancia', 'estado'];

@@ -35,14 +35,30 @@ function fakeSupabase(tablas) {
 
 const hoy = new Date().toISOString().slice(0, 10);
 
-test('la contribución descuenta costo, comisión y envío, y el equilibrio es su inversa', () => {
+test('la contribución descuenta costo, comisión y envío, y el equilibrio suma el IVA del gasto', () => {
   const c = contribucionUnitaria({ precio: 1000, costo: 400, comision_pct: 14, envio_unitario: 100 });
-  // 1000 − 400 − 140 − 100 = 360 → 36% de margen → hace falta 1/0,36 = 2,78x para empatar.
+  // 1000 − 400 − 140 − 100 = 360 → 36% de margen. Sin IVA harían falta 1/0,36 = 2,78x, pero
+  // MELI factura cada peso de gasto con 22% de IVA: 1,22/0,36 = 3,39x para empatar.
   assert.strictEqual(c.comision, 140);
   assert.strictEqual(c.envio, 100);
   assert.strictEqual(c.contribucion, 360);
   assert.strictEqual(c.margen_pct, 36);
-  assert.strictEqual(c.roas_breakeven, 2.78);
+  assert.strictEqual(c.roas_breakeven, 3.39);
+  // En ACOS de MELI (sin IVA): 36% / 1,22.
+  assert.strictEqual(c.acos_breakeven, 29.51);
+});
+
+test('el IVA de ads: lo que MELI muestra sin IVA es lo que factura con 22%', () => {
+  const { conIvaAds, IVA_ADS } = require('../api/meli/_adsIva');
+  assert.strictEqual(IVA_ADS, 0.22);
+  // Octubre 2026: $33.297 en la API de Ads; la factura dijo $41.024,66 (corte distinto).
+  assert.strictEqual(conIvaAds(33297), 40622.34);
+  assert.strictEqual(conIvaAds(null), 0);
+  // Un anuncio justo en el equilibrio con IVA no gana ni pierde: el que lo pinta de verde a
+  // 1/margen estaba ignorando el IVA.
+  const c = contribucionUnitaria({ precio: 1000, costo: 400, comision_pct: 14, envio_unitario: 100 });
+  const gasto = 1000 / c.roas_breakeven;   // lo que se gasta en MELI para vender una unidad
+  assert.ok(Math.abs(c.contribucion - conIvaAds(gasto)) < 1);
 });
 
 test('ignorar el envío baja el ROAS de equilibrio: es el error que se vino a arreglar', () => {
@@ -51,9 +67,9 @@ test('ignorar el envío baja el ROAS de equilibrio: es el error que se vino a ar
   const viejo = contribucionUnitaria({ precio: 1000, costo: 400, comision_pct: 15, envio_unitario: 0 });
 
   assert.ok(sinEnvio.roas_breakeven < conEnvio.roas_breakeven);
-  // Con la cuenta vieja, un anuncio a ROAS 2,3x parecía estar ganando; con la real, pierde.
-  assert.ok(2.3 > viejo.roas_breakeven, 'la cuenta vieja daba verde a 2,3x');
-  assert.ok(2.3 < conEnvio.roas_breakeven, 'la cuenta real lo marca en rojo');
+  // Con la cuenta vieja, un anuncio a ROAS 3x parecía estar ganando; con la real, pierde.
+  assert.ok(3 > viejo.roas_breakeven, 'la cuenta vieja daba verde a 3x');
+  assert.ok(3 < conEnvio.roas_breakeven, 'la cuenta real lo marca en rojo');
 });
 
 test('sin margen positivo no hay ROAS de equilibrio, y se dice que no lo hay', () => {

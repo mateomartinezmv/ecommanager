@@ -224,7 +224,7 @@ test('el margen real descuenta comisión y envío, y se puede segmentar con él'
     await esperarMargenReal(crm.page);
     const alto = (await crm.page.textContent('[data-segmento-lista="alto"] tbody tr')).replace(/\s+/g, ' ');
     assert.match(alto, /\$400 · 40\.0%/, '1000 − 400 − 100 de comisión − 100 de envío');
-    assert.match(alto, /2\.50x/, 'ROAS de equilibrio = 1000 / 400');
+    assert.match(alto, /3\.05x/, 'ROAS de equilibrio = 1000 / 400 × 1,22 del IVA de ads');
 
     await crm.page.selectOption('#ads-margen-base', 'real');
     // Con el real: ALTO deja 400 (40%) y baja a medio; MEDIO deja 100 (10%) y pasa a poco
@@ -241,9 +241,10 @@ test('cada segmento trae su ROAS objetivo para cargar en MELI', async () => {
     await esperarMargenReal(crm.page);
     await crm.page.fill('#ads-presupuesto', '1000');
     await crm.page.waitForSelector('#ads-presupuesto-tabla');
-    // ALTO: equilibrio 2,5x con margen real × 1,25 = 3,125 → 3,2x redondeado para arriba.
-    assert.strictEqual((await crm.page.textContent('#ads-presupuesto-tabla tr[data-segmento="alto"] .roas-objetivo')).trim(), '3.2x');
-    assert.match(await crm.page.textContent('#ads-margen-resumen [data-segmento="alto"]'), /ROAS objetivo 3\.2x/);
+    // ALTO: equilibrio 2,5x con margen real, × 1,22 del IVA de ads = 3,05x; × 1,25 de colchón
+    // = 3,81 → 3,9x redondeado para arriba.
+    assert.strictEqual((await crm.page.textContent('#ads-presupuesto-tabla tr[data-segmento="alto"] .roas-objetivo')).trim(), '3.9x');
+    assert.match(await crm.page.textContent('#ads-margen-resumen [data-segmento="alto"]'), /ROAS objetivo 3\.9x/);
   } finally { await crm.cerrar(); }
 });
 
@@ -268,7 +269,8 @@ test('aplicar el reparto manda a MELI el presupuesto diario y el ROAS objetivo d
     await esperar(() => crm.estado.adsAcciones?.length);
     assert.deepStrictEqual(crm.estado.adsAcciones, [{
       nivel: 'campana', campaign_id: '1', campaign_name: 'C1',
-      cambios: { presupuesto: 20, roas_objetivo: 3.2 },          // 600 al mes / 30
+      // 600 al mes con IVA / 30 / 1,22 = 16,39: en MELI el presupuesto se carga sin IVA.
+      cambios: { presupuesto: 16, roas_objetivo: 3.9 },
       anterior: { presupuesto: 50, roas_objetivo: 1.67 },
     }]);
   } finally { await crm.cerrar(); }
@@ -304,15 +306,17 @@ test('el rendimiento por segmento dice cuánto dejó cada $100 en ads, semana a 
   try {
     await crm.page.waitForSelector('#ads-evolucion-tabla');
     await esperarMargenReal(crm.page);
-    // ALTO deja 400 por venta (real): 3 × 400 − 150 = 1050. MEDIO deja 100: 100 − 300 = −200.
-    await crm.page.waitForFunction(() => /1\.050/.test(document.querySelector('#ads-evolucion-tabla tr[data-segmento="alto"] .ganancia')?.textContent || ''));
+    // El gasto va con el IVA del 22% que MELI suma en la factura.
+    // ALTO deja 400 por venta (real): 3 × 400 − 150 × 1,22 = 1017. MEDIO deja 100: 100 − 366 = −266.
+    await crm.page.waitForFunction(() => /1\.017/.test(document.querySelector('#ads-evolucion-tabla tr[data-segmento="alto"] .ganancia')?.textContent || ''));
     const alto = (await crm.page.textContent('#ads-evolucion-tabla tr[data-segmento="alto"]')).replace(/\s+/g, ' ');
-    // Cada $100 en ads dejaron 1050 / 150 × 100 = 700; por semana 1×400−100 y 2×400−50.
-    assert.match(alto, /dejaron \$700 de ganancia/);
-    assert.match(alto, /\+\$300 · \+\$750/);
+    // Cada $100 en ads dejaron 1017 / 183 × 100 = 556; por semana 1×400−122 y 2×400−61.
+    assert.match(alto, /dejaron \$556 de ganancia/);
+    assert.match(alto, /\+\$278 · \+\$739/);
+    // El ROAS queda como lo mide MELI, sin IVA.
     const medio = (await crm.page.textContent('#ads-evolucion-tabla tr[data-segmento="medio"]')).replace(/\s+/g, ' ');
-    assert.match(medio, /-200/);
-    assert.match(medio, /perdieron \$67/);
+    assert.match(medio, /-266/);
+    assert.match(medio, /perdieron \$73/);
   } finally { await crm.cerrar(); }
 });
 

@@ -9,6 +9,7 @@
 // días que sirve la API, y no gasta cuota de requests.
 
 const { getSupabase } = require('../_supabase');
+const { conIvaAds } = require('./_adsIva');
 
 const r2 = v => Math.round(v * 100) / 100;
 const num = v => parseFloat(v) || 0;
@@ -64,7 +65,9 @@ module.exports = async (req, res) => {
     }
 
     const filas = [...acc.values()]
-      .map(a => ({ ...a, inversion: r2(a.inversion), facturacion: r2(a.facturacion) }))
+      // `inversion` es la de MELI (sin IVA, para el ROAS); `inversion_iva` lo que se factura,
+      // que es lo que se resta para la ganancia (ver _adsIva.js).
+      .map(a => ({ ...a, inversion: r2(a.inversion), inversion_iva: conIvaAds(a.inversion), facturacion: r2(a.facturacion) }))
       .sort((a, b) => a.semana.localeCompare(b.semana));
 
     return res.json({
@@ -74,6 +77,7 @@ module.exports = async (req, res) => {
       // Gasto de anuncios que no se pudieron vincular a un SKU: no entra en ningún
       // segmento, y decirlo evita que el total por segmento parezca el de la cuenta.
       inversion_sin_sku: r2(sinSku),
+      inversion_sin_sku_iva: conIvaAds(sinSku),
     });
   } catch (err) {
     console.error('Error en ads-evolucion.js:', err);

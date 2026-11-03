@@ -7,6 +7,8 @@
 // es más corta y las dos se comparan por día, no por total: si no, cualquier cambio
 // reciente parecería haber bajado el gasto.
 
+const { FACTOR_IVA_ADS } = require('./_adsIva');
+
 const VENTANA_DIAS = 14;
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -34,13 +36,16 @@ function antesYDespues(cambio, snapshot, contribPorSku, hoy) {
   const resumen = ({ desde, hasta }) => {
     const dias = hasta >= desde
       ? Math.round((new Date(hasta) - new Date(desde)) / 86400000) + 1 : 0;
-    const t = { desde, hasta, dias, inversion: 0, facturacion: 0, unidades: 0, ganancia: 0, sin_costo: 0 };
+    // `inversion` es el gasto como lo informa MELI (sin IVA), con el que se mide el ROAS;
+    // la ganancia y lo demás que es plata va con el IVA que MELI factura (ver _adsIva.js).
+    const t = { desde, hasta, dias, inversion: 0, inversion_iva: 0, facturacion: 0, unidades: 0, ganancia: 0, sin_costo: 0 };
     if (!dias) return t;
     for (const s of snapshot) {
       const fecha = String(s.fecha).slice(0, 10);
       if (fecha < desde || fecha > hasta || !delCambio(s)) continue;
-      const inv = num(s.spend), u = parseInt(s.unidades, 10) || 0;
-      t.inversion += inv;
+      const inv = num(s.spend) * FACTOR_IVA_ADS, u = parseInt(s.unidades, 10) || 0;
+      t.inversion += num(s.spend);
+      t.inversion_iva += inv;
       t.facturacion += num(s.facturacion);
       t.unidades += u;
       const c = s.sku ? contribPorSku.get(String(s.sku).toUpperCase()) : undefined;
@@ -48,10 +53,10 @@ function antesYDespues(cambio, snapshot, contribPorSku, hoy) {
       t.ganancia += (c || 0) * u - inv;
     }
     t.roas = t.inversion > 0 ? r2(t.facturacion / t.inversion) : null;
-    t.inversion_dia = r2(t.inversion / dias);
+    t.inversion_dia = r2(t.inversion_iva / dias);
     t.ganancia_dia = r2(t.ganancia / dias);
     t.unidades_dia = r2(t.unidades / dias);
-    for (const k of ['inversion', 'facturacion', 'ganancia', 'sin_costo']) t[k] = r2(t[k]);
+    for (const k of ['inversion', 'inversion_iva', 'facturacion', 'ganancia', 'sin_costo']) t[k] = r2(t[k]);
     return t;
   };
 

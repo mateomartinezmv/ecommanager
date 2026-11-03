@@ -271,6 +271,17 @@ avisa **⛔ NO se despacha**. Si una etiqueta del CRM no se puede leer, el botó
 etiqueta** la da por puesta, pero queda registrado como "a mano". Si la etiqueta de MELI no
 se lee, el paquete se elige de la lista **Para despachar** con **Controlar**.
 
+**Imprimir las etiquetas de MELI desde el control:** en la lista **Para despachar**, cada envío
+de MELI pendiente tiene una casilla y dice si su etiqueta está **🖨️ Impresa**, **🖨️ Sin
+imprimir** o **🖨️ No disponible** (MELI todavía no la entrega, por ejemplo si el pago está
+pendiente). Eso se le pregunta a MELI, así que cuenta también lo que se imprimió desde su
+panel. Arriba de la lista:
+
+- **Todas** / **Las que faltan imprimir** / **Ninguna** marcan las casillas; después se puede
+  sumar o sacar alguna a mano.
+- **🖨️ Imprimir (N)** baja un solo PDF con las elegidas, para mandarlo a la térmica desde la
+  PC de la oficina. Al imprimirlas, MELI las marca como impresas, igual que desde su panel.
+
 **Lo que ves en Envíos:** arriba, cuántos de los pendientes ya pasaron por el lector y cuántos
 escaneos equivocados se frenaron hoy; en cada envío, **✅ Controlado** (con las unidades
 marcadas a mano y los errores frenados) o **Sin controlar**.

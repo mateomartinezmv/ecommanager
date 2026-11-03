@@ -23,6 +23,7 @@
 const { getSupabase } = require('../_supabase');
 const { getAdsContext, adsGet, resolverRango, enLotes, API } = require('./_adsClient');
 const { cargarEconomia, deSku, contribucionUnitaria } = require('./_economia');
+const { FACTOR_IVA_ADS, conIvaAds } = require('./_adsIva');
 const { parseMeliIds, meliIdsDe } = require('../_meliIds');
 
 // Este endpoint toma las métricas en MAYÚSCULAS (los de campaña, en minúsculas).
@@ -161,12 +162,14 @@ module.exports = async (req, res) => {
             nombre: `${vivas.length} campaña${vivas.length === 1 ? '' : 's'} con gasto`,
             campanas: vivas.map(c => ({
               id: String(c.id), nombre: c.name || `Campaña ${c.id}`,
-              inversion: r2(num(c.metrics?.cost)), facturacion: r2(num(c.metrics?.total_amount)),
+              inversion: r2(num(c.metrics?.cost)), inversion_iva: conIvaAds(c.metrics?.cost),
+              facturacion: r2(num(c.metrics?.total_amount)),
               roas: num(c.metrics?.cost) > 0 ? r2(num(c.metrics.total_amount) / num(c.metrics.cost)) : 0,
             })).sort((a, b) => b.inversion - a.inversion),
             impresiones: sumar(m => ent(m.prints)),
             clics: sumar(m => ent(m.clicks)),
             inversion: r2(inversion),
+            inversion_iva: conIvaAds(inversion),
             facturacion: r2(facturacion),
             unidades: sumar(m => ent(m.units_quantity)),
             roas: inversion > 0 ? r2(facturacion / inversion) : 0,
@@ -186,6 +189,7 @@ module.exports = async (req, res) => {
             impresiones: ent(mc.prints),
             clics: ent(mc.clicks),
             inversion: r2(num(mc.cost)),
+            inversion_iva: conIvaAds(mc.cost),
             facturacion: r2(num(mc.total_amount)),
             unidades: ent(mc.units_quantity),
             roas: num(mc.cost) > 0 ? r2(num(mc.total_amount) / num(mc.cost)) : 0,
@@ -265,11 +269,15 @@ module.exports = async (req, res) => {
       fila.economia_fuente = comisionOverride ? 'manual' : eco.fuente;
       fila.economia_muestra = eco.ventas_muestra;
 
-      fila.cpa_max = c.contribucion;
+      fila.acos_breakeven = c.acos_breakeven;
+      // CPA y CPC máximos en pesos de MELI (sin IVA), comparables con el CPC del panel y con
+      // lo que se puja: lo que deja la venta, menos el IVA que MELI le suma al gasto.
+      fila.cpa_max = r2(c.contribucion / FACTOR_IVA_ADS);
       // El CPC máximo sale de la conversión del período. Sin ventas no hay conversión
       // medida, y un "$0" se leería como "no pujes", que no es lo que dice el dato.
-      fila.cpc_max = fila.unidades > 0 ? r2(c.contribucion * (fila.cvr / 100)) : null;
-      fila.ganancia = r2(c.contribucion * fila.unidades - fila.inversion);
+      fila.cpc_max = fila.unidades > 0 ? r2(c.contribucion * (fila.cvr / 100) / FACTOR_IVA_ADS) : null;
+      // La ganancia con el gasto que de verdad se paga: el de MELI más el IVA.
+      fila.ganancia = r2(c.contribucion * fila.unidades - fila.inversion_iva);
       fila.estado = fila.roas_breakeven == null ? 'sin_margen'
         : fila.roas === 0 && fila.inversion === 0 ? 'sin_datos'
         : fila.roas >= fila.roas_breakeven * 1.15 ? 'ganando'
@@ -321,6 +329,9 @@ module.exports = async (req, res) => {
         variantes: itemIds.length,
         permalink: ads[0]?.permalink || null,
         impresiones, clics, inversion, facturacion, unidades,
+        // `inversion` es el gasto como lo informa MELI (sin IVA) y es con el que se miden
+        // ROAS, ACOS y CPC. `inversion_iva` es lo que se factura: va en toda cuenta de plata.
+        inversion_iva: conIvaAds(inversion),
         ctr: r2(ctr), cpc: r2(cpc), cvr: r2(cvr), roas: r2(roas), acos: r2(acos),
         tacos: r2(num(m.tacos)),
         sov: r2(num(m.sov)),
@@ -418,12 +429,13 @@ module.exports = async (req, res) => {
       const tieneVentas = f.unidades > 0;
 
       f.cvr_referencia = r2(tieneVentas ? f.cvr : cvrCampana);
-      f.cpc_max_estimado = f.cvr_referencia > 0 ? r2(f.contribucion * (f.cvr_referencia / 100)) : null;
+      f.cpc_max_estimado = f.cvr_referencia > 0
+        ? r2(f.contribucion * (f.cvr_referencia / 100) / FACTOR_IVA_ADS) : null;
       f.cpc_max_es_estimado = !tieneVentas;
 
       // Cuánta contribución se gastó sin recuperarla todavía. Es la ganancia dada vuelta,
       // pero en positivo se lee como lo que es: deuda que el anuncio tiene que pagar.
-      const deficit = r2(f.inversion - f.contribucion * f.unidades);
+      const deficit = r2(f.inversion_iva - f.contribucion * f.unidades);
       f.deficit = deficit;
       f.ventas_para_empatar = deficit > 0 && f.contribucion > 0
         ? Math.ceil(deficit / f.contribucion)
@@ -459,6 +471,7 @@ module.exports = async (req, res) => {
       impresiones: sum('impresiones'),
       clics: sum('clics'),
       inversion: r2(inversionTotal),
+      inversion_iva: conIvaAds(inversionTotal),
       facturacion: r2(facturacionTotal),
       unidades: sum('unidades'),
       roas: inversionTotal > 0 ? r2(facturacionTotal / inversionTotal) : 0,
@@ -471,7 +484,9 @@ module.exports = async (req, res) => {
       // La conversión que se usa de referencia para los anuncios que todavía no vendieron.
       cvr_campana: r2(cvrCampana),
       margen_ponderado: facturacionConMargen > 0 ? r2(margenPonderado * 100) : null,
-      roas_breakeven_campana: margenPonderado > 0 ? r2(1 / margenPonderado) : null,
+      // En ROAS de MELI, con el IVA del gasto adentro (ver contribucionUnitaria).
+      roas_breakeven_campana: margenPonderado > 0 ? r2(FACTOR_IVA_ADS / margenPonderado) : null,
+      iva_ads_pct: r2((FACTOR_IVA_ADS - 1) * 100),
     };
 
     // De qué está hecha la cuenta. Va en la respuesta para que la pantalla pueda decir si
@@ -491,6 +506,7 @@ module.exports = async (req, res) => {
     if (campana) {
       const dif = {
         inversion: r2(campana.inversion - totales.inversion),
+        inversion_iva: conIvaAds(campana.inversion - totales.inversion),
         clics: campana.clics - totales.clics,
         facturacion: r2(campana.facturacion - totales.facturacion),
         unidades: campana.unidades - totales.unidades,

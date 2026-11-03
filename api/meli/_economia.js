@@ -28,6 +28,8 @@
 // lo tienen (`envio: 'auto'`); se puede forzar un número o apagarlo con `envio: 0`, y la
 // respuesta dice cuántos se estimaron para que el número no se lea como medido.
 
+const { FACTOR_IVA_ADS } = require('./_adsIva');
+
 const DIAS_VENTANA = 180;        // Historia que se mira para promediar comisión y envío.
 const MIN_VENTAS_SKU = 3;        // Debajo de esto, el promedio del SKU es ruido: va el global.
 const COMISION_DEFAULT = 15;     // Último recurso: catálogo sin una sola venta todavía.
@@ -267,7 +269,13 @@ function contribucionUnitaria({ precio, costo, comision_pct, envio_unitario }) {
     margen_pct: r2(margen * 100),
     // Por debajo de este ROAS el anuncio destruye plata. Sin margen positivo no existe:
     // ningún ROAS alcanza, y un número grande se leería como una meta alcanzable.
-    roas_breakeven: margen > 0 ? r2(1 / margen) : null,
+    //
+    // Está en ROAS de MELI (facturación ÷ gasto SIN IVA), que es el que muestra su panel y
+    // el que se carga como objetivo. Como MELI factura el gasto con IVA (ver _adsIva.js),
+    // cada peso de gasto cuesta 1,22: el equilibrio es 1,22 / margen, no 1 / margen.
+    roas_breakeven: margen > 0 ? r2(FACTOR_IVA_ADS / margen) : null,
+    // Lo mismo en ACOS (gasto sin IVA ÷ facturación): el margen que queda para ads, sin el IVA.
+    acos_breakeven: margen > 0 ? r2((margen * 100) / FACTOR_IVA_ADS) : null,
   };
 }
 

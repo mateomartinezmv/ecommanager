@@ -337,12 +337,13 @@ test('el histórico frena la recomendación de volver a anunciar algo que ya per
     const texto = await crm.page.textContent('#ads-reco-lista');
 
     // Por margen y stock parecería una oportunidad. El histórico dice que no: se anunció
-    // a ROAS 1,40x contra un equilibrio de 4,70x. Recomendarlo sería repetir el error.
+    // a ROAS 1,40x contra un equilibrio de 4,70x (con IVA, más). Recomendarlo sería repetir el error.
     assert.match(texto, /Posapies Aluminio CNC/);
     assert.match(texto, /No volver sin cambiar algo/);
     assert.match(texto, /cuando se anunciaba, perdía/);
     // Y tiene que verse de dónde sale ese histórico, porque parte vive sólo en el snapshot.
-    assert.match(texto, /3100 invertidos|\$\s?3[.,]?100/);
+    // 3.100 de gasto en MELI = 3.782 con el IVA del 22% que suma la factura.
+    assert.match(texto, /3782 invertidos|\$\s?3[.,]?782/);
     assert.match(texto, /histórico guardado/);
   } finally { await crm.cerrar(); }
 });

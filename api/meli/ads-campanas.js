@@ -6,6 +6,7 @@
 // que alimenta la pestaña de Ads: elegida una campaña, /api/meli/ads-anuncios la abre
 // producto por producto.
 
+const { conIvaAds } = require('./_adsIva');
 const { getAdsContext, adsGet, resolverRango, API } = require('./_adsClient');
 
 const METRICS = [
@@ -61,6 +62,8 @@ module.exports = async (req, res) => {
         ctr: parseFloat(m.ctr || 0),
         cpc: parseFloat(m.cpc || 0),
         inversion: parseFloat(m.cost || 0),
+        // Lo que se factura: MELI le suma IVA al gasto (ver _adsIva.js).
+        inversion_iva: conIvaAds(m.cost),
         facturacion: parseFloat(m.total_amount || 0),
         unidades: parseInt(m.units_quantity || 0, 10),
         roas: parseFloat(m.roas || 0),

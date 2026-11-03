@@ -199,7 +199,34 @@ function mockearApi(page, estado, fallos = {}) {
         headers: omitidas.length ? { 'X-Etiquetas-Omitidas': omitidas.join(',') } : {} });
     }
     if (ruta === '/importaciones') return ok(estado.importaciones || []);
-    if (ruta === '/devoluciones') return ok([]);
+    // Devoluciones, como api/devoluciones.js. `sinCostoEnvioDevol` imita una base donde la
+    // migración del costo del envío de vuelta todavía no corrió.
+    if (ruta === '/devoluciones') {
+      const devs = estado.devoluciones = estado.devoluciones || [];
+      const id = url.searchParams.get('id');
+      if (metodo === 'POST') {
+        const d = { id: 'DEV-' + Date.now() + '-' + devs.length, venta_id: cuerpo.ventaId || null, sku: cuerpo.sku,
+          producto: cuerpo.producto, cantidad: cuerpo.cantidad, estado: 'pendiente', notas: cuerpo.notas || null,
+          created_at: new Date().toISOString(), recibida_at: null };
+        const respuesta = { ...d };
+        if (estado.sinCostoEnvioDevol) respuesta.migracionCostoEnvioPendiente = '20261104000000_add_costo_envio_devoluciones.sql';
+        else d.costo_envio = respuesta.costo_envio = cuerpo.costoEnvio || 0;
+        devs.unshift(d);
+        return ok(respuesta);
+      }
+      if (metodo === 'PATCH') {
+        if (estado.sinCostoEnvioDevol) return error(503, 'Falta correr la migración 20261104000000_add_costo_envio_devoluciones.sql en Supabase.');
+        const d = devs.find(x => x.id === id);
+        if (!d) return error(404, 'Devolución no encontrada');
+        d.costo_envio = cuerpo.costoEnvio;
+        return ok({ ...d });
+      }
+      if (metodo === 'DELETE') {
+        estado.devoluciones = devs.filter(x => x.id !== id);
+        return ok({ ok: true });
+      }
+      return ok(devs);
+    }
     // La waitlist, como api/avisos-stock.js. `sinAvisos` imita a una base donde la migración
     // todavía no corrió.
     if (ruta === '/avisos-stock') {

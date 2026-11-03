@@ -1,5 +1,13 @@
 // api/envios.js
+// GET    /api/envios                        → todos los envíos
+// GET    /api/envios?buscar=CODIGO          → el envío de una etiqueta de MELI escaneada (control de despacho)
+// GET    /api/envios?fotos=MLU1,MLU2        → { fotos: { MLU1: url } } para la pantalla de control
+// POST   /api/envios                        → alta
+// PUT    /api/envios?id=X                   → edición (incluye el resultado del control de despacho)
+// DELETE /api/envios?id=X
 const { getSupabase } = require('./_supabase');
+const { getMeliToken } = require('./_meliToken');
+const { MIGRACION, faltaMigracionControl, buscarEnvioPorCodigo, fotosDePublicaciones, camposControl } = require('./_controlEnvios');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,6 +18,18 @@ module.exports = async (req, res) => {
   const supabase = getSupabase();
 
   try {
+    if (req.method === 'GET' && req.query.buscar !== undefined) {
+      const r = await buscarEnvioPorCodigo(supabase, getMeliToken, String(req.query.buscar));
+      if (!r) return res.status(404).json({ error: 'No hay ningún envío del CRM con ese código.' });
+      return res.json(r);
+    }
+
+    if (req.method === 'GET' && req.query.fotos !== undefined) {
+      const ids = String(req.query.fotos).split(',');
+      const fotos = await fotosDePublicaciones(await getMeliToken(), ids);
+      return res.json({ fotos });
+    }
+
     if (req.method === 'GET') {
       const { data, error } = await supabase
         .from('envios')
@@ -54,9 +74,13 @@ module.exports = async (req, res) => {
       if (comprador !== undefined) updateData.comprador = comprador;
       if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho || null;
       if (direccion !== undefined) updateData.direccion = direccion;
+      Object.assign(updateData, camposControl(req.body));
       const { data, error } = await supabase.from('envios')
         .update(updateData)
         .eq('id', id).select().single();
+      if (error && faltaMigracionControl(error)) {
+        return res.status(503).json({ error: `Falta correr la migración ${MIGRACION} en Supabase.`, migracionPendiente: true });
+      }
       if (error) throw error;
       return res.json(data);
     }

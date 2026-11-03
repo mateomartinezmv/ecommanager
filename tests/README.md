@@ -11,6 +11,13 @@ Playwright trae su propio Chromium. Si es la primera vez en esa máquina:
 npx playwright install chromium
 ```
 
+Si la máquina ya tiene un Chromium que no es el de esta versión de Playwright, se le puede
+indicar cuál usar:
+
+```bash
+CHROMIUM_PATH=/ruta/al/chromium npm test
+```
+
 ## Cómo están armados
 
 El CRM entero es un solo `public/index.html` con el HTML, el CSS y ~8.000 líneas de JS en un
@@ -58,3 +65,5 @@ archivo.
 | `ads-acciones.test.js` | Directo sobre `api/meli/` (sin navegador): la conversión de ROAS objetivo a ACOS objetivo que se manda a MELI y los valores que no se dejan pasar, el antes y después de un cambio (ventanas de 14 días comparadas por día, el cambio reciente que todavía no se juzga, el cambio de un solo anuncio) y la semana de cada día en la evolución. |
 | `waitlist-reglas.test.js` | Directo sobre `api/importaciones.js` y `api/avisos-stock.js` con un Supabase falso (sin navegador): que al llegar una importación pasen a "para avisar" sólo los clientes que esperaban sus SKUs, con la importación anotada; que los avisados y cancelados no se pisen; que un SKU que no se pudo sumar no avise a nadie; que editar una importación que ya llegó no vuelva a disparar; anotar sin duplicar y validando el SKU; y la importación que llega igual sin la migración. |
 | `waitlist.test.js` | Clientes → 🔔 y Stock → 🔔 Waitlist: anotar el SKU que espera un cliente (y pedirle el teléfono si no tiene, sin borrarle el resto de la ficha), no anotarlo dos veces, la lista agrupada por SKU con lo que hay que avisar primero y la importación en camino, el filtro por SKU, el 📱 que abre WhatsApp con el mensaje y lo deja avisado, el ✕, y el estado sin la migración. |
+| `control-despacho.test.js` | ✅ Control de despacho manejado como el lector (tipea el código y Enter): la etiqueta de Mercado Envíos que abre el paquete por el número del tracking, el QR de Flex leído con el teclado cambiado que se resuelve contra el servidor, el producto que no va, la unidad de más y el código cualquiera que frenan con error y quedan anotados, el par de sliders que pide dos escaneos, la venta cancelada que no se despacha, la etiqueta que no lee marcada a mano, el control anterior que queda en el historial, lo que se ve en Envíos y el control sin la migración. |
+| `control-despacho-reglas.test.js` | Directo sobre `api/_controlEnvios.js` y `api/_meliEnvios.js` con un Supabase falso (sin navegador ni MELI): los números que salen de una etiqueta con los símbolos cambiados, el envío de Mercado Envíos encontrado en la base, el de Flex resuelto por la orden del carrito y guardado para la próxima, la sincronización que guarda el número de envío sólo si la columna existe y el PUT que toca sólo las columnas del control. |

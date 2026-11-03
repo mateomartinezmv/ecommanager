@@ -194,6 +194,39 @@
     #main { margin-left: 60px; }
     .two-col, .three-col { grid-template-columns: 1fr; }
   }
+  /* ── Control de despacho: se usa parado, con el lector en la mano y la caja abierta,
+     así que todo va grande y el resultado de cada escaneo se lee de lejos por el color. */
+  .desp-scan input { width: 100%; font-size: 20px; padding: 14px 18px; background: var(--surface2); border: 2px solid var(--accent); border-radius: var(--radius); color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .desp-scan input:focus { outline: none; box-shadow: 0 0 0 4px rgba(79,142,247,0.25); }
+  .desp-msg { margin: 14px 0 18px; padding: 18px 22px; border-radius: var(--radius); border: 2px solid var(--border); background: var(--surface); }
+  .desp-msg-titulo { font-size: 24px; font-weight: 700; line-height: 1.25; }
+  .desp-msg-detalle { font-size: 15px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+  .desp-msg-ok { border-color: var(--green); background: rgba(34,197,94,0.12); }
+  .desp-msg-ok .desp-msg-titulo { color: var(--green); }
+  .desp-msg-error { border-color: var(--red); background: rgba(239,68,68,0.16); }
+  .desp-msg-error .desp-msg-titulo { color: var(--red); }
+  .desp-msg-aviso { border-color: var(--yellow); background: rgba(245,158,11,0.12); }
+  .desp-msg-aviso .desp-msg-titulo { color: var(--yellow); }
+  .desp-msg-info { border-color: var(--accent); background: rgba(79,142,247,0.10); }
+  .desp-sacudir { animation: desp-sacudir 0.45s; }
+  @keyframes desp-sacudir { 0%,100% { transform: translateX(0); } 20%,60% { transform: translateX(-10px); } 40%,80% { transform: translateX(10px); } }
+  .desp-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+  .desp-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+  .desp-panel-titulo { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 10px; }
+  .desp-pasos { font-size: 16px; line-height: 2; color: var(--text-dim); padding-left: 22px; }
+  .desp-item { display: flex; gap: 16px; align-items: center; padding: 14px; border: 2px solid var(--border); border-radius: var(--radius); margin-top: 10px; background: var(--surface2); }
+  .desp-item.completo { border-color: var(--green); background: rgba(34,197,94,0.08); }
+  .desp-foto { width: 84px; height: 84px; flex-shrink: 0; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 32px; }
+  .desp-foto img { width: 100%; height: 100%; object-fit: contain; }
+  .desp-item-info { flex: 1; min-width: 0; }
+  .desp-sku { font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; word-break: break-all; }
+  .desp-variante { display: inline-block; margin-top: 4px; padding: 3px 10px; border-radius: 6px; background: var(--text); color: var(--bg); font-weight: 700; font-size: 15px; text-transform: uppercase; }
+  .desp-nombre { font-size: 14px; color: var(--text-dim); margin-top: 4px; }
+  .desp-nota { font-size: 12px; color: var(--yellow); margin-top: 4px; }
+  .desp-cuenta { text-align: right; flex-shrink: 0; }
+  .desp-num { font-size: 34px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .desp-item.completo .desp-num { color: var(--green); }
+  @media (max-width: 1100px) { .desp-grid { grid-template-columns: 1fr; } }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -214,6 +247,7 @@
     <div class="nav-item" onclick="goPage('ventas')"><span class="icon">🛒</span><span>Ventas</span></div>
     <div class="nav-item" onclick="goPage('devoluciones')"><span class="icon">↩️</span><span>Devoluciones</span></div>
     <div class="nav-item" onclick="goPage('envios')"><span class="icon">🚚</span><span>Envíos</span></div>
+    <div class="nav-item" onclick="goPage('despacho')"><span class="icon">✅</span><span>Control de despacho</span></div>
     <div class="nav-item" onclick="goPage('transportistas')"><span class="icon">💳</span><span>Transportistas</span></div>
     <div class="nav-item" onclick="goPage('clientes')"><span class="icon">👥</span><span>Clientes</span></div>
     <div class="nav-section">Compras</div>
@@ -488,6 +522,7 @@
       </div>
     </div>
     <div class="content">
+      <div id="envios-control-resumen" style="display:none;margin-bottom:14px;padding:12px 16px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);font-size:13px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"></div>
       <div class="tabs">
         <button class="tab active" onclick="switchEnviosTab('all')">Todos</button>
         <button class="tab" onclick="switchEnviosTab('pendiente')">Pendientes</button>
@@ -500,6 +535,31 @@
           <tbody id="envios-tbody"></tbody>
         </table>
         <div id="envios-empty" class="empty-state" style="display:none"><div class="empty-icon">🚚</div><p>No hay envíos registrados.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROL DE DESPACHO -->
+  <div id="page-despacho" class="page">
+    <div class="topbar">
+      <div class="page-title">✅ Control de despacho</div>
+      <div class="topbar-actions" style="align-items:center">
+        <span id="desp-contador" style="font-size:13px;color:var(--text-dim)"></span>
+        <button class="btn btn-ghost btn-sm" onclick="despachoActualizar(this)" title="Trae los envíos y ventas nuevos">🔄 Actualizar</button>
+      </div>
+    </div>
+    <div class="content">
+      <div id="desp-aviso" class="fact-alert" style="display:none;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.08)"></div>
+      <div class="desp-scan">
+        <input type="text" id="desp-input" autocomplete="off" spellcheck="false"
+          placeholder="Escaneá la etiqueta de MELI del paquete…"
+          onkeydown="if (event.key === 'Enter') { event.preventDefault(); const t = this.value; this.value = ''; despachoEscaneo(t); }"
+          onblur="setTimeout(despEnfocar, 400)">
+      </div>
+      <div id="desp-mensaje" class="desp-msg desp-msg-info"><div class="desp-msg-titulo">Escaneá la etiqueta de MELI del paquete</div></div>
+      <div class="desp-grid">
+        <div class="desp-panel" id="desp-paquete"></div>
+        <div class="desp-panel" id="desp-lista"></div>
       </div>
     </div>
   </div>
@@ -1990,7 +2050,7 @@ function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, packId: e.pack_id || null, meliShipmentId: e.meli_shipment_id || null, controladoAt: e.controlado_at || null, control: e.control || null, creado: e.created_at };
 }
 function normMovimiento(m) {
   return {
@@ -3158,6 +3218,7 @@ function goPage(page) {
   if (page === 'ventas') renderVentas();
   if (page === 'devoluciones') renderDevoluciones();
   if (page === 'envios') renderEnvios();
+  if (page === 'despacho') { renderDespacho(); despEnfocar(); }
   if (page === 'reportes') renderReportes();
   if (page === 'finanzas') renderFinanzas();
   if (page === 'transportistas') renderTransportistas();
@@ -6516,6 +6577,7 @@ function renderEnvios() {
   const zonaFilter = document.getElementById('envios-zona')?.value || '';
   const desde = document.getElementById('envios-desde')?.value || '';
   const hasta = document.getElementById('envios-hasta')?.value || '';
+  renderResumenControlEnvios();
   let envios = [...db.envios].sort((a,b) => new Date(b.creado) - new Date(a.creado));
   if (enviosTabFilter !== 'all') envios = envios.filter(e => e.estado === enviosTabFilter);
   if (q) envios = envios.filter(e =>
@@ -6569,6 +6631,7 @@ function renderEnvios() {
         <select onchange="cambiarEstadoEnvio('${e.id}',this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px 8px;color:var(--text);cursor:pointer">
           ${['pendiente','en_camino','entregado','problema'].map(s => `<option value="${s}" ${e.estado===s?'selected':''}>${estadoLabels[s]}</option>`).join('')}
         </select>
+        ${badgeControlEnvio(e) ? `<div style="margin-top:4px">${badgeControlEnvio(e)}</div>` : ''}
       </td>
       <td>
         ${e.pagado ? '<span class="badge badge-green" style="font-size:10px">✓ Pagado</span>' : ''}
@@ -6579,6 +6642,458 @@ function renderEnvios() {
     </tr>
   `;
   }).join('');
+}
+
+// =====================
+// CONTROL DE DESPACHO (lector de códigos)
+// =====================
+// Quien arma el paquete escanea la etiqueta de MELI y después la etiqueta SKU del CRM de
+// cada producto que mete en la caja. El CRM compara contra lo que se vendió en ese envío:
+// verde si es lo que va, rojo y un sonido fuerte si es otro producto, otra variante o una
+// unidad de más. Cuando está todo, el envío queda controlado y el próximo escaneo de una
+// etiqueta abre el paquete siguiente.
+//
+// El lector funciona como un teclado: "tipea" el código y manda Enter. Por eso la pantalla
+// mantiene el cursor en su campo, y los códigos se comparan sin símbolos ni mayúsculas: si
+// el lector está configurado con otro idioma de teclado que la PC, el guion o las llaves
+// del QR de Flex salen cambiados, pero las letras y los números no.
+let desp = { envioId: null, items: [], errores: [], inicio: null, ocupado: false };
+let despFotos = {};               // publicación MELI → url de la foto
+let despMigracionPendiente = false;
+let despAudio = null;
+
+function despEsc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function normCodigo(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function numerosDeCodigo(texto) { return [...new Set(String(texto || '').match(/\d{8,20}/g) || [])]; }
+function despHora(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('es-UY', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-UY', { hour: '2-digit', minute: '2-digit' });
+}
+
+function productoPorCodigo(codigo) {
+  const c = normCodigo(codigo);
+  if (!c) return null;
+  return db.productos.find(p => normCodigo(p.sku) === c) || null;
+}
+
+// El envío de una etiqueta escaneada, con lo que ya está cargado. En Mercado Envíos el
+// número del código de barras está adentro del tracking ("MEL48412750656FMDOF01"); en Flex
+// sólo lo tiene meli_shipment_id. El id del envío sirve para elegirlo a mano.
+function envioPorCodigoLocal(codigo) {
+  const crudo = String(codigo || '').trim();
+  const porId = db.envios.find(e => e.id === crudo);
+  if (porId) return porId;
+  for (const n of numerosDeCodigo(crudo)) {
+    const e = db.envios.find(x => x.meliShipmentId === n) || db.envios.find(x => x.packId === n)
+      || db.envios.find(x => x.orden === n) || db.envios.find(x => (x.tracking || '').includes(n));
+    if (e) return e;
+  }
+  return null;
+}
+
+// Las líneas de venta que van en un envío: la compra entera (un carrito de MELI comparte
+// pack, uno de mostrador comparte grupo), no sólo la venta a la que apunta el envío.
+function lineasDeEnvio(e) {
+  const venta = db.ventas.find(v => v.id === e.ventaId);
+  if (venta) return db.ventas.filter(v => ticketKey(v) === ticketKey(venta));
+  if (e.packId) return db.ventas.filter(v => v.packId === e.packId);
+  if (e.orden) return db.ventas.filter(v => v.ordenMeli === e.orden);
+  return [];
+}
+
+// Unidades a escanear por SKU. Un producto que se vende de a par se despacha en dos cajas
+// con su etiqueta cada una, así que una venta de 1 par son 2 escaneos.
+function itemsEsperados(lineas) {
+  const porSku = {};
+  for (const v of lineas) {
+    const p = db.productos.find(x => x.sku === v.sku);
+    const upv = upvDe(p);
+    const it = porSku[v.sku] || (porSku[v.sku] = {
+      sku: v.sku, nombre: p?.nombre || v.producto || v.sku, esperado: 0, escaneado: 0, manual: 0, upv,
+      meliItemId: v.meliItemId || p?.meliIds?.[0] || p?.meliId || null,
+    });
+    it.esperado += (Number(v.cantidad) || 0) * upv;
+  }
+  return Object.values(porSku).filter(it => it.esperado > 0);
+}
+
+const despHechos = it => it.escaneado + it.manual;
+const despCompleto = () => desp.items.length > 0 && desp.items.every(it => despHechos(it) >= it.esperado);
+const despFaltan = () => desp.items.filter(it => despHechos(it) < it.esperado)
+  .map(it => `${it.sku} ×${it.esperado - despHechos(it)}`).join(', ');
+
+// Un tono corto si está bien, tres subiendo al terminar el paquete, un zumbido grave si
+// está mal: quien arma no tiene que mirar la pantalla para saber qué pasó.
+function despSonido(tipo) {
+  try {
+    despAudio = despAudio || new (window.AudioContext || window.webkitAudioContext)();
+    const notas = { ok: [[880, 0.09]], completo: [[660, 0.12], [880, 0.12], [1175, 0.25]],
+      error: [[160, 0.3], [0, 0.08], [160, 0.4]], aviso: [[440, 0.18]] }[tipo] || [];
+    let t = despAudio.currentTime;
+    for (const [f, d] of notas) {
+      if (f) {
+        const o = despAudio.createOscillator(), g = despAudio.createGain();
+        o.type = tipo === 'error' ? 'sawtooth' : 'sine';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.25, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + d);
+        o.connect(g).connect(despAudio.destination);
+        o.start(t); o.stop(t + d);
+      }
+      t += d;
+    }
+  } catch (_) { /* sin audio la pantalla funciona igual */ }
+}
+
+function despMensaje(tipo, titulo, detalle = '') {
+  const el = document.getElementById('desp-mensaje');
+  if (!el) return;
+  el.className = 'desp-msg desp-msg-' + tipo;
+  el.innerHTML = `<div class="desp-msg-titulo">${titulo}</div>${detalle ? `<div class="desp-msg-detalle">${detalle}</div>` : ''}`;
+  if (tipo === 'error') { void el.offsetWidth; el.classList.add('desp-sacudir'); }
+}
+
+function despEnfocar() {
+  const pagina = document.getElementById('page-despacho');
+  if (!pagina || !pagina.classList.contains('active')) return;
+  if (document.querySelector('.modal-overlay.open')) return;
+  const input = document.getElementById('desp-input');
+  if (input && document.activeElement !== input) input.focus({ preventScroll: true });
+}
+
+// Si el cursor quedó en otro lado (se tocó un botón), lo primero que tipea el lector vuelve
+// al campo de escaneo en vez de perderse.
+document.addEventListener('keydown', ev => {
+  if (!document.getElementById('page-despacho')?.classList.contains('active')) return;
+  const tag = (document.activeElement?.tagName || '').toLowerCase();
+  if (['input', 'textarea', 'select'].includes(tag)) return;
+  if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) despEnfocar();
+}, true);
+
+function despRegistrarError(tipo, codigo, sku) {
+  desp.errores.push({ tipo, codigo: String(codigo).slice(0, 80), sku: sku || null, at: new Date().toISOString() });
+}
+
+async function despachoEscaneo(texto) {
+  const codigo = String(texto || '').trim();
+  if (!codigo) return;
+  if (desp.ocupado) { despMensaje('aviso', 'Un momento…', 'Todavía estoy buscando el escaneo anterior.'); return; }
+  const prod = productoPorCodigo(codigo);
+
+  if (desp.envioId) {
+    if (prod) return despEscanearProducto(prod, codigo);
+    const otro = envioPorCodigoLocal(codigo);
+    if (otro && otro.id === desp.envioId) {
+      despSonido('aviso');
+      return despMensaje('aviso', 'Ya estás controlando este paquete', 'Ahora escaneá los productos que van adentro.');
+    }
+    if (otro || numerosDeCodigo(codigo).length) {
+      despSonido('aviso');
+      return despMensaje('aviso', 'Primero terminá este paquete',
+        `Falta: ${despEsc(despFaltan())}. Si lo querés dejar para después, tocá “Cancelar este paquete”.`);
+    }
+    despRegistrarError('desconocido', codigo, null);
+    despSonido('error');
+    renderDespacho();
+    return despMensaje('error', '❌ Código no reconocido',
+      `Leí “${despEsc(codigo)}” y no es ningún SKU del CRM. Escaneá la etiqueta del CRM que tiene pegada el producto.`);
+  }
+
+  if (prod) {
+    despSonido('aviso');
+    return despMensaje('aviso', 'Primero escaneá la etiqueta de MELI del paquete',
+      `Leí el producto ${despEsc(prod.sku)}. Antes va la etiqueta de envío, para saber qué tiene que ir en la caja.`);
+  }
+
+  let envio = envioPorCodigoLocal(codigo);
+  // Un envío Flex que la sincronización todavía no completó, o una venta que entró después de
+  // abrir la pantalla: se le pregunta al servidor, que lo resuelve contra MELI y lo guarda.
+  if (!envio && numerosDeCodigo(codigo).length) {
+    desp.ocupado = true;
+    despMensaje('info', 'Buscando el envío en Mercado Libre…');
+    try {
+      const r = await api('GET', '/envios?buscar=' + encodeURIComponent(codigo));
+      await loadAll();
+      envio = db.envios.find(e => e.id === r?.envio?.id) || null;
+    } catch (_) { envio = null; }
+    desp.ocupado = false;
+  }
+  if (!envio) {
+    despSonido('error');
+    return despMensaje('error', '❌ No encontré ese envío',
+      `Leí “${despEsc(codigo)}”. Si es la etiqueta de un paquete, elegilo en la lista de la derecha con “Controlar”.`);
+  }
+  despachoAbrir(envio.id);
+}
+
+function despachoAbrir(envioId) {
+  const e = db.envios.find(x => x.id === envioId);
+  if (!e) return;
+  if (desp.envioId && desp.envioId !== envioId && desp.items.some(it => despHechos(it) > 0)) {
+    if (!confirm('Hay un paquete a medio controlar. ¿Dejarlo y pasar a este?')) return;
+  }
+  const lineas = lineasDeEnvio(e);
+  const vigentes = lineas.filter(v => v.estado !== 'cancelada');
+  const quien = despEsc(e.comprador || vigentes[0]?.comprador || vigentes[0]?.cliente || 'sin nombre');
+  if (lineas.length && !vigentes.length) {
+    despSonido('error');
+    despCerrarPaquete();
+    return despMensaje('error', '⛔ Esta venta está cancelada: NO se despacha', `Paquete de ${quien}. Separalo y avisá.`);
+  }
+  const items = itemsEsperados(vigentes);
+  if (!items.length) {
+    despSonido('error');
+    despCerrarPaquete();
+    return despMensaje('error', '❌ No encontré los productos de este envío',
+      `Paquete de ${quien} (${despEsc(e.producto || 'sin detalle')}). Revisá la venta en el CRM antes de despacharlo.`);
+  }
+  desp = { envioId, items, errores: [], inicio: new Date().toISOString(), ocupado: false };
+  const avisos = [];
+  if (e.controladoAt) avisos.push(`Ya se había controlado el ${despHora(e.controladoAt)}: si lo escaneás entero de nuevo, queda este control.`);
+  if (e.estado !== 'pendiente') avisos.push(`Ojo: en el CRM figura como “${({ en_camino: 'En camino', entregado: 'Entregado', problema: 'Problema' })[e.estado] || e.estado}”.`);
+  if (lineas.length > vigentes.length) avisos.push('Una parte de la compra se canceló: van sólo los productos de abajo.');
+  despSonido(avisos.length ? 'aviso' : 'ok');
+  despMensaje(avisos.length ? 'aviso' : 'info', `📦 Paquete de ${quien}: escaneá cada producto`,
+    avisos.join('<br>') || `Lleva ${items.reduce((a, it) => a + it.esperado, 0)} unidad(es).`);
+  renderDespacho();
+  despCargarFotos();
+}
+
+function despEscanearProducto(prod, codigo) {
+  const it = desp.items.find(i => i.sku === prod.sku);
+  if (!it) {
+    despRegistrarError('otro_producto', codigo, prod.sku);
+    despSonido('error');
+    renderDespacho();
+    return despMensaje('error', `❌ ${despEsc(prod.sku)} NO va en este paquete`,
+      `Sacalo de la caja. Lo que falta poner: ${despEsc(despFaltan())}.`);
+  }
+  if (despHechos(it) >= it.esperado) {
+    despRegistrarError('sobra', codigo, prod.sku);
+    despSonido('error');
+    renderDespacho();
+    return despMensaje('error', `❌ Sobra un ${despEsc(prod.sku)}`,
+      `Este paquete lleva ${it.esperado} y ya están todos. Sacá la unidad de más.`);
+  }
+  it.escaneado++;
+  if (despCompleto()) return despTerminar();
+  const falta = it.esperado - despHechos(it);
+  despSonido('ok');
+  despMensaje('ok', `✅ ${despEsc(prod.sku)} correcto`,
+    falta > 0 ? `Faltan ${falta} más de este producto.` : `Listo este producto. Falta: ${despEsc(despFaltan())}.`);
+  renderDespacho();
+}
+
+// Para la etiqueta que no se puede leer (rota, mojada). Queda registrado como "a mano" para
+// que se vea en Envíos que esa unidad no pasó por el lector.
+function despManual(sku) {
+  const it = desp.items.find(i => i.sku === sku);
+  if (!it || despHechos(it) >= it.esperado) return;
+  const faltan = it.esperado - despHechos(it);
+  if (!confirm(`¿Marcar ${faltan} × ${sku} como puesto sin escanear?\n\nUsalo sólo si la etiqueta no se puede leer. Queda registrado que no pasó por el lector.`)) return;
+  it.manual += faltan;
+  if (despCompleto()) return despTerminar();
+  despMensaje('aviso', `✋ ${despEsc(sku)} marcado a mano`, `Falta: ${despEsc(despFaltan())}.`);
+  renderDespacho();
+}
+
+function despCerrarPaquete() {
+  desp = { envioId: null, items: [], errores: [], inicio: null, ocupado: false };
+  renderDespacho();
+}
+
+function despCancelar() {
+  if (desp.items.some(it => despHechos(it) > 0) && !confirm('¿Cancelar el control de este paquete? Lo escaneado no se guarda.')) return;
+  despCerrarPaquete();
+  despMensaje('info', 'Control cancelado', 'Escaneá la etiqueta de MELI del paquete que vas a armar.');
+}
+
+async function despTerminar() {
+  const e = db.envios.find(x => x.id === desp.envioId);
+  const fin = new Date().toISOString();
+  const control = {
+    items: desp.items.map(({ sku, esperado, escaneado, manual }) => ({ sku, esperado, escaneado, manual })),
+    errores: desp.errores, inicio: desp.inicio, fin,
+  };
+  // Volver a controlar un paquete no borra lo que pasó antes: los errores frenados la
+  // primera vez siguen contando.
+  if (e && e.control) {
+    const { historial, ...anterior } = e.control;
+    control.historial = [...(historial || []), anterior];
+  }
+  desp.ocupado = true;
+  renderDespacho();
+  try {
+    await api('PUT', `/envios?id=${encodeURIComponent(desp.envioId)}`, { controladoAt: fin, control });
+    if (e) { e.controladoAt = fin; e.control = control; }
+    despSonido('completo');
+    despCerrarPaquete();
+    despMensaje('ok', '✅ Paquete controlado: cerralo y pegale la etiqueta',
+      (control.errores.length ? `Se frenaron ${control.errores.length} escaneo(s) equivocado(s). ` : '') + 'Escaneá la etiqueta del próximo paquete.');
+  } catch (err) {
+    desp.ocupado = false;
+    if (/migraci/i.test(err.message)) {
+      // El paquete está bien armado; lo que no se puede es dejarlo anotado. No se traba a
+      // quien arma por algo que tiene que resolver el dueño en Supabase.
+      despMigracionPendiente = true;
+      despSonido('completo');
+      despCerrarPaquete();
+      despMensaje('ok', '✅ Paquete correcto: cerralo y pegale la etiqueta', 'El control no quedó guardado en el CRM (falta un paso de configuración, ver arriba).');
+      return;
+    }
+    despSonido('error');
+    renderDespacho();
+    despMensaje('error', '⚠️ El paquete está bien, pero no se pudo guardar el control',
+      `${despEsc(err.message)}. Tocá “Reintentar guardar”.`);
+  }
+}
+
+async function despCargarFotos() {
+  const faltan = desp.items.map(it => it.meliItemId).filter(id => id && !(id in despFotos));
+  if (!faltan.length) return;
+  faltan.forEach(id => { despFotos[id] = null; });
+  try {
+    const r = await api('GET', '/envios?fotos=' + encodeURIComponent(faltan.join(',')));
+    Object.assign(despFotos, r.fotos || {});
+    renderDespacho();
+  } catch (_) { /* sin foto se ve igual el SKU y el nombre */ }
+}
+
+async function despachoActualizar(btn) {
+  if (btn) btn.disabled = true;
+  try { await loadAll(); renderDespacho(); } finally { if (btn) btn.disabled = false; despEnfocar(); }
+}
+
+// Los envíos que hay que armar: los pendientes, y los que se controlaron hoy aunque ya
+// hayan salido (para ver el día completo).
+function enviosParaDespachar() {
+  const hoy = new Date().toISOString().slice(0, 10);
+  return db.envios.filter(e => e.estado === 'pendiente' || (e.controladoAt && e.controladoAt.slice(0, 10) === hoy));
+}
+
+// Escaneos equivocados de un envío, contando los de controles anteriores del mismo paquete.
+function erroresDeControl(c) {
+  if (!c) return 0;
+  return (c.errores || []).length + (c.historial || []).reduce((a, h) => a + (h.errores || []).length, 0);
+}
+
+function badgeControlEnvio(e) {
+  if (e.controladoAt) {
+    const c = e.control || {};
+    const errores = erroresDeControl(c);
+    const manual = (c.items || []).reduce((a, it) => a + (it.manual || 0), 0);
+    const titulo = `Controlado con el lector el ${despHora(e.controladoAt)}` +
+      (errores ? `\n${errores} escaneo(s) equivocado(s) frenado(s)` : '') +
+      (manual ? `\n${manual} unidad(es) marcada(s) a mano, sin escanear` : '');
+    return `<span class="badge ${manual ? 'badge-yellow' : 'badge-green'}" style="white-space:nowrap" title="${despEsc(titulo)}">✅ Controlado${manual ? ` · ${manual} a mano` : ''}${errores ? ` · ${errores} ✋` : ''}</span>`;
+  }
+  if (e.estado === 'pendiente') return '<span class="badge badge-gray" style="white-space:nowrap" title="Todavía no se escaneó con el lector en ✅ Control de despacho">Sin controlar</span>';
+  return '';
+}
+
+function renderDespacho() {
+  const panel = document.getElementById('desp-paquete');
+  const lista = document.getElementById('desp-lista');
+  if (!panel || !lista) return;
+
+  const aviso = document.getElementById('desp-aviso');
+  aviso.style.display = despMigracionPendiente ? 'flex' : 'none';
+  aviso.innerHTML = despMigracionPendiente
+    ? '⚠️ <div>Los controles no se están guardando: falta correr <code>supabase/migrations/20261103000000_add_control_envios.sql</code> en el SQL Editor de Supabase. El control funciona igual, pero no queda anotado en Envíos.</div>'
+    : '';
+
+  const e = desp.envioId ? db.envios.find(x => x.id === desp.envioId) : null;
+  document.getElementById('desp-input').placeholder = e
+    ? 'Escaneá la etiqueta de cada producto que metés en la caja…'
+    : 'Escaneá la etiqueta de MELI del paquete…';
+  if (!e) {
+    panel.innerHTML = `<div class="desp-panel-titulo">Cómo se usa</div>
+      <ol class="desp-pasos">
+        <li>Escaneá la <b>etiqueta de MELI</b> del paquete (el código de barras o el QR).</li>
+        <li>Escaneá la <b>etiqueta del CRM</b> de cada producto a medida que lo metés en la caja.</li>
+        <li>Cuando suene ✅ <b>Paquete controlado</b>, cerralo y pegale la etiqueta.</li>
+      </ol>
+      <div style="font-size:13px;color:var(--text-muted);margin-top:8px">Si suena el error, la pantalla dice qué está mal: no cierres la caja hasta que esté en verde.</div>`;
+  } else {
+    const tipo = tipoEnvioDeTransportista(e.transportista);
+    const total = desp.items.reduce((a, it) => a + it.esperado, 0);
+    const hechos = desp.items.reduce((a, it) => a + Math.min(despHechos(it), it.esperado), 0);
+    panel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap">
+        <div>
+          <div class="desp-panel-titulo">Paquete en control · ${hechos} de ${total}</div>
+          <div style="font-size:20px;font-weight:700">${despEsc(e.comprador || '—')}</div>
+          <div style="font-size:13px;color:var(--text-dim);margin-top:2px">${TIPO_ENVIO_ICONS[tipo] || ''} ${despEsc(e.direccion || '')}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:2px;font-family:'JetBrains Mono',monospace">Orden ${despEsc(e.orden || e.id)}${e.meliShipmentId ? ' · Envío ' + despEsc(e.meliShipmentId) : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          ${!desp.ocupado && despCompleto() ? '<button class="btn btn-primary btn-sm" onclick="despTerminar()">💾 Reintentar guardar</button>' : ''}
+          <button class="btn btn-ghost btn-sm" onclick="despCancelar()">✕ Cancelar este paquete</button>
+        </div>
+      </div>
+      ${desp.items.map(it => {
+        const { base, variante } = separarVariante(it.nombre);
+        const listo = despHechos(it) >= it.esperado;
+        const foto = it.meliItemId && despFotos[it.meliItemId];
+        return `<div class="desp-item${listo ? ' completo' : ''}" data-sku="${despEsc(it.sku)}">
+          <div class="desp-foto">${foto ? `<img src="${despEsc(foto)}" alt="" onerror="this.replaceWith('📦')">` : '📦'}</div>
+          <div class="desp-item-info">
+            <div class="desp-sku">${despEsc(it.sku)}</div>
+            ${variante ? `<span class="desp-variante">${despEsc(variante)}</span>` : ''}
+            <div class="desp-nombre">${despEsc(base)}</div>
+            ${it.upv > 1 ? `<div class="desp-nota">Se vende de a ${it.upv === 2 ? 'par' : it.upv}: se escanea cada caja.</div>` : ''}
+            ${it.manual ? `<div class="desp-nota">✋ ${it.manual} marcado(s) a mano</div>` : ''}
+          </div>
+          <div class="desp-cuenta">
+            <div><span class="desp-num">${despHechos(it)}</span><span style="font-size:20px;color:var(--text-muted)"> / ${it.esperado}</span> ${listo ? '✅' : ''}</div>
+            ${!listo ? `<button class="btn btn-ghost btn-sm" style="margin-top:6px" data-sku="${despEsc(it.sku)}" onclick="despManual(this.dataset.sku)" title="Sólo si la etiqueta no se puede leer">✋ No lee la etiqueta</button>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+      ${desp.errores.length ? `<div style="margin-top:12px;font-size:13px;color:var(--red)">✋ ${desp.errores.length} escaneo(s) equivocado(s) frenado(s) en este paquete</div>` : ''}`;
+  }
+
+  const envios = enviosParaDespachar().sort((a, b) =>
+    (!!a.controladoAt - !!b.controladoAt) || String(a.creado || '').localeCompare(String(b.creado || '')));
+  const pendientes = envios.filter(x => x.estado === 'pendiente');
+  const sinControlar = pendientes.filter(x => !x.controladoAt).length;
+  document.getElementById('desp-contador').innerHTML = pendientes.length
+    ? `<b style="color:${sinControlar ? 'var(--yellow)' : 'var(--green)'}">${pendientes.length - sinControlar} de ${pendientes.length}</b> pendientes controlados`
+    : 'No hay envíos pendientes';
+  lista.innerHTML = `<div class="desp-panel-titulo">Para despachar</div>` + (envios.length
+    ? envios.map(x => {
+        const tipo = tipoEnvioDeTransportista(x.transportista);
+        const actual = x.id === desp.envioId;
+        return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border)${actual ? ';background:rgba(79,142,247,0.08)' : ''}">
+          <div style="min-width:0">
+            <div style="font-weight:600">${TIPO_ENVIO_ICONS[tipo] || ''} ${despEsc(x.comprador || '—')}</div>
+            <div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${despEsc(x.producto || '')}</div>
+            <div style="margin-top:4px">${badgeControlEnvio(x)}</div>
+          </div>
+          ${actual ? '<span class="badge badge-blue">En control</span>'
+            : `<button class="btn btn-ghost btn-sm" data-id="${despEsc(x.id)}" onclick="despachoAbrir(this.dataset.id)" title="Para cuando la etiqueta no se puede leer">Controlar</button>`}
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--text-muted);font-size:13px">No hay envíos pendientes.</div>');
+}
+
+// Resumen arriba de la tabla de Envíos: cuántos de los pendientes ya pasaron por el lector.
+function renderResumenControlEnvios() {
+  const el = document.getElementById('envios-control-resumen');
+  if (!el) return;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const pendientes = db.envios.filter(e => e.estado === 'pendiente');
+  const deHoy = db.envios.filter(e => e.controladoAt && e.controladoAt.slice(0, 10) === hoy);
+  if (!pendientes.length && !deHoy.length) { el.style.display = 'none'; return; }
+  const sinControlar = pendientes.filter(e => !e.controladoAt).length;
+  const frenados = deHoy.reduce((a, e) => a + erroresDeControl(e.control), 0);
+  el.style.display = 'flex';
+  el.innerHTML = `<div>✅ <b>Control de despacho:</b> ${pendientes.length - sinControlar} de ${pendientes.length} pendientes controlados` +
+    (sinControlar ? ` · <span style="color:var(--yellow);font-weight:600">${sinControlar} sin controlar</span>` : '') +
+    (frenados ? ` · <span style="color:var(--red)">${frenados} escaneo(s) equivocado(s) frenado(s) hoy</span>` : '') + `</div>
+    <button class="btn btn-ghost btn-sm" onclick="goPage('despacho')">Abrir control →</button>`;
 }
 
 // =====================

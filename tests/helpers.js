@@ -183,6 +183,21 @@ function mockearApi(page, estado, fallos = {}) {
       }
       return ok(estado.clientes || []);
     }
+    // Etiquetas de MELI de varios envíos (Control de despacho → 🖨️). `etiquetasMeliEstado` es
+    // lo que MELI dice de cada envío; los PDF pedidos se guardan en `etiquetasPedidas`.
+    if (ruta === '/meli/etiqueta' && url.searchParams.has('envios')) {
+      const ids = url.searchParams.get('envios').split(',').filter(Boolean);
+      if (url.searchParams.get('estado')) {
+        if (estado.etiquetasEstadoFalla) return error(500, estado.etiquetasEstadoFalla);
+        const conocido = estado.etiquetasMeliEstado || {};
+        return ok({ estados: Object.fromEntries(ids.map(id => [id, conocido[id] || { impresa: false, imprimible: true }])) });
+      }
+      (estado.etiquetasPedidas = estado.etiquetasPedidas || []).push(ids);
+      if (estado.etiquetasFalla) return error(502, estado.etiquetasFalla);
+      const omitidas = ids.filter(id => (estado.etiquetasSinShipment || []).includes(id));
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.4 etiquetas de prueba',
+        headers: omitidas.length ? { 'X-Etiquetas-Omitidas': omitidas.join(',') } : {} });
+    }
     if (ruta === '/importaciones') return ok(estado.importaciones || []);
     if (ruta === '/devoluciones') return ok([]);
     // La waitlist, como api/avisos-stock.js. `sinAvisos` imita a una base donde la migración

@@ -3220,7 +3220,7 @@ function goPage(page) {
   if (page === 'ventas') renderVentas();
   if (page === 'devoluciones') renderDevoluciones();
   if (page === 'envios') renderEnvios();
-  if (page === 'despacho') { renderDespacho(); despEnfocar(); }
+  if (page === 'despacho') { renderDespacho(); despEnfocar(); despCargarEtiquetas(); }
   if (page === 'reportes') renderReportes();
   if (page === 'finanzas') renderFinanzas();
   if (page === 'transportistas') renderTransportistas();
@@ -6769,8 +6769,11 @@ function despEnfocar() {
 // al campo de escaneo en vez de perderse.
 document.addEventListener('keydown', ev => {
   if (!document.getElementById('page-despacho')?.classList.contains('active')) return;
-  const tag = (document.activeElement?.tagName || '').toLowerCase();
-  if (['input', 'textarea', 'select'].includes(tag)) return;
+  const el = document.activeElement;
+  const tag = (el?.tagName || '').toLowerCase();
+  // Una casilla de "imprimir" no es un campo de texto: lo que tipea el lector va al escaneo.
+  const escribible = tag === 'textarea' || tag === 'select' || (tag === 'input' && !['checkbox', 'radio', 'button'].includes(el.type));
+  if (escribible) return;
   if (ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey) despEnfocar();
 }, true);
 
@@ -6965,7 +6968,7 @@ async function despCargarFotos() {
 
 async function despachoActualizar(btn) {
   if (btn) btn.disabled = true;
-  try { await loadAll(); renderDespacho(); } finally { if (btn) btn.disabled = false; despEnfocar(); }
+  try { await loadAll(); renderDespacho(); await despCargarEtiquetas(); } finally { if (btn) btn.disabled = false; despEnfocar(); }
 }
 
 // Los envíos que hay que armar: los pendientes, y los que se controlaron hoy aunque ya
@@ -7064,21 +7067,149 @@ function renderDespacho() {
   document.getElementById('desp-contador').innerHTML = pendientes.length
     ? `<b style="color:${sinControlar ? 'var(--yellow)' : 'var(--green)'}">${pendientes.length - sinControlar} de ${pendientes.length}</b> pendientes controlados`
     : 'No hay envíos pendientes';
-  lista.innerHTML = `<div class="desp-panel-titulo">Para despachar</div>` + (envios.length
+  const imprimibles = enviosImprimibles();
+  const seleccionadas = imprimibles.filter(x => despSeleccion.has(x.id)).length;
+  const barra = imprimibles.length ? `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:12px;color:var(--text-muted)">Etiquetas MELI:</span>
+      <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('todas')">Todas</button>
+      <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('faltan')" title="Las que todavía no se imprimieron, ni desde el CRM ni desde Mercado Libre">Las que faltan imprimir</button>
+      <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('ninguna')">Ninguna</button>
+      <button class="btn btn-primary btn-sm" id="desp-imprimir" style="margin-left:auto" onclick="despImprimirEtiquetas()" ${seleccionadas && !despImprimiendo ? '' : 'disabled'}>${despImprimiendo ? '⏳ Bajando…' : `🖨️ Imprimir (${seleccionadas})`}</button>
+    </div>
+    ${despAvisoEtiquetas ? `<div id="desp-etq-aviso" style="font-size:12px;margin-bottom:8px;color:${despAvisoEtiquetas.tipo === 'error' ? 'var(--red)' : despAvisoEtiquetas.tipo === 'aviso' ? 'var(--yellow)' : 'var(--green)'}">${despAvisoEtiquetas.texto}</div>` : ''}` : '';
+  lista.innerHTML = `<div class="desp-panel-titulo">Para despachar</div>` + barra + (envios.length
     ? envios.map(x => {
         const tipo = tipoEnvioDeTransportista(x.transportista);
         const actual = x.id === desp.envioId;
-        return `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border)${actual ? ';background:rgba(79,142,247,0.08)' : ''}">
-          <div style="min-width:0">
+        const id = despEsc(x.id);
+        const conEtiqueta = x.estado === 'pendiente' && esEnvioMeli(x);
+        const et = despEtiquetas[x.id];
+        const bloqueada = et && et.imprimible === false;
+        const casilla = conEtiqueta
+          ? `<input type="checkbox" class="desp-check" data-id="${id}" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--accent);cursor:pointer" ${despSeleccion.has(x.id) ? 'checked' : ''} ${bloqueada ? 'disabled' : ''} title="${bloqueada ? 'MELI no entrega la etiqueta de este envío ahora' : 'Incluir en el PDF de etiquetas'}" onchange="despToggleEtiqueta(this.dataset.id, this.checked)">`
+          : '<span style="width:18px;flex-shrink:0"></span>';
+        return `<div class="desp-fila" data-id="${id}" style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border)${actual ? ';background:rgba(79,142,247,0.08)' : ''}">
+          ${casilla}
+          <div style="min-width:0;flex:1">
             <div style="font-weight:600">${TIPO_ENVIO_ICONS[tipo] || ''} ${despEsc(x.comprador || '—')}</div>
             <div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${despEsc(x.producto || '')}</div>
-            <div style="margin-top:4px">${badgeControlEnvio(x)}</div>
+            <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${badgeControlEnvio(x)}${conEtiqueta ? badgeEtiquetaMeli(x) : ''}</div>
           </div>
           ${actual ? '<span class="badge badge-blue">En control</span>'
-            : `<button class="btn btn-ghost btn-sm" data-id="${despEsc(x.id)}" onclick="despachoAbrir(this.dataset.id)" title="Para cuando la etiqueta no se puede leer">Controlar</button>`}
+            : `<button class="btn btn-ghost btn-sm" data-id="${id}" onclick="despachoAbrir(this.dataset.id)" title="Para cuando la etiqueta no se puede leer">Controlar</button>`}
         </div>`;
       }).join('')
     : '<div style="color:var(--text-muted);font-size:13px">No hay envíos pendientes.</div>');
+}
+
+// ── Etiquetas de MELI desde el control ───────────────────────────────────────
+// Se eligen con las casillas (o con los atajos) y salen en un solo PDF, para mandarlo a la
+// térmica. "Las que faltan imprimir" se decide con lo que dice MELI de cada envío, así que
+// también cuenta lo que se imprimió desde el panel de Mercado Libre.
+let despSeleccion = new Set();
+let despEtiquetas = {};               // envío → { impresa, imprimible, status, substatus }
+let despImpresasAca = new Set();      // impresas desde esta pantalla (MELI tarda en marcarlas)
+let despEtiquetasCargando = false;
+let despImprimiendo = false;
+let despAvisoEtiquetas = null;        // { tipo: 'ok' | 'aviso' | 'error', texto }
+
+function esEnvioMeli(e) {
+  const v = db.ventas.find(x => x.id === e.ventaId);
+  return v ? v.canal === 'meli' : String(e.id).startsWith('E_MELI_');
+}
+const enviosImprimibles = () => db.envios.filter(e => e.estado === 'pendiente' && esEnvioMeli(e));
+
+function badgeEtiquetaMeli(e) {
+  const et = despEtiquetas[e.id];
+  if (!et) return despEtiquetasCargando ? '<span class="badge badge-gray">🖨️ …</span>' : '';
+  if (et.imprimible === false) {
+    const motivo = et.motivo === 'sin_shipment' ? 'El CRM no encontró el envío de MELI de esta venta'
+      : et.motivo === 'meli_no_responde' ? 'MELI no respondió por este envío'
+      : `MELI: ${et.status || '?'}${et.substatus ? ' / ' + et.substatus : ''}`;
+    return `<span class="badge badge-gray" style="white-space:nowrap" title="${despEsc(motivo)}">🖨️ No disponible</span>`;
+  }
+  return (et.impresa || despImpresasAca.has(e.id))
+    ? '<span class="badge badge-blue" style="white-space:nowrap" title="La etiqueta ya se imprimió (desde el CRM o desde Mercado Libre)">🖨️ Impresa</span>'
+    : '<span class="badge badge-yellow" style="white-space:nowrap">🖨️ Sin imprimir</span>';
+}
+
+async function despCargarEtiquetas() {
+  const ids = enviosImprimibles().map(e => e.id);
+  if (!ids.length) { despEtiquetas = {}; renderDespacho(); return; }
+  despEtiquetasCargando = true;
+  renderDespacho();
+  try {
+    const r = await api('GET', '/meli/etiqueta?estado=1&envios=' + encodeURIComponent(ids.join(',')));
+    despEtiquetas = r.estados || {};
+    // Lo que no se puede imprimir no queda elegido.
+    for (const id of [...despSeleccion]) if (despEtiquetas[id]?.imprimible === false) despSeleccion.delete(id);
+  } catch (e) {
+    despAvisoEtiquetas = { tipo: 'aviso', texto: `No se pudo consultar a MELI qué etiquetas faltan (${despEsc(e.message)}). Igual se pueden elegir a mano.` };
+  }
+  despEtiquetasCargando = false;
+  renderDespacho();
+}
+
+function despToggleEtiqueta(id, elegida) {
+  if (elegida) despSeleccion.add(id); else despSeleccion.delete(id);
+  renderDespacho();
+}
+
+async function despSeleccionar(cuales) {
+  const disponibles = enviosImprimibles().filter(e => despEtiquetas[e.id]?.imprimible !== false);
+  if (cuales === 'ninguna') despSeleccion = new Set();
+  else if (cuales === 'todas') despSeleccion = new Set(disponibles.map(e => e.id));
+  else if (cuales === 'faltan') {
+    if (!Object.keys(despEtiquetas).length) await despCargarEtiquetas();
+    if (!Object.keys(despEtiquetas).length) {
+      despAvisoEtiquetas = { tipo: 'aviso', texto: 'No sé qué etiquetas faltan porque MELI no respondió. Elegilas a mano.' };
+      renderDespacho();
+      return;
+    }
+    const faltan = enviosImprimibles().filter(e => {
+      const et = despEtiquetas[e.id];
+      return et && et.imprimible && !et.impresa && !despImpresasAca.has(e.id);
+    });
+    despSeleccion = new Set(faltan.map(e => e.id));
+    despAvisoEtiquetas = faltan.length ? null : { tipo: 'ok', texto: '✅ No falta imprimir ninguna etiqueta.' };
+  }
+  renderDespacho();
+  despEnfocar();
+}
+
+async function despImprimirEtiquetas() {
+  const ids = enviosImprimibles().map(e => e.id).filter(id => despSeleccion.has(id));
+  if (!ids.length || despImprimiendo) return;
+  // La ventana se abre ya, con el clic: abierta después de esperar a MELI la bloquea el navegador.
+  const ventana = window.open('', '_blank');
+  try { ventana && ventana.document.write('<p style="font-family:sans-serif;padding:20px">Bajando las etiquetas de Mercado Libre…</p>'); } catch (_) {}
+  despImprimiendo = true;
+  despAvisoEtiquetas = null;
+  renderDespacho();
+  try {
+    const res = await fetch('/api/meli/etiqueta?envios=' + encodeURIComponent(ids.join(',')));
+    if (!res.ok || !(res.headers.get('content-type') || '').includes('pdf')) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || res.statusText || 'error desconocido');
+    }
+    const omitidas = (res.headers.get('X-Etiquetas-Omitidas') || '').split(',').filter(Boolean);
+    const url = URL.createObjectURL(await res.blob());
+    if (ventana) ventana.location.href = url; else window.open(url, '_blank');
+    const impresas = ids.filter(id => !omitidas.includes(id));
+    impresas.forEach(id => { despImpresasAca.add(id); despSeleccion.delete(id); });
+    despAvisoEtiquetas = omitidas.length
+      ? { tipo: 'aviso', texto: `🖨️ ${impresas.length} etiqueta(s) en el PDF. Quedaron afuera ${omitidas.length} sin envío de MELI: ${despEsc(omitidas.map(id => db.envios.find(e => e.id === id)?.comprador || id).join(', '))}.` }
+      : { tipo: 'ok', texto: `🖨️ ${impresas.length} etiqueta(s) en el PDF. Mandalo a la impresora térmica.` };
+    // MELI marca las etiquetas como impresas con unos segundos de demora.
+    setTimeout(() => { if (document.getElementById('page-despacho')?.classList.contains('active')) despCargarEtiquetas(); }, 8000);
+  } catch (e) {
+    try { ventana && ventana.close(); } catch (_) {}
+    despAvisoEtiquetas = { tipo: 'error', texto: `❌ ${despEsc(e.message)}` };
+  }
+  despImprimiendo = false;
+  renderDespacho();
+  despEnfocar();
 }
 
 // Resumen arriba de la tabla de Envíos: cuántos de los pendientes ya pasaron por el lector.

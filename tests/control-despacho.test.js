@@ -68,7 +68,7 @@ test('control de despacho con el lector', async (t) => {
   await t.test('arranca con los pendientes y el cursor en el campo de escaneo', async () => {
     assert.match(await page.textContent('#desp-contador'), /0 de 3/);
     assert.strictEqual(await page.evaluate(() => document.activeElement.id), 'desp-input');
-    assert.strictEqual((await page.$$('#desp-lista button')).length, 3);
+    assert.strictEqual((await page.$$('#desp-lista button[data-id]')).length, 3);
   });
 
   await t.test('un producto antes de la etiqueta pide primero la etiqueta', async () => {

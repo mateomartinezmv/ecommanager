@@ -7,7 +7,7 @@
 // DELETE /api/envios?id=X
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
-const { MIGRACION, faltaMigracionControl, buscarEnvioPorCodigo, fotosDePublicaciones, camposControl } = require('./_controlEnvios');
+const { MIGRACION, MIGRACION_ETIQUETA, faltaMigracionControl, buscarEnvioPorCodigo, fotosDePublicaciones, camposControl } = require('./_controlEnvios');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -79,7 +79,9 @@ module.exports = async (req, res) => {
         .update(updateData)
         .eq('id', id).select().single();
       if (error && faltaMigracionControl(error)) {
-        return res.status(503).json({ error: `Falta correr la migración ${MIGRACION} en Supabase.`, migracionPendiente: true });
+        // La etiqueta impresa se manda sola: si falla, es por su propia migración.
+        const migracion = updateData.etiqueta_impresa_at !== undefined ? MIGRACION_ETIQUETA : MIGRACION;
+        return res.status(503).json({ error: `Falta correr la migración ${migracion} en Supabase.`, migracionPendiente: true });
       }
       if (error) throw error;
       return res.json(data);

@@ -16,7 +16,8 @@
 const { obtenerShipment, ordenesDelShipment } = require('./_meliEnvios');
 
 const MIGRACION = '20261103000000_add_control_envios.sql';
-const COLUMNAS = ['meli_shipment_id', 'controlado_at', 'control'];
+const MIGRACION_ETIQUETA = '20261103010000_add_etiqueta_impresa.sql';
+const COLUMNAS = ['meli_shipment_id', 'controlado_at', 'control', 'etiqueta_impresa_at'];
 
 // ¿El error es "esa columna no existe"? Pasa cuando el deploy llega antes que la migración.
 function faltaMigracionControl(error) {
@@ -142,11 +143,13 @@ function camposControl(body = {}) {
   if (body.controladoAt !== undefined) update.controlado_at = body.controladoAt || null;
   if (body.control !== undefined) update.control = body.control || null;
   if (body.meliShipmentId !== undefined) update.meli_shipment_id = body.meliShipmentId || null;
+  if (body.etiquetaImpresaAt !== undefined) update.etiqueta_impresa_at = body.etiquetaImpresaAt || null;
   return update;
 }
 
 module.exports = {
   MIGRACION,
+  MIGRACION_ETIQUETA,
   faltaMigracionControl,
   codigosCandidatos,
   buscarEnvioPorCodigo,

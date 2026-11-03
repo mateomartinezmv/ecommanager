@@ -137,6 +137,8 @@ test('el PUT sólo toca las columnas del control que vienen', () => {
   assert.deepStrictEqual(camposControl({ controladoAt: '2026-11-03T15:00:00Z', control: { items: [] } }),
     { controlado_at: '2026-11-03T15:00:00Z', control: { items: [] } });
   assert.deepStrictEqual(camposControl({ controladoAt: null }), { controlado_at: null }, 'deshacer el control');
+  assert.deepStrictEqual(camposControl({ etiquetaImpresaAt: '2026-11-03T15:00:00Z' }), { etiqueta_impresa_at: '2026-11-03T15:00:00Z' });
+  assert.ok(faltaMigracionControl({ code: '42P99', message: 'column envios.etiqueta_impresa_at does not exist' }));
   assert.ok(faltaMigracionControl({ code: 'PGRST204', message: "Could not find the 'control' column" }));
   assert.ok(!faltaMigracionControl({ code: '23505', message: 'duplicate key' }));
 });

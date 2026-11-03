@@ -80,7 +80,7 @@ test('un producto descatalogado sale de la lista y de los avisos de stock bajo',
 });
 
 test('la pestaña ⛔ los lista con su motivo y deja filtrar por él', async () => {
-  await crm.page.click(`#page-stock .tab:text-is("⛔ Discontinuados")`);
+  await crm.page.click(`#page-stock .tab:text-is("⛔ Descatalogados")`);
   await crm.page.waitForSelector('#stock-disc-panel:visible');
   const filas = await crm.page.$$eval('#stock-tbody tr', trs => trs.map(t => t.textContent));
   assert.strictEqual(filas.length, 2);

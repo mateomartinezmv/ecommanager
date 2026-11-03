@@ -114,7 +114,8 @@ function mockear(page, estado) {
 
 async function abrir(pagina, estado) {
   const servidor = servirPublic();
-  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  // CHROMIUM_PATH: igual que en helpers.js, para una máquina con otro Chromium instalado.
+  const browser = await chromium.launch({ args: ['--no-sandbox'], ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errores = [];
   const alertas = [];

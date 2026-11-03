@@ -15,13 +15,12 @@
 // se movió: la comisión que MELI cobró en cada venta y el costo del envío que se despachó
 // por esa venta.
 //
-// Sobre los envíos de Mercado Envíos: entran al CRM con costo 0 y ese 0 es real para el
-// margen. Lo que MELI le cobra al vendedor por el envío sale de lo que descuenta del pago,
-// y `ventas.comision` ya es todo ese descuento (total − neto recibido, ver
-// recalcular-comisiones.js); en los productos debajo del umbral de envío gratis lo paga el
-// comprador. Medido sobre las ventas reales: las de Mercado Envíos tienen la misma comisión
-// efectiva que las de Flex (15,1% contra 14,5–16%), así que no esconden un envío. Antes se
-// completaban con el promedio de los envíos propios (~$200) y eso le sumaba un envío
+// Sobre los envíos de Mercado Envíos: entran a la tabla envíos con costo 0 y ese 0 es real
+// para el margen, porque lo que MELI le cobra al vendedor por el envío (publicaciones con
+// envío gratis) va dentro de `ventas.comision` — cargos por venta + envío, con el envío
+// desglosado en `ventas.costo_envio_meli` (ver _envioMeli.js). En los productos debajo del
+// umbral de envío gratis lo paga el comprador y ahí sí no le cuesta nada al vendedor. Antes
+// se completaban con el promedio de los envíos propios (~$200) y eso le sumaba un envío
 // inexistente a más de la mitad de las ventas: un producto de $100 daba margen negativo.
 //
 // Lo que sí se completa son los envíos propios (Flex, transportistas) que todavía no tienen

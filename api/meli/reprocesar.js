@@ -8,6 +8,7 @@ const { unidadesDeDeposito } = require('../_packs');
 const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
+const { envioDeLinea, comisionConEnvio } = require('./_envioMeli');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
@@ -126,10 +127,14 @@ module.exports = async (req, res) => {
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;
 
-      const comisionItem = hasFeeDetails
+      // sale_fee es por unidad; el envío que paga el vendedor se suma aparte (_envioMeli.js).
+      const saleFeeItem = Math.abs(item.sale_fee || 0) * cantidad;
+      const cargosItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
-        : Math.abs(item.sale_fee || 0);
-      log.push(`💰 Comisión: $${comisionItem} | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);
+        : Math.round(saleFeeItem * 100) / 100;
+      const envioMeliItem = envioDeLinea(shipDataRef, precioUnit * cantidad, orderTotalCalc);
+      const comisionItem = comisionConEnvio({ cargos: cargosItem, saleFee: saleFeeItem, envio: envioMeliItem });
+      log.push(`💰 Comisión: $${comisionItem} (envío MELI $${envioMeliItem}) | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);
 
       // Venta primero y stock sólo si la insertó este llamado: el webhook puede
       // estar procesando la misma orden en paralelo.
@@ -139,7 +144,7 @@ module.exports = async (req, res) => {
         orden_meli: String(order.id), pack_id: packId, meli_item_id: meliItemId,
         comprador: order.buyer?.nickname || '',
         sku: producto.sku, producto: producto.nombre,
-        cantidad, precio_unit: precioUnit, comision: comisionItem,
+        cantidad, precio_unit: precioUnit, comision: comisionItem, costo_envio_meli: envioMeliItem,
         total: precioUnit * cantidad, estado: 'pagada',
         genera_envio: !!shippingId, notas: 'Reprocesada manualmente',
       });

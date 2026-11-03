@@ -234,3 +234,52 @@ agrupados por SKU, con un filtro por SKU y otro por estado:
 
 Dentro de cada SKU el que se anotó primero aparece primero, que es a quien corresponde
 avisarle antes si llegan pocas unidades.
+
+---
+
+## Control de despacho con lector de códigos (✅ Control de despacho)
+
+Para que lo que entra en cada paquete de MELI (Flex y Mercado Envíos) sea lo que se vendió,
+sin depender de que quien arma lea bien la hoja. Se usa en la PC de la oficina con un lector
+de códigos 2D (lee el código de barras de Mercado Envíos y el QR de Flex) enchufado por USB o
+con su receptor inalámbrico: el lector funciona como un teclado, no hay que instalar nada.
+
+**Antes de usarlo hay que agregar las columnas una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261103000000_add_control_envios.sql`
+3. **Run**
+
+Si todavía no corriste la migración, el control funciona igual (avisa cuando algo está mal),
+pero no queda anotado en Envíos y la pantalla te dice qué archivo falta.
+
+**Cómo se usa:** las etiquetas se siguen imprimiendo desde MELI como siempre. Con la caja
+abierta:
+
+1. Se escanea la **etiqueta de MELI** del paquete. La pantalla muestra qué tiene que ir
+   adentro: SKU, variante resaltada, cantidad y la foto de la publicación. Si es un carrito,
+   aparecen todos sus productos.
+2. Se escanea la **etiqueta del CRM** de cada producto a medida que se mete en la caja.
+   - ✅ Verde y un tono corto: es el correcto.
+   - ❌ Rojo y un zumbido: es otro producto, otra variante o una unidad de más. Dice qué
+     sacar y qué falta.
+3. Cuando está todo suena **✅ Paquete controlado**: se cierra la caja y se pasa al siguiente
+   escaneando su etiqueta.
+
+Los productos que se venden de a par piden un escaneo por cada caja. Una venta cancelada
+avisa **⛔ NO se despacha**. Si una etiqueta del CRM no se puede leer, el botón **✋ No lee la
+etiqueta** la da por puesta, pero queda registrado como "a mano". Si la etiqueta de MELI no
+se lee, el paquete se elige de la lista **Para despachar** con **Controlar**.
+
+**Lo que ves en Envíos:** arriba, cuántos de los pendientes ya pasaron por el lector y cuántos
+escaneos equivocados se frenaron hoy; en cada envío, **✅ Controlado** (con las unidades
+marcadas a mano y los errores frenados) o **Sin controlar**.
+
+**Cómo encuentra el paquete:** en Mercado Envíos el número del código de barras ya está en el
+tracking. En Flex no, así que el CRM guarda el número de envío de MELI cuando se sincroniza el
+envío; si todavía no lo tiene, la primera vez que se escanea la etiqueta se lo pregunta a MELI
+y lo guarda.
+
+**Si el lector escribe símbolos raros** (porque está configurado con otro idioma de teclado
+que la PC), no hace falta tocarlo: el CRM compara sólo letras y números. Igual conviene
+configurarlo en español con los códigos del manual.

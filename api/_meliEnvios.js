@@ -89,6 +89,14 @@ function cambiosParaEnvio(envio, shipment) {
   const fechaDespacho = fechaDespachoDesdeShipment(shipment);
   if (fechaDespacho && !envio.fecha_despacho) update.fecha_despacho = fechaDespacho;
 
+  // El id del shipment es el número del código de barras de la etiqueta: con eso el
+  // control de despacho encuentra el paquete al escanearla. Sólo se escribe si la columna
+  // existe (la fila la trae, aunque sea en null): un deploy adelantado a la migración
+  // 20261103000000_add_control_envios.sql no rompe la sincronización.
+  if ('meli_shipment_id' in envio && !envio.meli_shipment_id && shipment?.id) {
+    update.meli_shipment_id = String(shipment.id);
+  }
+
   return Object.keys(update).length ? update : null;
 }
 
@@ -97,7 +105,8 @@ function cambiosParaEnvio(envio, shipment) {
 async function sincronizarEnviosDeOrden(supabase, orden, shipment, { dryRun = false } = {}) {
   const { data: envios, error } = await supabase
     .from('envios')
-    .select('id, estado, tracking, fecha_despacho')
+    // `*` y no una lista: así la fila trae meli_shipment_id sólo si la columna ya existe.
+    .select('*')
     .eq('orden', String(orden));
 
   if (error) throw new Error(`Error leyendo envíos de la orden ${orden}: ${error.message}`);

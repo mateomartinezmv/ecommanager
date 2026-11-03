@@ -144,8 +144,26 @@ function mockearApi(page, estado, fallos = {}) {
       }
       if (metodo === 'PUT') {
         (estado.enviosPut = estado.enviosPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        // `sinControl` imita a una base donde la migración del control de despacho no corrió.
+        if (estado.sinControl && (cuerpo.controladoAt !== undefined || cuerpo.control !== undefined)) {
+          return error(503, 'Falta correr la migración 20261103000000_add_control_envios.sql en Supabase.');
+        }
+        const e = (estado.envios || []).find(x => x.id === url.searchParams.get('id'));
+        if (e && cuerpo.controladoAt !== undefined) { e.controlado_at = cuerpo.controladoAt; e.control = cuerpo.control; }
         return ok(cuerpo);
       }
+      // Control de despacho: la etiqueta que el CRM no tenía y el servidor resuelve contra
+      // MELI (estado.etiquetasMeli: código → id del envío), y las fotos de las publicaciones.
+      if (url.searchParams.has('buscar')) {
+        (estado.buscados = estado.buscados || []).push(url.searchParams.get('buscar'));
+        const numero = (url.searchParams.get('buscar').match(/\d{8,}/) || [])[0];
+        const id = (estado.etiquetasMeli || {})[numero];
+        const e = id && (estado.envios || []).find(x => x.id === id);
+        if (!e) return error(404, 'No hay ningún envío del CRM con ese código.');
+        e.meli_shipment_id = numero;
+        return ok({ envio: e, shipmentId: numero, origen: 'meli' });
+      }
+      if (url.searchParams.has('fotos')) return ok({ fotos: estado.fotosPublicaciones || {} });
       return ok(estado.envios || []);
     }
     if (ruta === '/clientes') {
@@ -301,7 +319,9 @@ function mockearApi(page, estado, fallos = {}) {
 async function abrirCRM({ estado, fallos, viewport } = {}) {
   estado = estado || estadoDemo();
   const servidor = servirPublic();
-  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  // CHROMIUM_PATH: para máquinas con un Chromium ya instalado que no es el de esta versión
+  // de Playwright (ej: CHROMIUM_PATH=/opt/pw-browsers/chromium npm test).
+  const browser = await chromium.launch({ args: ['--no-sandbox'], ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
   const page = await browser.newPage(viewport ? { viewport } : {});
 
   const errores = [];

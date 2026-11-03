@@ -8,7 +8,7 @@ const { unidadesDeDeposito } = require('../_packs');
 const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
-const { envioDeLinea, comisionConEnvio } = require('./_envioMeli');
+const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
@@ -89,6 +89,7 @@ module.exports = async (req, res) => {
     }
     log.push(`📍 Barrio: "${neighborhood || '—'}" | Dirección: ${direccion || 'no disponible'}`);
 
+    const costosEnvio = await leerCostosEnvio(shippingId, token);
     const esFlex = FLEX_TYPES.includes(logisticType);
     log.push(`📬 Tipo de envío: ${esFlex ? 'flex/EnviosUy' : 'mercado_envios'} (logistic_type: "${logisticType}")`);
 
@@ -127,12 +128,12 @@ module.exports = async (req, res) => {
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;
 
-      // sale_fee es por unidad; el envío que paga el vendedor se suma aparte (_envioMeli.js).
+      // sale_fee es por unidad; cobro o bonificación de envío se ajustan aparte (_envioMeli.js).
       const saleFeeItem = Math.abs(item.sale_fee || 0) * cantidad;
       const cargosItem = hasFeeDetails
         ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
         : Math.round(saleFeeItem * 100) / 100;
-      const envioMeliItem = envioDeLinea(shipDataRef, precioUnit * cantidad, orderTotalCalc);
+      const envioMeliItem = envioDeLinea(shipDataRef, costosEnvio, precioUnit * cantidad, orderTotalCalc);
       const comisionItem = comisionConEnvio({ cargos: cargosItem, saleFee: saleFeeItem, envio: envioMeliItem });
       log.push(`💰 Comisión: $${comisionItem} (envío MELI $${envioMeliItem}) | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);
 

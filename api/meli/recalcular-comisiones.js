@@ -6,12 +6,12 @@
 //                                                                   los valores nuevos sin escribir nada
 // Safe to run multiple times — only updates ventas with canal='meli'.
 //
-// comision         = cargos por venta + lo que MELI cobra por el envío (ver _envioMeli.js)
-// costo_envio_meli = la parte de envío de esa comisión (desglose, ya va adentro de comision)
+// comision         = cargos por venta + cobro de envío − bonificación de envío (ver _envioMeli.js)
+// costo_envio_meli = la parte de envío de esa comisión, con signo (desglose, ya va adentro)
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
-const { envioDeLinea, comisionConEnvio } = require('./_envioMeli');
+const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 
 // Órdenes en paralelo: de a una, un mes de ventas no entra en los 60s de la función.
 const CONCURRENCIA = 6;
@@ -32,10 +32,13 @@ async function recalcularOrden(supabase, token, ordenId, items, { simular = fals
   if (order.error) { errores.push({ orden: ordenId, error: order.message }); return { resultados, errores }; }
 
   let shipData = null;
+  let costs = null;
   const shippingId = order.shipping?.id;
   if (shippingId) {
-    try { shipData = await getJson(`https://api.mercadolibre.com/shipments/${shippingId}`, token); }
-    catch (_) { shipData = null; }
+    [shipData, costs] = await Promise.all([
+      getJson(`https://api.mercadolibre.com/shipments/${shippingId}`, token).catch(() => null),
+      leerCostosEnvio(shippingId, token),
+    ]);
   }
 
   const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
@@ -70,7 +73,7 @@ async function recalcularOrden(supabase, token, ordenId, items, { simular = fals
       ? r2(totalDeductionOrder * lineaTotal / grossTotal)
       : r2(saleFee);
 
-    const nuevoCostoEnvio = envioDeLinea(shipData, lineaTotal, grossTotal);
+    const nuevoCostoEnvio = envioDeLinea(shipData, costs, lineaTotal, grossTotal);
     const nuevaComision = comisionConEnvio({ cargos, saleFee, envio: nuevoCostoEnvio });
 
     const comisionSinCambio = Math.abs(nuevaComision - (parseFloat(ventaMatch.comision) || 0)) < 0.01;

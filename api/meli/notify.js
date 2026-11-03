@@ -12,6 +12,7 @@ const {
   estadoDesdeShipment, fechaDespachoDesdeShipment,
 } = require('../_meliEnvios');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
+const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -135,6 +136,8 @@ async function handleOrder(resource) {
       console.error(`❌ fetch shipment ${shippingId} fallido:`, e.message);
     }
   }
+  // Qué cobra o bonifica MELI por el envío al vendedor (ver _envioMeli.js).
+  const costosEnvio = await leerCostosEnvio(shippingId, token);
   const esFlex = FLEX_TYPES.includes(logisticType);
   const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
   const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0;
@@ -175,9 +178,14 @@ async function handleOrder(resource) {
     }
 
     const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
-    const comisionItem = totalDeduction !== null
+    // sale_fee es por unidad. El envío que cobra MELI (Mercado Envíos con envío gratis) o
+    // la bonificación de Flex no vienen en el pago: se ajustan aparte (ver _envioMeli.js).
+    const saleFeeItem = Math.abs(item.sale_fee || 0) * cantidad;
+    const cargosItem = totalDeduction !== null
       ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
-      : Math.abs(item.sale_fee || 0);
+      : Math.round(saleFeeItem * 100) / 100;
+    const envioMeliItem = envioDeLinea(shipData, costosEnvio, precioUnit * cantidad, grossTotal);
+    const comisionItem = comisionConEnvio({ cargos: cargosItem, saleFee: saleFeeItem, envio: envioMeliItem });
 
     // Primero la venta, después el stock. MELI manda varios avisos de la misma
     // orden en el mismo segundo; antes se descontaba y recién después se
@@ -202,6 +210,7 @@ async function handleOrder(resource) {
       cantidad,
       precio_unit: precioUnit,
       comision: comisionItem,
+      costo_envio_meli: envioMeliItem,
       total: precioUnit * cantidad,
       estado: 'pagada',
       genera_envio: !!shippingId,

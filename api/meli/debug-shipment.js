@@ -32,14 +32,18 @@ module.exports = async (req, res) => {
         } catch (e) { return { error: e.message }; }
       };
 
-      const [carrier, history, trackingPublic, lead_time] = await Promise.all([
+      const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
+      const [carrier, history, trackingPublic, lead_time, costs, payment] = await Promise.all([
         probe(`https://api.mercadolibre.com/shipments/${shippingId}/carrier`),
         probe(`https://api.mercadolibre.com/shipments/${shippingId}/history`),
         probe(`https://api.mercadolibre.com/shipments/${shippingId}/tracking`),
         probe(`https://api.mercadolibre.com/shipments/${shippingId}/lead_time`),
+        // Quién paga cuánto del envío (comprador / vendedor) y bonificaciones al vendedor.
+        probe(`https://api.mercadolibre.com/shipments/${shippingId}/costs`),
+        paymentId ? probe(`https://api.mercadolibre.com/payments/${paymentId}`) : null,
       ]);
 
-      return res.json({ shippingId, order_status: order.status, shipment, carrier, history, trackingPublic, lead_time });
+      return res.json({ shippingId, order_status: order.status, shipment, carrier, history, trackingPublic, lead_time, costs, payment });
     }
 
     // 1. Endpoint directo

@@ -1,28 +1,133 @@
 // api/meli/recalcular-comisiones.js
-// POST /api/meli/recalcular-comisiones           → recalcula TODAS las ventas MELI
-// POST /api/meli/recalcular-comisiones?id=XXX    → recalcula solo la venta con ese id
+// POST /api/meli/recalcular-comisiones                          → recalcula TODAS las ventas MELI
+// POST /api/meli/recalcular-comisiones?id=XXX                   → recalcula solo la venta con ese id
+// POST /api/meli/recalcular-comisiones?desde=AAAA-MM-DD&hasta=… → recalcula las de ese rango de fechas
+// GET  /api/meli/recalcular-comisiones?…                        → simulación: mismos filtros, devuelve
+//                                                                   los valores nuevos sin escribir nada
 // Safe to run multiple times — only updates ventas with canal='meli'.
+//
+// comision         = cargos por venta + cobro de envío − bonificación de envío (ver _envioMeli.js)
+// costo_envio_meli = la parte de envío de esa comisión, con signo (desglose, ya va adentro)
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 
-const FLEX_TYPES = ['self_service', 'self_service_flex'];
-// Tipos donde el envío lo paga el COMPRADOR → costo para el vendedor = $0
-const COMPRADOR_PAGA_ENVIO = ['xd_drop_off', 'xd_drop_off_I', 'drop_off'];
+// Órdenes en paralelo: de a una, un mes de ventas no entra en los 60s de la función.
+const CONCURRENCIA = 6;
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const r2 = v => Math.round(v * 100) / 100;
+
+async function getJson(url, token) {
+  const r = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+  return r.json();
+}
+
+async function recalcularOrden(supabase, token, ordenId, items, { simular = false } = {}) {
+  const resultados = [];
+  const errores = [];
+
+  const order = await getJson(`https://api.mercadolibre.com/orders/${ordenId}`, token);
+  if (order.error) { errores.push({ orden: ordenId, error: order.message }); return { resultados, errores }; }
+
+  let shipData = null;
+  let costs = null;
+  const shippingId = order.shipping?.id;
+  if (shippingId) {
+    [shipData, costs] = await Promise.all([
+      getJson(`https://api.mercadolibre.com/shipments/${shippingId}`, token).catch(() => null),
+      leerCostosEnvio(shippingId, token),
+    ]);
+  }
+
+  const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
+
+  // Cargos por venta: lo que MELI descuenta del pago (total − neto). Si el pago no se puede
+  // leer, el sale_fee de cada ítem, que es POR UNIDAD.
+  const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
+  let netReceived = 0;
+  if (paymentId) {
+    try {
+      const payData = await getJson(`https://api.mercadolibre.com/payments/${paymentId}`, token);
+      netReceived = payData.net_received_amount || 0;
+      if (!netReceived && payData.marketplace_fee) {
+        netReceived = grossTotal - Math.abs(payData.marketplace_fee);
+      }
+    } catch (_) {}
+  }
+  const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
+    ? r2(grossTotal - netReceived)
+    : null;
+
+  for (const orderItem of (order.order_items || [])) {
+    const meliItemId = orderItem.item?.id;
+    if (!meliItemId) continue;
+
+    const ventaMatch = items.find(v => v.id === `V_MELI_${ordenId}_${meliItemId}`);
+    if (!ventaMatch) continue;
+
+    const lineaTotal = orderItem.unit_price * orderItem.quantity;
+    const saleFee = Math.abs(orderItem.sale_fee || 0) * (orderItem.quantity || 1);
+    const cargos = totalDeductionOrder !== null
+      ? r2(totalDeductionOrder * lineaTotal / grossTotal)
+      : r2(saleFee);
+
+    const nuevoCostoEnvio = envioDeLinea(shipData, costs, lineaTotal, grossTotal);
+    const nuevaComision = comisionConEnvio({ cargos, saleFee, envio: nuevoCostoEnvio });
+
+    const comisionSinCambio = Math.abs(nuevaComision - (parseFloat(ventaMatch.comision) || 0)) < 0.01;
+    const envioSinCambio = Math.abs(nuevoCostoEnvio - (parseFloat(ventaMatch.costo_envio_meli) || 0)) < 0.01;
+
+    if (comisionSinCambio && envioSinCambio) {
+      resultados.push({ id: ventaMatch.id, sin_cambio: true, comision: nuevaComision });
+      continue;
+    }
+
+    const { error: updErr } = simular ? { error: null } : await supabase
+      .from('ventas')
+      .update({ comision: nuevaComision, costo_envio_meli: nuevoCostoEnvio })
+      .eq('id', ventaMatch.id);
+
+    if (updErr) {
+      errores.push({ id: ventaMatch.id, error: updErr.message });
+    } else {
+      resultados.push({
+        id: ventaMatch.id,
+        anterior: parseFloat(ventaMatch.comision) || 0,
+        nueva: nuevaComision,
+        diff: r2(nuevaComision - (parseFloat(ventaMatch.comision) || 0)),
+        costoEnvio: nuevoCostoEnvio,
+        logistic_type: shipData?.logistic_type || null,
+      });
+    }
+  }
+  return { resultados, errores };
+}
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  // GET nunca escribe: sirve para ver qué cambiaría antes de tocar las ventas.
+  const simular = req.method === 'GET';
+
+  const ventaId = req.query.id || null;
+  const desde = req.query.desde || null;
+  const hasta = req.query.hasta || null;
+  if ((desde && !FECHA_RE.test(desde)) || (hasta && !FECHA_RE.test(hasta)))
+    return res.status(400).json({ error: 'desde/hasta tienen que ser AAAA-MM-DD' });
 
   const token = await getMeliToken();
   const supabase = getSupabase();
-  const ventaId = req.query.id || null;
 
   let query = supabase
     .from('ventas')
     .select('id, orden_meli, sku, cantidad, precio_unit, comision, costo_envio_meli')
     .eq('canal', 'meli')
-    .not('orden_meli', 'is', null);
+    .not('orden_meli', 'is', null)
+    .limit(50000);
   if (ventaId) query = query.eq('id', ventaId);
+  if (desde) query = query.gte('fecha', desde);
+  if (hasta) query = query.lte('fecha', hasta);
 
   const { data: ventas, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
@@ -37,145 +142,30 @@ module.exports = async (req, res) => {
 
   const resultados = [];
   const errores = [];
+  const cola = Object.entries(byOrder);
 
-  for (const [ordenId, items] of Object.entries(byOrder)) {
-    try {
-      const orderRes = await fetch(`https://api.mercadolibre.com/orders/${ordenId}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      const order = await orderRes.json();
-      if (order.error) { errores.push({ orden: ordenId, error: order.message }); continue; }
-
-      const shippingId = order.shipping?.id;
-      let logisticType = '';
-      let costoEnvioReal = 0;
-
-      if (shippingId) {
-        try {
-          const shipRes = await fetch(`https://api.mercadolibre.com/shipments/${shippingId}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          const shipData = await shipRes.json();
-          logisticType = shipData?.logistic_type || '';
-          const opt = shipData?.shipping_option || {};
-
-          // Log completo para debug
-          const debugInfo = {
-            logistic_type: logisticType,
-            opt_cost: opt.cost,
-            opt_list_cost: opt.list_cost,
-            opt_net_amount: opt.net_amount,
-            base_cost: shipData?.base_cost,
-            receiver_shipping_cost: shipData?.receiver_shipping_cost,
-            base_cost_full: shipData?.base_cost,
-            shipping_mode: shipData?.mode,
-            all_opt_keys: Object.keys(opt),
-          };
-          console.log(`  🚚 shipment ${shippingId} [${ordenId}]:`, JSON.stringify(debugInfo));
-
-          // ── Lógica de costo de envío ─────────────────────────────────────
-          // receiver_shipping_cost: lo que paga el COMPRADOR (no nos afecta)
-          // base_cost: lo que paga el VENDEDOR (nos afecta)
-          // Si base_cost = 0 → vendedor no paga nada → costo = $0
-          if (shipData?.base_cost !== null && shipData?.base_cost !== undefined) {
-            costoEnvioReal = shipData.base_cost;
-          } else {
-            const netAmount = opt.net_amount ?? opt.cost;
-            if (netAmount !== null && netAmount !== undefined) {
-              costoEnvioReal = netAmount;
-            } else {
-              costoEnvioReal = 0;
-            }
-          }
-          // ────────────────────────────────────────────────────────────────
-        } catch (_) {}
+  async function worker() {
+    while (cola.length) {
+      const [ordenId, items] = cola.shift();
+      try {
+        const r = await recalcularOrden(supabase, token, ordenId, items, { simular });
+        resultados.push(...r.resultados);
+        errores.push(...r.errores);
+      } catch (err) {
+        errores.push({ orden: ordenId, error: err.message });
       }
-
-      const esFlex = FLEX_TYPES.includes(logisticType);
-      // Si el logistic_type indica que el comprador paga el envío → costo vendedor = $0
-      if (COMPRADOR_PAGA_ENVIO.includes(logisticType)) {
-        costoEnvioReal = 0;
-        console.log(`  📦 [${ordenId}] logistic_type=${logisticType} → comprador paga envío → costo vendedor $0`);
-      }
-      const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
-
-      const paymentId = (order.payments || []).find(p => p.status === 'approved')?.id;
-      let netReceived = 0;
-      if (paymentId) {
-        try {
-          const payRes = await fetch(`https://api.mercadolibre.com/payments/${paymentId}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          const payData = await payRes.json();
-          netReceived = payData.net_received_amount || 0;
-          if (!netReceived && payData.marketplace_fee) {
-            netReceived = grossTotal - Math.abs(payData.marketplace_fee);
-          }
-          console.log(`  💳 payment ${paymentId}: net_received=${payData.net_received_amount} marketplace_fee=${payData.marketplace_fee}`);
-        } catch (_) {}
-      }
-
-      const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
-        ? Math.round((grossTotal - netReceived) * 100) / 100
-        : null;
-
-      for (const orderItem of (order.order_items || [])) {
-        const meliItemId = orderItem.item?.id;
-        if (!meliItemId) continue;
-
-        const ventaMatch = items.find(v => v.id === `V_MELI_${ordenId}_${meliItemId}`);
-        if (!ventaMatch) continue;
-
-        let nuevaComision;
-        if (totalDeductionOrder !== null) {
-          nuevaComision = Math.round((totalDeductionOrder * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100;
-        } else {
-          nuevaComision = Math.abs(orderItem.sale_fee || 0);
-        }
-
-        // Si el costo de envío ya está incluido en la deducción total (net_received),
-        // no sumarlo de nuevo al costo de envío separado
-        const nuevoCostoEnvio = !esFlex
-          ? Math.round((costoEnvioReal * (orderItem.unit_price * orderItem.quantity) / grossTotal) * 100) / 100
-          : 0;
-
-        const comisionSinCambio = Math.abs(nuevaComision - (ventaMatch.comision || 0)) < 0.01;
-        const envioSinCambio    = Math.abs(nuevoCostoEnvio - (ventaMatch.costo_envio_meli || 0)) < 0.01;
-
-        if (comisionSinCambio && envioSinCambio) {
-          resultados.push({ id: ventaMatch.id, sin_cambio: true, comision: nuevaComision });
-          continue;
-        }
-
-        const { error: updErr } = await supabase
-          .from('ventas')
-          .update({ comision: nuevaComision, costo_envio_meli: nuevoCostoEnvio })
-          .eq('id', ventaMatch.id);
-
-        if (updErr) {
-          errores.push({ id: ventaMatch.id, error: updErr.message });
-        } else {
-          resultados.push({
-            id: ventaMatch.id,
-            anterior: ventaMatch.comision,
-            nueva: nuevaComision,
-            diff: Math.round((nuevaComision - (ventaMatch.comision || 0)) * 100) / 100,
-            costoEnvio: nuevoCostoEnvio,
-          });
-        }
-      }
-    } catch (err) {
-      errores.push({ orden: ordenId, error: err.message });
     }
   }
+  await Promise.all(Array.from({ length: CONCURRENCIA }, worker));
 
   const actualizadas = resultados.filter(r => !r.sin_cambio);
-  const sinCambio    = resultados.filter(r => r.sin_cambio);
+  const sinCambio = resultados.filter(r => r.sin_cambio);
 
-  console.log(`✅ Recalculo comisiones: ${actualizadas.length} actualizadas, ${sinCambio.length} sin cambio, ${errores.length} errores`);
+  console.log(`✅ Recalculo comisiones${simular ? ' (simulación)' : ''}: ${actualizadas.length} actualizadas, ${sinCambio.length} sin cambio, ${errores.length} errores`);
 
   res.json({
     ok: true,
+    simulacion: simular,
     actualizadas: actualizadas.length,
     sin_cambio: sinCambio.length,
     errores: errores.length,
@@ -183,3 +173,5 @@ module.exports = async (req, res) => {
     fallos: errores,
   });
 };
+
+module.exports.recalcularOrden = recalcularOrden;

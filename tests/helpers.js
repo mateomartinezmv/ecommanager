@@ -148,8 +148,13 @@ function mockearApi(page, estado, fallos = {}) {
         if (estado.sinControl && (cuerpo.controladoAt !== undefined || cuerpo.control !== undefined)) {
           return error(503, 'Falta correr la migración 20261103000000_add_control_envios.sql en Supabase.');
         }
+        // `sinEtiquetaImpresa`: la migración de la etiqueta del CRM impresa todavía no corrió.
+        if (estado.sinEtiquetaImpresa && cuerpo.etiquetaImpresaAt !== undefined) {
+          return error(503, 'Falta correr la migración 20261103010000_add_etiqueta_impresa.sql en Supabase.');
+        }
         const e = (estado.envios || []).find(x => x.id === url.searchParams.get('id'));
         if (e && cuerpo.controladoAt !== undefined) { e.controlado_at = cuerpo.controladoAt; e.control = cuerpo.control; }
+        if (e && cuerpo.etiquetaImpresaAt !== undefined) e.etiqueta_impresa_at = cuerpo.etiquetaImpresaAt;
         return ok(cuerpo);
       }
       // Control de despacho: la etiqueta que el CRM no tenía y el servidor resuelve contra

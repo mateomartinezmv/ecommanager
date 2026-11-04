@@ -271,16 +271,26 @@ avisa **⛔ NO se despacha**. Si una etiqueta del CRM no se puede leer, el botó
 etiqueta** la da por puesta, pero queda registrado como "a mano". Si la etiqueta de MELI no
 se lee, el paquete se elige de la lista **Para despachar** con **Controlar**.
 
-**Imprimir las etiquetas de MELI desde el control:** en la lista **Para despachar**, cada envío
-de MELI pendiente tiene una casilla y dice si su etiqueta está **🖨️ Impresa**, **🖨️ Sin
-imprimir** o **🖨️ No disponible** (MELI todavía no la entrega, por ejemplo si el pago está
-pendiente). Eso se le pregunta a MELI, así que cuenta también lo que se imprimió desde su
-panel. Arriba de la lista:
+**Imprimir las etiquetas desde el control:** en la lista **Para despachar**, cada envío
+pendiente tiene una casilla y dice cómo está su etiqueta:
+
+- **De MELI (🖨️):** **Impresa**, **Sin imprimir** o **No disponible** (MELI todavía no la
+  entrega, por ejemplo si el pago está pendiente). Se le pregunta a MELI, así que cuenta
+  también lo que se imprimió desde su panel.
+- **Del CRM (🏷️), las de mostrador y Shopify de 100 × 150:** **Impresa**, **Sin imprimir** o
+  **Falta dirección** (sin dirección no se puede armar: se carga con ✏️ en Envíos).
+
+Arriba de la lista:
 
 - **Todas** / **Las que faltan imprimir** / **Ninguna** marcan las casillas; después se puede
   sumar o sacar alguna a mano.
-- **🖨️ Imprimir (N)** baja un solo PDF con las elegidas, para mandarlo a la térmica desde la
-  PC de la oficina. Al imprimirlas, MELI las marca como impresas, igual que desde su panel.
+- **🖨️ Imprimir (N)** baja **un solo PDF** con las elegidas, las de MELI y las del CRM juntas,
+  para mandarlo a la térmica desde la PC de la oficina. Al imprimirlas, MELI marca las suyas
+  como impresas, igual que desde su panel; las del CRM quedan anotadas en el envío.
+
+Para que el CRM recuerde las etiquetas propias impresas después de recargar la página, hay
+que correr una vez `supabase/migrations/20261103010000_add_etiqueta_impresa.sql` (igual que
+la de arriba). Sin eso se imprimen igual y la pantalla avisa qué falta.
 
 **Lo que ves en Envíos:** arriba, cuántos de los pendientes ya pasaron por el lector y cuántos
 escaneos equivocados se frenaron hoy; en cada envío, **✅ Controlado** (con las unidades

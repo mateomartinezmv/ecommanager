@@ -66,11 +66,14 @@ test('etiquetas de MELI desde el control de despacho', async (t) => {
       { id: 'E_MELI_A', elegida: false, bloqueada: false },
       { id: 'E_MELI_B', elegida: false, bloqueada: false },
       { id: 'E_MELI_C', elegida: false, bloqueada: true },
+      // Mostrador sin dirección: tiene etiqueta del CRM, pero sin dirección no sirve.
+      { id: 'E-M', elegida: false, bloqueada: true },
     ]);
     assert.match(await fila(page, 'E_MELI_A'), /🖨️ Impresa/);
     assert.match(await fila(page, 'E_MELI_B'), /🖨️ Sin imprimir/);
     assert.match(await fila(page, 'E_MELI_C'), /🖨️ No disponible/);
     assert.doesNotMatch(await fila(page, 'E-M'), /🖨️/, 'mostrador usa la etiqueta del CRM, no la de MELI');
+    assert.match(await fila(page, 'E-M'), /🏷️ Falta dirección/);
     assert.match(await botonImprimir(page), /Imprimir \(0\)/);
     assert.ok(await page.isDisabled('#desp-imprimir'));
   });
@@ -116,7 +119,8 @@ test('etiquetas de MELI desde el control de despacho', async (t) => {
   await t.test('un envío sin shipment de MELI queda afuera del PDF y se avisa', async () => {
     estado.etiquetasSinShipment = ['E_MELI_A'];
     await imprimir(page);
-    assert.match(await aviso(page), /1 etiqueta\(s\) en el PDF\. Quedaron afuera 1 sin envío de MELI: Ana/);
+    assert.match(await aviso(page), /1 etiqueta\(s\) en el PDF/);
+    assert.match(await aviso(page), /Quedaron afuera 1 sin envío de MELI: Ana/);
     estado.etiquetasSinShipment = [];
   });
 
@@ -141,7 +145,7 @@ test('si MELI no dice qué está impreso, se eligen a mano igual', async (t) => 
   await page.click(`.nav-item[onclick="goPage('despacho')"]`);
   await page.waitForSelector('#desp-etq-aviso');
   assert.match(await aviso(page), /No se pudo consultar a MELI qué etiquetas faltan/);
-  assert.ok((await casillas(page)).every(c => !c.bloqueada), 'sin saber, no se bloquea ninguna');
+  assert.ok((await casillas(page)).filter(c => c.id.startsWith('E_MELI_')).every(c => !c.bloqueada), 'sin saber, no se bloquea ninguna de MELI');
 
   await page.click('#desp-lista button:text-is("Las que faltan imprimir")');
   await page.waitForFunction(() => /MELI no respondió/.test(document.getElementById('desp-etq-aviso')?.textContent || ''));

@@ -461,9 +461,10 @@
         <button class="tab active" onclick="switchDevolucionesTab('pendiente')" id="tab-dev-pendiente">⏳ Pendientes</button>
         <button class="tab" onclick="switchDevolucionesTab('recibida')" id="tab-dev-recibida">✅ Recibidas</button>
       </div>
+      <p id="devoluciones-resumen-envio" style="font-size:12px;color:var(--text-muted);margin:0 0 12px"></p>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>ID Devolución</th><th>Venta</th><th>Producto</th><th>Cantidad</th><th>Notas</th><th>Fecha</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>ID Devolución</th><th>Venta</th><th>Producto</th><th>Cantidad</th><th>Notas</th><th title="Lo que se paga para que el producto vuelva desde la dirección del cliente hasta el depósito">🚚 Envío de vuelta</th><th>Fecha</th><th>Acciones</th></tr></thead>
           <tbody id="devoluciones-tbody"></tbody>
         </table>
         <div id="devoluciones-empty" class="empty-state" style="display:none"><div class="empty-icon">↩️</div><p>No hay devoluciones en este estado.</p></div>
@@ -1826,11 +1827,34 @@
       <div class="form-group"><label class="form-label">SKU</label><input type="text" id="dev-sku" disabled style="opacity:0.6"></div>
       <div class="form-group"><label class="form-label">Cantidad a devolver</label><input type="number" id="dev-cantidad" min="1" value="1"></div>
       <div class="form-group"><label class="form-label">Notas (opcional)</label><input type="text" id="dev-notas" placeholder="ej: producto defectuoso, mediación MELI..."></div>
+      <div class="form-group">
+        <label class="form-label">🚚 Costo del envío de vuelta ($)</label>
+        <input type="number" id="dev-costo-envio" min="0" step="1" placeholder="0">
+        <span style="font-size:11px;color:var(--text-muted)">Desde la dirección del cliente hasta el depósito. Va directo a Reportes. Si todavía no lo sabés, lo cargás después.</span>
+      </div>
     </div>
     <p style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ El stock se restaurará solo cuando confirmes que recibiste físicamente el producto.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-devolucion')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveDevolucion()">Registrar devolución pendiente</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: COSTO DEL ENVÍO DE UNA DEVOLUCIÓN -->
+<div class="modal-overlay" id="modal-dev-costo">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">🚚 Envío de vuelta</div>
+    <input type="hidden" id="dev-costo-id">
+    <p id="dev-costo-producto" style="font-size:13px;color:var(--text-dim);margin-bottom:12px"></p>
+    <div class="form-group">
+      <label class="form-label">Costo del envío desde el cliente hasta el depósito ($)</label>
+      <input type="number" id="dev-costo-monto" min="0" step="1" placeholder="0">
+      <span style="font-size:11px;color:var(--text-muted)">Entra en Reportes como «Envíos de devoluciones» y resta de la ganancia. 0 = sin costo.</span>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-dev-costo')">Cancelar</button>
+      <button class="btn btn-primary" id="dev-costo-guardar" onclick="saveCostoEnvioDevolucion()">Guardar</button>
     </div>
   </div>
 </div>
@@ -2068,7 +2092,7 @@ function normMovCategoria(c) {
   return { id: c.id, nombre: c.nombre, tipo: c.tipo || 'ambos', color: c.color || '#64748b', orden: c.orden ?? 100 };
 }
 function normDevolucion(d) {
-  return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at };
+  return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at, costoEnvio: Number(d.costo_envio) || 0 };
 }
 
 // MELI callback banners
@@ -2779,7 +2803,8 @@ function saveCotizacion() {
 // Totales de otros gastos/ingresos del último render de Reportes. renderAdsReporte y
 // actualizarAdsDesdesMELI los leen de acá para mostrar el desglose completo de la ganancia:
 // pasarlos como parámetros implicaría tocar los seis onclick que ya arrastran nueve.
-let desgloseOtrosMovs = { gastos: 0, ingresos: 0 };
+// enviosDevol = lo pagado por los envíos de vuelta de las devoluciones (cliente → depósito).
+let desgloseOtrosMovs = { gastos: 0, ingresos: 0, enviosDevol: 0 };
 
 let finanzasTabFilter = 'all';
 let editandoCategoriaMov = null;
@@ -7358,8 +7383,13 @@ function renderReportes() {
   // Otros gastos e ingresos del período (packaging, envíos por cambios, rendimientos de MP).
   // Se cargan en la página Gastos e ingresos y pesan sólo en el período de su fecha.
   const otrosMovs = totalesMovimientos(movimientosEnRango(desde, hasta));
-  desgloseOtrosMovs = { gastos: otrosMovs.gastos, ingresos: otrosMovs.ingresos };
-  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costosFijosAjustados
+  // Envíos de vuelta de las devoluciones (desde la dirección del cliente hasta el depósito):
+  // se cargan en la página Devoluciones y pesan en el período en que se registró la devolución.
+  const devsPeriodo = devolucionesEnRango(desde, hasta);
+  const costoEnviosDevol = costoEnviosDevoluciones(devsPeriodo);
+  const cantDevolConEnvio = devsPeriodo.filter(d => d.costoEnvio > 0).length;
+  desgloseOtrosMovs = { gastos: otrosMovs.gastos, ingresos: otrosMovs.ingresos, enviosDevol: costoEnviosDevol };
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - costoEnviosDevol - costosFijosAjustados
                    - otrosMovs.gastos + otrosMovs.ingresos;
   // El margen se sigue midiendo contra los ingresos por ventas: los otros ingresos suman a la
   // ganancia pero no son facturación por vender, así que meterlos en el denominador infla el
@@ -7380,6 +7410,7 @@ function renderReportes() {
     <div class="stat-card yellow"><div class="stat-icon">🏭</div><div class="stat-value">${fmt(costoProductos)}</div><div class="stat-label">Costo de productos</div></div>
     <div class="stat-card red"><div class="stat-icon">📦💸</div><div class="stat-value">${fmt(totalCostoEnvios)}</div><div class="stat-label">Costo de envíos</div></div>
     <div class="stat-card yellow"><div class="stat-icon">⏳</div><div class="stat-value">${fmt(totalEnviosSinPagar)}</div><div class="stat-label">Envíos a pagar</div></div>
+    <div class="stat-card red" title="Lo pagado para que vuelvan las devoluciones, desde la dirección del cliente hasta el depósito. Se carga en ↩️ Devoluciones."><div class="stat-icon">↩️🚚</div><div class="stat-value">${fmt(costoEnviosDevol)}</div><div class="stat-label">Envíos de devoluciones${cantDevolConEnvio ? ` (${cantDevolConEnvio})` : ''}</div></div>
     <div class="stat-card red"><div class="stat-icon">🏢</div><div class="stat-value">${fmt(costosFijosAjustados)}</div><div class="stat-label">Costos fijos (${periodoLabel})</div></div>
     <div class="stat-card red"><div class="stat-icon">🧾</div><div class="stat-value">${fmt(otrosMovs.gastos)}</div><div class="stat-label">Otros gastos (${periodoLabel})</div></div>
     <div class="stat-card green"><div class="stat-icon">💵</div><div class="stat-value">${fmt(otrosMovs.ingresos)}</div><div class="stat-label">Otros ingresos (${periodoLabel})</div></div>
@@ -7656,6 +7687,7 @@ async function renderAdsReporte(desde, hasta, diasNum, val, ganancia, totalIngre
               − Comisiones MELI: ${fmt(totalComisiones)}<br>
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              ${desgloseOtrosMovs.enviosDevol ? `− Envíos de devoluciones: ${fmt(desgloseOtrosMovs.enviosDevol)}<br>` : ''}
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
               ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
@@ -7722,6 +7754,11 @@ function serieDiaria(desde, hasta, ads) {
   for (const e of db.envios) {
     const d = dias[idx[(e.creado || e.fecha_despacho || e.fechaDespacho || '').slice(0, 10)]];
     if (d) d.envios += (e.costo || 0) + (e.colecta ? 75 : 0);
+  }
+  // El envío de vuelta de una devolución también es gasto de envío, en el día que se registró.
+  for (const dev of db.devoluciones) {
+    const d = dias[idx[(dev.creado || '').slice(0, 10)]];
+    if (d) d.envios += dev.costoEnvio || 0;
   }
   for (const a of (ads && ads.por_dia) || []) {
     const d = dias[idx[a.fecha]];
@@ -8045,6 +8082,7 @@ async function actualizarAdsDesdesMELI(desde, hasta, dias, ganancia, totalIngres
               − Comisiones MELI: ${fmt(totalComisiones)}<br>
               − Costo productos: ${fmt(costoProductos)}<br>
               − Costo envíos: ${fmt(totalCostoEnvios)}<br>
+              ${desgloseOtrosMovs.enviosDevol ? `− Envíos de devoluciones: ${fmt(desgloseOtrosMovs.enviosDevol)}<br>` : ''}
               − Costos fijos período: ${fmt(costosFijosAjustados)}<br>
               ${desgloseOtrosMovs.gastos ? `− Otros gastos: ${fmt(desgloseOtrosMovs.gastos)}<br>` : ''}
               ${desgloseOtrosMovs.ingresos ? `+ Otros ingresos: ${fmt(desgloseOtrosMovs.ingresos)}<br>` : ''}
@@ -8429,7 +8467,16 @@ function openCrearDevolucion(ventaId) {
   document.getElementById('dev-sku').value = v.sku;
   document.getElementById('dev-cantidad').value = v.cantidad;
   document.getElementById('dev-notas').value = '';
+  document.getElementById('dev-costo-envio').value = '';
   openModal('modal-devolucion');
+}
+
+// "" → 0, "350,50" → 350.5; null si no es un monto válido (igual que api/_devoluciones.js).
+function leerCostoEnvioDevolucion(id) {
+  const txt = document.getElementById(id).value.trim().replace(',', '.');
+  if (!txt) return 0;
+  const n = Number(txt);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 
 async function saveDevolucion() {
@@ -8438,12 +8485,51 @@ async function saveDevolucion() {
   const producto = document.getElementById('dev-producto').value;
   const cantidad = parseInt(document.getElementById('dev-cantidad').value) || 1;
   const notas = document.getElementById('dev-notas').value.trim();
+  const costoEnvio = leerCostoEnvioDevolucion('dev-costo-envio');
+  if (costoEnvio === null) { alert('⚠️ El costo del envío tiene que ser un monto mayor o igual a 0.'); return; }
   try {
-    await api('POST', '/devoluciones', { ventaId, sku, producto, cantidad, notas });
+    const r = await api('POST', '/devoluciones', { ventaId, sku, producto, cantidad, notas, costoEnvio });
     await loadAll();
     closeModal('modal-devolucion');
     goPage('devoluciones');
+    if (r && r.migracionCostoEnvioPendiente) {
+      alert(`⚠️ La devolución quedó registrada, pero el costo del envío no se guardó: falta correr la migración ${r.migracionCostoEnvioPendiente} en Supabase.`);
+    }
   } catch(e) { alert('❌ Error registrando devolución: ' + e.message); }
+}
+
+function openCostoEnvioDevolucion(id) {
+  const d = db.devoluciones.find(x => x.id === id);
+  if (!d) return;
+  document.getElementById('dev-costo-id').value = d.id;
+  document.getElementById('dev-costo-producto').textContent = `${d.producto} (x${d.cantidad}) · ${d.id}`;
+  document.getElementById('dev-costo-monto').value = d.costoEnvio || '';
+  openModal('modal-dev-costo');
+  document.getElementById('dev-costo-monto').focus();
+}
+
+async function saveCostoEnvioDevolucion() {
+  const id = document.getElementById('dev-costo-id').value;
+  const costoEnvio = leerCostoEnvioDevolucion('dev-costo-monto');
+  if (costoEnvio === null) { alert('⚠️ El costo del envío tiene que ser un monto mayor o igual a 0.'); return; }
+  try {
+    await api('PATCH', `/devoluciones?id=${encodeURIComponent(id)}`, { costoEnvio });
+    const d = db.devoluciones.find(x => x.id === id);
+    if (d) d.costoEnvio = costoEnvio;
+    closeModal('modal-dev-costo');
+    renderDevoluciones();
+  } catch(e) { alert('❌ Error guardando el costo del envío: ' + e.message); }
+}
+
+// Devoluciones cuyo envío de vuelta cae en el período (por la fecha en que se registraron).
+// Con desde === null entra todo, igual que movimientosEnRango.
+function devolucionesEnRango(desde, hasta) {
+  if (desde === null || desde === undefined) return db.devoluciones;
+  return db.devoluciones.filter(d => { const f = (d.creado || '').slice(0, 10); return f >= desde && f <= hasta; });
+}
+
+function costoEnviosDevoluciones(devs) {
+  return devs.reduce((a, d) => a + (d.costoEnvio || 0), 0);
 }
 
 async function confirmarDevolucion(id) {
@@ -8479,6 +8565,10 @@ function renderDevoluciones() {
   const lista = db.devoluciones.filter(d => d.estado === devolucionesTabFilter);
   const tbody = document.getElementById('devoluciones-tbody');
   const empty = document.getElementById('devoluciones-empty');
+  const totalEnvio = costoEnviosDevoluciones(lista);
+  document.getElementById('devoluciones-resumen-envio').innerHTML = totalEnvio > 0
+    ? `🚚 Envíos de vuelta en esta pestaña: <strong>${fmt(totalEnvio)}</strong> · se descuentan de la ganancia en Reportes.`
+    : '🚚 El costo del envío de vuelta (del cliente al depósito) se carga con el botón de la columna y va directo a Reportes.';
   if (!lista.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
   tbody.innerHTML = lista.map(d => {
@@ -8494,6 +8584,8 @@ function renderDevoluciones() {
       <td>${d.producto}<br><span class="badge badge-gray" style="font-size:10px">${d.sku}</span></td>
       <td>${d.cantidad}</td>
       <td>${d.notas || '—'}</td>
+      <td style="white-space:nowrap">${d.costoEnvio > 0 ? `<strong>${fmt(d.costoEnvio)}</strong>` : '<span style="color:var(--text-muted)">—</span>'}
+        <button class="btn btn-ghost btn-sm" onclick="openCostoEnvioDevolucion('${d.id}')" title="Cargar el costo del envío de vuelta" style="margin-left:4px">${d.costoEnvio > 0 ? '✏️' : '+ Cargar'}</button></td>
       <td>${(d.creado || '').slice(0, 10)}</td>
       <td>${acciones}</td>
     </tr>`;
@@ -8865,7 +8957,8 @@ async function exportReportePDF() {
   const totalCostoEnvios = enviosFiltrados.reduce((a,e) => a + (e.costo||0) + (e.colecta ? 75 : 0), 0);
   const costoProductos = ventasFiltradas.reduce((a,v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
   const otrosPDF = totalesMovimientos(movimientosEnRango(desde, hasta));
-  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios
+  const enviosDevolPDF = costoEnviosDevoluciones(devolucionesEnRango(desde, hasta));
+  const ganancia = totalIngresos - totalComisiones - costoProductos - totalCostoEnvios - enviosDevolPDF
                    - otrosPDF.gastos + otrosPDF.ingresos;
   const margenPct = totalIngresos > 0 ? ((ganancia / totalIngresos) * 100).toFixed(1) : 0;
   // Ventas = tickets: un carrito con varios productos cuenta como una sola venta
@@ -8919,6 +9012,7 @@ async function exportReportePDF() {
     ['Ticket promedio', f2(ticketPromedio)],
     ['Comisiones MELI', f2(totalComisiones)],
     ['Costo de productos', f2(costoProductos)],
+    ['Envíos de devoluciones', f2(enviosDevolPDF)],
     ['Otros gastos', f2(otrosPDF.gastos)],
     ['Otros ingresos', f2(otrosPDF.ingresos)],
     ['Ganancia estimada', f2(ganancia)],
@@ -9339,21 +9433,23 @@ function filtrarPeriodo(desde, hasta) {
       const f = (e.creado || e.fecha_despacho || e.fechaDespacho || '').slice(0, 10);
       return f >= desde && f <= hasta;
     }),
+    devoluciones: devolucionesEnRango(desde, hasta),
   };
 }
 
-function calcularMetricas(ventas, envios) {
+function calcularMetricas(ventas, envios, devoluciones = []) {
   const ingresos = ventas.reduce((a, v) => a + v.total, 0);
   const comisiones = ventas.reduce((a, v) => a + (v.comision || 0), 0);
   const costoEnvios = envios.reduce((a, e) => a + (e.costo || 0) + (e.colecta ? 75 : 0), 0);
+  const costoEnviosDevol = costoEnviosDevoluciones(devoluciones);
   const costoProductos = ventas.reduce((a, v) => { const p = db.productos.find(x => x.sku === v.sku); return a + (p ? p.costo * v.cantidad : 0); }, 0);
-  const ganancia = ingresos - comisiones - costoProductos - costoEnvios;
+  const ganancia = ingresos - comisiones - costoProductos - costoEnvios - costoEnviosDevol;
   const margen = ingresos > 0 ? ((ganancia / ingresos) * 100).toFixed(1) : 0;
   // Un carrito con varios productos es una sola venta, no una por línea
   const cantVentas = contarTickets(ventas);
   const ticket = cantVentas > 0 ? ingresos / cantVentas : 0;
   const unidades = ventas.reduce((a, v) => a + v.cantidad, 0);
-  return { ingresos, comisiones, costoEnvios, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: cantVentas };
+  return { ingresos, comisiones, costoEnvios, costoEnviosDevol, costoProductos, ganancia, margen: parseFloat(margen), ticket, unidades, ventas: cantVentas };
 }
 
 // Ads por período, desde meli_ads_diario. Se cachea unos minutos para que la comparación, el PDF
@@ -9384,8 +9480,8 @@ async function adsDelPeriodo(desde, hasta) {
 function metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB) {
   const pA = filtrarPeriodo(aDesde, aHasta);
   const pB = filtrarPeriodo(bDesde, bHasta);
-  const mA = calcularMetricas(pA.ventas, pA.envios);
-  const mB = calcularMetricas(pB.ventas, pB.envios);
+  const mA = calcularMetricas(pA.ventas, pA.envios, pA.devoluciones);
+  const mB = calcularMetricas(pB.ventas, pB.envios, pB.devoluciones);
   const gA = mA.ganancia - (adsA || 0);
   const gB = mB.ganancia - (adsB || 0);
   const margen = (g, ing) => ing > 0 ? parseFloat(((g / ing) * 100).toFixed(1)) : 0;
@@ -9398,6 +9494,7 @@ function metricasComparacion(aDesde, aHasta, bDesde, bHasta, adsA, adsB) {
     { nombre: 'Comisiones MELI', a: mA.comisiones, b: mB.comisiones, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de productos', a: mA.costoProductos, b: mB.costoProductos, tipo: 'money', mejor: 'menor' },
     { nombre: 'Costo de envíos', a: mA.costoEnvios, b: mB.costoEnvios, tipo: 'money', mejor: 'menor' },
+    { nombre: 'Envíos de devoluciones', a: mA.costoEnviosDevol, b: mB.costoEnviosDevol, tipo: 'money', mejor: 'menor' },
     { nombre: 'Gasto en Ads c/IVA' + (sinAds ? ' (sin datos)' : ''), a: adsA || 0, b: adsB || 0, tipo: 'money', mejor: 'menor' },
     { nombre: 'Ganancia estimada', a: gA, b: gB, tipo: 'money', mejor: 'mayor' },
     { nombre: 'Margen neto', a: margen(gA, mA.ingresos), b: margen(gB, mB.ingresos), tipo: 'pct', mejor: 'mayor' },

@@ -205,10 +205,39 @@ function mockearApi(page, estado, fallos = {}) {
     }
     if (ruta === '/importaciones') return ok(estado.importaciones || []);
     // Devoluciones, como api/devoluciones.js. `sinCostoEnvioDevol` imita una base donde la
-    // migración del costo del envío de vuelta todavía no corrió.
+    // migración del costo del envío de vuelta todavía no corrió, y `sinSkuRecibido` la del
+    // producto equivocado. El stock se mueve en el SKU que vuelve: el equivocado si lo hay
+    // (−cantidad al registrar, +cantidad al confirmar o al borrar una pendiente).
     if (ruta === '/devoluciones') {
       const devs = estado.devoluciones = estado.devoluciones || [];
       const id = url.searchParams.get('id');
+      const mover = (sku, packs) => {
+        const p = estado.productos.find(x => x.sku === sku);
+        const uds = packs * (p.unidades_por_venta || 1);
+        p.stock_dep = Math.max(0, p.stock_dep + uds);
+        p.stock_meli = p.stock_shopify = Math.floor(p.stock_dep / (p.unidades_por_venta || 1));
+        return p.stock_dep;
+      };
+      if (metodo === 'POST' && cuerpo.skuRecibido) {
+        if (estado.sinSkuRecibido) return error(503, 'Falta correr la migración 20261105000000_add_sku_recibido_devoluciones.sql en Supabase.');
+        const b = estado.productos.find(x => x.sku === cuerpo.skuRecibido);
+        if (!b) return error(400, `No existe el producto ${cuerpo.skuRecibido}`);
+        const d = { id: 'DEV-' + Date.now() + '-' + devs.length, venta_id: cuerpo.ventaId || null, sku: cuerpo.sku,
+          producto: cuerpo.producto, cantidad: cuerpo.cantidad, estado: 'pendiente', notas: cuerpo.notas || null,
+          costo_envio: cuerpo.costoEnvio || 0, sku_recibido: b.sku, producto_recibido: b.nombre,
+          created_at: new Date().toISOString(), recibida_at: null };
+        devs.unshift(d);
+        return ok({ ...d, stockRecibido: mover(b.sku, -cuerpo.cantidad) });
+      }
+      if (metodo === 'PUT') {
+        const d = devs.find(x => x.id === id);
+        if (!d) return error(404, 'Devolución no encontrada');
+        if (d.estado === 'recibida') return error(400, 'Ya fue confirmada');
+        const sku = d.sku_recibido || d.sku;
+        const nuevoStock = mover(sku, d.cantidad);
+        Object.assign(d, { estado: 'recibida', recibida_at: new Date().toISOString() });
+        return ok({ devolucion: { ...d }, skuRepuesto: sku, nuevoStock });
+      }
       if (metodo === 'POST') {
         const d = { id: 'DEV-' + Date.now() + '-' + devs.length, venta_id: cuerpo.ventaId || null, sku: cuerpo.sku,
           producto: cuerpo.producto, cantidad: cuerpo.cantidad, estado: 'pendiente', notas: cuerpo.notas || null,
@@ -227,7 +256,11 @@ function mockearApi(page, estado, fallos = {}) {
         return ok({ ...d });
       }
       if (metodo === 'DELETE') {
+        const d = devs.find(x => x.id === id);
         estado.devoluciones = devs.filter(x => x.id !== id);
+        if (d && d.estado === 'pendiente' && d.sku_recibido) {
+          return ok({ ok: true, skuRepuesto: d.sku_recibido, nuevoStock: mover(d.sku_recibido, d.cantidad) });
+        }
         return ok({ ok: true });
       }
       return ok(devs);

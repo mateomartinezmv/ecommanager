@@ -253,15 +253,19 @@ module.exports = async (req, res) => {
     // la ventana de demanda — si no, una venta devuelta sigue "contando" como
     // demanda real y sobreestima la velocidad). returnsBySku guarda todo el
     // historial, igual que dailyQtyBySku, para la reconstrucción de stock.
+    // select('*'): sku_recibido puede no existir todavía si la migración no corrió.
     const { data: devoluciones, error: devErr } = await supabase
       .from('devoluciones')
-      .select('sku, cantidad, recibida_at')
+      .select('*')
       .eq('estado', 'recibida');
     if (devErr) throw devErr;
 
     const returnedBySku = {};
     const returnsBySku  = {}; // sku -> [{ fecha, qty }], historial completo
     for (const d of (devoluciones || [])) {
+      // Producto equivocado: la venta de A es demanda real (se le reenvió el correcto) y B
+      // bajó al registrar y volvió al recibir, así que no mueve ni la demanda ni el stock.
+      if (d.sku_recibido) continue;
       const fecha = (d.recibida_at || '').slice(0, 10);
       if (!fecha || !d.cantidad) continue;
       const uds = aUnidades(d.sku, d.cantidad);

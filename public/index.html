@@ -1826,6 +1826,22 @@
       <div class="form-group"><label class="form-label">Producto</label><input type="text" id="dev-producto" disabled style="opacity:0.6"></div>
       <div class="form-group"><label class="form-label">SKU</label><input type="text" id="dev-sku" disabled style="opacity:0.6"></div>
       <div class="form-group"><label class="form-label">Cantidad a devolver</label><input type="number" id="dev-cantidad" min="1" value="1"></div>
+      <div class="form-group">
+        <label style="display:flex;gap:8px;align-items:center;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="dev-equivocado" onchange="toggleDevEquivocado()" style="width:auto">
+          📦 Le mandamos un producto equivocado
+        </label>
+      </div>
+      <div class="form-group" id="dev-equivocado-panel" style="display:none">
+        <label class="form-label">Producto que recibió el cliente (y que devuelve)</label>
+        <input type="text" id="dev-sku-recibido" list="dl-dev-productos" placeholder="Buscá por SKU o nombre" oninput="mostrarDevRecibido()" autocomplete="off">
+        <datalist id="dl-dev-productos"></datalist>
+        <span id="dev-recibido-info" style="font-size:12px;margin-top:4px;display:block"></span>
+        <span style="font-size:11px;color:var(--text-muted);display:block;margin-top:4px">
+          Al registrar se descuenta del stock de este producto (está en lo del cliente) y al confirmar que llegó se le vuelve a sumar.
+          El producto que pidió no se toca: el reenvío usa el descuento de la venta.
+        </span>
+      </div>
       <div class="form-group"><label class="form-label">Notas (opcional)</label><input type="text" id="dev-notas" placeholder="ej: producto defectuoso, mediación MELI..."></div>
       <div class="form-group">
         <label class="form-label">🚚 Costo del envío de vuelta ($)</label>
@@ -1833,7 +1849,7 @@
         <span style="font-size:11px;color:var(--text-muted)">Desde la dirección del cliente hasta el depósito. Va directo a Reportes. Si todavía no lo sabés, lo cargás después.</span>
       </div>
     </div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ El stock se restaurará solo cuando confirmes que recibiste físicamente el producto.</p>
+    <p id="dev-aviso-stock" style="font-size:12px;color:var(--text-muted);margin-top:8px">⚠️ El stock se restaurará solo cuando confirmes que recibiste físicamente el producto.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-devolucion')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveDevolucion()">Registrar devolución pendiente</button>
@@ -2092,7 +2108,7 @@ function normMovCategoria(c) {
   return { id: c.id, nombre: c.nombre, tipo: c.tipo || 'ambos', color: c.color || '#64748b', orden: c.orden ?? 100 };
 }
 function normDevolucion(d) {
-  return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at, costoEnvio: Number(d.costo_envio) || 0 };
+  return { id: d.id, ventaId: d.venta_id, sku: d.sku, producto: d.producto, cantidad: d.cantidad, estado: d.estado, notas: d.notas, creado: d.created_at, recibidaAt: d.recibida_at, costoEnvio: Number(d.costo_envio) || 0, skuRecibido: d.sku_recibido || null, productoRecibido: d.producto_recibido || null };
 }
 
 // MELI callback banners
@@ -8468,7 +8484,42 @@ function openCrearDevolucion(ventaId) {
   document.getElementById('dev-cantidad').value = v.cantidad;
   document.getElementById('dev-notas').value = '';
   document.getElementById('dev-costo-envio').value = '';
+  document.getElementById('dev-equivocado').checked = false;
+  document.getElementById('dev-sku-recibido').value = '';
+  // Cualquier producto menos el que pidió (puede haberse mandado uno ya descatalogado).
+  document.getElementById('dl-dev-productos').innerHTML = db.productos
+    .filter(p => p.sku !== v.sku)
+    .map(p => `<option value="${escHtml(p.sku)}">${escHtml(p.nombre)}</option>`).join('');
+  toggleDevEquivocado();
   openModal('modal-devolucion');
+}
+
+function toggleDevEquivocado() {
+  const on = document.getElementById('dev-equivocado').checked;
+  document.getElementById('dev-equivocado-panel').style.display = on ? '' : 'none';
+  document.getElementById('dev-aviso-stock').textContent = on
+    ? '⚠️ Al registrarla se descuenta el producto equivocado; cuando confirmes que llegó, vuelve a sumarse a ese mismo producto.'
+    : '⚠️ El stock se restaurará solo cuando confirmes que recibiste físicamente el producto.';
+  if (on) { mostrarDevRecibido(); document.getElementById('dev-sku-recibido').focus(); }
+}
+
+// El producto equivocado elegido: por SKU exacto (lo que pone el datalist) o por nombre exacto.
+function devProductoRecibido() {
+  const txt = document.getElementById('dev-sku-recibido').value.trim();
+  if (!txt) return null;
+  const t = txt.toLowerCase();
+  return db.productos.find(p => p.sku.toLowerCase() === t) || db.productos.find(p => (p.nombre || '').toLowerCase() === t) || null;
+}
+
+function mostrarDevRecibido() {
+  const info = document.getElementById('dev-recibido-info');
+  const txt = document.getElementById('dev-sku-recibido').value.trim();
+  const p = devProductoRecibido();
+  const pedido = document.getElementById('dev-sku').value;
+  if (!txt) { info.innerHTML = ''; return; }
+  if (!p) { info.innerHTML = '<span style="color:var(--yellow)">No hay un producto con ese SKU.</span>'; return; }
+  if (p.sku === pedido) { info.innerHTML = '<span style="color:var(--yellow)">Es el mismo producto que pidió.</span>'; return; }
+  info.innerHTML = `<span style="color:var(--green)">✓ ${escHtml(p.nombre)}</span> <span style="color:var(--text-muted)">· stock ${p.stockDep}</span>`;
 }
 
 // "" → 0, "350,50" → 350.5; null si no es un monto válido (igual que api/_devoluciones.js).
@@ -8487,8 +8538,15 @@ async function saveDevolucion() {
   const notas = document.getElementById('dev-notas').value.trim();
   const costoEnvio = leerCostoEnvioDevolucion('dev-costo-envio');
   if (costoEnvio === null) { alert('⚠️ El costo del envío tiene que ser un monto mayor o igual a 0.'); return; }
+  let skuRecibido = null;
+  if (document.getElementById('dev-equivocado').checked) {
+    const p = devProductoRecibido();
+    if (!p) { alert('⚠️ Elegí qué producto recibió el cliente.'); return; }
+    if (p.sku === sku) { alert('⚠️ El producto que recibió es el mismo que pidió: destildá "producto equivocado".'); return; }
+    skuRecibido = p.sku;
+  }
   try {
-    const r = await api('POST', '/devoluciones', { ventaId, sku, producto, cantidad, notas, costoEnvio });
+    const r = await api('POST', '/devoluciones', { ventaId, sku, producto, cantidad, notas, costoEnvio, skuRecibido });
     await loadAll();
     closeModal('modal-devolucion');
     goPage('devoluciones');
@@ -8535,22 +8593,32 @@ function costoEnviosDevoluciones(devs) {
 async function confirmarDevolucion(id) {
   const d = db.devoluciones.find(x => x.id === id);
   if (!d) return;
-  if (!confirm(`¿Confirmás que recibiste fisicamente "${d.producto}" (x${d.cantidad})?\n\nEsto sumará ${d.cantidad} unidad(es) al stock.`)) return;
+  // Producto equivocado: vuelve lo que le llegó al cliente, no lo que pidió.
+  const vuelve = d.skuRecibido ? (d.productoRecibido || d.skuRecibido) : d.producto;
+  if (!confirm(`¿Confirmás que recibiste fisicamente "${vuelve}" (x${d.cantidad})?\n\nEsto sumará ${d.cantidad} unidad(es) al stock de "${vuelve}".`)) return;
   try {
     const result = await api('PUT', `/devoluciones?id=${id}`);
     await loadAll();
     renderDevoluciones();
     renderStock();
-    alert(`✅ Stock restaurado. Nuevo stock de "${d.producto}": ${result.nuevoStock}`);
+    alert(`✅ Stock restaurado. Nuevo stock de "${vuelve}": ${result.nuevoStock}`);
   } catch(e) { alert('❌ Error confirmando devolución: ' + e.message); }
 }
 
 async function deleteDevolucion(id) {
-  if (!confirm('¿Eliminar esta devolución? No se modificará el stock.')) return;
+  const d = db.devoluciones.find(x => x.id === id);
+  // Una pendiente de producto equivocado ya descontó ese producto al registrarse.
+  const devuelve = d && d.estado === 'pendiente' && d.skuRecibido;
+  const msg = devuelve
+    ? `¿Eliminar esta devolución?\n\nSe le devuelven ${d.cantidad} unidad(es) a "${d.productoRecibido || d.skuRecibido}", que se habían descontado al registrarla.`
+    : '¿Eliminar esta devolución? No se modificará el stock.';
+  if (!confirm(msg)) return;
   try {
-    await api('DELETE', `/devoluciones?id=${id}`);
+    const r = await api('DELETE', `/devoluciones?id=${id}`);
     await loadAll();
     renderDevoluciones();
+    if (devuelve) renderStock();
+    if (r && r.error) alert('⚠️ ' + r.error);
   } catch(e) { alert('❌ Error eliminando devolución: ' + e.message); }
 }
 
@@ -8581,7 +8649,10 @@ function renderDevoluciones() {
     return `<tr>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted)">${d.id}</span></td>
       <td><span style="font-size:11px;color:var(--text-muted)">${d.ventaId || '—'}</span></td>
-      <td>${d.producto}<br><span class="badge badge-gray" style="font-size:10px">${d.sku}</span></td>
+      <td>${d.skuRecibido
+        ? `<span style="font-size:11px;color:var(--text-muted)">Pidió:</span> ${d.producto} <span class="badge badge-gray" style="font-size:10px">${d.sku}</span><br>
+           <span style="font-size:11px;color:var(--yellow)">📦 Recibió (equivocado):</span> ${escHtml(d.productoRecibido || d.skuRecibido)} <span class="badge badge-yellow" style="font-size:10px">${escHtml(d.skuRecibido)}</span>`
+        : `${d.producto}<br><span class="badge badge-gray" style="font-size:10px">${d.sku}</span>`}</td>
       <td>${d.cantidad}</td>
       <td>${d.notas || '—'}</td>
       <td style="white-space:nowrap">${d.costoEnvio > 0 ? `<strong>${fmt(d.costoEnvio)}</strong>` : '<span style="color:var(--text-muted)">—</span>'}

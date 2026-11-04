@@ -18,6 +18,7 @@
     "api/meli/sync-envios.js": { "maxDuration": 60 },
     "api/meli/debug-item.js": { "maxDuration": 15 },
     "api/meli/etiqueta.js": { "maxDuration": 30 },
+    "api/meli/factura.js": { "maxDuration": 30 },
     "api/shopify/notify.js": { "maxDuration": 10 },
     "api/meli/sync-stock.js": { "maxDuration": 30 },
     "api/shopify/sync-stock.js": { "maxDuration": 30 },

@@ -25,7 +25,8 @@ function servirPublic() {
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(200, { 'Content-Type': archivo.endsWith('.html') ? 'text/html' : 'text/plain' });
+    const tipo = archivo.endsWith('.html') ? 'text/html' : archivo.endsWith('.js') ? 'application/javascript' : 'text/plain';
+    res.writeHead(200, { 'Content-Type': tipo });
     res.end(fs.readFileSync(archivo));
   });
   servidor.listen(0);
@@ -102,6 +103,7 @@ function mockearApi(page, estado, fallos = {}) {
           precio: cuerpo.precio ?? p.precio,
           alerta_min: cuerpo.alertaMin ?? p.alerta_min,
           notas: cuerpo.notas ?? p.notas,
+          codigo_gesta: cuerpo.codigoGesta !== undefined ? (parseInt(cuerpo.codigoGesta, 10) || null) : p.codigo_gesta,
           discontinuado: disc,
           motivo_discontinuado: !disc ? null
             : (cuerpo.motivoDiscontinuado !== undefined ? (cuerpo.motivoDiscontinuado || null) : (p.motivo_discontinuado ?? null)),
@@ -128,6 +130,9 @@ function mockearApi(page, estado, fallos = {}) {
       }
       if (metodo === 'PUT') {
         (estado.ventasPut = estado.ventasPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        // La marca de facturada queda guardada, como en Supabase, para que la recarga la vea.
+        const venta = estado.ventas.find(v => v.id === url.searchParams.get('id'));
+        if (venta && cuerpo.facturada !== undefined) venta.facturada = cuerpo.facturada;
         return ok(cuerpo);
       }
       return ok(estado.ventas);
@@ -348,6 +353,18 @@ function mockearApi(page, estado, fallos = {}) {
         return ok({ ok: true, copiadas: resultados.length, fallidas: 0, resultados });
       }
       return ok(fotos);
+    }
+
+    // Réplica de api/meli/factura.js: sube el PDF y marca facturadas las líneas de la venta.
+    if (ruta === '/meli/factura' && metodo === 'POST') {
+      (estado.facturasMeli = estado.facturasMeli || []).push(cuerpo);
+      if (estado.facturaMeliError) return error(502, estado.facturaMeliError);
+      const venta = estado.ventas.find(v => v.id === cuerpo.ventaId);
+      if (!venta) return error(404, 'No encontré esa venta en el CRM.');
+      const misma = v => (venta.pack_id ? v.pack_id === venta.pack_id : v.orden_meli === venta.orden_meli);
+      const cuando = new Date().toISOString();
+      const ids = estado.ventas.filter(misma).map(v => { v.facturada = true; v.factura_meli_at = cuando; return v.id; });
+      return ok({ ok: true, pack: venta.pack_id || venta.orden_meli, ventas: ids, facturaMeliAt: cuando });
     }
 
     if (ruta === '/movimientos') {

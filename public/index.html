@@ -1277,8 +1277,8 @@
   <div class="modal" style="width:860px">
     <div class="modal-title">🧾 Facturar ventas MELI en Gesta</div>
     <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">
-      Baja <b>un Excel por venta</b> (Gesta no puede importar varias ventas de consumidor final en el mismo archivo).
-      Importalos de a uno en Gesta. Cuando estén emitidos, marcá las ventas como facturadas para que no vuelvan a salir acá.
+      Baja <b>un Excel por venta</b> (Gesta no puede importar más de una fila a consumidor final en el mismo archivo).
+      Importalos de a uno en Gesta. Los carritos (varios productos en una venta) van a mano en Gesta: figuran abajo. Cuando estén emitidos, marcá las ventas como facturadas para que no vuelvan a salir acá.
       El total de cada eTicket es el de la venta en MELI.
     </p>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
@@ -6675,15 +6675,17 @@ function renderGesta(seleccionarTodo) {
       <td><input type="checkbox" data-clave="${c.clave}" ${gestaSeleccion.has(c.clave) ? 'checked' : ''} onchange="gestaElegir('${c.clave}', this.checked)"></td>
       <td>${c.fecha.split('-').reverse().join('/')}</td>
       <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${c.ref}</span>${c.comprador ? `<br><span style="font-size:11px;color:var(--text-muted)">${c.comprador}</span>` : ''}</td>
-      <td>${c.filas.map(f => `${f.cantidad} × ${f.detalle} <span style="color:var(--text-muted)">(${f.codigo})</span>`).join('<br>')}
-        ${c.carrito ? '<br><span style="font-size:11px;color:var(--accent)">🛒 Carrito: varias filas en el mismo Excel. Si Gesta no lo importa, facturalo a mano.</span>' : ''}</td>
+      <td>${c.filas.map(f => `${f.cantidad} × ${f.detalle} <span style="color:var(--text-muted)">(${f.codigo})</span>`).join('<br>')}</td>
       <td><strong>${montoGesta(c.total)}</strong></td>
     </tr>`).join('')
     : '<tr><td colspan="5" style="color:var(--text-muted);font-size:12px">No hay ventas MELI sin facturar desde esa fecha.</td></tr>';
 
   document.getElementById('gesta-excluidas').innerHTML = excluidas.length ? `
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">No salen en el Excel (${excluidas.length}):</div>
-    ${excluidas.map(e => `<div style="font-size:12px;padding:4px 0;border-top:1px solid var(--border)">#${e.ref} · ${e.fecha.split('-').reverse().join('/')} · ${montoGesta(e.total)} — ${e.motivo}</div>`).join('')}` : '';
+    ${excluidas.map(e => `<div style="font-size:12px;padding:6px 0;border-top:1px solid var(--border);display:flex;gap:10px;align-items:center;justify-content:space-between">
+      <span>#${e.ref} · ${e.fecha.split('-').reverse().join('/')} · ${montoGesta(e.total)} — ${e.motivo}${e.manual ? `<br><span style="color:var(--text-muted)">${e.lineas.map(v => `${v.cantidad} × ${v.producto} (${montoGesta(v.total)})`).join(' · ')}</span>` : ''}</span>
+      ${e.manual ? `<button class="btn btn-ghost btn-sm" style="white-space:nowrap" data-clave="${e.clave}" onclick="gestaMarcarManual('${e.clave}', this)">✅ Ya la facturé</button>` : ''}
+    </div>`).join('')}` : '';
   gestaActualizarBotones();
 }
 
@@ -6729,6 +6731,22 @@ async function gestaDescargar(btn) {
     alert('No se pudo armar el Excel: ' + e.message);
   } finally {
     btn.disabled = false;
+  }
+}
+
+// Un carrito facturado a mano en Gesta: se marca sin pasar por el Excel.
+async function gestaMarcarManual(clave, btn) {
+  const e = gestaPendientes.excluidas.find(x => x.clave === clave);
+  if (!e) return;
+  btn.disabled = true;
+  try {
+    for (const v of e.lineas) await api('PUT', `/ventas?id=${v.id}`, { facturada: true });
+    await loadAll();
+    renderVentas();
+    renderGesta(false);
+  } catch (err) {
+    btn.disabled = false;
+    alert('Error marcando la venta como facturada: ' + err.message);
   }
 }
 

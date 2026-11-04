@@ -11,10 +11,13 @@
 //     el SKU. Un producto sin código no está en Gesta (a propósito): su venta no sale.
 //   · PRECIO UNITARIO es el que cobra MELI (ya con el descuento), sin DESCUENTO: así el total
 //     del eTicket es el "monto total bruto" de la venta en MELI, al centésimo.
-//   · Gesta agrupa en una factura las filas de la misma fecha y cliente, y con dos ventas de
-//     consumidor final en el mismo archivo se cae ("Object reference not set to an instance of
-//     an object"). Por eso va UN EXCEL POR VENTA. Un carrito de MELI (varios productos, una
-//     venta) sí va en un solo archivo, con una fila por producto.
+//   · Gesta agrupa en una factura las filas de la misma fecha y cliente, y con más de una fila
+//     a consumidor final en el mismo archivo se cae ("Object reference not set to an instance
+//     of an object"): pasa con dos ventas y también con un carrito (una venta, dos productos).
+//     Por eso va UN EXCEL POR VENTA, de UNA FILA. Los carritos de MELI no salen en el Excel:
+//     se facturan a mano en Gesta y se marcan como facturados desde la pantalla.
+//   · Facturar con la CI del comprador (MELI la da) no sirve: Gesta sólo importa ventas de
+//     contactos que ya existen en Gesta ("No se puede encontrar el contacto: CI …").
 //   · ADENDA lleva "Venta Mercado Libre #<número>": es el número con el que MELI recibe la
 //     factura (pack, o la orden si no hay carrito), y como sale impreso en el PDF del eTicket,
 //     al subir los PDF el CRM reconoce solo a qué venta va cada uno.
@@ -79,6 +82,12 @@
       const total = r2(lineas.reduce((s, v) => s + (Number(v.total) || 0), 0));
       const base = { clave: g.clave, ref: g.ref, fecha, total, lineas, comprador: lineas[0].comprador || '' };
 
+      if (lineas.length > 1) {
+        excluidas.push({ ...base, manual: true,
+          motivo: `Carrito de ${lineas.length} productos: Gesta no importa más de una fila a consumidor final. Facturalo a mano en Gesta y marcalo acá como facturado.` });
+        continue;
+      }
+
       const sinCodigo = lineas.filter(v => !(porSku.get(v.sku)?.codigoGesta > 0));
       if (sinCodigo.length) {
         excluidas.push({ ...base, motivo: 'Sin código de Gesta: ' + sinCodigo.map(v => `${v.producto} (${v.sku})`).join(', ') });
@@ -96,7 +105,7 @@
         excluidas.push({ ...base, motivo: `Las filas suman $${totalFilas} y la venta $${total}: revisala a mano.` });
         continue;
       }
-      comprobantes.push({ ...base, filas, carrito: filas.length > 1 });
+      comprobantes.push({ ...base, filas });
     }
 
     comprobantes.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.ref < b.ref ? -1 : 1));

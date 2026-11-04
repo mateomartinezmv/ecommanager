@@ -133,6 +133,21 @@
   input:focus, select:focus, textarea:focus { border-color: var(--accent); }
   select option { background: var(--surface2); }
 
+  /* Buscador de productos con desplegable flotante (estilo lista nativa: SKU arriba, nombre abajo).
+     Va con position:fixed para no quedar recortado por el scroll del modal. */
+  .prod-search-wrap { position: relative; }
+  .prod-search-wrap input { padding-right: 32px; }
+  .prod-search-arrow { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--text-dim); pointer-events: none; }
+  .prod-dd { display: none; position: fixed; z-index: 1000; background: #1e1e24; border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); overflow-y: auto; padding: 4px 0; }
+  .prod-dd-item { display: flex; align-items: center; gap: 14px; padding: 8px 14px; cursor: pointer; }
+  .prod-dd-item:hover, .prod-dd-item.active { background: var(--surface2); }
+  .prod-dd-text { flex: 1; min-width: 0; }
+  .prod-dd-sku { font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prod-dd-nombre { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+  .prod-dd-stock { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+  .prod-dd-stock.sin-stock { color: var(--red); }
+  .prod-dd-vacio { padding: 10px 14px; font-size: 13px; color: var(--text-muted); }
+
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
   .stock-low { color: var(--red); font-weight: 600; }
@@ -1302,11 +1317,12 @@
 
     <div style="margin:12px 0 6px;font-size:12px;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.05em">Agregar producto</div>
     <div style="display:grid;grid-template-columns:1fr 80px 110px auto;gap:8px;align-items:end;margin-bottom:6px">
-      <div style="position:relative">
-        <input type="text" id="vmos-search" placeholder="Buscar por nombre o SKU..." autocomplete="off"
-          oninput="vmosOnSearch()" onkeydown="vmosSearchKeydown(event)"
-          style="width:100%;box-sizing:border-box;padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
-        <div id="vmos-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;max-height:200px;overflow-y:auto;z-index:200;margin-top:2px"></div>
+      <div class="prod-search-wrap">
+        <input type="text" id="vmos-search" placeholder="Buscá por SKU o nombre" autocomplete="off"
+          oninput="vmosOnSearch()" onfocus="vmosOnSearch(true)" onclick="vmosOnSearch(true)"
+          onkeydown="vmosSearchKeydown(event)" onblur="vmosHideDropdown()">
+        <span class="prod-search-arrow">▼</span>
+        <div id="vmos-dropdown" class="prod-dd"></div>
       </div>
       <input type="number" id="vmos-cantidad" placeholder="Cant." min="1" value="1"
         style="padding:8px 10px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-size:13px">
@@ -3524,64 +3540,117 @@ function vmosDescuentoActivo() {
     && document.getElementById('vmos-descuento').checked;
 }
 
+let vmosResults = [];
+
 function vmosGetResults() {
   const q = document.getElementById('vmos-search').value.trim().toLowerCase();
-  if (!q) return [];
-  return db.productos.filter(p =>
-    p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
-  ).slice(0, 8);
+  const lista = q
+    ? db.productos.filter(p =>
+        (p.nombre || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q))
+    : db.productos.slice();
+  return lista.slice(0, 100);
 }
 
-function vmosOnSearch() {
-  vmosSelectedSku = null;
-  vmosDropdownIndex = -1;
-  const results = vmosGetResults();
+// Ubica el desplegable flotante debajo del input (o arriba si no entra), más ancho que el
+// input para que el nombre del producto se lea en una o dos líneas, como la lista nativa.
+function vmosPositionDropdown() {
   const dd = document.getElementById('vmos-dropdown');
-  if (!results.length) { dd.style.display = 'none'; return; }
-  dd.innerHTML = results.map((p, i) =>
-    `<div data-i="${i}" onclick="vmosPickFromDropdown(${i})"
-      style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px"
-      onmouseenter="this.style.background='var(--bg-tertiary)'" onmouseleave="this.style.background=''">
-      <span style="font-weight:600">${p.nombre}</span>
-      <span style="color:var(--text-secondary);margin-left:8px">${p.sku}</span>
-      <span style="color:var(--text-secondary);float:right">Stock: ${p.stockDep}</span>
-    </div>`
-  ).join('');
+  if (!dd || dd.style.display !== 'block') return;
+  const r = document.getElementById('vmos-search').getBoundingClientRect();
+  const margen = 8;
+  const width = Math.min(Math.max(r.width, 460), window.innerWidth - margen * 2);
+  const left = Math.max(margen, Math.min(r.left, window.innerWidth - width - margen));
+  const abajo = window.innerHeight - r.bottom - margen;
+  const arriba = r.top - margen;
+  dd.style.left = left + 'px';
+  dd.style.width = width + 'px';
+  if (abajo >= 180 || abajo >= arriba) {
+    dd.style.top = (r.bottom + 4) + 'px';
+    dd.style.bottom = '';
+    dd.style.maxHeight = Math.min(360, abajo - 4) + 'px';
+  } else {
+    dd.style.top = '';
+    dd.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+    dd.style.maxHeight = Math.min(360, arriba - 4) + 'px';
+  }
+}
+
+function vmosOnSearch(desdeFoco) {
+  const dd = document.getElementById('vmos-dropdown');
+  // Al enfocar/clickear: si ya hay un producto elegido o la lista ya está abierta, no tocar nada.
+  if (desdeFoco && (vmosSelectedSku || dd.style.display === 'block')) return;
+  if (!desdeFoco) vmosSelectedSku = null;
+  vmosDropdownIndex = -1;
+  vmosResults = vmosGetResults();
+  dd.innerHTML = vmosResults.length
+    ? vmosResults.map((p, i) => {
+        const stock = Number(p.stockDep) || 0;
+        return `<div class="prod-dd-item" data-i="${i}" onmousedown="event.preventDefault()" onclick="vmosPickFromDropdown(${i})">
+          <div class="prod-dd-text">
+            <div class="prod-dd-sku">${escHtml(p.sku)}</div>
+            <div class="prod-dd-nombre">${escHtml(p.nombre)}</div>
+          </div>
+          <div class="prod-dd-stock${stock <= 0 ? ' sin-stock' : ''}">Stock: ${stock}</div>
+        </div>`;
+      }).join('')
+    : '<div class="prod-dd-vacio">No hay productos que coincidan</div>';
+  dd.scrollTop = 0;
   dd.style.display = 'block';
+  vmosPositionDropdown();
+}
+
+function vmosHideDropdown() {
+  document.getElementById('vmos-dropdown').style.display = 'none';
+  vmosDropdownIndex = -1;
 }
 
 function vmosPickFromDropdown(i) {
-  const results = vmosGetResults();
-  const p = results[i];
+  const p = vmosResults[i];
   if (!p) return;
   vmosSelectedSku = p.sku;
   document.getElementById('vmos-search').value = `${p.nombre} (${p.sku})`;
   if (!document.getElementById('vmos-precio').value) {
     document.getElementById('vmos-precio').value = p.precio || '';
   }
-  document.getElementById('vmos-dropdown').style.display = 'none';
-  vmosDropdownIndex = -1;
+  vmosHideDropdown();
+  document.getElementById('vmos-cantidad').focus();
 }
 
 function vmosSearchKeydown(e) {
   const dd = document.getElementById('vmos-dropdown');
-  const items = dd.querySelectorAll('div[data-i]');
+  const abierto = dd.style.display === 'block';
+  const items = dd.querySelectorAll('.prod-dd-item');
+  const marcar = () => items.forEach((el, i) => {
+    el.classList.toggle('active', i === vmosDropdownIndex);
+    if (i === vmosDropdownIndex) el.scrollIntoView({ block: 'nearest' });
+  });
   if (e.key === 'ArrowDown') {
     e.preventDefault();
+    if (!abierto) { vmosSelectedSku = null; vmosOnSearch(true); return; }
     vmosDropdownIndex = Math.min(vmosDropdownIndex + 1, items.length - 1);
-    items.forEach((el, i) => el.style.background = i === vmosDropdownIndex ? 'var(--bg-tertiary)' : '');
+    marcar();
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
+    if (!abierto) return;
     vmosDropdownIndex = Math.max(vmosDropdownIndex - 1, 0);
-    items.forEach((el, i) => el.style.background = i === vmosDropdownIndex ? 'var(--bg-tertiary)' : '');
+    marcar();
   } else if (e.key === 'Enter') {
     e.preventDefault();
+    if (!abierto) return;
     if (vmosDropdownIndex >= 0) vmosPickFromDropdown(vmosDropdownIndex);
     else if (items.length === 1) vmosPickFromDropdown(0);
   } else if (e.key === 'Escape') {
-    dd.style.display = 'none';
+    if (abierto) { e.preventDefault(); e.stopPropagation(); vmosHideDropdown(); }
   }
 }
+
+// El desplegable es position:fixed: si se scrollea el modal o cambia el tamaño de la ventana,
+// lo reubicamos para que siga pegado al input.
+document.addEventListener('scroll', e => {
+  if (e.target && e.target.id === 'vmos-dropdown') return;
+  vmosPositionDropdown();
+}, true);
+window.addEventListener('resize', vmosPositionDropdown);
 
 function vmosAddToCart() {
   if (!vmosSelectedSku) { alert('Seleccioná un producto de la lista.'); return; }

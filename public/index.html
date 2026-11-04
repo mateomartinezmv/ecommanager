@@ -2076,7 +2076,7 @@ function normCliente(c) {
   return { id: c.id, nombre: c.nombre, telefono: c.telefono, email: c.email, canalOrigen: c.canal_origen, meliNickname: c.meli_nickname, notas: c.notas, totalCompras: c.total_compras || 0, montoTotal: c.monto_total || 0, ultimaCompra: c.ultima_compra, ticketPromedio: c.ticket_promedio || 0, creado: c.created_at };
 }
 function normEnvio(e) {
-  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, packId: e.pack_id || null, meliShipmentId: e.meli_shipment_id || null, controladoAt: e.controlado_at || null, control: e.control || null, creado: e.created_at };
+  return { id: e.id, ventaId: e.venta_id, orden: e.orden, comprador: e.comprador, producto: e.producto, transportista: e.transportista, tracking: e.tracking, fechaDespacho: e.fecha_despacho, estado: e.estado, direccion: e.direccion, costo: e.costo || 0, zona: e.zona ?? null, colecta: e.colecta || false, pagado: e.pagado || false, packId: e.pack_id || null, meliShipmentId: e.meli_shipment_id || null, controladoAt: e.controlado_at || null, control: e.control || null, etiquetaImpresaAt: e.etiqueta_impresa_at || null, creado: e.created_at };
 }
 function normMovimiento(m) {
   return {
@@ -6212,6 +6212,17 @@ function imprimirEtiquetaEnvio(envioId) {
     abrirEdicionEnvio(e.id);
     return;
   }
+  const datos = datosEtiquetaEnvio(e);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [ENV_W, ENV_H] });
+  dibujarEtiquetaEnvio(doc, datos);
+  abrirComprobanteParaImprimir(doc, `etiqueta-envio-${String(datos.pedido).replace(/[^\w-]+/g, '_')}.pdf`);
+}
+
+// Lo que va impreso en la etiqueta del CRM de un envío (null si no tiene dirección: sin eso
+// la etiqueta no sirve). La usan el botón 🏷️ y el PDF de etiquetas del Control de despacho.
+function datosEtiquetaEnvio(e) {
+  if (!e || !e.direccion) return null;
   const venta = db.ventas.find(v => v.id === e.ventaId);
   const lineas = venta
     ? db.ventas.filter(v => ticketKey(v) === ticketKey(venta)).sort((a, b) => (a.id > b.id ? 1 : a.id < b.id ? -1 : 0))
@@ -6226,10 +6237,7 @@ function imprimirEtiquetaEnvio(envioId) {
     pedido: e.orden || (venta ? (venta.ventaGrupo || venta.id) : e.id).slice(-6),
     fecha: fechaDDMMAAAA(e.fechaDespacho || venta?.fecha || new Date().toISOString().slice(0, 10)),
   };
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [ENV_W, ENV_H] });
-  dibujarEtiquetaEnvio(doc, datos);
-  abrirComprobanteParaImprimir(doc, `etiqueta-envio-${String(datos.pedido).replace(/[^\w-]+/g, '_')}.pdf`);
+  return datos;
 }
 
 // Canales que imprimen la etiqueta del CRM. MELI no: usa la que da Mercado Libre (📄).
@@ -7029,10 +7037,11 @@ function renderDespacho() {
   if (!panel || !lista) return;
 
   const aviso = document.getElementById('desp-aviso');
-  aviso.style.display = despMigracionPendiente ? 'flex' : 'none';
-  aviso.innerHTML = despMigracionPendiente
-    ? '⚠️ <div>Los controles no se están guardando: falta correr <code>supabase/migrations/20261103000000_add_control_envios.sql</code> en el SQL Editor de Supabase. El control funciona igual, pero no queda anotado en Envíos.</div>'
-    : '';
+  const faltas = [];
+  if (despMigracionPendiente) faltas.push('Los controles no se están guardando: falta correr <code>supabase/migrations/20261103000000_add_control_envios.sql</code> en el SQL Editor de Supabase. El control funciona igual, pero no queda anotado en Envíos.');
+  if (despMigracionEtiqueta) faltas.push('Las etiquetas del CRM impresas no se están anotando: falta correr <code>supabase/migrations/20261103010000_add_etiqueta_impresa.sql</code>. Se imprimen igual, pero “Las que faltan imprimir” las olvida al recargar la página.');
+  aviso.style.display = faltas.length ? 'flex' : 'none';
+  aviso.innerHTML = faltas.length ? `⚠️ <div>${faltas.join('<br>')}</div>` : '';
 
   const e = desp.envioId ? db.envios.find(x => x.id === desp.envioId) : null;
   document.getElementById('desp-input').placeholder = e
@@ -7092,15 +7101,15 @@ function renderDespacho() {
   document.getElementById('desp-contador').innerHTML = pendientes.length
     ? `<b style="color:${sinControlar ? 'var(--yellow)' : 'var(--green)'}">${pendientes.length - sinControlar} de ${pendientes.length}</b> pendientes controlados`
     : 'No hay envíos pendientes';
-  const imprimibles = enviosImprimibles();
-  const seleccionadas = imprimibles.filter(x => despSeleccion.has(x.id)).length;
-  const barra = imprimibles.length ? `
+  const conEtiqueta = enviosConEtiqueta();
+  const seleccionadas = conEtiqueta.filter(x => despSeleccion.has(x.id)).length;
+  const barra = conEtiqueta.length ? `
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-      <span style="font-size:12px;color:var(--text-muted)">Etiquetas MELI:</span>
+      <span style="font-size:12px;color:var(--text-muted)">Etiquetas:</span>
       <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('todas')">Todas</button>
-      <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('faltan')" title="Las que todavía no se imprimieron, ni desde el CRM ni desde Mercado Libre">Las que faltan imprimir</button>
+      <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('faltan')" title="Las que todavía no se imprimieron. Las de MELI se le preguntan a MELI (cuenta lo impreso desde su panel); las del CRM, las que no se imprimieron desde acá.">Las que faltan imprimir</button>
       <button class="btn btn-ghost btn-sm" onclick="despSeleccionar('ninguna')">Ninguna</button>
-      <button class="btn btn-primary btn-sm" id="desp-imprimir" style="margin-left:auto" onclick="despImprimirEtiquetas()" ${seleccionadas && !despImprimiendo ? '' : 'disabled'}>${despImprimiendo ? '⏳ Bajando…' : `🖨️ Imprimir (${seleccionadas})`}</button>
+      <button class="btn btn-primary btn-sm" id="desp-imprimir" style="margin-left:auto" onclick="despImprimirEtiquetas()" ${seleccionadas && !despImprimiendo ? '' : 'disabled'}>${despImprimiendo ? '⏳ Armando…' : `🖨️ Imprimir (${seleccionadas})`}</button>
     </div>
     ${despAvisoEtiquetas ? `<div id="desp-etq-aviso" style="font-size:12px;margin-bottom:8px;color:${despAvisoEtiquetas.tipo === 'error' ? 'var(--red)' : despAvisoEtiquetas.tipo === 'aviso' ? 'var(--yellow)' : 'var(--green)'}">${despAvisoEtiquetas.texto}</div>` : ''}` : '';
   lista.innerHTML = `<div class="desp-panel-titulo">Para despachar</div>` + barra + (envios.length
@@ -7108,18 +7117,17 @@ function renderDespacho() {
         const tipo = tipoEnvioDeTransportista(x.transportista);
         const actual = x.id === desp.envioId;
         const id = despEsc(x.id);
-        const conEtiqueta = x.estado === 'pendiente' && esEnvioMeli(x);
-        const et = despEtiquetas[x.id];
-        const bloqueada = et && et.imprimible === false;
-        const casilla = conEtiqueta
-          ? `<input type="checkbox" class="desp-check" data-id="${id}" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--accent);cursor:pointer" ${despSeleccion.has(x.id) ? 'checked' : ''} ${bloqueada ? 'disabled' : ''} title="${bloqueada ? 'MELI no entrega la etiqueta de este envío ahora' : 'Incluir en el PDF de etiquetas'}" onchange="despToggleEtiqueta(this.dataset.id, this.checked)">`
+        const tiene = x.estado === 'pendiente';
+        const bloqueo = tiene ? motivoSinEtiqueta(x) : null;
+        const casilla = tiene
+          ? `<input type="checkbox" class="desp-check" data-id="${id}" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--accent);cursor:pointer" ${despSeleccion.has(x.id) ? 'checked' : ''} ${bloqueo ? 'disabled' : ''} title="${despEsc(bloqueo || 'Incluir en el PDF de etiquetas')}" onchange="despToggleEtiqueta(this.dataset.id, this.checked)">`
           : '<span style="width:18px;flex-shrink:0"></span>';
         return `<div class="desp-fila" data-id="${id}" style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border)${actual ? ';background:rgba(79,142,247,0.08)' : ''}">
           ${casilla}
           <div style="min-width:0;flex:1">
             <div style="font-weight:600">${TIPO_ENVIO_ICONS[tipo] || ''} ${despEsc(x.comprador || '—')}</div>
             <div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${despEsc(x.producto || '')}</div>
-            <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${badgeControlEnvio(x)}${conEtiqueta ? badgeEtiquetaMeli(x) : ''}</div>
+            <div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">${badgeControlEnvio(x)}${tiene ? badgeEtiqueta(x) : ''}</div>
           </div>
           ${actual ? '<span class="badge badge-blue">En control</span>'
             : `<button class="btn btn-ghost btn-sm" data-id="${id}" onclick="despachoAbrir(this.dataset.id)" title="Para cuando la etiqueta no se puede leer">Controlar</button>`}
@@ -7128,24 +7136,42 @@ function renderDespacho() {
     : '<div style="color:var(--text-muted);font-size:13px">No hay envíos pendientes.</div>');
 }
 
-// ── Etiquetas de MELI desde el control ───────────────────────────────────────
+// ── Etiquetas desde el control ───────────────────────────────────────────────
 // Se eligen con las casillas (o con los atajos) y salen en un solo PDF, para mandarlo a la
-// térmica. "Las que faltan imprimir" se decide con lo que dice MELI de cada envío, así que
-// también cuenta lo que se imprimió desde el panel de Mercado Libre.
+// térmica. Hay dos tipos de etiqueta:
+//   · MELI (🖨️): la da Mercado Libre. Si está impresa se le pregunta a MELI, así que cuenta
+//     también lo que se imprimió desde su panel.
+//   · CRM (🏷️): la de 100 × 150 de mostrador y Shopify, que arma el CRM. Se anota en el envío
+//     cuándo se imprimió (etiqueta_impresa_at).
+// Si se eligen de los dos tipos, las páginas se unen en un mismo PDF.
 let despSeleccion = new Set();
-let despEtiquetas = {};               // envío → { impresa, imprimible, status, substatus }
+let despEtiquetas = {};               // envío MELI → { impresa, imprimible, status, substatus }
 let despImpresasAca = new Set();      // impresas desde esta pantalla (MELI tarda en marcarlas)
 let despEtiquetasCargando = false;
 let despImprimiendo = false;
 let despAvisoEtiquetas = null;        // { tipo: 'ok' | 'aviso' | 'error', texto }
+let despMigracionEtiqueta = false;    // falta la columna etiqueta_impresa_at
 
 function esEnvioMeli(e) {
   const v = db.ventas.find(x => x.id === e.ventaId);
   return v ? v.canal === 'meli' : String(e.id).startsWith('E_MELI_');
 }
-const enviosImprimibles = () => db.envios.filter(e => e.estado === 'pendiente' && esEnvioMeli(e));
+const enviosConEtiqueta = () => db.envios.filter(e => e.estado === 'pendiente');
+const etiquetaYaImpresa = e => despImpresasAca.has(e.id) || (esEnvioMeli(e) ? !!despEtiquetas[e.id]?.impresa : !!e.etiquetaImpresaAt);
 
-function badgeEtiquetaMeli(e) {
+// Por qué la etiqueta de un envío no se puede imprimir ahora (null = se puede).
+function motivoSinEtiqueta(e) {
+  if (esEnvioMeli(e)) return despEtiquetas[e.id]?.imprimible === false ? 'MELI no entrega la etiqueta de este envío ahora' : null;
+  return e.direccion ? null : 'Falta la dirección: cargala en Envíos (✏️) para poder imprimir la etiqueta';
+}
+
+function badgeEtiqueta(e) {
+  if (!esEnvioMeli(e)) {
+    if (!e.direccion) return '<span class="badge badge-gray" style="white-space:nowrap" title="Cargá la dirección en Envíos para poder imprimir la etiqueta">🏷️ Falta dirección</span>';
+    return etiquetaYaImpresa(e)
+      ? `<span class="badge badge-blue" style="white-space:nowrap" title="Etiqueta del CRM impresa${e.etiquetaImpresaAt ? ' el ' + despHora(e.etiquetaImpresaAt) : ''}">🏷️ Impresa</span>`
+      : '<span class="badge badge-yellow" style="white-space:nowrap" title="Etiqueta del CRM (100 × 150)">🏷️ Sin imprimir</span>';
+  }
   const et = despEtiquetas[e.id];
   if (!et) return despEtiquetasCargando ? '<span class="badge badge-gray">🖨️ …</span>' : '';
   if (et.imprimible === false) {
@@ -7154,26 +7180,29 @@ function badgeEtiquetaMeli(e) {
       : `MELI: ${et.status || '?'}${et.substatus ? ' / ' + et.substatus : ''}`;
     return `<span class="badge badge-gray" style="white-space:nowrap" title="${despEsc(motivo)}">🖨️ No disponible</span>`;
   }
-  return (et.impresa || despImpresasAca.has(e.id))
-    ? '<span class="badge badge-blue" style="white-space:nowrap" title="La etiqueta ya se imprimió (desde el CRM o desde Mercado Libre)">🖨️ Impresa</span>'
-    : '<span class="badge badge-yellow" style="white-space:nowrap">🖨️ Sin imprimir</span>';
+  return etiquetaYaImpresa(e)
+    ? '<span class="badge badge-blue" style="white-space:nowrap" title="La etiqueta de MELI ya se imprimió (desde el CRM o desde Mercado Libre)">🖨️ Impresa</span>'
+    : '<span class="badge badge-yellow" style="white-space:nowrap" title="Etiqueta de MELI">🖨️ Sin imprimir</span>';
 }
 
 async function despCargarEtiquetas() {
-  const ids = enviosImprimibles().map(e => e.id);
-  if (!ids.length) { despEtiquetas = {}; renderDespacho(); return; }
+  const ids = enviosConEtiqueta().filter(esEnvioMeli).map(e => e.id);
+  if (!ids.length) { despEtiquetas = {}; renderDespacho(); return true; }
   despEtiquetasCargando = true;
   renderDespacho();
+  let ok = true;
   try {
     const r = await api('GET', '/meli/etiqueta?estado=1&envios=' + encodeURIComponent(ids.join(',')));
     despEtiquetas = r.estados || {};
     // Lo que no se puede imprimir no queda elegido.
     for (const id of [...despSeleccion]) if (despEtiquetas[id]?.imprimible === false) despSeleccion.delete(id);
   } catch (e) {
+    ok = false;
     despAvisoEtiquetas = { tipo: 'aviso', texto: `No se pudo consultar a MELI qué etiquetas faltan (${despEsc(e.message)}). Igual se pueden elegir a mano.` };
   }
   despEtiquetasCargando = false;
   renderDespacho();
+  return ok;
 }
 
 function despToggleEtiqueta(id, elegida) {
@@ -7182,56 +7211,130 @@ function despToggleEtiqueta(id, elegida) {
 }
 
 async function despSeleccionar(cuales) {
-  const disponibles = enviosImprimibles().filter(e => despEtiquetas[e.id]?.imprimible !== false);
+  const disponibles = enviosConEtiqueta().filter(e => !motivoSinEtiqueta(e));
+  despAvisoEtiquetas = null;
   if (cuales === 'ninguna') despSeleccion = new Set();
   else if (cuales === 'todas') despSeleccion = new Set(disponibles.map(e => e.id));
   else if (cuales === 'faltan') {
-    if (!Object.keys(despEtiquetas).length) await despCargarEtiquetas();
-    if (!Object.keys(despEtiquetas).length) {
-      despAvisoEtiquetas = { tipo: 'aviso', texto: 'No sé qué etiquetas faltan porque MELI no respondió. Elegilas a mano.' };
-      renderDespacho();
-      return;
-    }
-    const faltan = enviosImprimibles().filter(e => {
-      const et = despEtiquetas[e.id];
-      return et && et.imprimible && !et.impresa && !despImpresasAca.has(e.id);
-    });
+    // De las de MELI sólo se sabe preguntándole: si no contesta, se eligen igual las del CRM.
+    const hayMeli = disponibles.some(esEnvioMeli);
+    const meliOk = !hayMeli || Object.keys(despEtiquetas).length > 0 || await despCargarEtiquetas();
+    const faltan = enviosConEtiqueta().filter(e => !motivoSinEtiqueta(e) && !etiquetaYaImpresa(e)
+      && (!esEnvioMeli(e) || (meliOk && despEtiquetas[e.id]?.imprimible)));
     despSeleccion = new Set(faltan.map(e => e.id));
-    despAvisoEtiquetas = faltan.length ? null : { tipo: 'ok', texto: '✅ No falta imprimir ninguna etiqueta.' };
+    if (!meliOk) despAvisoEtiquetas = { tipo: 'aviso', texto: 'No sé qué etiquetas de MELI faltan porque MELI no respondió: elegilas a mano.' };
+    else if (!faltan.length) despAvisoEtiquetas = { tipo: 'ok', texto: '✅ No falta imprimir ninguna etiqueta.' };
   }
   renderDespacho();
   despEnfocar();
 }
 
+// Las etiquetas del CRM de varios envíos, una por página de 100 × 150.
+function pdfEtiquetasCRM(envios) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [ENV_W, ENV_H] });
+  envios.forEach((e, i) => {
+    if (i > 0) doc.addPage([ENV_W, ENV_H], 'portrait');
+    dibujarEtiquetaEnvio(doc, datosEtiquetaEnvio(e));
+  });
+  return doc;
+}
+
+// pdf-lib une el PDF de MELI con el del CRM. Se carga recién cuando hace falta unirlos.
+function cargarPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  return new Promise((ok, ko) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+    s.onload = () => (window.PDFLib ? ok(window.PDFLib) : ko(new Error('pdf-lib no cargó')));
+    s.onerror = () => ko(new Error('pdf-lib no cargó'));
+    document.head.appendChild(s);
+  });
+}
+async function unirPdfs(buffers) {
+  try {
+    const { PDFDocument } = await cargarPdfLib();
+    const salida = await PDFDocument.create();
+    for (const b of buffers) {
+      const origen = await PDFDocument.load(b);
+      const paginas = await salida.copyPages(origen, origen.getPageIndices());
+      paginas.forEach(p => salida.addPage(p));
+    }
+    return new Blob([await salida.save()], { type: 'application/pdf' });
+  } catch (e) {
+    console.warn('No se pudieron unir las etiquetas en un PDF:', e.message);
+    return null;
+  }
+}
+
 async function despImprimirEtiquetas() {
-  const ids = enviosImprimibles().map(e => e.id).filter(id => despSeleccion.has(id));
-  if (!ids.length || despImprimiendo) return;
+  const elegidos = enviosConEtiqueta().filter(e => despSeleccion.has(e.id) && !motivoSinEtiqueta(e));
+  if (!elegidos.length || despImprimiendo) return;
+  const deMeli = elegidos.filter(esEnvioMeli);
+  const delCrm = elegidos.filter(e => !esEnvioMeli(e));
   // La ventana se abre ya, con el clic: abierta después de esperar a MELI la bloquea el navegador.
   const ventana = window.open('', '_blank');
-  try { ventana && ventana.document.write('<p style="font-family:sans-serif;padding:20px">Bajando las etiquetas de Mercado Libre…</p>'); } catch (_) {}
+  try { ventana && ventana.document.write('<p style="font-family:sans-serif;padding:20px">Armando las etiquetas…</p>'); } catch (_) {}
   despImprimiendo = true;
   despAvisoEtiquetas = null;
   renderDespacho();
-  try {
-    const res = await fetch('/api/meli/etiqueta?envios=' + encodeURIComponent(ids.join(',')));
-    if (!res.ok || !(res.headers.get('content-type') || '').includes('pdf')) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || res.statusText || 'error desconocido');
-    }
-    const omitidas = (res.headers.get('X-Etiquetas-Omitidas') || '').split(',').filter(Boolean);
-    const url = URL.createObjectURL(await res.blob());
-    if (ventana) ventana.location.href = url; else window.open(url, '_blank');
-    const impresas = ids.filter(id => !omitidas.includes(id));
-    impresas.forEach(id => { despImpresasAca.add(id); despSeleccion.delete(id); });
-    despAvisoEtiquetas = omitidas.length
-      ? { tipo: 'aviso', texto: `🖨️ ${impresas.length} etiqueta(s) en el PDF. Quedaron afuera ${omitidas.length} sin envío de MELI: ${despEsc(omitidas.map(id => db.envios.find(e => e.id === id)?.comprador || id).join(', '))}.` }
-      : { tipo: 'ok', texto: `🖨️ ${impresas.length} etiqueta(s) en el PDF. Mandalo a la impresora térmica.` };
-    // MELI marca las etiquetas como impresas con unos segundos de demora.
-    setTimeout(() => { if (document.getElementById('page-despacho')?.classList.contains('active')) despCargarEtiquetas(); }, 8000);
-  } catch (e) {
-    try { ventana && ventana.close(); } catch (_) {}
-    despAvisoEtiquetas = { tipo: 'error', texto: `❌ ${despEsc(e.message)}` };
+
+  const avisos = [];
+  let meliPdf = null, omitidas = [], errorMeli = null, crmDoc = null;
+  if (deMeli.length) {
+    try {
+      const res = await fetch('/api/meli/etiqueta?envios=' + encodeURIComponent(deMeli.map(e => e.id).join(',')));
+      if (!res.ok || !(res.headers.get('content-type') || '').includes('pdf')) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || res.statusText || 'error desconocido');
+      }
+      omitidas = (res.headers.get('X-Etiquetas-Omitidas') || '').split(',').filter(Boolean);
+      meliPdf = await res.arrayBuffer();
+    } catch (e) { errorMeli = e.message; }
   }
+  if (delCrm.length) {
+    try { crmDoc = pdfEtiquetasCRM(delCrm); }
+    catch (e) { avisos.push({ tipo: 'error', texto: `❌ No se pudieron armar las etiquetas del CRM: ${despEsc(e.message)}` }); }
+  }
+
+  let pdf = null;
+  if (meliPdf && crmDoc) {
+    pdf = await unirPdfs([meliPdf, crmDoc.output('arraybuffer')]);
+    if (!pdf) {
+      // Sin poder unirlas: las de MELI en la ventana y las del CRM se descargan aparte.
+      pdf = new Blob([meliPdf], { type: 'application/pdf' });
+      crmDoc.save(`etiquetas-crm-${new Date().toISOString().slice(0, 10)}.pdf`);
+      avisos.push({ tipo: 'aviso', texto: 'Las del CRM se descargaron en un PDF aparte (no se pudieron unir con las de MELI).' });
+    }
+  } else if (meliPdf) pdf = new Blob([meliPdf], { type: 'application/pdf' });
+  else if (crmDoc) pdf = crmDoc.output('blob');
+
+  if (pdf) {
+    const url = URL.createObjectURL(pdf);
+    if (ventana) ventana.location.href = url; else window.open(url, '_blank');
+  } else {
+    try { ventana && ventana.close(); } catch (_) {}
+  }
+
+  const meliImpresas = meliPdf ? deMeli.filter(e => !omitidas.includes(e.id)) : [];
+  const crmImpresas = crmDoc ? delCrm : [];
+  const ahora = new Date().toISOString();
+  [...meliImpresas, ...crmImpresas].forEach(e => { despImpresasAca.add(e.id); despSeleccion.delete(e.id); });
+  crmImpresas.forEach(e => {
+    e.etiquetaImpresaAt = ahora;
+    api('PUT', `/envios?id=${encodeURIComponent(e.id)}`, { etiquetaImpresaAt: ahora })
+      .catch(err => { if (/migraci/i.test(err.message)) { despMigracionEtiqueta = true; renderDespacho(); } });
+  });
+
+  const total = meliImpresas.length + crmImpresas.length;
+  if (total) avisos.unshift({ tipo: 'ok', texto: `🖨️ ${total} etiqueta(s) en el PDF${meliImpresas.length && crmImpresas.length ? ` (${meliImpresas.length} de MELI y ${crmImpresas.length} del CRM)` : ''}. Mandalo a la impresora térmica.` });
+  if (errorMeli) avisos.push({ tipo: 'error', texto: `❌ ${despEsc(errorMeli)}` });
+  if (omitidas.length) avisos.push({ tipo: 'aviso', texto: `Quedaron afuera ${omitidas.length} sin envío de MELI: ${despEsc(omitidas.map(id => db.envios.find(e => e.id === id)?.comprador || id).join(', '))}.` });
+  const peor = avisos.find(a => a.tipo === 'error') || avisos.find(a => a.tipo === 'aviso') || avisos[0];
+  despAvisoEtiquetas = avisos.length ? { tipo: peor.tipo, texto: avisos.map(a => a.texto).join(' ') } : null;
+
+  // MELI marca las etiquetas como impresas con unos segundos de demora.
+  if (meliImpresas.length) setTimeout(() => { if (document.getElementById('page-despacho')?.classList.contains('active')) despCargarEtiquetas(); }, 8000);
   despImprimiendo = false;
   renderDespacho();
   despEnfocar();

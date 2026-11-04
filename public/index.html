@@ -1309,15 +1309,22 @@
       Elegí los PDF de los eTickets que bajaste de Gesta (podés elegir varios). Cada uno trae en la adenda el número de la venta,
       así que el CRM reconoce solo a qué venta va y lo adjunta en MELI. MELI acepta un PDF de hasta 1 MB por venta.
     </p>
-    <input type="file" id="fm-archivos" accept="application/pdf,.pdf" multiple onchange="fmLeerArchivos(this.files)">
+    <label id="fm-zona" for="fm-archivos" ondragover="fmArrastrando(event, true)" ondragleave="fmArrastrando(event, false)" ondrop="fmSoltar(event)"
+      style="display:block;border:2px dashed var(--border);border-radius:10px;padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s">
+      <div style="font-size:15px;font-weight:600">📄 Arrastrá acá todos los PDF juntos</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">o hacé clic para elegirlos (Ctrl+A elige todos los de la carpeta). Lo que agregues se suma a la lista.</div>
+      <input type="file" id="fm-archivos" accept="application/pdf,.pdf" multiple onchange="fmAgregarArchivos(this.files); this.value = ''" style="display:none">
+    </label>
+    <div id="fm-resumen" style="font-size:12px;color:var(--text-muted);margin-top:8px"></div>
     <div class="table-wrap" style="max-height:340px;overflow:auto;margin-top:10px">
       <table>
-        <thead><tr><th>Archivo</th><th>Venta</th><th>Total</th><th>Estado</th></tr></thead>
-        <tbody id="fm-tbody"><tr><td colspan="4" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr></tbody>
+        <thead><tr><th>Archivo</th><th>Venta</th><th>Total</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="fm-tbody"><tr><td colspan="5" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr></tbody>
       </table>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-facturas-meli')">Cerrar</button>
+      <button class="btn btn-ghost" id="fm-btn-vaciar" onclick="fmVaciar()">🗑️ Vaciar lista</button>
       <button class="btn btn-primary" id="fm-btn-subir" onclick="fmSubir(this)" disabled>📎 Subir a MELI</button>
     </div>
   </div>
@@ -6788,10 +6795,46 @@ function fmVentasElegibles() {
     .slice(0, 80);
 }
 
-async function fmLeerArchivos(files) {
-  fmArchivos = [...files].map(file => ({ file, nombre: file.name, estado: 'leyendo' }));
+// Zona para soltar los PDF: se resalta mientras se arrastra encima.
+function fmArrastrando(e, encima) {
+  e.preventDefault();
+  const zona = document.getElementById('fm-zona');
+  zona.style.borderColor = encima ? 'var(--accent)' : 'var(--border)';
+  zona.style.background = encima ? 'var(--surface2)' : '';
+}
+function fmSoltar(e) {
+  fmArrastrando(e, false);
+  if (e.dataTransfer && e.dataTransfer.files) fmAgregarArchivos(e.dataTransfer.files);
+}
+
+function fmVaciar() {
+  if (fmArchivos.some(a => a.estado === 'subiendo' || a.estado === 'leyendo')) return;
+  fmArchivos = [];
   renderFacturasMeli();
-  for (const a of fmArchivos) {
+}
+function fmQuitar(i) {
+  if (['subiendo', 'leyendo'].includes(fmArchivos[i]?.estado)) return;
+  fmArchivos.splice(i, 1);
+  renderFacturasMeli();
+}
+
+// Suma los PDF a la lista (elegidos o soltados, en una o varias tandas). El mismo archivo dos
+// veces no se agrega de nuevo.
+async function fmAgregarArchivos(files) {
+  const firma = f => `${f.name}|${f.size}`;
+  const yaEstan = new Set(fmArchivos.map(a => firma(a.file)));
+  const nuevos = [];
+  for (const file of [...files]) {
+    if (yaEstan.has(firma(file))) continue;
+    yaEstan.add(firma(file));
+    const esPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+    nuevos.push(esPdf ? { file, nombre: file.name, estado: 'leyendo' } : { file, nombre: file.name, estado: 'error', error: 'No es un PDF.' });
+  }
+  if (!nuevos.length) return;
+  fmArchivos.push(...nuevos);
+  renderFacturasMeli();
+  for (const a of nuevos) {
+    if (a.estado !== 'leyendo') continue;
     try {
       const buffer = await a.file.arrayBuffer();
       if (buffer.byteLength > 1024 * 1024) { a.estado = 'error'; a.error = `Pesa ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB y MELI acepta hasta 1 MB.`; continue; }
@@ -6826,7 +6869,7 @@ function fmElegirVentaManual(i, clave) {
 function renderFacturasMeli() {
   const tbody = document.getElementById('fm-tbody');
   if (!fmArchivos.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr>';
   } else {
     const elegibles = fmVentasElegibles();
     tbody.innerHTML = fmArchivos.map((a, i) => {
@@ -6846,10 +6889,17 @@ function renderFacturasMeli() {
         'subida': '<span style="color:var(--green)">✅ Subida</span>',
         'error': `<span style="color:var(--red)">❌ ${a.error || 'Error'}</span>`,
       };
-      return `<tr><td style="font-size:12px">${a.nombre}</td><td>${ventaCelda}</td><td>${totalCelda}</td><td style="font-size:12px">${estados[a.estado] || ''}</td></tr>`;
+      const quitar = ['subiendo', 'leyendo'].includes(a.estado) ? '' : `<button class="btn btn-ghost btn-sm" onclick="fmQuitar(${i})" title="Sacar de la lista">✕</button>`;
+      return `<tr><td style="font-size:12px">${a.nombre}</td><td>${ventaCelda}</td><td>${totalCelda}</td><td style="font-size:12px">${estados[a.estado] || ''}</td><td>${quitar}</td></tr>`;
     }).join('');
   }
   const listas = fmArchivos.filter(a => a.estado === 'lista').length;
+  const cuenta = e => fmArchivos.filter(a => a.estado === e).length;
+  const partes = [
+    [cuenta('lista'), 'para subir'], [cuenta('subida'), 'subidas'], [cuenta('leyendo'), 'leyendo'],
+    [cuenta('sin-venta'), 'sin venta reconocida'], [cuenta('ya-subida'), 'ya estaban en MELI'], [cuenta('error'), 'con error'],
+  ].filter(([n]) => n).map(([n, t]) => `${n} ${t}`);
+  document.getElementById('fm-resumen').textContent = fmArchivos.length ? `${fmArchivos.length} PDF · ${partes.join(' · ')}` : '';
   const btn = document.getElementById('fm-btn-subir');
   btn.disabled = !listas;
   btn.textContent = listas ? `📎 Subir ${listas} a MELI` : '📎 Subir a MELI';

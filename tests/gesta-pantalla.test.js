@@ -29,6 +29,10 @@ function estado() {
     { id: 'V_MELI_2000018888888888_Y', canal: 'meli', fecha: HOY, orden_meli: '2000018888888888', pack_id: null,
       comprador: 'OTRO', sku: 'EXT-1', producto: 'Extensor espejo', cantidad: 1, precio_unit: 100, comision: 10, total: 100,
       estado: 'pagada', facturada: null, created_at: HOY + 'T09:00:00Z' },
+    // Ya emitida en Gesta: no sale en el Excel pero le falta el PDF en MELI.
+    { id: 'V_MELI_2000019327110206_Z', canal: 'meli', fecha: HOY, orden_meli: '2000019327110206', pack_id: '2000015851965481',
+      comprador: 'TOMYAUGUSTIN', sku: 'HP-Q0211', producto: 'Guardamanos Protector Puños Moto Enduro Cross ABS - Azul',
+      cantidad: 1, precio_unit: 635.84, comision: 120, total: 635.84, estado: 'pagada', facturada: true, created_at: HOY + 'T08:00:00Z' },
   );
   return e;
 }
@@ -92,7 +96,7 @@ test('marcar como facturadas pide confirmación, la saca del Excel y queda esper
   assert.strictEqual(crm.alertas.length, 1);
   assert.match(crm.alertas[0], /¿Ya importaste en Gesta esta venta\?/);
   assert.deepStrictEqual(crm.estado.ventasPut.filter(p => p.facturada === true).map(p => p.id), ['V_MELI_2000019328655326_X']);
-  await crm.page.click('#modal-gesta .btn-ghost');
+  await crm.page.click('#modal-gesta .modal-actions .btn-ghost');
   assert.match(await celdaDeVenta('2000019328655326'), /Falta PDF/);
 });
 
@@ -131,8 +135,41 @@ test('el PDF del eTicket se reconoce por la adenda y se sube a esa venta', async
   assert.strictEqual(subida.ventaId, 'V_MELI_2000019328655326_X');
   assert.strictEqual(subida.nombre, 'eTicket A 414.pdf');
   assert.match(Buffer.from(subida.pdf, 'base64').toString('latin1'), /^%PDF-1\.4/);
-  await crm.page.click('#modal-facturas-meli .btn-ghost');
+  await crm.page.click('#modal-facturas-meli .modal-actions .btn-ghost');
   assert.match(await celdaDeVenta('2000019328655326'), /En MELI/);
+});
+
+test('los PDF se suman en varias tandas, también soltándolos, sin repetir', async () => {
+  await crm.page.click('#btn-facturas-meli');
+  await crm.page.waitForSelector('#modal-facturas-meli.open');
+  assert.match(await crm.page.textContent('#fm-tbody'), /Todavía no elegiste ningún PDF/, 'cada vez arranca vacía');
+  const azul = { name: 'eTicket A 415.pdf', mimeType: 'application/pdf', buffer: pdfConTexto('TOTAL 635,84 Venta Mercado Libre #2000015851965481') };
+
+  // Primera tanda: un PDF y algo que no es PDF.
+  await crm.page.setInputFiles('#fm-archivos', [azul, { name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('hola') }]);
+  await crm.page.waitForFunction(() => document.querySelector('#fm-resumen').textContent.includes('1 para subir'));
+  // Segunda tanda: el mismo PDF otra vez (no se repite) y uno soltado sobre la zona.
+  await crm.page.setInputFiles('#fm-archivos', [azul]);
+  await crm.page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['%PDF-1.4\n%TEXTO:e-Ticket A 999 TOTAL 10,00\n%%EOF'], 'suelto.pdf', { type: 'application/pdf' }));
+    document.getElementById('fm-zona').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  await crm.page.waitForFunction(() => document.querySelector('#fm-resumen').textContent.includes('sin venta reconocida'));
+  assert.strictEqual(await crm.page.textContent('#fm-resumen'), '3 PDF · 1 para subir · 1 sin venta reconocida · 1 con error');
+  const filas = await crm.page.$$eval('#fm-tbody tr', trs => trs.map(t => t.textContent.replace(/\s+/g, ' ').trim()));
+  assert.match(filas[0], /eTicket A 415\.pdf\s*#2000015851965481/);
+  assert.match(filas[1], /notas\.txt.*No es un PDF/);
+  assert.match(filas[2], /suelto\.pdf.*Falta la venta/);
+  assert.match(await crm.page.textContent('#fm-btn-subir'), /Subir 1 a MELI/);
+
+  // Se puede sacar uno de la lista y vaciarla entera.
+  await crm.page.click('#fm-tbody tr:nth-child(2) button');
+  assert.strictEqual(await crm.page.$$eval('#fm-tbody tr', trs => trs.length), 2);
+  await crm.page.click('#fm-btn-vaciar');
+  assert.match(await crm.page.textContent('#fm-tbody'), /Todavía no elegiste ningún PDF/);
+  assert.strictEqual(await crm.page.textContent('#fm-resumen'), '');
+  await crm.page.click('#modal-facturas-meli .modal-actions .btn-ghost');
 });
 
 test('el código de Gesta se edita en el producto', async () => {

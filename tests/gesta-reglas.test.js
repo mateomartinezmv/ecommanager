@@ -48,7 +48,7 @@ const ventas = [
 test('salen las ventas MELI sin facturar desde la fecha de corte, una por venta', () => {
   const { comprobantes } = Gesta.pendientesGesta(ventas, productos, { desde: '2026-11-03' });
   assert.deepStrictEqual(comprobantes.map(c => c.ref),
-    ['2000015851965481', '2000015853536563', '2000015855586013', '2000019999999999']);
+    ['2000015853536563', '2000015855586013', '2000019999999999']);
 });
 
 test('el número de la venta es el pack, o la orden cuando no hay carrito', () => {
@@ -57,22 +57,29 @@ test('el número de la venta es el pack, o la orden cuando no hay carrito', () =
   assert.strictEqual(comprobantes.find(c => c.lineas[0].id === 'V_MELI_3_D').ref, '2000019999999999');
 });
 
-test('un carrito va en un solo comprobante, con una fila por producto', () => {
-  const { comprobantes } = Gesta.pendientesGesta(ventas, productos, { desde: '2026-11-03' });
-  const c = comprobantes.find(x => x.ref === '2000015851965481');
-  assert.strictEqual(c.carrito, true);
-  assert.deepStrictEqual(c.filas, [
-    { codigo: 16, detalle: 'Guardamanos ABS - Azul', cantidad: 2, precio: 635.84 },
-    { codigo: 17, detalle: 'Guardamanos ABS - Negro', cantidad: 1, precio: 600 },
-  ]);
-  assert.strictEqual(c.total, 1871.68);
+test('un carrito no sale en el Excel: Gesta se cae con más de una fila a consumidor final', () => {
+  const { comprobantes, excluidas } = Gesta.pendientesGesta(ventas, productos, { desde: '2026-11-03' });
+  assert.ok(!comprobantes.some(c => c.ref === '2000015851965481'));
+  const e = excluidas.find(x => x.ref === '2000015851965481');
+  assert.strictEqual(e.manual, true, 'se factura a mano y se marca desde la pantalla');
+  assert.strictEqual(e.lineas.length, 2);
+  assert.strictEqual(e.total, 1871.68);
+  assert.match(e.motivo, /Carrito de 2 productos: .*Facturalo a mano en Gesta/);
+});
+
+test('cada Excel tiene una sola fila, también con varias unidades del mismo producto', () => {
+  const dos = [venta({ id: 'U', fecha: '2026-11-05', ordenMeli: '2000013333333333', sku: 'HP-Q0211', producto: 'Guardamanos ABS - Negro', cantidad: 2, precioUnit: 635.84, total: 1271.68 })];
+  const { comprobantes } = Gesta.pendientesGesta(dos, productos, { desde: '2026-11-03' });
+  assert.strictEqual(Gesta.filasExcel(comprobantes[0]).length, 2, 'encabezado + una fila');
+  assert.deepStrictEqual(comprobantes[0].filas, [{ codigo: 17, detalle: 'Guardamanos ABS - Negro', cantidad: 2, precio: 635.84 }]);
 });
 
 test('el producto que no está en Gesta deja la venta afuera, con el motivo', () => {
   const { comprobantes, excluidas } = Gesta.pendientesGesta(ventas, productos, { desde: '2026-11-03' });
   assert.ok(!comprobantes.some(c => c.ref === '2000018888888888'));
-  assert.strictEqual(excluidas.length, 1);
-  assert.match(excluidas[0].motivo, /Sin código de Gesta: Extensor espejo \(EXT-ESP-8F-8F-001\)/);
+  const sinCodigo = excluidas.find(e => e.ref === '2000018888888888');
+  assert.match(sinCodigo.motivo, /Sin código de Gesta: Extensor espejo \(EXT-ESP-8F-8F-001\)/);
+  assert.ok(!sinCodigo.manual, 'no se ofrece marcarla: no está en Gesta');
 });
 
 test('si las filas no suman el total de la venta, no sale (el eTicket tiene que dar lo de MELI)', () => {

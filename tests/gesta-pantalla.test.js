@@ -29,6 +29,13 @@ function estado() {
     { id: 'V_MELI_2000018888888888_Y', canal: 'meli', fecha: HOY, orden_meli: '2000018888888888', pack_id: null,
       comprador: 'OTRO', sku: 'EXT-1', producto: 'Extensor espejo', cantidad: 1, precio_unit: 100, comision: 10, total: 100,
       estado: 'pagada', facturada: null, created_at: HOY + 'T09:00:00Z' },
+    // Carrito: dos productos en una venta. Gesta no lo importa: va a mano.
+    { id: 'V_MELI_2000019317462762_C1', canal: 'meli', fecha: HOY, orden_meli: '2000019317462762', pack_id: '2000015842985627',
+      comprador: 'GONZALEZJOHNATAN', sku: 'HP-Q0211', producto: 'Protector De Levas - Azul', cantidad: 1, precio_unit: 820.14,
+      comision: 100, total: 820.14, estado: 'pagada', facturada: null, created_at: HOY + 'T07:00:00Z' },
+    { id: 'V_MELI_2000019317462764_C2', canal: 'meli', fecha: HOY, orden_meli: '2000019317462764', pack_id: '2000015842985627',
+      comprador: 'GONZALEZJOHNATAN', sku: 'HP-Q0211', producto: 'Espejos Aleron Grande', cantidad: 1, precio_unit: 1458,
+      comision: 100, total: 1458, estado: 'pagada', facturada: null, created_at: HOY + 'T07:00:00Z' },
     // Ya emitida en Gesta: no sale en el Excel pero le falta el PDF en MELI.
     { id: 'V_MELI_2000019327110206_Z', canal: 'meli', fecha: HOY, orden_meli: '2000019327110206', pack_id: '2000015851965481',
       comprador: 'TOMYAUGUSTIN', sku: 'HP-Q0211', producto: 'Guardamanos Protector Puños Moto Enduro Cross ABS - Azul',
@@ -98,6 +105,23 @@ test('marcar como facturadas pide confirmación, la saca del Excel y queda esper
   assert.deepStrictEqual(crm.estado.ventasPut.filter(p => p.facturada === true).map(p => p.id), ['V_MELI_2000019328655326_X']);
   await crm.page.click('#modal-gesta .modal-actions .btn-ghost');
   assert.match(await celdaDeVenta('2000019328655326'), /Falta PDF/);
+});
+
+test('el carrito no sale en el Excel: se factura a mano y se marca con "Ya la facturé"', async () => {
+  await crm.page.click('#btn-gesta');
+  await crm.page.waitForSelector('#modal-gesta.open');
+  assert.doesNotMatch(await crm.page.textContent('#gesta-tbody'), /2000015842985627/);
+  const excluidas = await crm.page.textContent('#gesta-excluidas');
+  assert.match(excluidas, /#2000015842985627 · .* · \$2\.278,14 — Carrito de 2 productos/);
+  assert.match(excluidas, /1 × Protector De Levas - Azul \(\$820,14\) · 1 × Espejos Aleron Grande \(\$1\.458,00\)/);
+  // La venta sin código de Gesta no ofrece el botón: no está en Gesta.
+  assert.strictEqual(await crm.page.$$eval('#gesta-excluidas button', bs => bs.length), 1);
+
+  await crm.page.click('#gesta-excluidas button[data-clave="P:2000015842985627"]');
+  await crm.page.waitForFunction(() => !document.querySelector('#gesta-excluidas').textContent.includes('2000015842985627'));
+  const marcadas = crm.estado.ventasPut.filter(p => p.facturada === true).map(p => p.id);
+  assert.ok(marcadas.includes('V_MELI_2000019317462762_C1') && marcadas.includes('V_MELI_2000019317462764_C2'), 'las dos líneas del carrito');
+  await crm.page.click('#modal-gesta .modal-actions .btn-ghost');
 });
 
 // PDF de prueba: el texto que "lee" el pdf.js falso va adentro del archivo.

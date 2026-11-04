@@ -10,6 +10,14 @@ const { parseMeliIds } = require('./_meliIds');
 const { packsDisponibles, parseUnidadesPorVenta } = require('./_packs');
 const { camposDiscontinuado, escribirConMotivo, faltaMigracionMotivo } = require('./_discontinuado');
 
+// El número que Gesta le dio al producto (lo que pide el Excel de ventas). Vacío = no está en
+// Gesta. Sólo se escribe si el request lo manda, para no borrarlo desde otros guardados.
+function campoCodigoGesta(p) {
+  if (p.codigoGesta === undefined) return {};
+  const n = parseInt(p.codigoGesta, 10);
+  return { codigo_gesta: Number.isInteger(n) && n > 0 ? n : null };
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -52,6 +60,7 @@ module.exports = async (req, res) => {
           meli_ids: parseMeliIds(p.meliIds !== undefined ? p.meliIds : p.meliId),
           shopify_id: p.shopifyId || null,
           notas: p.notas,
+          ...campoCodigoGesta(p),
         },
         camposDiscontinuado(p, null),
       );
@@ -104,6 +113,7 @@ module.exports = async (req, res) => {
           meli_ids: parseMeliIds(p.meliIds !== undefined ? p.meliIds : p.meliId),
           shopify_id: p.shopifyId || null,
           notas: p.notas,
+          ...campoCodigoGesta(p),
         },
         // Guardar un producto desde el formulario de edición no manda `discontinuado`, y
         // antes eso lo reactivaba en silencio: el formulario no pregunta por el campo, así

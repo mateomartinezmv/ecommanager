@@ -246,6 +246,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<script src="gesta.js"></script>
 </head>
 <body>
 
@@ -427,6 +428,8 @@
       <div class="topbar-actions">
         <button class="btn btn-yellow" onclick="openModal('modal-venta-meli')">🟡 Venta MELI</button>
         <button class="btn btn-primary" onclick="vmosOpenModal()">🏪 Venta Mostrador</button>
+        <button class="btn btn-ghost" onclick="abrirGesta()" id="btn-gesta" title="Arma el Excel para importar en Gesta las ventas MELI que todavía no se facturaron (uno por venta)">🧾 Excel Gesta</button>
+        <button class="btn btn-ghost" onclick="abrirFacturasMeli()" id="btn-facturas-meli" title="Adjunta a cada venta de MELI el PDF del eTicket que bajaste de Gesta">📎 Subir facturas a MELI</button>
         <button class="btn btn-ghost" onclick="recalcularComisiones()" id="btn-recalcular-com" title="Recalcula comisión y envío MELI en todas las ventas existentes">🔁 Recalcular comisiones</button>
       </div>
     </div>
@@ -1258,12 +1261,64 @@
       <div class="form-group"><label class="form-label">Alerta stock mínimo</label><input type="number" id="p-alerta" placeholder="5" min="0"></div>
       <div class="form-group"><label class="form-label">IDs de Publicación MELI</label><input type="text" id="p-meli-id" placeholder="MLU0000000, MLU1111111"><small style="font-size:11px;color:var(--text-muted)">Si el producto tiene varias publicaciones, separalas con coma. La primera es la principal.</small></div>
       <div class="form-group"><label class="form-label">ID Variant Shopify</label><input type="text" id="p-shopify-id" placeholder="ej: 12345678901234"></div>
+      <div class="form-group"><label class="form-label">Código en Gesta</label><input type="number" id="p-gesta" min="1" step="1" placeholder="ej: 15"><small style="font-size:11px;color:var(--text-muted)">El número del producto en Gesta (facturación). Vacío = no está en Gesta y sus ventas MELI no salen en el Excel.</small></div>
       <div class="form-group"><label class="form-label">Tipo</label><select id="p-tipo"><option value="nuevo">🆕 Nuevo</option><option value="usado">🔄 Usado</option></select></div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="p-notas" rows="2" placeholder="Notas opcionales..."></textarea></div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-producto')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveProducto()">Guardar producto</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXCEL GESTA -->
+<div class="modal-overlay" id="modal-gesta">
+  <div class="modal" style="width:860px">
+    <div class="modal-title">🧾 Facturar ventas MELI en Gesta</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">
+      Baja <b>un Excel por venta</b> (Gesta no puede importar varias ventas de consumidor final en el mismo archivo).
+      Importalos de a uno en Gesta. Cuando estén emitidos, marcá las ventas como facturadas para que no vuelvan a salir acá.
+      El total de cada eTicket es el de la venta en MELI.
+    </p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+      <label class="form-label" style="margin:0">Ventas desde</label>
+      <input type="date" id="gesta-desde" onchange="gestaCambiarDesde(this.value)" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:13px">
+      <span id="gesta-resumen" style="font-size:12px;color:var(--text-muted)"></span>
+    </div>
+    <div class="table-wrap" style="max-height:340px;overflow:auto">
+      <table>
+        <thead><tr><th><input type="checkbox" id="gesta-todas" onchange="gestaMarcarTodas(this.checked)" checked></th><th>Fecha</th><th>Venta #</th><th>Productos (código Gesta)</th><th>Total</th></tr></thead>
+        <tbody id="gesta-tbody"></tbody>
+      </table>
+    </div>
+    <div id="gesta-excluidas" style="margin-top:10px"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-gesta')">Cerrar</button>
+      <button class="btn btn-ghost" id="gesta-btn-marcar" onclick="gestaMarcarFacturadas(this)">✅ Marcar como facturadas</button>
+      <button class="btn btn-primary" id="gesta-btn-bajar" onclick="gestaDescargar(this)">⬇ Descargar Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SUBIR FACTURAS A MELI -->
+<div class="modal-overlay" id="modal-facturas-meli">
+  <div class="modal" style="width:860px">
+    <div class="modal-title">📎 Subir facturas a MELI</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">
+      Elegí los PDF de los eTickets que bajaste de Gesta (podés elegir varios). Cada uno trae en la adenda el número de la venta,
+      así que el CRM reconoce solo a qué venta va y lo adjunta en MELI. MELI acepta un PDF de hasta 1 MB por venta.
+    </p>
+    <input type="file" id="fm-archivos" accept="application/pdf,.pdf" multiple onchange="fmLeerArchivos(this.files)">
+    <div class="table-wrap" style="max-height:340px;overflow:auto;margin-top:10px">
+      <table>
+        <thead><tr><th>Archivo</th><th>Venta</th><th>Total</th><th>Estado</th></tr></thead>
+        <tbody id="fm-tbody"><tr><td colspan="4" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-facturas-meli')">Cerrar</button>
+      <button class="btn btn-primary" id="fm-btn-subir" onclick="fmSubir(this)" disabled>📎 Subir a MELI</button>
     </div>
   </div>
 </div>
@@ -2096,10 +2151,10 @@ function etiquetaPack(p, stockDep) {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, codigoGesta: p.codigo_gesta ?? null, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, creado: p.created_at };
 }
 function normVenta(v) {
-  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
+  return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, facturaMeliAt: v.factura_meli_at || null, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
 }
 function normAviso(a) {
   return { id: a.id, clienteId: a.cliente_id, sku: a.sku, cantidad: a.cantidad || 1, nota: a.nota || '', estado: a.estado, importacionId: a.importacion_id || null, creado: a.created_at, listoAt: a.listo_at || null, avisadoAt: a.avisado_at || null };
@@ -3334,7 +3389,7 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-grupo','p-subgrupo','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  ['p-sku','p-nombre','p-grupo','p-subgrupo','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-gesta','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('p-tipo').value = 'nuevo';
   document.getElementById('p-upv').value = '1';
   onUpvChange();
@@ -3396,7 +3451,7 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
-  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, unidadesPorVenta: parseInt(document.getElementById('p-upv').value) || 1, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliIds: document.getElementById('p-meli-id').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean), shopifyId: document.getElementById('p-shopify-id').value.trim(), notas: document.getElementById('p-notas').value.trim() };
+  const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, unidadesPorVenta: parseInt(document.getElementById('p-upv').value) || 1, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliIds: document.getElementById('p-meli-id').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean), shopifyId: document.getElementById('p-shopify-id').value.trim(), codigoGesta: parseInt(document.getElementById('p-gesta').value, 10) || null, notas: document.getElementById('p-notas').value.trim() };
   // El formulario no pregunta por el descatalogado (eso se hace con el botón ⛔), así que al
   // editar se reenvía el estado actual: sin esto el PUT lo reactivaba en silencio y el
   // producto volvía a Reposición.
@@ -3434,6 +3489,7 @@ function editProducto(sku) {
   document.getElementById('p-tipo').value = p.tipo || 'nuevo';
   document.getElementById('p-meli-id').value = (p.meliIds || []).join(', ');
   document.getElementById('p-shopify-id').value = p.shopifyId || '';
+  document.getElementById('p-gesta').value = p.codigoGesta || '';
   document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
   document.getElementById('p-notas').value = p.notas || '';
   const upvSel = document.getElementById('p-upv');
@@ -6534,6 +6590,294 @@ function celdaFacturada(canal, vista, onchange, nota) {
     </label>`;
 }
 
+// =====================
+// FACTURACIÓN MELI CON GESTA
+// =====================
+// Las reglas (qué ventas salen, cómo es el Excel, cómo se reconoce un PDF) están en gesta.js.
+// Acá va sólo la pantalla: 🧾 Excel Gesta y 📎 Subir facturas a MELI, en Ventas.
+
+const CDN_XLSX = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+const CDN_PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const CDN_PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// Las librerías pesadas se cargan recién cuando se usan, no al abrir el CRM.
+const scriptsCargados = {};
+function cargarScript(url, global) {
+  if (window[global]) return Promise.resolve(window[global]);
+  if (!scriptsCargados[url]) {
+    scriptsCargados[url] = new Promise((ok, ko) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => (window[global] ? ok(window[global]) : ko(new Error('No cargó ' + global)));
+      s.onerror = () => { delete scriptsCargados[url]; ko(new Error('No se pudo descargar ' + url.split('/').pop() + '. ¿Hay internet?')); };
+      document.head.appendChild(s);
+    });
+  }
+  return scriptsCargados[url];
+}
+
+// Montos con centavos: el eTicket tiene que dar al centésimo lo que cobró MELI.
+function montoGesta(n) {
+  return '$' + (Number(n) || 0).toLocaleString('es-UY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function gestaDesde() {
+  try { return localStorage.getItem('ecom_gesta_desde') || Gesta.DESDE_DEFAULT; } catch { return Gesta.DESDE_DEFAULT; }
+}
+
+// Estado de la factura de una venta MELI en la tabla de Ventas.
+function celdaFacturaMeli(lineas) {
+  if (lineas.every(v => v.facturaMeliAt)) {
+    const cuando = lineas.map(v => v.facturaMeliAt).sort().pop();
+    return `<span style="font-size:11px;color:var(--green)" title="PDF de la factura adjunto en MELI el ${new Date(cuando).toLocaleString('es-UY')}">✅ En MELI</span>`;
+  }
+  if (lineas.every(v => v.facturada === true)) {
+    return '<span style="font-size:11px;color:var(--accent)" title="Facturada en Gesta: falta adjuntar el PDF en MELI (📎 Subir facturas a MELI)">🧾 Falta PDF</span>';
+  }
+  if (lineas.every(v => (v.fecha || '') >= gestaDesde())) {
+    return '<span style="font-size:11px;color:var(--text-muted)" title="Todavía no se facturó en Gesta (🧾 Excel Gesta)">⏳ Sin facturar</span>';
+  }
+  return '<span style="font-size:11px;color:var(--text-muted)" title="Venta anterior a la facturación desde el CRM">🧾 auto</span>';
+}
+
+// ── Excel para Gesta ─────────────────────────────────────────────────────────
+let gestaPendientes = { comprobantes: [], excluidas: [] };
+const gestaSeleccion = new Set();
+
+function abrirGesta() {
+  document.getElementById('gesta-desde').value = gestaDesde();
+  gestaSeleccion.clear();
+  renderGesta(true);
+  openModal('modal-gesta');
+}
+
+function gestaCambiarDesde(valor) {
+  try { if (valor) localStorage.setItem('ecom_gesta_desde', valor); } catch {}
+  renderGesta(true);
+  renderVentas();
+}
+
+function renderGesta(seleccionarTodo) {
+  gestaPendientes = Gesta.pendientesGesta(db.ventas, db.productos, { desde: document.getElementById('gesta-desde').value || gestaDesde() });
+  const { comprobantes, excluidas } = gestaPendientes;
+  if (seleccionarTodo) { gestaSeleccion.clear(); comprobantes.forEach(c => gestaSeleccion.add(c.clave)); }
+  for (const k of [...gestaSeleccion]) if (!comprobantes.some(c => c.clave === k)) gestaSeleccion.delete(k);
+
+  document.getElementById('gesta-tbody').innerHTML = comprobantes.length ? comprobantes.map(c => `
+    <tr>
+      <td><input type="checkbox" data-clave="${c.clave}" ${gestaSeleccion.has(c.clave) ? 'checked' : ''} onchange="gestaElegir('${c.clave}', this.checked)"></td>
+      <td>${c.fecha.split('-').reverse().join('/')}</td>
+      <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${c.ref}</span>${c.comprador ? `<br><span style="font-size:11px;color:var(--text-muted)">${c.comprador}</span>` : ''}</td>
+      <td>${c.filas.map(f => `${f.cantidad} × ${f.detalle} <span style="color:var(--text-muted)">(${f.codigo})</span>`).join('<br>')}
+        ${c.carrito ? '<br><span style="font-size:11px;color:var(--accent)">🛒 Carrito: varias filas en el mismo Excel. Si Gesta no lo importa, facturalo a mano.</span>' : ''}</td>
+      <td><strong>${montoGesta(c.total)}</strong></td>
+    </tr>`).join('')
+    : '<tr><td colspan="5" style="color:var(--text-muted);font-size:12px">No hay ventas MELI sin facturar desde esa fecha.</td></tr>';
+
+  document.getElementById('gesta-excluidas').innerHTML = excluidas.length ? `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">No salen en el Excel (${excluidas.length}):</div>
+    ${excluidas.map(e => `<div style="font-size:12px;padding:4px 0;border-top:1px solid var(--border)">#${e.ref} · ${e.fecha.split('-').reverse().join('/')} · ${montoGesta(e.total)} — ${e.motivo}</div>`).join('')}` : '';
+  gestaActualizarBotones();
+}
+
+function gestaElegir(clave, si) {
+  if (si) gestaSeleccion.add(clave); else gestaSeleccion.delete(clave);
+  gestaActualizarBotones();
+}
+function gestaMarcarTodas(si) {
+  gestaSeleccion.clear();
+  if (si) gestaPendientes.comprobantes.forEach(c => gestaSeleccion.add(c.clave));
+  renderGesta(false);
+}
+function gestaElegidos() {
+  return gestaPendientes.comprobantes.filter(c => gestaSeleccion.has(c.clave));
+}
+function gestaActualizarBotones() {
+  const n = gestaElegidos().length;
+  const total = gestaElegidos().reduce((s, c) => s + c.total, 0);
+  document.getElementById('gesta-resumen').textContent = n ? `${n} venta${n === 1 ? '' : 's'} elegida${n === 1 ? '' : 's'} · ${montoGesta(total)}` : '';
+  document.getElementById('gesta-btn-bajar').disabled = !n;
+  document.getElementById('gesta-btn-marcar').disabled = !n;
+  document.getElementById('gesta-btn-bajar').textContent = `⬇ Descargar ${n === 1 ? 'Excel' : `${n} Excel`}`;
+  document.getElementById('gesta-todas').checked = n > 0 && n === gestaPendientes.comprobantes.length;
+}
+
+async function gestaDescargar(btn) {
+  const elegidos = gestaElegidos();
+  if (!elegidos.length) return;
+  btn.disabled = true;
+  try {
+    const XLSX = await cargarScript(CDN_XLSX, 'XLSX');
+    for (const c of elegidos) {
+      const ws = XLSX.utils.aoa_to_sheet(Gesta.filasExcel(c));
+      // La fecha va como número de serie: con este formato Excel (y Gesta) la leen como fecha.
+      for (let fila = 2; fila <= c.filas.length + 1; fila++) ws[`${Gesta.COL_FECHA}${fila}`].z = 'dd/mm/yyyy';
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Hoja 1');
+      XLSX.writeFile(wb, Gesta.nombreArchivo(c));
+      // El navegador frena las descargas seguidas sin respiro.
+      if (elegidos.length > 1) await new Promise(r => setTimeout(r, 400));
+    }
+  } catch (e) {
+    alert('No se pudo armar el Excel: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function gestaMarcarFacturadas(btn) {
+  const elegidos = gestaElegidos();
+  if (!elegidos.length) return;
+  if (!confirm(`¿Ya importaste en Gesta ${elegidos.length === 1 ? 'esta venta' : `estas ${elegidos.length} ventas`}?\n\nQuedan marcadas como facturadas y no vuelven a salir en el Excel. Después falta subir el PDF de cada eTicket a MELI (📎 Subir facturas a MELI).`)) return;
+  btn.disabled = true;
+  try {
+    for (const c of elegidos) for (const v of c.lineas) await api('PUT', `/ventas?id=${v.id}`, { facturada: true });
+    await loadAll();
+    renderVentas();
+    renderGesta(true);
+  } catch (e) {
+    alert('Error marcando las ventas como facturadas: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Subir los PDF a MELI ─────────────────────────────────────────────────────
+let fmArchivos = [];
+
+function abrirFacturasMeli() {
+  fmArchivos = [];
+  document.getElementById('fm-archivos').value = '';
+  renderFacturasMeli();
+  openModal('modal-facturas-meli');
+}
+
+async function textoDePdf(buffer) {
+  const pdfjsLib = await cargarScript(CDN_PDFJS, 'pdfjsLib');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = CDN_PDFJS_WORKER;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const partes = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const pagina = await pdf.getPage(i);
+    const contenido = await pagina.getTextContent();
+    partes.push(contenido.items.map(it => it.str).join(' '));
+  }
+  return partes.join('\n');
+}
+
+function base64DeBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// Las ventas MELI a las que se les puede asignar un PDF a mano (las que no reconoció solo).
+function fmVentasElegibles() {
+  const grupos = new Map();
+  for (const v of db.ventas) {
+    if (v.canal !== 'meli' || !Gesta.refDeVenta(v) || v.estado === 'cancelada') continue;
+    const k = Gesta.claveDeVenta(v);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(v);
+  }
+  return [...grupos.entries()]
+    .map(([clave, lineas]) => ({ clave, ref: Gesta.refDeVenta(lineas[0]), lineas, fecha: lineas[0].fecha || '', total: lineas.reduce((s, v) => s + (Number(v.total) || 0), 0) }))
+    .filter(g => !g.lineas.every(v => v.facturaMeliAt))
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+    .slice(0, 80);
+}
+
+async function fmLeerArchivos(files) {
+  fmArchivos = [...files].map(file => ({ file, nombre: file.name, estado: 'leyendo' }));
+  renderFacturasMeli();
+  for (const a of fmArchivos) {
+    try {
+      const buffer = await a.file.arrayBuffer();
+      if (buffer.byteLength > 1024 * 1024) { a.estado = 'error'; a.error = `Pesa ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB y MELI acepta hasta 1 MB.`; continue; }
+      a.base64 = base64DeBuffer(buffer);
+      const venta = Gesta.ventaDePdf(await textoDePdf(buffer), db.ventas);
+      fmAsignar(a, venta);
+    } catch (e) {
+      a.estado = 'error';
+      a.error = 'No se pudo leer el PDF: ' + e.message;
+    }
+    renderFacturasMeli();
+  }
+}
+
+function fmAsignar(a, venta) {
+  a.venta = venta;
+  a.error = null;
+  if (!venta) { a.estado = 'sin-venta'; return; }
+  if (fmArchivos.some(o => o !== a && o.venta && o.venta.clave === venta.clave && o.estado !== 'error')) {
+    a.estado = 'error'; a.error = 'Otro de los PDF elegidos es de la misma venta.'; return;
+  }
+  a.estado = venta.lineas.every(v => v.facturaMeliAt) ? 'ya-subida' : 'lista';
+}
+
+function fmElegirVentaManual(i, clave) {
+  const a = fmArchivos[i];
+  const g = fmVentasElegibles().find(x => x.clave === clave);
+  fmAsignar(a, g ? { ...g, totalEnPdf: null, manual: true } : null);
+  renderFacturasMeli();
+}
+
+function renderFacturasMeli() {
+  const tbody = document.getElementById('fm-tbody');
+  if (!fmArchivos.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted);font-size:12px">Todavía no elegiste ningún PDF.</td></tr>';
+  } else {
+    const elegibles = fmVentasElegibles();
+    tbody.innerHTML = fmArchivos.map((a, i) => {
+      const v = a.venta;
+      const ventaCelda = v
+        ? `<span style="font-family:'JetBrains Mono',monospace;font-size:11px">#${v.ref}</span><br><span style="font-size:11px;color:var(--text-muted)">${v.lineas.map(l => l.producto).join(' · ')}</span>`
+        : (a.estado === 'sin-venta'
+          ? `<select onchange="fmElegirVentaManual(${i}, this.value)" style="font-size:12px;max-width:260px"><option value="">— No encontré la venta: elegila —</option>${elegibles.map(g => `<option value="${g.clave}">#${g.ref} · ${g.fecha} · ${montoGesta(g.total)}</option>`).join('')}</select>`
+          : '');
+      const totalCelda = v ? `${montoGesta(v.total)}${v.totalEnPdf === false ? '<br><span style="font-size:11px;color:var(--red)">⚠️ No encontré este total en el PDF</span>' : ''}` : '';
+      const estados = {
+        'leyendo': '<span style="color:var(--text-muted)">Leyendo…</span>',
+        'sin-venta': '<span style="color:var(--accent)">Falta la venta</span>',
+        'lista': '<span>Lista para subir</span>',
+        'ya-subida': '<span style="color:var(--text-muted)">Ya tiene factura en MELI: no se sube</span>',
+        'subiendo': '<span style="color:var(--text-muted)">Subiendo…</span>',
+        'subida': '<span style="color:var(--green)">✅ Subida</span>',
+        'error': `<span style="color:var(--red)">❌ ${a.error || 'Error'}</span>`,
+      };
+      return `<tr><td style="font-size:12px">${a.nombre}</td><td>${ventaCelda}</td><td>${totalCelda}</td><td style="font-size:12px">${estados[a.estado] || ''}</td></tr>`;
+    }).join('');
+  }
+  const listas = fmArchivos.filter(a => a.estado === 'lista').length;
+  const btn = document.getElementById('fm-btn-subir');
+  btn.disabled = !listas;
+  btn.textContent = listas ? `📎 Subir ${listas} a MELI` : '📎 Subir a MELI';
+}
+
+async function fmSubir(btn) {
+  const listas = fmArchivos.filter(a => a.estado === 'lista');
+  if (!listas.length) return;
+  const dudosas = listas.filter(a => a.venta.totalEnPdf === false);
+  if (dudosas.length && !confirm(`En ${dudosas.length === 1 ? 'un PDF' : `${dudosas.length} PDF`} no encontré el total de la venta. ¿Subirlos igual?`)) return;
+  btn.disabled = true;
+  for (const a of listas) {
+    a.estado = 'subiendo';
+    renderFacturasMeli();
+    try {
+      await api('POST', '/meli/factura', { ventaId: a.venta.lineas[0].id, pdf: a.base64, nombre: a.nombre });
+      a.estado = 'subida';
+    } catch (e) {
+      a.estado = 'error';
+      a.error = e.message;
+    }
+    renderFacturasMeli();
+  }
+  await loadAll();
+  renderVentas();
+  renderFacturasMeli();
+}
+
 // Cancela el carrito entero: cada línea restaura su stock y queda registrada como cancelada.
 async function deleteGrupoVenta(key) {
   const lineas = db.ventas.filter(v => ticketKey(v) === key);
@@ -6593,7 +6937,7 @@ function renderVentas() {
           ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${v.estado===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
         </select>
       </td>
-      <td>${celdaFacturada(v.canal, facturadaVista(v), `data-id="${v.id}" onchange="toggleFacturada(this)"`)}</td>
+      <td>${v.canal === 'meli' ? (dentroDeCarrito ? '' : celdaFacturaMeli([v])) : celdaFacturada(v.canal, facturadaVista(v), `data-id="${v.id}" onchange="toggleFacturada(this)"`)}</td>
       <td>
         <button class="btn btn-ghost btn-sm" onclick="abrirEdicionVenta('${v.id}')" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeVenta('${v.id}', '${enviosByVenta[v.id] ? enviosByVenta[v.id].id : ''}')" title="${enviosByVenta[v.id] ? 'Editar envío' : 'Crear envío'}">🚚</button>
@@ -6645,7 +6989,7 @@ function renderVentas() {
               ${['pagada','pendiente','cancelada'].map(s => `<option value="${s}" ${estados[0]===s?'selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
             </select>`}
       </td>
-      <td onclick="event.stopPropagation()">${celdaFacturada(primera.canal, factCarrito, `onchange="toggleFacturadaGrupo(this, '${grupo.key}')"`, factMixto ? 'hay líneas distintas: marcá o desmarcá para igualarlas' : '')}</td>
+      <td onclick="event.stopPropagation()">${primera.canal === 'meli' ? celdaFacturaMeli(lineas) : celdaFacturada(primera.canal, factCarrito, `onchange="toggleFacturadaGrupo(this, '${grupo.key}')"`, factMixto ? 'hay líneas distintas: marcá o desmarcá para igualarlas' : '')}</td>
       <td onclick="event.stopPropagation()">
         <button class="btn btn-ghost btn-sm" onclick="toggleGrupoVenta('${grupo.key}')" title="${abierto ? 'Ocultar productos' : 'Ver productos'}">${abierto ? '➖' : '➕'}</button>
         <button class="btn btn-ghost btn-sm" onclick="abrirEnvioDeCarrito('${grupo.key}')" title="${envioDelCarrito ? 'Editar envío del carrito' : 'Crear envío para todo el carrito'}">🚚</button>

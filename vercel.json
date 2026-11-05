@@ -27,10 +27,6 @@
     "api/movimientos.js": { "maxDuration": 10 },
     "api/meli/recalcular-comisiones.js": { "maxDuration": 60 },
     "api/meli/reprocesar-ordenes.js": { "maxDuration": 60 },
-    "api/cron/resumen-diario.js": { "maxDuration": 30 },
-    "api/cron/ads-diario.js": { "maxDuration": 30 },
-    "api/cron/ads-anuncios-diario.js": { "maxDuration": 60 },
-    "api/cron/sync-envios.js": { "maxDuration": 60 },
     "api/meli/ads.js": { "maxDuration": 30 },
     "api/meli/ads-historico.js": { "maxDuration": 10 },
     "api/meli/ads-campanas.js": { "maxDuration": 30 },
@@ -47,9 +43,10 @@
     "api/meli/stock.js": { "maxDuration": 60 },
     "api/meli/precios.js": { "maxDuration": 60 },
     "api/meli/fotos.js": { "maxDuration": 60 },
-    "api/cron/sync-stock-pubs.js": { "maxDuration": 60 },
     "api/telegram/setup.js": { "maxDuration": 15 },
-    "api/telegram/webhook.js": { "maxDuration": 30 }
+    "api/telegram/webhook.js": { "maxDuration": 30 },
+    "api/cron/*.js": { "maxDuration": 60 },
+    "api/meta/*.js": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
@@ -75,6 +72,10 @@
     {
       "path": "/api/cron/sync-stock-pubs",
       "schedule": "15 * * * *"
+    },
+    {
+      "path": "/api/cron/instagram-publicar",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

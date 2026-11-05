@@ -355,6 +355,32 @@ function mockearApi(page, estado, fallos = {}) {
       return ok(fotos);
     }
 
+    // Instagram: lo que el front programa, publica y cancela queda en el estado, igual que
+    // lo dejaría api/meta/instagram.js en instagram_publicaciones.
+    if (ruta === '/meta/instagram') {
+      const ig = estado.instagram = estado.instagram || { cuenta: null, publicaciones: [] };
+      const id = Number(url.searchParams.get('id'));
+      if (metodo === 'GET') return ok(ig);
+      if (metodo === 'POST' && url.searchParams.get('accion') === 'publicar') {
+        const p = ig.publicaciones.find(x => x.id === id);
+        Object.assign(p, { estado: 'publicado', permalink: 'https://instagram.com/p/demo', publicado_at: new Date().toISOString() });
+        return ok({ ok: true, id, permalink: p.permalink });
+      }
+      if (metodo === 'POST') {
+        const p = { id: ig.publicaciones.length + 1, estado: 'programado', ...cuerpo,
+          imagenes: String(cuerpo.imagenes).split(/\n+/).map(s => s.trim()).filter(Boolean),
+          programado_para: cuerpo.programadoPara };
+        (ig.posts = ig.posts || []).push(cuerpo);
+        ig.publicaciones.unshift(p);
+        return ok(p);
+      }
+      if (metodo === 'DELETE') {
+        const p = ig.publicaciones.find(x => x.id === id);
+        p.estado = 'cancelado';
+        return ok(p);
+      }
+    }
+
     // Réplica de api/meli/factura.js: sube el PDF y marca facturadas las líneas de la venta.
     if (ruta === '/meli/factura' && metodo === 'POST') {
       (estado.facturasMeli = estado.facturasMeli || []).push(cuerpo);

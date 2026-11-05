@@ -277,6 +277,8 @@
     <div class="nav-item" onclick="goPage('opiniones')"><span class="icon">⭐</span><span>Opiniones</span></div>
     <div class="nav-item" onclick="goPage('angulos')"><span class="icon">🎯</span><span>Ángulos de venta</span></div>
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
+    <div class="nav-section">Marketing</div>
+    <div class="nav-item" onclick="goPage('instagram')"><span class="icon">📸</span><span>Instagram</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -1196,6 +1198,48 @@
           <tbody id="angulos-tbody"></tbody>
         </table>
         <div id="angulos-empty" class="empty-state" style="display:none"><div class="empty-icon">🎯</div><p>Nada por acá.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INSTAGRAM: publicaciones programadas por la Graph API de Meta -->
+  <div id="page-instagram" class="page">
+    <div class="topbar">
+      <div class="page-title">📸 Instagram</div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="cargarInstagram()">🔄 Actualizar</button>
+        <a href="/api/meta/auth" class="btn btn-yellow" id="ig-btn-conectar" style="text-decoration:none">🔗 Conectar Instagram</a>
+      </div>
+    </div>
+    <div class="content">
+      <div id="ig-aviso" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px"></div>
+      <div class="cards-grid" id="ig-stats"></div>
+      <div class="table-wrap" style="margin-bottom:20px">
+        <div class="table-header"><span class="table-title">🗓️ Programar publicación</span></div>
+        <div style="padding:16px 18px">
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Tipo</label>
+              <select id="ig-tipo"><option value="carrusel">Carrusel</option><option value="post">Post (una imagen)</option><option value="historia">Historia</option></select></div>
+            <div class="form-group"><label class="form-label">Fecha y hora</label><input type="datetime-local" id="ig-fecha"></div>
+            <div class="form-group form-full"><label class="form-label">Imágenes (una URL pública de JPEG por línea, en orden)</label>
+              <textarea id="ig-imagenes" rows="4" placeholder="https://.../1.jpg&#10;https://.../2.jpg"></textarea></div>
+            <div class="form-group form-full"><label class="form-label">Texto <span id="ig-caption-count" style="color:var(--text-muted)"></span></label>
+              <textarea id="ig-caption" rows="6" maxlength="2200" oninput="igContarCaption()" placeholder="Las historias no llevan texto: Meta no lo permite por API."></textarea></div>
+            <div class="form-group form-full"><label class="form-label">Notas internas</label><input type="text" id="ig-notas" placeholder="Opcional"></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+            <button class="btn btn-yellow" id="ig-btn-programar" onclick="programarInstagram()">🗓️ Programar</button>
+            <span style="font-size:12px;color:var(--text-muted)">Sale con hasta 5 minutos de atraso. Las imágenes tienen que ser JPEG (Meta no acepta PNG).</span>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">Publicaciones</span><span id="ig-count" style="font-size:12px;color:var(--text-muted)"></span></div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Imágenes</th><th>Texto</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="ig-tbody"></tbody>
+        </table>
+        <div id="ig-empty" class="empty-state" style="display:none"><div class="empty-icon">📸</div><p>Todavía no hay publicaciones.</p></div>
       </div>
     </div>
   </div>
@@ -2199,6 +2243,15 @@ if (urlParams.get('meli') === 'conectado') {
     b.style.borderColor = 'rgba(34,197,94,0.3)';
     b.style.display = 'block';
     history.replaceState({}, '', '/');
+  }, 300);
+}
+if (urlParams.get('meta') === 'conectado' || urlParams.get('meta') === 'error') {
+  setTimeout(() => {
+    igMensaje = urlParams.get('meta') === 'conectado'
+      ? '✅ <strong>Instagram conectado correctamente.</strong>'
+      : '❌ <strong>Error conectando Instagram:</strong> ' + escHtml(urlParams.get('msg') || 'Error desconocido');
+    history.replaceState({}, '', '/');
+    goPage('instagram');
   }, 300);
 }
 if (urlParams.get('meli') === 'error') {
@@ -3348,6 +3401,7 @@ function goPage(page) {
   if (page === 'opiniones') renderOpiniones();
   if (page === 'angulos') renderAngulos();
   if (page === 'ads') renderAds();
+  if (page === 'instagram') cargarInstagram();
 }
 
 // =====================
@@ -4634,6 +4688,134 @@ async function loadOpiniones(force = false) {
   const data = await fetch('/api/meli/opiniones').then(r => r.json());
   db.opiniones = data.publicaciones || [];
   db.opinionesMeta = { cargada: true, ok: data.ok !== false, error: data.error || null, actualizado: data.actualizado_at || null };
+}
+
+// =====================
+// INSTAGRAM
+// =====================
+// Las publicaciones viven en Supabase (instagram_publicaciones) y las publica el cron
+// api/cron/instagram-publicar.js cuando llega su hora. Acá solo se programan, se miran y
+// se cancelan o publican a mano.
+let igPublicaciones = [];
+// Mensaje que deja el callback de Meta (?meta=conectado / ?meta=error) para mostrar arriba.
+let igMensaje = '';
+
+const IG_ESTADOS = {
+  programado: '<span class="badge badge-blue">🗓️ Programado</span>',
+  publicando: '<span class="badge badge-yellow">⏳ Publicando</span>',
+  publicado:  '<span class="badge badge-green">✅ Publicado</span>',
+  error:      '<span class="badge badge-red">❌ Error</span>',
+  cancelado:  '<span class="badge badge-gray">Cancelado</span>',
+};
+const IG_TIPOS = { post: '🖼️ Post', carrusel: '🎠 Carrusel', historia: '⭕ Historia' };
+
+function igContarCaption() {
+  const n = document.getElementById('ig-caption').value.length;
+  document.getElementById('ig-caption-count').textContent = n ? `(${n}/2200)` : '';
+}
+
+async function cargarInstagram() {
+  const tbody = document.getElementById('ig-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--text-muted)">Cargando...</td></tr>';
+  const aviso = document.getElementById('ig-aviso');
+  let r;
+  try {
+    r = await api('GET', '/meta/instagram');
+  } catch (e) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = '⚠️ ' + escHtml(e.message);
+    tbody.innerHTML = '';
+    return;
+  }
+  igPublicaciones = r.publicaciones || [];
+
+  const avisos = [];
+  if (igMensaje) { avisos.push(igMensaje); igMensaje = ''; }
+  if (r.faltaMigracion) avisos.push('⚠️ ' + escHtml(r.aviso));
+  else if (!r.cuenta) avisos.push('🔗 Instagram todavía no está conectado. Tocá <strong>Conectar Instagram</strong> e iniciá sesión con el Facebook que administra la página vinculada a @martinezmotos.uy.');
+  aviso.style.display = avisos.length ? 'block' : 'none';
+  aviso.innerHTML = avisos.join('<br>');
+  document.getElementById('ig-btn-conectar').textContent = r.cuenta ? '🔗 Reconectar Instagram' : '🔗 Conectar Instagram';
+
+  const cuenta = (e) => igPublicaciones.filter(p => p.estado === e).length;
+  document.getElementById('ig-stats').innerHTML = `
+    <div class="stat-card ${r.cuenta ? 'green' : 'red'}"><div class="stat-icon">📸</div><div class="stat-value" style="font-size:20px">${r.cuenta ? '@' + escHtml(r.cuenta.ig_username || r.cuenta.ig_user_id) : 'Sin conectar'}</div><div class="stat-label">${r.cuenta ? 'Página: ' + escHtml(r.cuenta.page_name || '') : 'Cuenta de Instagram'}</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🗓️</div><div class="stat-value">${cuenta('programado')}</div><div class="stat-label">Programadas</div></div>
+    <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-value">${cuenta('publicado')}</div><div class="stat-label">Publicadas</div></div>
+    <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-value">${cuenta('error')}</div><div class="stat-label">Con error</div></div>`;
+  renderInstagram();
+}
+
+function renderInstagram() {
+  const tbody = document.getElementById('ig-tbody');
+  document.getElementById('ig-count').textContent = igPublicaciones.length ? `${igPublicaciones.length} publicaciones` : '';
+  document.getElementById('ig-empty').style.display = igPublicaciones.length ? 'none' : 'block';
+  tbody.innerHTML = igPublicaciones.map(p => {
+    const fecha = new Date(p.publicado_at || p.programado_para).toLocaleString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const miniaturas = (p.imagenes || []).slice(0, 5).map(u =>
+      `<a href="${escHtml(u)}" target="_blank" rel="noopener"><img src="${escHtml(u)}" alt="" style="width:36px;height:45px;object-fit:cover;border-radius:4px;margin-right:3px"></a>`).join('')
+      + ((p.imagenes || []).length > 5 ? `<span style="font-size:11px;color:var(--text-muted)">+${p.imagenes.length - 5}</span>` : '');
+    const texto = p.caption ? escHtml(p.caption.length > 90 ? p.caption.slice(0, 90) + '…' : p.caption) : '<span style="color:var(--text-muted)">—</span>';
+    const error = p.estado === 'error' && p.error ? `<div style="font-size:11px;color:var(--red);margin-top:4px;max-width:260px">${escHtml(p.error)}</div>` : '';
+    const acciones = [];
+    if (p.estado === 'programado' || p.estado === 'error') {
+      acciones.push(`<button class="btn btn-ghost btn-sm" onclick="publicarInstagramYa(${p.id})">${p.estado === 'error' ? '🔁 Reintentar' : '🚀 Publicar ya'}</button>`);
+      acciones.push(`<button class="btn btn-ghost btn-sm" onclick="cancelarInstagram(${p.id})">✖ Cancelar</button>`);
+    }
+    if (p.permalink) acciones.push(`<a class="btn btn-ghost btn-sm" href="${escHtml(p.permalink)}" target="_blank" rel="noopener">Ver ↗</a>`);
+    return `<tr>
+      <td style="white-space:nowrap">${fecha}</td>
+      <td>${IG_TIPOS[p.tipo] || escHtml(p.tipo)}</td>
+      <td style="white-space:nowrap">${miniaturas}</td>
+      <td style="max-width:320px;font-size:12px">${texto}</td>
+      <td>${IG_ESTADOS[p.estado] || escHtml(p.estado)}${error}</td>
+      <td style="white-space:nowrap">${acciones.join(' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function programarInstagram() {
+  const fecha = document.getElementById('ig-fecha').value;
+  const body = {
+    tipo: document.getElementById('ig-tipo').value,
+    imagenes: document.getElementById('ig-imagenes').value,
+    caption: document.getElementById('ig-caption').value,
+    // datetime-local viene sin zona: se interpreta en la hora del navegador (Montevideo).
+    programadoPara: fecha ? new Date(fecha).toISOString() : '',
+    notas: document.getElementById('ig-notas').value,
+  };
+  const btn = document.getElementById('ig-btn-programar');
+  btn.disabled = true;
+  try {
+    await api('POST', '/meta/instagram', body);
+    ['ig-imagenes', 'ig-caption', 'ig-notas', 'ig-fecha'].forEach(id => { document.getElementById(id).value = ''; });
+    igContarCaption();
+    await cargarInstagram();
+  } catch (e) {
+    alert('No se pudo programar: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function publicarInstagramYa(id) {
+  if (!confirm('¿Publicar ahora en Instagram?')) return;
+  try {
+    await api('POST', `/meta/instagram?accion=publicar&id=${id}`);
+  } catch (e) {
+    alert('No se pudo publicar: ' + e.message);
+  }
+  await cargarInstagram();
+}
+
+async function cancelarInstagram(id) {
+  if (!confirm('¿Cancelar esta publicación?')) return;
+  try {
+    await api('DELETE', `/meta/instagram?id=${id}`);
+  } catch (e) {
+    alert('No se pudo cancelar: ' + e.message);
+  }
+  await cargarInstagram();
 }
 
 async function renderOpiniones() {

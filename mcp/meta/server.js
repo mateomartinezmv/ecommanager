@@ -8,6 +8,30 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+// En un clon recién bajado (o una sesión nueva de Claude Code en la nube) no hay node_modules,
+// y sin el SDK el servidor se caía antes de poder hablar con Claude Code. Si falta algo, se
+// instala acá. La salida de npm va a stderr: stdout es el canal MCP y cualquier línea ahí
+// rompe la conexión.
+function instalarSiFalta(modulos) {
+  const faltan = modulos.filter(m => {
+    try { require.resolve(m); return false; } catch { return true; }
+  });
+  if (!faltan.length) return;
+  console.error(`[meta] Faltan ${faltan.join(', ')}: corriendo npm install...`);
+  const r = spawnSync('npm', ['install', '--no-audit', '--no-fund'], {
+    cwd: path.join(__dirname, '..', '..'),
+    stdio: ['ignore', process.stderr, process.stderr],
+    shell: process.platform === 'win32',
+  });
+  if (r.status !== 0) {
+    console.error('[meta] npm install falló. Corré `npm install` a mano en la raíz del repo.');
+    process.exit(1);
+  }
+}
+instalarSiFalta(['@modelcontextprotocol/sdk/server/mcp.js', 'zod', '@supabase/supabase-js']);
+
 const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { z } = require('zod');

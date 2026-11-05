@@ -2,7 +2,10 @@
   "mcpServers": {
     "meta": {
       "command": "node",
-      "args": ["mcp/meta/server.js"]
+      "args": ["mcp/meta/server.js"],
+      "env": {
+        "NODE_USE_ENV_PROXY": "1"
+      }
     }
   }
 }

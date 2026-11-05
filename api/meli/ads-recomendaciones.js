@@ -37,6 +37,7 @@ const { getSupabase } = require('../_supabase');
 const { getAdsContext, adsGet, resolverRango, enLotes, API } = require('./_adsClient');
 const { meliIdsDe } = require('../_meliIds');
 const { cargarEconomia, deSku, contribucionUnitaria } = require('./_economia');
+const { FACTOR_IVA_ADS, conIvaAds } = require('./_adsIva');
 
 // El search de ad groups toma las métricas en MAYÚSCULAS (el de campañas, en minúsculas).
 const METRICS_AD_GROUP = ['CLICKS', 'PRINTS', 'COST', 'TOTAL_AMOUNT', 'UNITS_QUANTITY'].join(',');
@@ -244,6 +245,7 @@ module.exports = async (req, res) => {
     const cvrCuenta = refCuenta.clics > 0 ? (refCuenta.unidades / refCuenta.clics) * 100 : 0;
     // Lo que cuesta hoy una venta traída por ads: la vara contra la que se mide la
     // contribución de cada producto. Si deja menos que esto, el clic no se paga.
+    // En pesos de MELI (sin IVA), como el CPC de su panel.
     const cpaCuenta = cvrCuenta > 0 ? cpcCuenta / (cvrCuenta / 100) : null;
 
     // ── 2. Ad groups: lo que se anuncia ahora y lo que se anunció en la ventana ────
@@ -463,13 +465,15 @@ module.exports = async (req, res) => {
         ])],
         dias_locales: local ? local.dias.size : 0,
       };
+      // Lo que de verdad se pagó: MELI factura el gasto con IVA (ver _adsIva.js).
+      hist.inversion_iva = conIvaAds(hist.inversion);
       const tuvoAds = hist.inversion > 0 || hist.clics > 0;
       hist.roas = hist.inversion > 0 ? r2(hist.facturacion / hist.inversion) : 0;
       hist.cpc = hist.clics > 0 ? r2(hist.inversion / hist.clics) : 0;
       hist.cvr = hist.clics > 0 ? r2((hist.unidades / hist.clics) * 100) : 0;
       // Ganancia que habría dejado ese gasto con el margen de hoy. El snapshot no guarda el
       // costo de entonces, así que queda dicho con qué contribución está valorizado.
-      hist.ganancia = tuvoAds && contribucion > 0 ? r2(contribucion * hist.unidades - hist.inversion) : null;
+      hist.ganancia = tuvoAds && contribucion > 0 ? r2(contribucion * hist.unidades - hist.inversion_iva) : null;
 
       // Veredicto del histórico contra el ROAS de equilibrio de hoy.
       let veredictoHist = null;
@@ -486,8 +490,10 @@ module.exports = async (req, res) => {
       const cvrRef = cvrPropio != null && cvrPropio > 0 ? cvrPropio : cvrCuenta;
       const cvrOrigen = cvrPropio != null && cvrPropio > 0 ? 'propio' : 'cuenta';
 
-      const cpcMax = cvrRef > 0 && contribucion > 0 ? r2(contribucion * (cvrRef / 100)) : null;
-      const cpaEstimado = cvrRef > 0 && cpcCuenta > 0 ? r2(cpcCuenta / (cvrRef / 100)) : null;
+      // El CPC máximo en pesos de MELI (sin IVA), para compararlo con el CPC de la cuenta y
+      // con lo que se puja. El CPA estimado es plata que sale: con IVA.
+      const cpcMax = cvrRef > 0 && contribucion > 0 ? r2(contribucion * (cvrRef / 100) / FACTOR_IVA_ADS) : null;
+      const cpaEstimado = cvrRef > 0 && cpcCuenta > 0 ? r2(cpcCuenta * FACTOR_IVA_ADS / (cvrRef / 100)) : null;
       // Lo que quedaría limpio de cada venta que trajera ads, al precio de clic de hoy.
       const gananciaPorVenta = cpaEstimado == null ? null : r2(contribucion - cpaEstimado);
       const colchonClic = cpcMax == null ? null : r2(cpcMax - cpcCuenta);
@@ -511,11 +517,12 @@ module.exports = async (req, res) => {
       const compartidoCon = Math.max(1, ...[...c.grupos, ...c.activos].map(skusDelGrupo));
       ahora.roas = ahora.inversion > 0 ? r2(ahora.facturacion / ahora.inversion) : 0;
       ahora.inversion = r2(ahora.inversion);
+      ahora.inversion_iva = conIvaAds(ahora.inversion);
       ahora.facturacion = r2(ahora.facturacion);
       // Muestra suficiente para juzgar: o gastó más de una contribución entera o juntó
       // clics como para que el silencio signifique algo.
       const juzgable = ahora.clics >= UMBRALES.clics_para_juzgar
-        || (contribucion > 0 && ahora.inversion >= contribucion);
+        || (contribucion > 0 && ahora.inversion_iva >= contribucion);
 
       // ── Las reglas ──────────────────────────────────────────────────────────────
       // La primera que encaja manda; el resto quedan como motivos secundarios, porque un
@@ -532,7 +539,7 @@ module.exports = async (req, res) => {
           detalle: `A ${r2(precio)} no queda nada: costo ${r2(costo)} + comisión ${comisionPct}%`
             + (eco.envio_unitario ? ` + envío ${eco.envio_unitario}` : '')
             + ` se comen el precio entero. Ningún ROAS lo salva.`,
-          plata: ahora.inversion,
+          plata: ahora.inversion_iva,
         });
       }
 
@@ -548,18 +555,18 @@ module.exports = async (req, res) => {
             detalle: `Está corriendo en ${campanasActivas.length} campañas a la vez`
               + ` (${campanasActivas.join(' y ')}). Son dos anuncios tuyos compitiendo en la`
               + ` misma subasta: te suben el CPC entre ellos y parten el presupuesto.`,
-            plata: ahora.inversion,
+            plata: ahora.inversion_iva,
           });
         }
         if (stockPub <= 0) {
           reglas.push({
             familia: 'ajustar', motivo: 'anunciado_sin_stock', accion: 'Pausar ya', urgencia: 'alta',
-            detalle: `Gastaste ${ahora.inversion} en ads de una publicación sin stock en MELI.`,
-            plata: ahora.inversion,
+            detalle: `Gastaste ${ahora.inversion_iva} (con IVA) en ads de una publicación sin stock en MELI.`,
+            plata: ahora.inversion_iva,
           });
         }
         if (be != null && juzgable && ahora.roas > 0 && ahora.roas < be) {
-          const perdido = r2(ahora.inversion - contribucion * ahora.unidades);
+          const perdido = r2(ahora.inversion_iva - contribucion * ahora.unidades);
           reglas.push({
             familia: 'ajustar', motivo: 'perdiendo', accion: 'Pausar o bajar la puja', urgencia: 'alta',
             detalle: `ROAS ${ahora.roas.toFixed(2)}x contra un equilibrio de ${be.toFixed(2)}x.`
@@ -570,18 +577,18 @@ module.exports = async (req, res) => {
         if (be != null && juzgable && ahora.unidades === 0 && ahora.inversion > 0) {
           reglas.push({
             familia: 'ajustar', motivo: 'quema_sin_vender', accion: 'Revisar la publicación', urgencia: 'alta',
-            detalle: `${ahora.clics} clics y ${ahora.inversion} gastados sin una sola venta.`
+            detalle: `${ahora.clics} clics y ${ahora.inversion_iva} gastados (con IVA) sin una sola venta.`
               + ` El tráfico llega y no compra: precio, fotos o ficha.`,
-            plata: ahora.inversion,
+            plata: ahora.inversion_iva,
           });
         }
         if (be != null && ahora.roas >= be * UMBRALES.holgura_escalar && ahora.unidades > 0 && stockPub > 0) {
           reglas.push({
             familia: 'ajustar', motivo: 'escalar', accion: 'Subir presupuesto', urgencia: 'media',
             detalle: `ROAS ${ahora.roas.toFixed(2)}x contra un equilibrio de ${be.toFixed(2)}x:`
-              + ` cada peso de ads deja ${r2(econ.margen_pct / 100 * ahora.roas - 1)} limpios.`
+              + ` cada peso de ads (con IVA) deja ${r2(econ.margen_pct / 100 * ahora.roas / FACTOR_IVA_ADS - 1)} limpios.`
               + ` Hay ${stockPub} unidades publicadas para sostenerlo.`,
-            plata: r2(contribucion * ahora.unidades - ahora.inversion),
+            plata: r2(contribucion * ahora.unidades - ahora.inversion_iva),
           });
         }
       } else if (be != null) {
@@ -608,7 +615,7 @@ module.exports = async (req, res) => {
         } else if (veredictoHist === 'perdia' || veredictoHist === 'no_vendio') {
           reglas.push({
             familia: 'anunciar', motivo: 'ya_fallo', accion: 'No volver sin cambiar algo', urgencia: 'baja',
-            detalle: `${comoLlego} Cuando se anunciaba invirtió ${hist.inversion}`
+            detalle: `${comoLlego} Cuando se anunciaba invirtió ${hist.inversion_iva} (con IVA)`
               + (veredictoHist === 'no_vendio'
                   ? ' y no vendió una sola unidad.'
                   : ` a ROAS ${hist.roas.toFixed(2)}x, debajo del equilibrio de ${be.toFixed(2)}x.`)
@@ -625,7 +632,7 @@ module.exports = async (req, res) => {
         } else if (veredictoHist === 'rentable') {
           reglas.push({
             familia: 'anunciar', motivo: 'se_apago_y_andaba', accion: 'Volver a prenderlo', urgencia: 'alta',
-            detalle: `${comoLlego} Cuando corría invirtió ${hist.inversion} a ROAS ${hist.roas.toFixed(2)}x`
+            detalle: `${comoLlego} Cuando corría invirtió ${hist.inversion_iva} (con IVA) a ROAS ${hist.roas.toFixed(2)}x`
               + ` (equilibrio ${be.toFixed(2)}x) y vendió ${hist.unidades} unidades`
               + (hist.fuente === 'local' || hist.fuente === 'ambas' ? ', contando el histórico guardado' : '')
               + '.',
@@ -666,7 +673,7 @@ module.exports = async (req, res) => {
           urgencia: anunciado ? 'media' : 'baja',
           detalle: `Haría falta ROAS ${be.toFixed(2)}x para empatar, muy por encima de lo que`
             + ` rinde la cuenta. Con ${econ.margen_pct}% de margen, ads no cierra.`,
-          plata: ahora.inversion,
+          plata: ahora.inversion_iva,
         });
       }
 
@@ -757,6 +764,7 @@ module.exports = async (req, res) => {
         campanas: campanas.length,
         clics: refCuenta.clics,
         inversion: r2(refCuenta.inversion),
+        inversion_iva: conIvaAds(refCuenta.inversion),
         unidades: refCuenta.unidades,
         cpc: r2(cpcCuenta),
         cvr: r2(cvrCuenta),

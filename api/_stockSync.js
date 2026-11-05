@@ -181,21 +181,12 @@ async function syncShopifyStockProducto(supabase, token, producto, cantidad) {
 //
 // `producto` necesita: sku, unidades_por_venta, meli_id/meli_ids, shopify_id.
 async function sincronizarStock(supabase, producto, nuevoStockDep) {
-  const stockDep = Math.max(0, Number(nuevoStockDep) || 0);
-  const stockPublicado = packsDisponibles(stockDep, producto);
-
-  const reporte = {
-    stockDep,
-    stockPublicado,
-    meli: { sincronizadas: [], errores: [] },
-    shopify: { sincronizada: false, enlazado: false, error: null },
-    error: null,
-  };
+  const reporte = reporteVacio(producto, nuevoStockDep);
 
   const { error: updErr } = await supabase.from('productos').update({
-    stock_dep: stockDep,
-    stock_meli: stockPublicado,
-    stock_shopify: stockPublicado,
+    stock_dep: reporte.stockDep,
+    stock_meli: reporte.stockPublicado,
+    stock_shopify: reporte.stockPublicado,
     updated_at: new Date().toISOString(),
   }).eq('sku', producto.sku);
 
@@ -205,6 +196,56 @@ async function sincronizarStock(supabase, producto, nuevoStockDep) {
     reporte.error = updErr.message;
     return reporte;
   }
+
+  return publicarStock(supabase, producto, reporte);
+}
+
+// Resta `unidades` del depósito por una venta y publica el espejo.
+//
+// La resta la hace Postgres (función descontar_stock) en vez de leer el stock,
+// restar acá y escribir el resultado: MELI manda varios avisos de la misma
+// orden en el mismo segundo, y con leer-restar-escribir cada uno descontaba
+// sobre el valor que ya había bajado el anterior. Además de esto, quien llama
+// tiene que haber registrado la venta ANTES, y descontar sólo si fue él quien
+// la insertó (ver ventaNueva).
+async function descontarStock(supabase, producto, unidades) {
+  const { data, error } = await supabase.rpc('descontar_stock', {
+    p_sku: producto.sku,
+    p_unidades: Math.max(0, Number(unidades) || 0),
+  });
+  if (error || data === null || data === undefined) {
+    const reporte = reporteVacio(producto, producto.stock_dep);
+    reporte.error = error?.message || `SKU ${producto.sku} no encontrado al descontar`;
+    return reporte;
+  }
+  return publicarStock(supabase, producto, reporteVacio(producto, data));
+}
+
+// Inserta la venta y dice si este llamado fue el que la creó. Es lo que hace
+// que una orden descuente stock una sola vez: si otro aviso de la misma orden
+// ya la insertó, la clave primaria rechaza ésta (23505) y no se descuenta.
+// Devuelve { nueva: true } | { nueva: false } | { error }.
+async function ventaNueva(supabase, venta) {
+  const { error } = await supabase.from('ventas').insert(venta);
+  if (!error) return { nueva: true };
+  if (error.code === '23505') return { nueva: false };
+  return { error };
+}
+
+function reporteVacio(producto, stockDep) {
+  const dep = Math.max(0, Number(stockDep) || 0);
+  return {
+    stockDep: dep,
+    stockPublicado: packsDisponibles(dep, producto),
+    meli: { sincronizadas: [], errores: [] },
+    shopify: { sincronizada: false, enlazado: false, error: null },
+    error: null,
+  };
+}
+
+// Empuja reporte.stockPublicado a MELI y a Shopify. No lanza.
+async function publicarStock(supabase, producto, reporte) {
+  const stockPublicado = reporte.stockPublicado;
 
   if (meliIdsDe(producto).length) {
     try {
@@ -289,7 +330,9 @@ async function applyImportArrival(supabase, items) {
 
 module.exports = {
   applyImportArrival,
+  descontarStock,
   sincronizarStock,
+  ventaNueva,
   resumenSync,
   syncMeliStock,
   syncMeliStockProducto,

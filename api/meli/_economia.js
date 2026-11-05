@@ -15,19 +15,20 @@
 // se movió: la comisión que MELI cobró en cada venta y el costo del envío que se despachó
 // por esa venta.
 //
-// Sobre los envíos de Mercado Envíos: entran al CRM con costo 0 y ese 0 es real para el
-// margen. Lo que MELI le cobra al vendedor por el envío sale de lo que descuenta del pago,
-// y `ventas.comision` ya es todo ese descuento (total − neto recibido, ver
-// recalcular-comisiones.js); en los productos debajo del umbral de envío gratis lo paga el
-// comprador. Medido sobre las ventas reales: las de Mercado Envíos tienen la misma comisión
-// efectiva que las de Flex (15,1% contra 14,5–16%), así que no esconden un envío. Antes se
-// completaban con el promedio de los envíos propios (~$200) y eso le sumaba un envío
+// Sobre los envíos de Mercado Envíos: entran a la tabla envíos con costo 0 y ese 0 es real
+// para el margen, porque lo que MELI le cobra al vendedor por el envío (publicaciones con
+// envío gratis) va dentro de `ventas.comision` — cargos por venta + envío, con el envío
+// desglosado en `ventas.costo_envio_meli` (ver _envioMeli.js). En los productos debajo del
+// umbral de envío gratis lo paga el comprador y ahí sí no le cuesta nada al vendedor. Antes
+// se completaban con el promedio de los envíos propios (~$200) y eso le sumaba un envío
 // inexistente a más de la mitad de las ventas: un producto de $100 daba margen negativo.
 //
 // Lo que sí se completa son los envíos propios (Flex, transportistas) que todavía no tienen
 // el costo cargado: ahí el 0 es un dato faltante. Por defecto con el promedio de los que sí
 // lo tienen (`envio: 'auto'`); se puede forzar un número o apagarlo con `envio: 0`, y la
 // respuesta dice cuántos se estimaron para que el número no se lea como medido.
+
+const { FACTOR_IVA_ADS } = require('./_adsIva');
 
 const DIAS_VENTANA = 180;        // Historia que se mira para promediar comisión y envío.
 const MIN_VENTAS_SKU = 3;        // Debajo de esto, el promedio del SKU es ruido: va el global.
@@ -268,7 +269,13 @@ function contribucionUnitaria({ precio, costo, comision_pct, envio_unitario }) {
     margen_pct: r2(margen * 100),
     // Por debajo de este ROAS el anuncio destruye plata. Sin margen positivo no existe:
     // ningún ROAS alcanza, y un número grande se leería como una meta alcanzable.
-    roas_breakeven: margen > 0 ? r2(1 / margen) : null,
+    //
+    // Está en ROAS de MELI (facturación ÷ gasto SIN IVA), que es el que muestra su panel y
+    // el que se carga como objetivo. Como MELI factura el gasto con IVA (ver _adsIva.js),
+    // cada peso de gasto cuesta 1,22: el equilibrio es 1,22 / margen, no 1 / margen.
+    roas_breakeven: margen > 0 ? r2(FACTOR_IVA_ADS / margen) : null,
+    // Lo mismo en ACOS (gasto sin IVA ÷ facturación): el margen que queda para ads, sin el IVA.
+    acos_breakeven: margen > 0 ? r2((margen * 100) / FACTOR_IVA_ADS) : null,
   };
 }
 

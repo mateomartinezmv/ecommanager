@@ -5,7 +5,7 @@
 // DELETE /api/ventas?id=XX → cancelar (restaura stock, elimina envío, registra cancelación)
 
 const { getSupabase } = require('./_supabase');
-const { sincronizarStock, resumenSync } = require('./_stockSync');
+const { descontarStock, sincronizarStock, resumenSync } = require('./_stockSync');
 const { unidadesDeDeposito, unidadesPorVenta } = require('./_packs');
 const { descripcionDePaquete } = require('./_meliPaquetes');
 
@@ -63,11 +63,7 @@ module.exports = async (req, res) => {
         .single();
       if (prodErr || !producto) throw new Error('Producto no encontrado: ' + v.sku);
 
-      // 2. Calcular nuevo stock. `cantidad` viene en unidades vendidas (packs):
-      // un par de sliders es 1 de cantidad y 2 unidades del depósito.
-      const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(v.cantidad, producto));
-
-      // 3. Guardar la venta
+      // 2. Guardar la venta
       const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
         id: v.id,
         canal: v.canal,
@@ -77,6 +73,9 @@ module.exports = async (req, res) => {
         orden_meli: v.ordenMeli || null,
         comprador: v.comprador || null,
         cliente: v.cliente || null,
+        // Sin esto la venta queda suelta aunque se haya elegido el cliente en el modal:
+        // la ficha del cliente sólo suma las ventas que tienen su cliente_id.
+        cliente_id: v.clienteId || null,
         sku: v.sku,
         producto: v.producto,
         cantidad: v.cantidad,
@@ -96,11 +95,14 @@ module.exports = async (req, res) => {
       }).select().single();
       if (ventaErr) throw ventaErr;
 
-      // 4. Bajar el depósito y publicar el espejo en los dos canales.
+      // 3. Bajar el depósito y publicar el espejo en los dos canales.
       // La venta descuenta del mismo depósito venga del canal que venga: una
       // venta de mostrador también tiene que bajarle el stock a MELI y a
       // Shopify, o siguen ofreciendo mercadería que ya no está.
-      const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
+      // `cantidad` viene en unidades vendidas (packs): un par de sliders es 1
+      // de cantidad y 2 unidades del depósito. La resta es atómica para que
+      // dos líneas del mismo SKU guardadas a la vez no se pisen.
+      const sync = await descontarStock(supabase, producto, unidadesDeDeposito(v.cantidad, producto));
       console.log('📉 Venta:', resumenSync(v.sku, sync));
 
       return res.json({
@@ -114,12 +116,13 @@ module.exports = async (req, res) => {
 
     if (req.method === 'PUT') {
       const id = req.query.id;
-      const { fecha, estado, comprador, cliente, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, facturada, notas } = req.body;
+      const { fecha, estado, comprador, cliente, clienteId, cantidad, precioUnit, comision, costoEnvioMeli, descuentoPct, descuentoMonto, total, metodoPago, facturada, notas } = req.body;
       const updateData = {};
       if (fecha !== undefined) updateData.fecha = fecha;
       if (estado !== undefined) updateData.estado = estado;
       if (comprador !== undefined) updateData.comprador = comprador;
       if (cliente !== undefined) updateData.cliente = cliente;
+      if (clienteId !== undefined) updateData.cliente_id = clienteId;
       if (cantidad !== undefined) updateData.cantidad = cantidad;
       if (precioUnit !== undefined) updateData.precio_unit = precioUnit;
       if (comision !== undefined) updateData.comision = comision;

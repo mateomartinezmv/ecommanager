@@ -14,7 +14,7 @@ const { publicarFila } = require('../cron/instagram-publicar');
 
 // Postgres responde 42P01 cuando la tabla no existe: la migración todavía no se corrió.
 const faltaMigracion = err => err && (err.code === '42P01' || /does not exist|schema cache/i.test(err.message || ''));
-const AVISO_MIGRACION = 'Falta correr la migración de Instagram en Supabase (supabase/migrations/20261105000000_add_instagram.sql).';
+const AVISO_MIGRACION = 'Falta correr la migración de Instagram en Supabase (supabase/migrations/20261105010000_add_instagram.sql).';
 
 module.exports = async (req, res) => {
   const supabase = getSupabase();

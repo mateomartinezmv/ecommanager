@@ -104,6 +104,15 @@ importar. Detalle en `tests/README.md`.
 
 ---
 
+## Publicar en Instagram y Facebook desde Claude Code
+
+`mcp/meta/` es un conector (servidor MCP) que le permite a Claude Code publicar en la página de
+Facebook y en el Instagram del negocio: fotos, carruseles, reels, historias y posteos
+programados. Se registra solo con `.mcp.json`; la configuración del token está en
+`mcp/meta/README.md`.
+
+---
+
 ## Gastos e ingresos extra (sección Finanzas)
 
 Para registrar lo que no entra por una venta: el packaging, el envío que pagás por un cambio
@@ -196,7 +205,124 @@ registrado"**: se les puede poner el motivo a mano desde el badge de la columna 
 
 ---
 
+## Waitlist: avisar a un cliente cuando vuelve un producto (Clientes → 🔔 / Stock → 🔔 Waitlist)
+
+Para el cliente que pide algo que está agotado: se lo anota con el SKU que espera y, cuando
+llega la importación que lo trae, el CRM te lo marca para que le mandes el WhatsApp.
+
+**Antes de usarla hay que crear la tabla una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261029000000_add_avisos_stock.sql`
+3. **Run**
+
+Si todavía no corriste la migración, el resto del CRM funciona igual y la pestaña 🔔 te avisa
+qué archivo falta.
+
+**Anotar a un cliente:** en **Clientes**, el botón **🔔** de cada fila. Buscás el producto por
+SKU o por nombre, ponés cuántas unidades quiere y una nota opcional ("lo quiere en negro").
+Si el cliente no tiene teléfono te lo pide ahí mismo y lo guarda en su ficha, porque es a
+donde le va a llegar el aviso. Un cliente puede esperar varios productos, pero no el mismo
+dos veces mientras el aviso siga abierto. El botón muestra cuántos productos espera y se pone
+azul cuando alguno ya llegó.
+
+**Cuándo se dispara:** cuando una importación pasa a **recibida** (✅ Marcar llegada en
+Importaciones), todos los clientes que esperaban alguno de sus SKUs pasan a **📲 Para
+avisar**, y el aviso de llegada te dice cuántos son. Un ajuste de stock a mano, una devolución
+o una venta cancelada **no** disparan nada: lo que cuenta es que entró mercadería nueva.
+
+**Avisar:** en **Stock → 🔔 Waitlist** están todos los productos que alguien espera,
+agrupados por SKU, con un filtro por SKU y otro por estado:
+
+- **📲 Para avisar**: ya llegó su importación. El botón **📱 Avisar** abre WhatsApp con el
+  mensaje armado ("Hola Juan! … Ya nos volvió a entrar …") y el aviso pasa a **✅ Avisado**.
+- **⏳ Esperando**: todavía no llegó. Al lado del SKU se ve si viene en una importación en
+  camino (y cuándo llega) o si no hay ninguna pedida: la tarjeta **Pedidos sin importación en
+  camino** es lo que te están pidiendo y todavía no compraste.
+- **✕** saca al cliente de la lista (ya no lo quiere, se lo consiguió en otro lado).
+
+Dentro de cada SKU el que se anotó primero aparece primero, que es a quien corresponde
+avisarle antes si llegan pocas unidades.
+
+---
+
+## Control de despacho con lector de códigos (✅ Control de despacho)
+
+Para que lo que entra en cada paquete de MELI (Flex y Mercado Envíos) sea lo que se vendió,
+sin depender de que quien arma lea bien la hoja. Se usa en la PC de la oficina con un lector
+de códigos 2D (lee el código de barras de Mercado Envíos y el QR de Flex) enchufado por USB o
+con su receptor inalámbrico: el lector funciona como un teclado, no hay que instalar nada.
+
+**Antes de usarlo hay que agregar las columnas una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261103000000_add_control_envios.sql`
+3. **Run**
+
+Si todavía no corriste la migración, el control funciona igual (avisa cuando algo está mal),
+pero no queda anotado en Envíos y la pantalla te dice qué archivo falta.
+
+**Cómo se usa:** las etiquetas se siguen imprimiendo desde MELI como siempre. Con la caja
+abierta:
+
+1. Se escanea la **etiqueta de MELI** del paquete. La pantalla muestra qué tiene que ir
+   adentro: SKU, variante resaltada, cantidad y la foto de la publicación. Si es un carrito,
+   aparecen todos sus productos.
+2. Se escanea la **etiqueta del CRM** de cada producto a medida que se mete en la caja.
+   - ✅ Verde y un tono corto: es el correcto.
+   - ❌ Rojo y un zumbido: es otro producto, otra variante o una unidad de más. Dice qué
+     sacar y qué falta.
+3. Cuando está todo suena **✅ Paquete controlado**: se cierra la caja y se pasa al siguiente
+   escaneando su etiqueta.
+
+Los productos que se venden de a par piden un escaneo por cada caja. Una venta cancelada
+avisa **⛔ NO se despacha**. Si una etiqueta del CRM no se puede leer, el botón **✋ No lee la
+etiqueta** la da por puesta, pero queda registrado como "a mano". Si la etiqueta de MELI no
+se lee, el paquete se elige de la lista **Para despachar** con **Controlar**.
+
+**Imprimir las etiquetas desde el control:** en la lista **Para despachar**, cada envío
+pendiente tiene una casilla y dice cómo está su etiqueta:
+
+- **De MELI (🖨️):** **Impresa**, **Sin imprimir** o **No disponible** (MELI todavía no la
+  entrega, por ejemplo si el pago está pendiente). Se le pregunta a MELI, así que cuenta
+  también lo que se imprimió desde su panel.
+- **Del CRM (🏷️), las de mostrador y Shopify de 100 × 150:** **Impresa**, **Sin imprimir** o
+  **Falta dirección** (sin dirección no se puede armar: se carga con ✏️ en Envíos).
+
+Arriba de la lista:
+
+- **Todas** / **Las que faltan imprimir** / **Ninguna** marcan las casillas; después se puede
+  sumar o sacar alguna a mano.
+- **🖨️ Imprimir (N)** baja **un solo PDF** con las elegidas, las de MELI y las del CRM juntas,
+  para mandarlo a la térmica desde la PC de la oficina. Al imprimirlas, MELI marca las suyas
+  como impresas, igual que desde su panel; las del CRM quedan anotadas en el envío.
+
+Para que el CRM recuerde las etiquetas propias impresas después de recargar la página, hay
+que correr una vez `supabase/migrations/20261103010000_add_etiqueta_impresa.sql` (igual que
+la de arriba). Sin eso se imprimen igual y la pantalla avisa qué falta.
+
+**Lo que ves en Envíos:** arriba, cuántos de los pendientes ya pasaron por el lector y cuántos
+escaneos equivocados se frenaron hoy; en cada envío, **✅ Controlado** (con las unidades
+marcadas a mano y los errores frenados) o **Sin controlar**.
+
+**Cómo encuentra el paquete:** en Mercado Envíos el número del código de barras ya está en el
+tracking. En Flex no, así que el CRM guarda el número de envío de MELI cuando se sincroniza el
+envío; si todavía no lo tiene, la primera vez que se escanea la etiqueta se lo pregunta a MELI
+y lo guarda.
+
+**Si el lector escribe símbolos raros** (porque está configurado con otro idioma de teclado
+que la PC), no hace falta tocarlo: el CRM compara sólo letras y números. Igual conviene
+configurarlo en español con los códigos del manual.
+
+---
+
 ## Instagram (Marketing → 📸 Instagram)
+
+> **¿Y el conector de Claude Code (`mcp/meta/`)?** Son complementarios. El conector sirve para
+> que Claude Code publique *en el momento* desde tu compu. Esta pantalla y su cron viven en
+> Vercel: publican *a la hora programada* aunque no haya nadie conectado, que es lo que
+> necesitan las tareas programadas. Los dos usan el mismo tipo de token (el de la página), así
+> que la misma app de Meta sirve para los dos.
 
 Para programar posts, carruseles e historias de **@martinezmotos.uy** desde el CRM. La API de
 Meta no programa publicaciones: publica en el momento. Por eso cada publicación se guarda en
@@ -227,7 +353,7 @@ salió o si falló.
 
    Después, **Deployments → Redeploy** para que las tome.
 4. **Crear las tablas en Supabase:** SQL Editor → New query → pegá
-   `supabase/migrations/20261105000000_add_instagram.sql` → **Run**.
+   `supabase/migrations/20261105010000_add_instagram.sql` → **Run**.
 5. **Conectar:** en el CRM, **📸 Instagram** → **🔗 Conectar Instagram**, iniciá sesión con el
    Facebook que administra la página y aceptá los permisos. Volvés al CRM con
    "✅ Instagram conectado correctamente" y el usuario de la cuenta arriba.

@@ -25,7 +25,8 @@ function servirPublic() {
       res.writeHead(404);
       return res.end();
     }
-    res.writeHead(200, { 'Content-Type': archivo.endsWith('.html') ? 'text/html' : 'text/plain' });
+    const tipo = archivo.endsWith('.html') ? 'text/html' : archivo.endsWith('.js') ? 'application/javascript' : 'text/plain';
+    res.writeHead(200, { 'Content-Type': tipo });
     res.end(fs.readFileSync(archivo));
   });
   servidor.listen(0);
@@ -102,6 +103,7 @@ function mockearApi(page, estado, fallos = {}) {
           precio: cuerpo.precio ?? p.precio,
           alerta_min: cuerpo.alertaMin ?? p.alerta_min,
           notas: cuerpo.notas ?? p.notas,
+          codigo_gesta: cuerpo.codigoGesta !== undefined ? (parseInt(cuerpo.codigoGesta, 10) || null) : p.codigo_gesta,
           discontinuado: disc,
           motivo_discontinuado: !disc ? null
             : (cuerpo.motivoDiscontinuado !== undefined ? (cuerpo.motivoDiscontinuado || null) : (p.motivo_discontinuado ?? null)),
@@ -120,7 +122,21 @@ function mockearApi(page, estado, fallos = {}) {
       }
       return ok(estado.productos);
     }
-    if (ruta === '/ventas') return ok(estado.ventas);
+    if (ruta === '/ventas') {
+      // Lo que manda el front al registrar una venta, tal cual, para verificar el cuerpo.
+      if (metodo === 'POST') {
+        (estado.ventasPost = estado.ventasPost || []).push(cuerpo);
+        return ok({ venta: cuerpo });
+      }
+      if (metodo === 'PUT') {
+        (estado.ventasPut = estado.ventasPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        // La marca de facturada queda guardada, como en Supabase, para que la recarga la vea.
+        const venta = estado.ventas.find(v => v.id === url.searchParams.get('id'));
+        if (venta && cuerpo.facturada !== undefined) venta.facturada = cuerpo.facturada;
+        return ok(cuerpo);
+      }
+      return ok(estado.ventas);
+    }
     if (ruta === '/envios') {
       // Un envío nuevo se guarda como lo haría api/envios.js, en snake_case.
       if (metodo === 'POST') {
@@ -131,10 +147,155 @@ function mockearApi(page, estado, fallos = {}) {
         (estado.envios = estado.envios || []).push(e);
         return ok(e);
       }
+      if (metodo === 'PUT') {
+        (estado.enviosPut = estado.enviosPut || []).push({ id: url.searchParams.get('id'), ...cuerpo });
+        // `sinControl` imita a una base donde la migración del control de despacho no corrió.
+        if (estado.sinControl && (cuerpo.controladoAt !== undefined || cuerpo.control !== undefined)) {
+          return error(503, 'Falta correr la migración 20261103000000_add_control_envios.sql en Supabase.');
+        }
+        // `sinEtiquetaImpresa`: la migración de la etiqueta del CRM impresa todavía no corrió.
+        if (estado.sinEtiquetaImpresa && cuerpo.etiquetaImpresaAt !== undefined) {
+          return error(503, 'Falta correr la migración 20261103010000_add_etiqueta_impresa.sql en Supabase.');
+        }
+        const e = (estado.envios || []).find(x => x.id === url.searchParams.get('id'));
+        if (e && cuerpo.controladoAt !== undefined) { e.controlado_at = cuerpo.controladoAt; e.control = cuerpo.control; }
+        if (e && cuerpo.etiquetaImpresaAt !== undefined) e.etiqueta_impresa_at = cuerpo.etiquetaImpresaAt;
+        return ok(cuerpo);
+      }
+      // Control de despacho: la etiqueta que el CRM no tenía y el servidor resuelve contra
+      // MELI (estado.etiquetasMeli: código → id del envío), y las fotos de las publicaciones.
+      if (url.searchParams.has('buscar')) {
+        (estado.buscados = estado.buscados || []).push(url.searchParams.get('buscar'));
+        const numero = (url.searchParams.get('buscar').match(/\d{8,}/) || [])[0];
+        const id = (estado.etiquetasMeli || {})[numero];
+        const e = id && (estado.envios || []).find(x => x.id === id);
+        if (!e) return error(404, 'No hay ningún envío del CRM con ese código.');
+        e.meli_shipment_id = numero;
+        return ok({ envio: e, shipmentId: numero, origen: 'meli' });
+      }
+      if (url.searchParams.has('fotos')) return ok({ fotos: estado.fotosPublicaciones || {} });
       return ok(estado.envios || []);
     }
-    if (ruta === '/clientes') return ok(estado.clientes || []);
-    if (ruta === '/importaciones' || ruta === '/devoluciones') return ok([]);
+    if (ruta === '/clientes') {
+      // PUT reemplaza la ficha entera, como api/clientes.js.
+      if (metodo === 'PUT') {
+        const c = (estado.clientes || []).find(x => x.id === url.searchParams.get('id'));
+        if (!c) return error(404, 'cliente inexistente');
+        Object.assign(c, { nombre: cuerpo.nombre, telefono: cuerpo.telefono || null, email: cuerpo.email || null,
+          canal_origen: cuerpo.canal_origen, meli_nickname: cuerpo.meli_nickname || null, notas: cuerpo.notas || null });
+        return ok(c);
+      }
+      if (metodo === 'POST') {
+        const c = { id: 'CLI' + Date.now(), nombre: cuerpo.nombre, telefono: cuerpo.telefono || null, email: null,
+          canal_origen: cuerpo.canal_origen || 'mostrador', meli_nickname: null, notas: null, created_at: HOY };
+        (estado.clientes = estado.clientes || []).push(c);
+        return ok(c);
+      }
+      return ok(estado.clientes || []);
+    }
+    // Etiquetas de MELI de varios envíos (Control de despacho → 🖨️). `etiquetasMeliEstado` es
+    // lo que MELI dice de cada envío; los PDF pedidos se guardan en `etiquetasPedidas`.
+    if (ruta === '/meli/etiqueta' && url.searchParams.has('envios')) {
+      const ids = url.searchParams.get('envios').split(',').filter(Boolean);
+      if (url.searchParams.get('estado')) {
+        if (estado.etiquetasEstadoFalla) return error(500, estado.etiquetasEstadoFalla);
+        const conocido = estado.etiquetasMeliEstado || {};
+        return ok({ estados: Object.fromEntries(ids.map(id => [id, conocido[id] || { impresa: false, imprimible: true }])) });
+      }
+      (estado.etiquetasPedidas = estado.etiquetasPedidas || []).push(ids);
+      if (estado.etiquetasFalla) return error(502, estado.etiquetasFalla);
+      const omitidas = ids.filter(id => (estado.etiquetasSinShipment || []).includes(id));
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: '%PDF-1.4 etiquetas de prueba',
+        headers: omitidas.length ? { 'X-Etiquetas-Omitidas': omitidas.join(',') } : {} });
+    }
+    if (ruta === '/importaciones') return ok(estado.importaciones || []);
+    // Devoluciones, como api/devoluciones.js. `sinCostoEnvioDevol` imita una base donde la
+    // migración del costo del envío de vuelta todavía no corrió, y `sinSkuRecibido` la del
+    // producto equivocado. El stock se mueve en el SKU que vuelve: el equivocado si lo hay
+    // (−cantidad al registrar, +cantidad al confirmar o al borrar una pendiente).
+    if (ruta === '/devoluciones') {
+      const devs = estado.devoluciones = estado.devoluciones || [];
+      const id = url.searchParams.get('id');
+      const mover = (sku, packs) => {
+        const p = estado.productos.find(x => x.sku === sku);
+        const uds = packs * (p.unidades_por_venta || 1);
+        p.stock_dep = Math.max(0, p.stock_dep + uds);
+        p.stock_meli = p.stock_shopify = Math.floor(p.stock_dep / (p.unidades_por_venta || 1));
+        return p.stock_dep;
+      };
+      if (metodo === 'POST' && cuerpo.skuRecibido) {
+        if (estado.sinSkuRecibido) return error(503, 'Falta correr la migración 20261105000000_add_sku_recibido_devoluciones.sql en Supabase.');
+        const b = estado.productos.find(x => x.sku === cuerpo.skuRecibido);
+        if (!b) return error(400, `No existe el producto ${cuerpo.skuRecibido}`);
+        const d = { id: 'DEV-' + Date.now() + '-' + devs.length, venta_id: cuerpo.ventaId || null, sku: cuerpo.sku,
+          producto: cuerpo.producto, cantidad: cuerpo.cantidad, estado: 'pendiente', notas: cuerpo.notas || null,
+          costo_envio: cuerpo.costoEnvio || 0, sku_recibido: b.sku, producto_recibido: b.nombre,
+          created_at: new Date().toISOString(), recibida_at: null };
+        devs.unshift(d);
+        return ok({ ...d, stockRecibido: mover(b.sku, -cuerpo.cantidad) });
+      }
+      if (metodo === 'PUT') {
+        const d = devs.find(x => x.id === id);
+        if (!d) return error(404, 'Devolución no encontrada');
+        if (d.estado === 'recibida') return error(400, 'Ya fue confirmada');
+        const sku = d.sku_recibido || d.sku;
+        const nuevoStock = mover(sku, d.cantidad);
+        Object.assign(d, { estado: 'recibida', recibida_at: new Date().toISOString() });
+        return ok({ devolucion: { ...d }, skuRepuesto: sku, nuevoStock });
+      }
+      if (metodo === 'POST') {
+        const d = { id: 'DEV-' + Date.now() + '-' + devs.length, venta_id: cuerpo.ventaId || null, sku: cuerpo.sku,
+          producto: cuerpo.producto, cantidad: cuerpo.cantidad, estado: 'pendiente', notas: cuerpo.notas || null,
+          created_at: new Date().toISOString(), recibida_at: null };
+        const respuesta = { ...d };
+        if (estado.sinCostoEnvioDevol) respuesta.migracionCostoEnvioPendiente = '20261104000000_add_costo_envio_devoluciones.sql';
+        else d.costo_envio = respuesta.costo_envio = cuerpo.costoEnvio || 0;
+        devs.unshift(d);
+        return ok(respuesta);
+      }
+      if (metodo === 'PATCH') {
+        if (estado.sinCostoEnvioDevol) return error(503, 'Falta correr la migración 20261104000000_add_costo_envio_devoluciones.sql en Supabase.');
+        const d = devs.find(x => x.id === id);
+        if (!d) return error(404, 'Devolución no encontrada');
+        d.costo_envio = cuerpo.costoEnvio;
+        return ok({ ...d });
+      }
+      if (metodo === 'DELETE') {
+        const d = devs.find(x => x.id === id);
+        estado.devoluciones = devs.filter(x => x.id !== id);
+        if (d && d.estado === 'pendiente' && d.sku_recibido) {
+          return ok({ ok: true, skuRepuesto: d.sku_recibido, nuevoStock: mover(d.sku_recibido, d.cantidad) });
+        }
+        return ok({ ok: true });
+      }
+      return ok(devs);
+    }
+    // La waitlist, como api/avisos-stock.js. `sinAvisos` imita a una base donde la migración
+    // todavía no corrió.
+    if (ruta === '/avisos-stock') {
+      if (estado.sinAvisos) {
+        return metodo === 'GET' ? ok({ avisos: [], migracionPendiente: true }) : error(503, 'Falta correr la migración');
+      }
+      const avisos = estado.avisos = estado.avisos || [];
+      if (metodo === 'POST') {
+        if (avisos.some(a => a.cliente_id === cuerpo.cliente_id && a.sku === cuerpo.sku && ['esperando', 'listo'].includes(a.estado))) {
+          return error(409, `Este cliente ya está esperando ${cuerpo.sku}`);
+        }
+        const a = { id: 'AVI' + Date.now() + '-' + avisos.length, cliente_id: cuerpo.cliente_id, sku: cuerpo.sku,
+          cantidad: cuerpo.cantidad || 1, nota: cuerpo.nota || null, estado: 'esperando', importacion_id: null,
+          created_at: new Date().toISOString(), listo_at: null, avisado_at: null };
+        avisos.unshift(a);
+        return ok(a);
+      }
+      if (metodo === 'PUT') {
+        const a = avisos.find(x => x.id === url.searchParams.get('id'));
+        if (!a) return error(404, 'aviso inexistente');
+        a.estado = cuerpo.estado;
+        if (cuerpo.estado === 'avisado') a.avisado_at = new Date().toISOString();
+        return ok(a);
+      }
+      return ok({ avisos, migracionPendiente: false });
+    }
     // La pestaña de Ads: cada suite puede poner su propia respuesta en el estado. Las
     // URLs pedidas se guardan porque lo que *no* se manda también es parte del contrato
     // (ej: sin ?comision el endpoint usa la comisión real en vez de un 15% fijo).
@@ -220,6 +381,18 @@ function mockearApi(page, estado, fallos = {}) {
       }
     }
 
+    // Réplica de api/meli/factura.js: sube el PDF y marca facturadas las líneas de la venta.
+    if (ruta === '/meli/factura' && metodo === 'POST') {
+      (estado.facturasMeli = estado.facturasMeli || []).push(cuerpo);
+      if (estado.facturaMeliError) return error(502, estado.facturaMeliError);
+      const venta = estado.ventas.find(v => v.id === cuerpo.ventaId);
+      if (!venta) return error(404, 'No encontré esa venta en el CRM.');
+      const misma = v => (venta.pack_id ? v.pack_id === venta.pack_id : v.orden_meli === venta.orden_meli);
+      const cuando = new Date().toISOString();
+      const ids = estado.ventas.filter(misma).map(v => { v.facturada = true; v.factura_meli_at = cuando; return v.id; });
+      return ok({ ok: true, pack: venta.pack_id || venta.orden_meli, ventas: ids, facturaMeliAt: cuando });
+    }
+
     if (ruta === '/movimientos') {
       const esCategoria = url.searchParams.get('recurso') === 'categoria';
       const id = url.searchParams.get('id');
@@ -269,7 +442,9 @@ function mockearApi(page, estado, fallos = {}) {
 async function abrirCRM({ estado, fallos, viewport } = {}) {
   estado = estado || estadoDemo();
   const servidor = servirPublic();
-  const browser = await chromium.launch({ args: ['--no-sandbox'] });
+  // CHROMIUM_PATH: para máquinas con un Chromium ya instalado que no es el de esta versión
+  // de Playwright (ej: CHROMIUM_PATH=/opt/pw-browsers/chromium npm test).
+  const browser = await chromium.launch({ args: ['--no-sandbox'], ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
   const page = await browser.newPage(viewport ? { viewport } : {});
 
   const errores = [];
@@ -301,4 +476,4 @@ function leerTarjetas(page, selector) {
   })));
 }
 
-module.exports = { HOY, haceDias, estadoDemo, abrirCRM, erroresReales, leerTarjetas };
+module.exports = { HOY, haceDias, estadoDemo, abrirCRM, erroresReales, leerTarjetas, servirPublic };

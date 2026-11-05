@@ -346,13 +346,6 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       skuFinal = skuAuto
       nombreFinal = nombreItem
     } else {
-      // Descontar stock
-      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad * unidadesPorVenta(producto))
-      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad)
-      await supabase.from('productos').update({
-        stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli,
-        updated_at: new Date().toISOString(),
-      }).eq('sku', producto.sku)
       skuFinal = producto.sku
       nombreFinal = producto.nombre
     }
@@ -378,8 +371,10 @@ async function procesarOrden(order: any, token: string, log: string[]) {
 
     log.push(`💰 Comisión final: $${comisionItem} (método: ${totalDeductionOrder !== null ? 'net_received' : 'fallback'})`)
 
-    // Registrar venta
-    await supabase.from('ventas').insert({
+    // Registrar venta ANTES de tocar el stock: el webhook de Vercel puede estar
+    // procesando la misma orden en este momento. Sólo descuenta quien logra
+    // insertarla; si la clave primaria la rechaza (23505), ya la registró otro.
+    const { error: ventaErr } = await supabase.from('ventas').insert({
       id: ventaId, canal: 'meli',
       fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
       orden_meli: String(order.id),
@@ -396,7 +391,24 @@ async function procesarOrden(order: any, token: string, log: string[]) {
       total: precioUnit * cantidad, estado: 'pagada',
       genera_envio: !!shippingId, notas: 'Auto-registrada por sync MELI',
     })
+    if (ventaErr) {
+      log.push(ventaErr.code === '23505'
+        ? `ℹ️ Venta ${ventaId} ya existe`
+        : `⚠️ Error registrando ${ventaId}: ${ventaErr.message} — stock sin tocar`)
+      continue
+    }
     log.push(`✅ Venta registrada: ${ventaId} — ${nombreFinal}`)
+
+    // Descuento atómico (función descontar_stock): la resta la hace Postgres,
+    // sin leer-restar-escribir, y recalcula stock_meli/stock_shopify.
+    if (producto) {
+      const { data: stockDep, error: stockErr } = await supabase.rpc('descontar_stock', {
+        p_sku: producto.sku, p_unidades: cantidad * unidadesPorVenta(producto),
+      })
+      log.push(stockErr
+        ? `⚠️ Stock ${producto.sku} no descontado: ${stockErr.message}`
+        : `📉 Stock ${producto.sku}: depósito ${stockDep}`)
+    }
   }
 
   // El envío va fuera del loop a propósito: es del paquete, no del ítem. Corre

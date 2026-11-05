@@ -75,7 +75,7 @@ test('descatalogar funciona sin las columnas del motivo, y la pantalla lo avisa'
     assert.strictEqual(p.discontinuado, true, 'el descatalogado se guarda igual');
     assert.strictEqual(p.motivo_discontinuado, null, 'el motivo no entró: la columna no existe');
 
-    await otro.page.click(`#page-stock .tab:text-is("⛔ Discontinuados")`);
+    await otro.page.click(`#page-stock .tab:text-is("⛔ Descatalogados")`);
     await otro.page.waitForSelector('#stock-disc-panel:visible');
     const aviso = await otro.page.textContent('#stock-disc-aviso');
     assert.match(aviso, /Falta correr la migración del motivo/);

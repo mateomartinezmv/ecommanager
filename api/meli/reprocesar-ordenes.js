@@ -4,7 +4,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
-const { sincronizarStock, resumenSync } = require('../_stockSync');
+const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
 
@@ -76,31 +76,13 @@ module.exports = async (req, res) => {
 
         const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
 
-        // Verificar si ya existe
-        const { data: ventaExistente } = await supabase
-          .from('ventas')
-          .select('id')
-          .eq('id', ventaId)
-          .single();
-
-        if (ventaExistente) {
-          resultados.push({ orden: orderId, producto: item.item.title, status: 'ya_existia' });
-          continue;
-        }
-
         // Estado de la orden
         const estadoMeli = order.status; // paid, cancelled, etc.
         const estadoCRM = estadoMeli === 'cancelled' ? 'cancelada' : 'pagada';
 
-        // Descontar stock solo si está pagada
-        if (estadoMeli === 'paid') {
-          const nuevoStockDep = Math.max(0, producto.stock_dep - unidadesDeDeposito(cantidad, producto));
-          const sync = await sincronizarStock(supabase, producto, nuevoStockDep);
-          console.log('📉 Reproceso:', resumenSync(producto.sku, sync));
-        }
-
-        // Insertar venta
-        const { error: insertErr } = await supabase.from('ventas').insert({
+        // Venta primero: si ya existía (o el webhook la insertó en paralelo) la
+        // clave primaria la rechaza y el stock no se toca.
+        const alta = await ventaNueva(supabase, {
           id: ventaId,
           canal: 'meli',
           fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
@@ -118,9 +100,16 @@ module.exports = async (req, res) => {
           genera_envio: estadoMeli === 'paid',
         });
 
-        if (insertErr) {
-          resultados.push({ orden: orderId, producto: item.item.title, status: 'error_insert', msg: insertErr.message });
+        if (alta.error) {
+          resultados.push({ orden: orderId, producto: item.item.title, status: 'error_insert', msg: alta.error.message });
+        } else if (!alta.nueva) {
+          resultados.push({ orden: orderId, producto: item.item.title, status: 'ya_existia' });
         } else {
+          // Descontar stock solo si está pagada
+          if (estadoMeli === 'paid') {
+            const sync = await descontarStock(supabase, producto, unidadesDeDeposito(cantidad, producto));
+            console.log('📉 Reproceso:', resumenSync(producto.sku, sync));
+          }
           resultados.push({
             orden: orderId,
             producto: producto.nombre,

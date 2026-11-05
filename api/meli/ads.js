@@ -14,6 +14,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { IVA_ADS, conIvaAds } = require('./_adsIva');
 
 const METRICS = 'clicks,prints,cost,direct_amount,indirect_amount,total_amount';
 const VENTANA_DIAS = 90;
@@ -122,12 +123,15 @@ module.exports = async (req, res) => {
       periodo: { desde, hasta },
       recortado: desdePedido < desde ? { pedido: desdePedido, motivo: 'MELI sólo sirve 90 días de métricas' } : null,
       dias_guardados: dias.length,
+      // Sin IVA, como lo informa MELI; `total_spend_iva` es lo que factura (ver _adsIva.js).
       total_spend: totalSpend,
+      total_spend_iva: conIvaAds(totalSpend),
+      iva_ads_pct: IVA_ADS * 100,
       total_facturacion: totalFact,
       roas: totalSpend > 0 ? parseFloat((totalFact / totalSpend).toFixed(2)) : 0,
       clicks: dias.reduce((s, d) => s + d.clicks, 0),
       impressions: dias.reduce((s, d) => s + d.impressions, 0),
-      por_dia: dias,
+      por_dia: dias.map(d => ({ ...d, spend_iva: conIvaAds(d.spend) })),
     });
 
   } catch (err) {

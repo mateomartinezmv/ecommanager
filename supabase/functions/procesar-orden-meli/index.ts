@@ -411,41 +411,44 @@ async function procesarOrden(orderId: string, log: string[]): Promise<any> {
       skuFinal = skuAuto
       nombreFinal = nombreItem
     } else {
-      const nuevoStockDep = Math.max(0, producto.stock_dep - cantidad * unidadesPorVenta(producto))
-      const nuevoStockMeli = Math.max(0, producto.stock_meli - cantidad)
-      await supabase.from('productos').update({
-        stock_dep: nuevoStockDep, stock_meli: nuevoStockMeli,
-        updated_at: new Date().toISOString(),
-      }).eq('sku', producto.sku)
-      log.push(`✅ Stock: ${producto.sku} dep=${nuevoStockDep} meli=${nuevoStockMeli}`)
       skuFinal = producto.sku
       nombreFinal = producto.nombre
     }
 
-    // Registrar venta
+    // Registrar venta ANTES de tocar el stock, y descontar sólo si la insertó
+    // este llamado. Antes se descontaba primero y siempre, aunque la venta ya
+    // existiera: cada reproceso o aviso repetido de la orden volvía a restar.
     const ventaId = `V_MELI_${order.id}_${meliItemId}`
-    const { data: ventaExistente } = await supabase.from('ventas').select('id').eq('id', ventaId).single()
-
-    if (ventaExistente) {
+    const { error: ventaErr } = await supabase.from('ventas').insert({
+      id: ventaId, canal: 'meli',
+      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      orden_meli: String(order.id),
+      pack_id: packId,
+      meli_item_id: meliItemId,
+      comprador: order.buyer?.nickname || '',
+      sku: skuFinal, producto: nombreFinal,
+      cantidad, precio_unit: precioUnit,
+      comision: calcularComision(precioUnit, cantidad, costoEnvio),
+      total: precioUnit * cantidad, estado: 'pagada',
+      genera_envio: !!shipmentId, notas: 'Auto-registrada por webhook MELI',
+    })
+    if (ventaErr?.code === '23505') {
       log.push(`ℹ️ Venta ${ventaId} ya existe`)
       resultados.push({ item: meliItemId, estado: 'ya_existe' })
+    } else if (ventaErr) {
+      throw new Error(`Error insertando venta: ${ventaErr.message}`)
     } else {
-      const { error: ventaErr } = await supabase.from('ventas').insert({
-        id: ventaId, canal: 'meli',
-        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-        orden_meli: String(order.id),
-        pack_id: packId,
-        meli_item_id: meliItemId,
-        comprador: order.buyer?.nickname || '',
-        sku: skuFinal, producto: nombreFinal,
-        cantidad, precio_unit: precioUnit,
-        comision: calcularComision(precioUnit, cantidad, costoEnvio),
-        total: precioUnit * cantidad, estado: 'pagada',
-        genera_envio: !!shipmentId, notas: 'Auto-registrada por webhook MELI',
-      })
-      if (ventaErr) throw new Error(`Error insertando venta: ${ventaErr.message}`)
       log.push(`✅ Venta registrada: ${ventaId}`)
       resultados.push({ item: meliItemId, estado: 'registrada', ventaId })
+
+      // Descuento atómico (función descontar_stock): sin leer-restar-escribir.
+      if (producto) {
+        const { data: stockDep, error: stockErr } = await supabase.rpc('descontar_stock', {
+          p_sku: producto.sku, p_unidades: cantidad * unidadesPorVenta(producto),
+        })
+        if (stockErr) log.push(`⚠️ Stock ${producto.sku} no descontado: ${stockErr.message}`)
+        else log.push(`✅ Stock: ${producto.sku} dep=${stockDep}`)
+      }
     }
   }
 

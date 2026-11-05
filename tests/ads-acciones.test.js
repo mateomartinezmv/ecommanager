@@ -46,9 +46,14 @@ test('el antes y después compara por día y dice si la ganancia mejoró', () =>
   assert.strictEqual(r.antes.dias, 14);
   assert.strictEqual(r.antes.inversion, 1400);
   assert.strictEqual(r.antes.unidades, 7);
-  assert.strictEqual(r.antes.ganancia_dia, (7 * 300 - 1400) / 14);
+  // La ganancia descuenta el gasto con el IVA que MELI suma en la factura (22%); la
+  // inversión y el ROAS quedan como los informa MELI.
+  assert.strictEqual(r.antes.inversion_iva, 1708);
+  assert.strictEqual(r.antes.ganancia_dia, Math.round((7 * 300 - 1400 * 1.22) / 14 * 100) / 100);
+  assert.strictEqual(r.antes.inversion_dia, 122);
   assert.strictEqual(r.despues.dias, 14);
-  assert.strictEqual(r.despues.ganancia_dia, 2 * 300 - 200);
+  assert.strictEqual(r.despues.ganancia_dia, 2 * 300 - 200 * 1.22);
+  assert.strictEqual(r.despues.roas, 5);
   assert.strictEqual(r.veredicto, 'mejoro');
 });
 

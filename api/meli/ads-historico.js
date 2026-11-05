@@ -7,6 +7,7 @@
 // Una fila por día, así que sumar el rango da el gasto real del período.
 
 const { getSupabase } = require('../_supabase');
+const { IVA_ADS, conIvaAds } = require('./_adsIva');
 
 const aFecha = d => d.toISOString().slice(0, 10);
 
@@ -60,7 +61,12 @@ module.exports = async (req, res) => {
     return res.json({
       ok: true,
       periodo: { desde: fechaDesde, hasta: fechaHasta },
+      // `total_spend` es el gasto como lo informa MELI (sin IVA): es el del panel de Ads y
+      // con el que se mide el ROAS. Lo que factura MELI es con IVA, y es el que va contra la
+      // ganancia (ver _adsIva.js).
       total_spend,
+      total_spend_iva: conIvaAds(total_spend),
+      iva_ads_pct: IVA_ADS * 100,
       total_facturacion,
       roas: total_spend > 0 ? parseFloat((total_facturacion / total_spend).toFixed(2)) : 0,
       clicks: porDia.reduce((a, d) => a + d.clicks, 0),
@@ -76,7 +82,7 @@ module.exports = async (req, res) => {
               + 1 - porDia.length
           )
         : 0,
-      por_dia: porDia,
+      por_dia: porDia.map(d => ({ ...d, spend_iva: conIvaAds(d.spend) })),
     });
 
   } catch (err) {

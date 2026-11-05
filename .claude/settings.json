@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Supabase__execute_sql",
+      "mcp__Supabase__list_tables",
+      "mcp__Higgsfield__generate_image",
+      "mcp__Higgsfield__generate_image_batch",
+      "mcp__Higgsfield__jobs_wait",
+      "mcp__Higgsfield__show_generation_by_ids",
+      "mcp__Higgsfield__media_upload",
+      "mcp__Higgsfield__media_confirm",
+      "mcp__Higgsfield__media_import_url",
+      "mcp__Higgsfield__sandbox_exec",
+      "mcp__Higgsfield__remove_background",
+      "mcp__Higgsfield__upscale_image",
+      "mcp__Higgsfield__outpaint_image",
+      "mcp__Higgsfield__models_explore",
+      "mcp__Higgsfield__get_preferences",
+      "mcp__Higgsfield__balance",
+      "mcp__Google_Drive__search_files",
+      "mcp__Google_Drive__get_file_metadata",
+      "mcp__Google_Drive__read_file_content",
+      "mcp__Google_Drive__download_file_content",
+      "mcp__Shopify__search_products",
+      "mcp__Shopify__get-product"
+    ]
+  }
+}

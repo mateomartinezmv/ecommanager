@@ -104,6 +104,15 @@ importar. Detalle en `tests/README.md`.
 
 ---
 
+## Publicar en Instagram y Facebook desde Claude Code
+
+`mcp/meta/` es un conector (servidor MCP) que le permite a Claude Code publicar en la página de
+Facebook y en el Instagram del negocio: fotos, carruseles, reels, historias y posteos
+programados. Se registra solo con `.mcp.json`; la configuración del token está en
+`mcp/meta/README.md`.
+
+---
+
 ## Gastos e ingresos extra (sección Finanzas)
 
 Para registrar lo que no entra por una venta: el packaging, el envío que pagás por un cambio

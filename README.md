@@ -193,3 +193,61 @@ Para corregir el motivo de uno ya descatalogado, hacé clic en su badge de la co
 
 Los productos que ya estaban descatalogados de antes aparecen como **"Sin motivo
 registrado"**: se les puede poner el motivo a mano desde el badge de la columna Estado.
+
+---
+
+## Instagram (Marketing → 📸 Instagram)
+
+Para programar posts, carruseles e historias de **@martinezmotos.uy** desde el CRM. La API de
+Meta no programa publicaciones: publica en el momento. Por eso cada publicación se guarda en
+Supabase con su fecha y hora, y un cron (`/api/cron/instagram-publicar`, cada 5 minutos) la
+publica cuando llega la hora. Sale con hasta 5 minutos de atraso y avisa por Telegram si
+salió o si falló.
+
+**Lo que hay que hacer una sola vez:**
+
+1. **La cuenta de Instagram** tiene que ser profesional (empresa o creador) y estar vinculada
+   a una página de Facebook. Se revisa en Instagram → Configuración → Tipo de cuenta, y en
+   Meta Business Suite → Configuración → Cuentas de Instagram.
+2. **Crear la app en Meta:** entrá a https://developers.facebook.com/apps → **Crear app** →
+   tipo **Empresa**. Agregale el producto **Inicio de sesión con Facebook para empresas**, y
+   en su configuración cargá como **URI de redireccionamiento de OAuth válido**:
+   `https://TU-PROYECTO.vercel.app/api/meta/callback`.
+   - Mientras la app esté en **modo desarrollo** solo la pueden usar sus administradores.
+     Alcanza si el que conecta sos vos, que es el administrador de la página: no hace falta
+     pasar la revisión de Meta para publicar en tu propia cuenta.
+3. **Variables de entorno en Vercel** (Settings → Environment Variables):
+
+   | Variable | Valor |
+   |----------|-------|
+   | `META_APP_ID` | El identificador de la app (Configuración de la app → Básica) |
+   | `META_APP_SECRET` | La clave secreta de la app (misma pantalla) |
+   | `META_REDIRECT_URI` | `https://TU-PROYECTO.vercel.app/api/meta/callback` |
+   | `META_IG_USERNAME` | `martinezmotos.uy` (opcional: si tu Facebook administra varias páginas con Instagram, elige esta) |
+
+   Después, **Deployments → Redeploy** para que las tome.
+4. **Crear las tablas en Supabase:** SQL Editor → New query → pegá
+   `supabase/migrations/20261105000000_add_instagram.sql` → **Run**.
+5. **Conectar:** en el CRM, **📸 Instagram** → **🔗 Conectar Instagram**, iniciá sesión con el
+   Facebook que administra la página y aceptá los permisos. Volvés al CRM con
+   "✅ Instagram conectado correctamente" y el usuario de la cuenta arriba.
+
+El token que se guarda es el de la página y no vence: solo hay que reconectar si cambiás la
+contraseña de Facebook o le quitás los permisos a la app.
+
+**Cómo se usa:** en el formulario elegís el tipo, pegás las URLs de las imágenes (una por
+línea, en el orden en que salen), el texto y la fecha y hora. La tabla de abajo muestra lo
+programado, lo publicado (con el link al post) y lo que falló con el motivo; lo que todavía
+no salió se puede **🚀 Publicar ya** o **✖ Cancelar**, y lo que falló, **🔁 Reintentar**.
+
+**Límites de Meta:**
+
+- Las imágenes tienen que ser **JPEG** y estar en una **URL pública**: Meta las descarga desde
+  su lado. No acepta PNG.
+- Un carrusel lleva de 2 a 10 imágenes. El texto, hasta 2.200 caracteres y 30 hashtags.
+- Las **historias** van sin texto y sin stickers (tampoco el de enlace): la API no los permite.
+  Una historia con link hay que subirla desde la app.
+
+También se pueden programar publicaciones sin la pantalla, insertando filas en la tabla
+`instagram_publicaciones` (`tipo`, `imagenes`, `caption`, `programado_para`): el cron las
+publica igual.

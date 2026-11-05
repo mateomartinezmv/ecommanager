@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "meta": {
+      "command": "node",
+      "args": ["mcp/meta/server.js"]
+    }
+  }
+}

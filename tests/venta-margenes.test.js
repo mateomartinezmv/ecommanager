@@ -23,6 +23,9 @@ before(async () => {
     mos('V-C1', { venta_grupo: 'G1' }),
     mos('V-C2', { venta_grupo: 'G1', sku: 'SKU2', producto: 'Espejo redondo', cantidad: 3, total: 3000 }),
     mos('V-SC', { sku: 'SKU-SC', producto: 'Sin costo', precio_unit: 500, total: 500 }),
+    // MELI con la comisión igual al envío: el aviso de la orden llegó sin sale_fee.
+    { id: 'V-ME', canal: 'meli', fecha: HOY, sku: 'SKU1', producto: 'Slider', cantidad: 1, precio_unit: 1126,
+      comision: 135, costo_envio_meli: 135, total: 1126, estado: 'pagada', created_at: HOY },
   );
   estado.envios = [
     { id: 'E-C', venta_id: 'V-C1', orden: 'V-C1', comprador: 'Juan', producto: 'Slider', transportista: 'ues',
@@ -82,6 +85,17 @@ test('se recalcula mientras se edita y avisa si no hay costo', async () => {
   await page.evaluate(() => abrirEdicionVenta('V-SC'));
   assert.match(await page.textContent('#ev-mg-resumen'), /sin costo/);
   assert.match(await page.textContent('#ev-mg-body'), /no tiene costo cargado/);
+  await page.evaluate(() => closeModal('modal-editar-venta'));
+});
+
+test('avisa cuando a una venta MELI le faltan los cargos por venta', async () => {
+  const { page } = ctx;
+  await page.evaluate(() => abrirEdicionVenta('V-ME'));
+  assert.match(await page.textContent('#ev-mg-body'), /faltan los cargos por venta de MELI/);
+  await page.evaluate(() => closeModal('modal-editar-venta'));
+  // Una venta MELI normal no lleva el aviso.
+  await page.evaluate(() => abrirEdicionVenta('V-1'));
+  assert.doesNotMatch(await page.textContent('#ev-mg-body'), /faltan los cargos/);
   await page.evaluate(() => closeModal('modal-editar-venta'));
 });
 

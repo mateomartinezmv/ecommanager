@@ -12,6 +12,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
+const { cargosDeLinea } = require('./_cargosMeli');
 
 // Órdenes en paralelo: de a una, un mes de ventas no entra en los 60s de la función.
 const CONCURRENCIA = 6;
@@ -56,9 +57,6 @@ async function recalcularOrden(supabase, token, ordenId, items, { simular = fals
       }
     } catch (_) {}
   }
-  const totalDeductionOrder = (netReceived > 0 && netReceived < grossTotal)
-    ? r2(grossTotal - netReceived)
-    : null;
 
   for (const orderItem of (order.order_items || [])) {
     const meliItemId = orderItem.item?.id;
@@ -68,10 +66,12 @@ async function recalcularOrden(supabase, token, ordenId, items, { simular = fals
     if (!ventaMatch) continue;
 
     const lineaTotal = orderItem.unit_price * orderItem.quantity;
-    const saleFee = Math.abs(orderItem.sale_fee || 0) * (orderItem.quantity || 1);
-    const cargos = totalDeductionOrder !== null
-      ? r2(totalDeductionOrder * lineaTotal / grossTotal)
-      : r2(saleFee);
+    // Del pago, del sale_fee o de la tabla de tarifas si MELI no mandó ninguno (_cargosMeli.js).
+    const { cargos, saleFee, fuente } = await cargosDeLinea({ order, item: orderItem, token, netReceived });
+    if (cargos <= 0) {
+      errores.push({ id: ventaMatch.id, error: 'MELI no devolvió los cargos por venta (sale_fee, pago ni tarifas)' });
+      continue;
+    }
 
     const nuevoCostoEnvio = envioDeLinea(shipData, costs, lineaTotal, grossTotal);
     const nuevaComision = comisionConEnvio({ cargos, saleFee, envio: nuevoCostoEnvio });
@@ -98,6 +98,7 @@ async function recalcularOrden(supabase, token, ordenId, items, { simular = fals
         nueva: nuevaComision,
         diff: r2(nuevaComision - (parseFloat(ventaMatch.comision) || 0)),
         costoEnvio: nuevoCostoEnvio,
+        fuenteCargos: fuente,
         logistic_type: shipData?.logistic_type || null,
       });
     }
@@ -175,3 +176,54 @@ module.exports = async (req, res) => {
 };
 
 module.exports.recalcularOrden = recalcularOrden;
+
+/**
+ * Ventas MELI que quedaron sin cargos por venta: la comisión es sólo el envío (o 0). MELI
+ * nunca cobra $0 por vender, así que es que el aviso de la orden llegó sin sale_fee.
+ */
+function sinCargos(v) {
+  return Math.abs((parseFloat(v.comision) || 0) - (parseFloat(v.costo_envio_meli) || 0)) < 0.01;
+}
+
+/**
+ * Red de contención para el cron: vuelve a calcular la comisión de las ventas MELI recientes
+ * que quedaron sin cargos por venta. Las que MELI siga sin informar se reintentan en la
+ * próxima pasada.
+ */
+async function recalcularSinCargos({ dias = 60, limit = 20 } = {}) {
+  const supabase = getSupabase();
+  const desde = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from('ventas')
+    .select('id, orden_meli, sku, cantidad, precio_unit, total, comision, costo_envio_meli, estado')
+    .eq('canal', 'meli')
+    .not('orden_meli', 'is', null)
+    .gte('fecha', desde)
+    .gt('total', 0)
+    .neq('estado', 'cancelada')
+    .order('fecha', { ascending: false })
+    .limit(5000);
+  if (error) throw new Error(error.message);
+
+  const byOrder = {};
+  for (const v of (data || []).filter(sinCargos)) (byOrder[v.orden_meli] ||= []).push(v);
+  const ordenes = Object.entries(byOrder).slice(0, limit);
+  if (!ordenes.length) return { revisadas: 0, actualizadas: 0, errores: 0, detalle: [], fallos: [] };
+
+  const token = await getMeliToken();
+  const detalle = [];
+  const fallos = [];
+  for (const [ordenId, items] of ordenes) {
+    try {
+      const r = await recalcularOrden(supabase, token, ordenId, items);
+      detalle.push(...r.resultados.filter(x => !x.sin_cambio));
+      fallos.push(...r.errores);
+    } catch (err) {
+      fallos.push({ orden: ordenId, error: err.message });
+    }
+  }
+  return { revisadas: ordenes.length, actualizadas: detalle.length, errores: fallos.length, detalle, fallos };
+}
+
+module.exports.sinCargos = sinCargos;
+module.exports.recalcularSinCargos = recalcularSinCargos;

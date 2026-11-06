@@ -350,3 +350,52 @@ test('la lista de pedidos resume cada lote', async () => {
   assert.strictEqual(l.activas, 2);
   assert.deepStrictEqual(l.skus.sort(), ['NEG', 'ROJ']);
 });
+
+const dataUrl = async (ancho, alto, formato = 'png') => {
+  const buf = await sharp({ create: { width: ancho, height: alto, channels: 3, background: '#336699' } })[formato]().toBuffer();
+  return `data:image/${formato};base64,${buf.toString('base64')}`;
+};
+
+test('subir: la foto queda lista para publicar, pasada a JPEG y con su orden; las del envío comparten lote', async () => {
+  const r1 = await llamar('POST', 'subir', { sku: 'NEG', orden: 1, nombre: '2_medidas.png', datos: await dataUrl(800, 800) });
+  assert.strictEqual(r1.status, 200, JSON.stringify(r1.cuerpo));
+  const { lote } = r1.cuerpo;
+  const r0 = await llamar('POST', 'subir', { lote, sku: 'NEG', orden: 0, nombre: '1_portada.webp', datos: await dataUrl(3000, 3000, 'webp') });
+  assert.strictEqual(r0.status, 200);
+  assert.strictEqual(r0.cuerpo.lote, lote);
+
+  const [a, b] = tablas.fotos_ia;
+  assert.deepStrictEqual([a.tipo, a.estado, a.orden, a.prompt], ['subida', 'lista', 1, '2_medidas.png']);
+  assert.strictEqual(b.orden, 0);
+  const guardada = subidos[b.url_final.split('/fotos-ia/')[1]];
+  const meta = await sharp(guardada).metadata();
+  assert.strictEqual(meta.format, 'jpeg');
+  assert.strictEqual(meta.width, 2048, 'se achica a 2048 como máximo');
+  assert.strictEqual(hf.envios.length, 0, 'no pasa por Higgsfield');
+
+  // Publicar respeta el orden del vendedor, no el de llegada.
+  await llamar('POST', 'publicar', { lote, sku: 'NEG', conservar: false });
+  const fuentes = meli.puts[0].cuerpo.pictures.map(p => p.source);
+  assert.deepStrictEqual(fuentes, [b.url_final, a.url_final]);
+});
+
+test('subir rechaza fotos chicas, SKU que no existe y archivos que no son imagen', async () => {
+  const chica = await llamar('POST', 'subir', { sku: 'NEG', orden: 0, datos: await dataUrl(300, 300) });
+  assert.strictEqual(chica.status, 400);
+  assert.match(chica.cuerpo.error, /500 px/);
+  const sinSku = await llamar('POST', 'subir', { sku: 'NADA', orden: 0, datos: await dataUrl(800, 800) });
+  assert.strictEqual(sinSku.status, 404);
+  const basura = await llamar('POST', 'subir', { sku: 'NEG', orden: 0, datos: Buffer.from('hola').toString('base64') });
+  assert.strictEqual(basura.status, 400);
+  assert.match(basura.cuerpo.error, /No se pudo leer la imagen/);
+  const sinOrden = await llamar('POST', 'subir', { sku: 'NEG', datos: await dataUrl(800, 800) });
+  assert.strictEqual(sinOrden.status, 400);
+  assert.strictEqual(tablas.fotos_ia.length, 0);
+});
+
+test('una foto subida no se puede "regenerar"', async () => {
+  const r = await llamar('POST', 'subir', { sku: 'NEG', orden: 0, datos: await dataUrl(800, 800) });
+  const g = await llamar('POST', 'regenerar', { id: r.cuerpo.id });
+  assert.strictEqual(g.status, 400);
+  assert.match(g.cuerpo.error, /subida a mano/);
+});

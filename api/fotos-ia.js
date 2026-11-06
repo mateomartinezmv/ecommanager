@@ -5,6 +5,7 @@
 //   GET  /api/fotos-ia?lote=UUID                → { fotos } de ese pedido
 //   POST /api/fotos-ia?accion=preparar          { skus }                       → variantes con sus fotos de referencia + textos propuestos
 //   POST /api/fotos-ia?accion=generar           { variantes, tipos, textos }   → crea el pedido (no gasta todavía)
+//   POST /api/fotos-ia?accion=subir             { lote?, sku, orden, nombre, datos } → una foto propia (data URL), ya lista para publicar
 //   POST /api/fotos-ia?accion=avanzar           { lote }                       → manda a Higgsfield, trae las terminadas, les pone el logo
 //   POST /api/fotos-ia?accion=regenerar         { id }                         → la vuelve a pedir igual
 //   POST /api/fotos-ia?accion=descartar         { id }
@@ -17,6 +18,7 @@
 // mismo ni se cobra una imagen dos veces.
 
 const crypto = require('crypto');
+const sharp = require('sharp');
 const { getSupabase } = require('./_supabase');
 const { getMeliToken } = require('./_meliToken');
 const { meliIdsDe } = require('./_meliIds');
@@ -237,12 +239,66 @@ async function avanzar(supabase, lote) {
   return { status: 200, cuerpo: { fotos: lote ? await filasDelLote(supabase, lote) : [] } };
 }
 
+// ── Subir fotos propias ───────────────────────────────────────────
+
+// Una imagen hecha afuera (por ejemplo con la app de Higgsfield) para una variante. Se
+// guarda tal cual —ya trae el logo si corresponde—, sólo pasada a JPEG y a 2048 px como
+// máximo, y nace 'lista' para publicar. Las de un mismo envío comparten lote; `orden` es el
+// lugar que el vendedor le dio en la publicación.
+async function subir(supabase, body) {
+  const sku = String(body.sku || '').trim();
+  if (!sku) return { status: 400, cuerpo: { error: 'Falta la variante.' } };
+  const orden = Number.isInteger(body.orden) && body.orden >= 0 ? body.orden : null;
+  if (orden === null) return { status: 400, cuerpo: { error: 'Falta el orden de la foto.' } };
+  const lote = body.lote ? String(body.lote) : crypto.randomUUID();
+  if (!/^[0-9a-f-]{36}$/i.test(lote)) return { status: 400, cuerpo: { error: 'Pedido inválido.' } };
+
+  const { data: producto, error: errProd } = await supabase.from('productos').select('sku').eq('sku', sku).maybeSingle();
+  if (errProd) throw errProd;
+  if (!producto) return { status: 404, cuerpo: { error: `${sku} no está en el CRM.` } };
+
+  const { buffer: crudo, error } = F.decodificarSubida(body.datos);
+  if (error) return { status: 400, cuerpo: { error } };
+
+  let jpeg;
+  try {
+    const img = sharp(crudo).rotate();
+    const { width, height } = await img.metadata();
+    const motivo = F.motivoTamanoSubida(width, height);
+    if (motivo) return { status: 400, cuerpo: { error: motivo } };
+    jpeg = await img
+      .resize(F.SUBIDA_MAX_LADO, F.SUBIDA_MAX_LADO, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 92, chromaSubsampling: '4:4:4' })
+      .toBuffer();
+  } catch {
+    return { status: 400, cuerpo: { error: 'No se pudo leer la imagen: subí un JPG, PNG o WEBP.' } };
+  }
+
+  const ruta = `${lote}/${sku}-${String(orden + 1).padStart(2, '0')}-${crypto.randomUUID().slice(0, 8)}.jpg`;
+  const { error: errSubida } = await supabase.storage.from(BUCKET).upload(ruta, jpeg, { contentType: 'image/jpeg', upsert: true });
+  if (errSubida) throw new Error(`No se pudo guardar en Storage: ${errSubida.message}`);
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(ruta);
+
+  const { data, error: errIns } = await supabase.from('fotos_ia').insert({
+    lote, sku, tipo: F.TIPO_SUBIDA, orden, compartida: false,
+    prompt: String(body.nombre || '').slice(0, 200), referencias: [],
+    estado: 'lista', url_final: pub.publicUrl,
+  }).select().single();
+  if (faltaMigracion(errIns) || /fotos_ia_tipo_check|orden/.test(errIns?.message || '')) {
+    return { status: 503, cuerpo: { error: 'Falta correr la migración supabase/migrations/20261107010000_fotos_ia_subidas.sql en Supabase.' } };
+  }
+  if (errIns) throw errIns;
+  return { status: 200, cuerpo: data };
+}
+
 // ── Regenerar / descartar ─────────────────────────────────────────
 
 async function regenerar(supabase, id) {
   const { data: f, error } = await supabase.from('fotos_ia').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
   if (!f) return { status: 404, cuerpo: { error: 'Esa foto no existe.' } };
+  if (f.tipo === F.TIPO_SUBIDA) return { status: 400, cuerpo: { error: 'Es una foto subida a mano: no hay con qué regenerarla.' } };
   if (F.ESTADOS_ACTIVOS.includes(f.estado)) return { status: 409, cuerpo: { error: 'Esa foto todavía se está generando.' } };
 
   const { data, error: errIns } = await supabase.from('fotos_ia').insert({
@@ -366,6 +422,7 @@ module.exports = async (req, res) => {
     const acciones = {
       preparar: () => preparar(supabase, body.skus),
       generar: () => generar(supabase, body),
+      subir: () => subir(supabase, body),
       avanzar: () => avanzar(supabase, body.lote),
       regenerar: () => regenerar(supabase, Number(body.id)),
       descartar: () => descartar(supabase, Number(body.id)),

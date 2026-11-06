@@ -374,12 +374,47 @@ function resolverTrabadas(filas, ahora = Date.now()) {
 
 // Las fotos terminadas de una variante, en el orden de TIPOS: las suyas más las compartidas
 // del lote (la de instalación). Si hay dos del mismo tipo (se regeneró), va la más nueva.
+// Las subidas a mano van después, en el orden en que el vendedor las puso.
 function fotosParaPublicar(filasLote, sku) {
   const utiles = (filasLote || []).filter(f =>
     (f.sku === sku || f.compartida) && ['lista', 'publicada'].includes(f.estado) && f.url_final);
-  return TIPOS
+  const generadas = TIPOS
     .map(tipo => utiles.filter(f => f.tipo === tipo).sort((a, b) => Number(b.id) - Number(a.id))[0])
     .filter(Boolean);
+  const subidas = utiles
+    .filter(f => f.tipo === TIPO_SUBIDA && f.sku === sku)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || Number(a.id) - Number(b.id));
+  return [...generadas, ...subidas];
+}
+
+// ── Fotos subidas a mano ──────────────────────────────────────────
+
+const TIPO_SUBIDA = 'subida';
+// MELI rechaza fotos de menos de 500 px de lado; y más de 2048 no aporta y pesa.
+const SUBIDA_MIN_LADO = 500;
+const SUBIDA_MAX_LADO = 2048;
+// Vercel corta los pedidos de más de 4,5 MB: la pantalla achica antes las que pasan de esto.
+const SUBIDA_MAX_BYTES = 3 * 1024 * 1024;
+
+// Los datos de una imagen que llega como data URL o base64 a secas. Devuelve
+// { buffer } o { error }.
+function decodificarSubida(datos) {
+  const texto = String(datos || '');
+  const m = texto.match(/^data:(image\/[a-z0-9.+-]+);base64,(.*)$/i);
+  if (texto.startsWith('data:') && !m) return { error: 'El archivo no es una imagen.' };
+  const base64 = m ? m[2] : texto;
+  if (!base64 || /[^A-Za-z0-9+/=\s]/.test(base64)) return { error: 'La imagen llegó vacía o dañada.' };
+  const buffer = Buffer.from(base64, 'base64');
+  if (!buffer.length) return { error: 'La imagen llegó vacía.' };
+  if (buffer.length > SUBIDA_MAX_BYTES) return { error: 'La imagen pesa más de 3 MB.' };
+  return { buffer };
+}
+
+// Por qué MELI no aceptaría una imagen de este tamaño, o null.
+function motivoTamanoSubida(ancho, alto) {
+  if (!ancho || !alto) return 'No se pudo leer el tamaño de la imagen.';
+  if (Math.min(ancho, alto) < SUBIDA_MIN_LADO) return `La imagen mide ${ancho}×${alto}: MELI pide al menos ${SUBIDA_MIN_LADO} px de lado.`;
+  return null;
 }
 
 // Por qué no se le pueden cambiar las fotos a esta publicación, o null si se puede.
@@ -446,4 +481,9 @@ module.exports = {
   cuerpoFotosMeli,
   cajaLogo,
   varianteLogo,
+  TIPO_SUBIDA,
+  SUBIDA_MAX_LADO,
+  SUBIDA_MAX_BYTES,
+  decodificarSubida,
+  motivoTamanoSubida,
 };

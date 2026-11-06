@@ -9,6 +9,7 @@ const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
+const { cargosDeLinea } = require('./_cargosMeli');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
@@ -106,12 +107,6 @@ module.exports = async (req, res) => {
     // Un carrito de MELI son varias órdenes bajo un mismo pack y un solo envío.
     const packId = packIdDeOrden(order);
 
-    // Comisión desde fee_details
-    const feeDetails = order.fee_details || [];
-    const totalFee = feeDetails
-      .filter(f => f.type === 'mercadopago_fee' || f.type === 'ml_fee')
-      .reduce((s, f) => s + Math.abs(f.amount || 0), 0);
-    const hasFeeDetails = totalFee > 0;
     const orderTotalCalc = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
 
     const resultados = [];
@@ -128,11 +123,10 @@ module.exports = async (req, res) => {
 
       const ventaId = `V_MELI_${order.id}_${meliItemId}`;
 
-      // sale_fee es por unidad; cobro o bonificación de envío se ajustan aparte (_envioMeli.js).
-      const saleFeeItem = Math.abs(item.sale_fee || 0) * cantidad;
-      const cargosItem = hasFeeDetails
-        ? Math.round((totalFee * (precioUnit * cantidad) / orderTotalCalc) * 100) / 100
-        : Math.round(saleFeeItem * 100) / 100;
+      // Cargos por venta con sus respaldos (_cargosMeli.js); cobro o bonificación de envío se
+      // ajustan aparte (_envioMeli.js).
+      const { cargos: cargosItem, saleFee: saleFeeItem, fuente: fuenteCargos } = await cargosDeLinea({ order, item, token });
+      log.push(`🧾 Cargos por venta: $${cargosItem} (desde ${fuenteCargos})`);
       const envioMeliItem = envioDeLinea(shipDataRef, costosEnvio, precioUnit * cantidad, orderTotalCalc);
       const comisionItem = comisionConEnvio({ cargos: cargosItem, saleFee: saleFeeItem, envio: envioMeliItem });
       log.push(`💰 Comisión: $${comisionItem} (envío MELI $${envioMeliItem}) | Envío: ${tipoEnvio} zona ${zonaEnvio ?? '?'} $${costoEnvioFinal}`);

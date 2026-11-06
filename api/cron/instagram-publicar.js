@@ -1,7 +1,8 @@
 // api/cron/instagram-publicar.js
 // Cron — cada 5 minutos.
 //
-// Publica en Instagram lo que está programado en instagram_publicaciones y ya llegó su hora.
+// Publica en Instagram y en la página de Facebook lo que está programado en
+// instagram_publicaciones y ya llegó su hora (cada fila dice en qué redes sale).
 // La API de Meta no programa publicaciones: publica en el momento, así que el horario lo
 // cumple este cron (con hasta 5 minutos de atraso).
 //
@@ -9,12 +10,12 @@
 // 'publicando' con un UPDATE condicionado: si el cron y el botón "Publicar ahora" del CRM
 // corren a la vez, solo uno de los dos la consigue. Una fila que quedó en 'publicando' más
 // de 15 minutos (se cortó la función a mitad de camino) no se reintenta sola, porque pudo
-// haber salido: se marca con error para que alguien mire Instagram antes de reintentar.
+// haber salido: se marca con error para que alguien mire las redes antes de reintentar.
 //
 // Avisa por Telegram cada publicación que sale y cada una que falla.
 
 const { getSupabase } = require('../_supabase');
-const { publicar } = require('../_metaInstagram');
+const { publicar, publicarFacebook } = require('../_metaInstagram');
 
 const POR_VUELTA = 5;
 const TRABADA_MS = 15 * 60 * 1000;
@@ -35,9 +36,12 @@ async function sendTelegram(text) {
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const TIPO_LABEL = { post: 'Post', carrusel: 'Carrusel', historia: 'Historia' };
+const RED_LABEL = { instagram: 'Instagram', facebook: 'Facebook' };
 
-// Toma la fila (si sigue en alguno de los estados de `desde`) y la publica.
-// Devuelve null si no se pudo tomar, { ok, permalink } si salió o { error } si falló.
+// Toma la fila (si sigue en alguno de los estados de `desde`) y la publica en sus redes.
+// Devuelve null si no se pudo tomar, { ok, ... } si salió en todas o { error, ... } si alguna
+// falló. Cada red que sale se guarda en el momento (ig_media_id / fb_post_id): al reintentar
+// se publica solo en las que faltan, así nada sale dos veces.
 // `fetchImpl` y `espera` son para los tests.
 async function publicarFila(supabase, id, { desde = ['programado'], fetchImpl, espera } = {}) {
   const { data: tomadas, error: errTomar } = await supabase.from('instagram_publicaciones')
@@ -48,30 +52,54 @@ async function publicarFila(supabase, id, { desde = ['programado'], fetchImpl, e
   const pub = tomadas && tomadas[0];
   if (!pub) return null;
   const intentos = (pub.intentos || 0) + 1;
+  // Las filas de antes de que existiera Facebook no tienen `redes`: eran solo de Instagram.
+  const redes = pub.redes && pub.redes.length ? pub.redes : ['instagram'];
+  const deps = { ...(fetchImpl && { fetchImpl }), espera };
+  const guardar = cambios => supabase.from('instagram_publicaciones').update(cambios).eq('id', id);
 
+  const errores = [];
+  let cuenta = null;
   try {
-    const { data: cuenta } = await supabase.from('meta_tokens').select('*').eq('id', 1).maybeSingle();
-    const { mediaId, permalink } = await publicar(pub, cuenta, { ...(fetchImpl && { fetchImpl }), espera });
-    await supabase.from('instagram_publicaciones').update({
-      estado: 'publicado',
-      ig_media_id: mediaId,
-      permalink,
-      publicado_at: new Date().toISOString(),
-      intentos,
-      error: null,
-    }).eq('id', id);
-    return { ok: true, id, tipo: pub.tipo, permalink };
+    ({ data: cuenta } = await supabase.from('meta_tokens').select('*').eq('id', 1).maybeSingle());
   } catch (err) {
-    const procesando = /sigue procesando/i.test(err.message);
-    const reintentar = procesando && intentos < MAX_INTENTOS_PROCESANDO;
-    await supabase.from('instagram_publicaciones').update({
-      estado: reintentar ? 'programado' : 'error',
-      intentos,
-      error: err.message,
-    }).eq('id', id);
-    return { error: err.message, id, tipo: pub.tipo, reintentar };
+    errores.push(...redes.map(red => ({ red, message: err.message })));
   }
+
+  if (!errores.length) {
+    for (const red of redes) {
+      try {
+        if (red === 'instagram' && !pub.ig_media_id) {
+          const { mediaId, permalink } = await publicar(pub, cuenta, deps);
+          Object.assign(pub, { ig_media_id: mediaId, permalink });
+          await guardar({ ig_media_id: mediaId, permalink });
+        } else if (red === 'facebook' && !pub.fb_post_id) {
+          const { postId, permalink } = await publicarFacebook(pub, cuenta, deps);
+          Object.assign(pub, { fb_post_id: postId, fb_permalink: permalink });
+          await guardar({ fb_post_id: postId, fb_permalink: permalink });
+        }
+      } catch (err) {
+        errores.push({ red, message: err.message });
+      }
+    }
+  }
+
+  const resumen = { id, tipo: pub.tipo, redes, permalink: pub.permalink || null, fbPermalink: pub.fb_permalink || null };
+  if (!errores.length) {
+    await guardar({ estado: 'publicado', publicado_at: new Date().toISOString(), intentos, error: null });
+    return { ok: true, ...resumen };
+  }
+
+  const mensaje = redes.length > 1
+    ? errores.map(e => `${RED_LABEL[e.red]}: ${e.message}`).join(' · ')
+    : errores[0].message;
+  const procesando = errores.every(e => /sigue procesando/i.test(e.message));
+  const reintentar = procesando && intentos < MAX_INTENTOS_PROCESANDO;
+  await guardar({ estado: reintentar ? 'programado' : 'error', intentos, error: mensaje });
+  const fallidas = errores.map(e => e.red);
+  return { error: mensaje, reintentar, fallidas, salieron: redes.filter(r => !fallidas.includes(r)), ...resumen };
 }
+
+const nombres = redes => redes.map(r => RED_LABEL[r] || r).join(' y ');
 
 module.exports = async (req, res) => {
   // Vercel sólo permite llamadas al cron desde su propio sistema
@@ -85,7 +113,7 @@ module.exports = async (req, res) => {
 
     // Las que se cortaron a mitad de camino: no se reintentan solas porque pudieron salir.
     const { data: trabadas } = await supabase.from('instagram_publicaciones')
-      .update({ estado: 'error', error: 'Se cortó mientras se publicaba. Fijate en Instagram si salió antes de reintentar.' })
+      .update({ estado: 'error', error: 'Se cortó mientras se publicaba. Fijate en Instagram y Facebook si salió antes de reintentar.' })
       .eq('estado', 'publicando')
       .lt('publicando_desde', new Date(ahora.getTime() - TRABADA_MS).toISOString())
       .select('id, tipo');
@@ -109,10 +137,15 @@ module.exports = async (req, res) => {
     console.log(`instagram-publicar: ${ok.length} publicadas | ${fallidas.length} con error | ${(trabadas || []).length} trabadas`);
 
     for (const r of ok) {
-      await sendTelegram(`📸 <b>${TIPO_LABEL[r.tipo] || 'Publicación'} publicado en Instagram</b>${r.permalink ? `\n${esc(r.permalink)}` : ''}`);
+      const links = [r.permalink, r.fbPermalink].filter(Boolean).map(l => `\n${esc(l)}`).join('');
+      await sendTelegram(`📣 <b>${TIPO_LABEL[r.tipo] || 'Publicación'} publicado en ${nombres(r.redes)}</b>${links}`);
     }
-    for (const r of [...fallidas, ...(trabadas || []).map(t => ({ ...t, error: 'Se cortó mientras se publicaba' }))]) {
-      await sendTelegram(`❌ <b>No se pudo publicar en Instagram</b> (#${r.id})\n${esc(r.error)}`);
+    for (const r of fallidas) {
+      const salio = r.salieron && r.salieron.length ? `\nEn ${nombres(r.salieron)} sí salió.` : '';
+      await sendTelegram(`❌ <b>No se pudo publicar en ${nombres(r.fallidas)}</b> (#${r.id})\n${esc(r.error)}${salio}`);
+    }
+    for (const t of trabadas || []) {
+      await sendTelegram(`❌ <b>Se cortó mientras se publicaba</b> (#${t.id})\nFijate en Instagram y Facebook si salió antes de reintentar.`);
     }
 
     return res.json({ ok: true, publicadas: ok.length, fallidas: fallidas.length, trabadas: (trabadas || []).length });

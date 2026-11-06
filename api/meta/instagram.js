@@ -1,8 +1,9 @@
 // api/meta/instagram.js
-// Publicaciones de Instagram: programarlas, publicarlas ya y cancelarlas.
+// Publicaciones de Instagram y Facebook: programarlas, publicarlas ya y cancelarlas.
 //
 //   GET    /api/meta/instagram                         → { cuenta, publicaciones }
-//   POST   /api/meta/instagram                         → programar { tipo, imagenes, caption, programadoPara, notas }
+//   POST   /api/meta/instagram                         → programar { tipo, redes, imagenes, caption, programadoPara, notas }
+//                                                        (sin `redes` sale en Instagram y Facebook)
 //   POST   /api/meta/instagram?accion=publicar&id=12   → publicar ahora una programada (o reintentar una que falló)
 //   DELETE /api/meta/instagram?id=12                   → cancelar (solo si todavía no salió)
 //

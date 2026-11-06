@@ -1,7 +1,10 @@
 // api/_metaInstagram.js
-// Publicación en Instagram por la Graph API de Meta (Instagram API con inicio de sesión de
-// Facebook). Lo usan api/meta/instagram.js (pantalla y "publicar ahora") y el cron
-// api/cron/instagram-publicar.js (lo programado).
+// Publicación en Instagram y en la página de Facebook por la Graph API de Meta (Instagram API
+// con inicio de sesión de Facebook). Lo usan api/meta/instagram.js (pantalla y "publicar
+// ahora") y el cron api/cron/instagram-publicar.js (lo programado).
+//
+// Cada publicación dice en qué redes sale (`redes`): Instagram, Facebook o las dos. Las dos
+// usan el mismo token, el de la página de Facebook vinculada a la cuenta de Instagram.
 //
 // Cómo publica Meta: primero se crea un "contenedor" con la URL pública de la imagen
 // (Meta la descarga desde su lado), se espera a que termine de procesarlo y recién ahí se
@@ -18,6 +21,7 @@ const GRAPH_VERSION = process.env.META_GRAPH_VERSION || 'v23.0';
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 const TIPOS = ['post', 'carrusel', 'historia'];
+const REDES = ['instagram', 'facebook'];
 const MAX_CAPTION = 2200;
 const MAX_HASHTAGS = 30;
 // Una publicación programada que quedó más atrás que esto se rechaza al cargarla: es más
@@ -25,12 +29,13 @@ const MAX_HASHTAGS = 30;
 const TOLERANCIA_PASADO_MS = 5 * 60 * 1000;
 
 // Lo que pide el inicio de sesión de Facebook para encontrar la cuenta de Instagram
-// vinculada a la página y poder publicar en ella.
+// vinculada a la página y poder publicar en las dos.
 const SCOPES = [
   'instagram_basic',
   'instagram_content_publish',
   'pages_show_list',
   'pages_read_engagement',
+  'pages_manage_posts',
   'business_management',
 ];
 
@@ -45,11 +50,26 @@ function normalizarImagenes(imagenes) {
   return lista.map(u => String(u || '').trim()).filter(Boolean);
 }
 
+// Sin redes indicadas sale en las dos. Acepta array o texto separado por comas.
+function normalizarRedes(redes) {
+  if (redes === undefined || redes === null || redes === '') return { redes: [...REDES] };
+  const lista = (Array.isArray(redes) ? redes : String(redes).split(','))
+    .map(r => String(r || '').trim().toLowerCase()).filter(Boolean);
+  const malas = lista.filter(r => !REDES.includes(r));
+  if (malas.length) return { error: `Red desconocida: ${malas[0]} (puede ser instagram o facebook)` };
+  if (!lista.length) return { error: 'Elegí al menos una red: Instagram o Facebook' };
+  // Siempre en el mismo orden (primero Instagram) y sin repetidas.
+  return { redes: REDES.filter(r => lista.includes(r)) };
+}
+
 // Deja la publicación lista para guardar o devuelve { error } con un mensaje para mostrar.
 // `ahora` se puede inyectar para los tests.
 function armarPublicacion(body, ahora = new Date()) {
   const tipo = String(body.tipo || '').toLowerCase();
   if (!TIPOS.includes(tipo)) return { error: "El tipo tiene que ser 'post', 'carrusel' o 'historia'" };
+
+  const { redes, error: errRedes } = normalizarRedes(body.redes);
+  if (errRedes) return { error: errRedes };
 
   const imagenes = normalizarImagenes(body.imagenes);
   if (!imagenes.length) return { error: 'Falta al menos una imagen' };
@@ -80,6 +100,7 @@ function armarPublicacion(body, ahora = new Date()) {
   return {
     publicacion: {
       tipo,
+      redes,
       imagenes,
       caption: caption || null,
       programado_para: fecha.toISOString(),
@@ -102,6 +123,17 @@ async function graph(fetchImpl, method, path, params, token) {
     throw new Error(e.error_user_msg || e.message || `Meta respondió ${res.status}`);
   }
   return data;
+}
+
+// Graph recibe los arrays de objetos como `clave[0]={...json...}`, `clave[1]=...`.
+function aplanar(params) {
+  const out = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined) continue;
+    if (Array.isArray(v)) v.forEach((x, i) => { out[`${k}[${i}]`] = typeof x === 'object' ? JSON.stringify(x) : x; });
+    else out[k] = v;
+  }
+  return out;
 }
 
 const pausa = ms => new Promise(r => setTimeout(r, ms));
@@ -157,6 +189,43 @@ async function publicar(pub, cuenta, { fetchImpl = fetch, espera } = {}) {
   return { mediaId, permalink };
 }
 
+// Publica una fila en la página de Facebook guardada en meta_tokens.
+// Devuelve { postId, permalink }.
+//   · Post: una foto con el texto.
+//   · Carrusel: las fotos se suben sin publicar y se adjuntan todas a un único posteo.
+//   · Historia: la foto se sube sin publicar y se publica como historia de la página (sin texto).
+async function publicarFacebook(pub, cuenta, { fetchImpl = fetch } = {}) {
+  if (!cuenta?.page_id || !cuenta?.page_access_token) {
+    throw new Error('Facebook no está conectado. Conectalo desde la pantalla de Redes del CRM.');
+  }
+  const page = cuenta.page_id;
+  const token = cuenta.page_access_token;
+  const message = pub.caption || undefined;
+  const post = (path, params) => graph(fetchImpl, 'POST', path, aplanar(params), token);
+  const fotoSinPublicar = url => post(`${page}/photos`, { url, published: 'false' }).then(r => r.id);
+
+  let postId;
+  if (pub.tipo === 'historia') {
+    const fotoId = await fotoSinPublicar(pub.imagenes[0]);
+    const r = await post(`${page}/photo_stories`, { photo_id: fotoId });
+    postId = r.post_id || r.id;
+  } else if (pub.tipo === 'carrusel') {
+    const fotos = [];
+    for (const url of pub.imagenes) fotos.push({ media_fbid: await fotoSinPublicar(url) });
+    ({ id: postId } = await post(`${page}/feed`, { message, attached_media: fotos }));
+  } else {
+    const r = await post(`${page}/photos`, { url: pub.imagenes[0], message, published: 'true' });
+    postId = r.post_id || r.id;
+  }
+
+  // Igual que en Instagram, el link es un extra: si falla, el posteo ya salió.
+  const permalink = pub.tipo === 'historia' ? null
+    : await graph(fetchImpl, 'GET', postId, { fields: 'permalink_url' }, token)
+      .then(d => d.permalink_url || null)
+      .catch(() => null);
+  return { postId, permalink };
+}
+
 // De las páginas que devuelve /me/accounts, la que tiene la cuenta de Instagram a usar:
 // la de META_IG_USERNAME si está configurada, si no la primera con Instagram vinculado.
 function elegirCuenta(paginas, usuarioPreferido) {
@@ -168,6 +237,6 @@ function elegirCuenta(paginas, usuarioPreferido) {
 }
 
 module.exports = {
-  GRAPH, SCOPES, TIPOS, MAX_CAPTION,
-  armarPublicacion, normalizarImagenes, publicar, elegirCuenta, graph,
+  GRAPH, SCOPES, TIPOS, REDES, MAX_CAPTION,
+  armarPublicacion, normalizarImagenes, normalizarRedes, publicar, publicarFacebook, elegirCuenta, graph,
 };

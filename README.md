@@ -316,7 +316,7 @@ configurarlo en español con los códigos del manual.
 
 ---
 
-## Instagram (Marketing → 📸 Instagram)
+## Instagram y Facebook (Marketing → 📣 Redes)
 
 > **¿Y el conector de Claude Code (`mcp/meta/`)?** Son complementarios. El conector sirve para
 > que Claude Code publique *en el momento* desde tu compu. Esta pantalla y su cron viven en
@@ -324,8 +324,10 @@ configurarlo en español con los códigos del manual.
 > necesitan las tareas programadas. Los dos usan el mismo tipo de token (el de la página), así
 > que la misma app de Meta sirve para los dos.
 
-Para programar posts, carruseles e historias de **@martinezmotos.uy** desde el CRM. La API de
-Meta no programa publicaciones: publica en el momento. Por eso cada publicación se guarda en
+Para programar posts, carruseles e historias de **@martinezmotos.uy** y de la **página de
+Facebook** vinculada, desde el CRM. Cada publicación dice dónde sale: Instagram, Facebook o
+las dos (lo que se carga sin indicar nada sale en las dos). La API de Meta no programa
+publicaciones: publica en el momento. Por eso cada publicación se guarda en
 Supabase con su fecha y hora, y un cron (`/api/cron/instagram-publicar`, cada 5 minutos) la
 publica cuando llega la hora. Sale con hasta 5 minutos de atraso y avisa por Telegram si
 salió o si falló.
@@ -353,27 +355,34 @@ salió o si falló.
 
    Después, **Deployments → Redeploy** para que las tome.
 4. **Crear las tablas en Supabase:** SQL Editor → New query → pegá
-   `supabase/migrations/20261105010000_add_instagram.sql` → **Run**.
-5. **Conectar:** en el CRM, **📸 Instagram** → **🔗 Conectar Instagram**, iniciá sesión con el
-   Facebook que administra la página y aceptá los permisos. Volvés al CRM con
-   "✅ Instagram conectado correctamente" y el usuario de la cuenta arriba.
+   `supabase/migrations/20261105010000_add_instagram.sql` → **Run**, y después
+   `supabase/migrations/20261106000000_add_facebook_publicaciones.sql` → **Run**.
+5. **Conectar:** en el CRM, **📣 Redes** → **🔗 Conectar Meta**, iniciá sesión con el
+   Facebook que administra la página y aceptá los permisos (entre ellos, publicar en la
+   página). Volvés al CRM con "✅ Instagram y Facebook conectados correctamente" y la cuenta
+   arriba.
 
 El token que se guarda es el de la página y no vence: solo hay que reconectar si cambiás la
 contraseña de Facebook o le quitás los permisos a la app.
 
-**Cómo se usa:** en el formulario elegís el tipo, pegás las URLs de las imágenes (una por
-línea, en el orden en que salen), el texto y la fecha y hora. La tabla de abajo muestra lo
-programado, lo publicado (con el link al post) y lo que falló con el motivo; lo que todavía
-no salió se puede **🚀 Publicar ya** o **✖ Cancelar**, y lo que falló, **🔁 Reintentar**.
+**Cómo se usa:** en el formulario elegís el tipo, dónde sale (Instagram, Facebook o las dos),
+pegás las URLs de las imágenes (una por línea, en el orden en que salen), el texto y la fecha
+y hora. La tabla de abajo muestra lo programado, lo publicado (con el link en cada red) y lo
+que falló con el motivo; lo que todavía no salió se puede **🚀 Publicar ya** o **✖ Cancelar**,
+y lo que falló, **🔁 Reintentar**. Si salió en una red y falló en la otra, el reintento publica
+solo en la que faltaba.
+
+En Facebook, un carrusel sale como un único posteo con todas las fotos, y una historia sale
+como historia de la página.
 
 **Límites de Meta:**
 
 - Las imágenes tienen que ser **JPEG** y estar en una **URL pública**: Meta las descarga desde
   su lado. No acepta PNG.
 - Un carrusel lleva de 2 a 10 imágenes. El texto, hasta 2.200 caracteres y 30 hashtags.
-- Las **historias** van sin texto y sin stickers (tampoco el de enlace): la API no los permite.
-  Una historia con link hay que subirla desde la app.
+- Las **historias** van sin texto y sin stickers (tampoco el de enlace): la API no los permite,
+  ni en Instagram ni en Facebook. Una historia con link hay que subirla desde la app.
 
 También se pueden programar publicaciones sin la pantalla, insertando filas en la tabla
-`instagram_publicaciones` (`tipo`, `imagenes`, `caption`, `programado_para`): el cron las
-publica igual.
+`instagram_publicaciones` (`tipo`, `imagenes`, `caption`, `programado_para` y, si no va en
+las dos redes, `redes`): el cron las publica igual.

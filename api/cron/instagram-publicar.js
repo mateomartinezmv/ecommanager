@@ -11,7 +11,7 @@
 // de 15 minutos (se cortó la función a mitad de camino) no se reintenta sola, porque pudo
 // haber salido: se marca con error para que alguien mire Instagram antes de reintentar.
 //
-// Avisa por Telegram cada publicación que sale y cada una que falla.
+// Avisa por WhatsApp (Telegram de respaldo) cada publicación que sale y cada una que falla.
 
 const { getSupabase } = require('../_supabase');
 const { publicar } = require('../_metaInstagram');
@@ -22,16 +22,7 @@ const TRABADA_MS = 15 * 60 * 1000;
 // intentar en las próximas vueltas antes de darla por fallida.
 const MAX_INTENTOS_PROCESANDO = 3;
 
-async function sendTelegram(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!token || !chatId) return;
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-  }).catch(err => console.error('Telegram error:', err.message));
-}
+const { enviarAviso: sendTelegram } = require('../_aviso');
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const TIPO_LABEL = { post: 'Post', carrusel: 'Carrusel', historia: 'Historia' };

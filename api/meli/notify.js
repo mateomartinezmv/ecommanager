@@ -13,6 +13,9 @@ const {
 } = require('../_meliEnvios');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
+// Avisos informativos van por WhatsApp (Kapso). Las preguntas de MELI siguen por
+// Telegram porque se contestan ahí mismo con el bot ("responder", "sugerir").
+const { enviarAviso } = require('../_aviso');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -166,7 +169,7 @@ async function handleOrder(resource) {
       // Antes esto era un `continue` mudo: la venta se perdía y el stock
       // quedaba inflado sin que nadie se enterara. Ahora avisa.
       console.log(`Producto con MELI ID ${meliItemId} no encontrado en DB`);
-      await sendTelegram(
+      await enviarAviso(
         `⚠️ <b>Venta sin registrar</b>\n\n` +
         `La publicación <b>${esc(meliItemId)}</b> no está vinculada a ningún SKU del CRM, ` +
         `así que la orden <b>${esc(String(order.id))}</b> no se registró y el stock no se descontó.\n\n` +
@@ -290,7 +293,7 @@ async function handleItem(resource) {
     ? 'sin stock disponible'
     : 'pausada manualmente o por MELI';
 
-  await sendTelegram(
+  await enviarAviso(
     `🔄 <b>Publicación pausada en MELI</b>\n\n` +
     `📦 <b>Producto:</b> ${esc(nombre)}\n` +
     `🔖 <b>ID MELI:</b> ${esc(itemId)}\n` +

@@ -45,6 +45,7 @@
     "api/meli/fotos.js": { "maxDuration": 60 },
     "api/telegram/setup.js": { "maxDuration": 15 },
     "api/telegram/webhook.js": { "maxDuration": 30 },
+    "api/whatsapp/setup.js": { "maxDuration": 15 },
     "api/cron/*.js": { "maxDuration": 60 },
     "api/meta/*.js": { "maxDuration": 60 }
   },

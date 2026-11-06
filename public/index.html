@@ -298,7 +298,7 @@
     <div class="nav-item" onclick="goPage('angulos')"><span class="icon">🎯</span><span>Ángulos de venta</span></div>
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
     <div class="nav-section">Marketing</div>
-    <div class="nav-item" onclick="goPage('instagram')"><span class="icon">📸</span><span>Instagram</span></div>
+    <div class="nav-item" onclick="goPage('instagram')"><span class="icon">📣</span><span>Redes</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -1222,13 +1222,13 @@
     </div>
   </div>
 
-  <!-- INSTAGRAM: publicaciones programadas por la Graph API de Meta -->
+  <!-- REDES: publicaciones de Instagram y Facebook programadas por la Graph API de Meta -->
   <div id="page-instagram" class="page">
     <div class="topbar">
-      <div class="page-title">📸 Instagram</div>
+      <div class="page-title">📣 Redes · Instagram y Facebook</div>
       <div class="topbar-actions">
         <button class="btn btn-ghost" onclick="cargarInstagram()">🔄 Actualizar</button>
-        <a href="/api/meta/auth" class="btn btn-yellow" id="ig-btn-conectar" style="text-decoration:none">🔗 Conectar Instagram</a>
+        <a href="/api/meta/auth" class="btn btn-yellow" id="ig-btn-conectar" style="text-decoration:none">🔗 Conectar Meta</a>
       </div>
     </div>
     <div class="content">
@@ -1241,6 +1241,11 @@
             <div class="form-group"><label class="form-label">Tipo</label>
               <select id="ig-tipo"><option value="carrusel">Carrusel</option><option value="post">Post (una imagen)</option><option value="historia">Historia</option></select></div>
             <div class="form-group"><label class="form-label">Fecha y hora</label><input type="datetime-local" id="ig-fecha"></div>
+            <div class="form-group form-full"><label class="form-label">Dónde sale</label>
+              <div style="display:flex;gap:18px;align-items:center;padding-top:4px">
+                <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="ig-red-instagram" checked> 📸 Instagram</label>
+                <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="ig-red-facebook" checked> 📘 Facebook</label>
+              </div></div>
             <div class="form-group form-full"><label class="form-label">Imágenes (una URL pública de JPEG por línea, en orden)</label>
               <textarea id="ig-imagenes" rows="4" placeholder="https://.../1.jpg&#10;https://.../2.jpg"></textarea></div>
             <div class="form-group form-full"><label class="form-label">Texto <span id="ig-caption-count" style="color:var(--text-muted)"></span></label>
@@ -1256,10 +1261,10 @@
       <div class="table-wrap">
         <div class="table-header"><span class="table-title">Publicaciones</span><span id="ig-count" style="font-size:12px;color:var(--text-muted)"></span></div>
         <table>
-          <thead><tr><th>Fecha</th><th>Tipo</th><th>Imágenes</th><th>Texto</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Redes</th><th>Imágenes</th><th>Texto</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody id="ig-tbody"></tbody>
         </table>
-        <div id="ig-empty" class="empty-state" style="display:none"><div class="empty-icon">📸</div><p>Todavía no hay publicaciones.</p></div>
+        <div id="ig-empty" class="empty-state" style="display:none"><div class="empty-icon">📣</div><p>Todavía no hay publicaciones.</p></div>
       </div>
     </div>
   </div>
@@ -2272,8 +2277,8 @@ if (urlParams.get('meli') === 'conectado') {
 if (urlParams.get('meta') === 'conectado' || urlParams.get('meta') === 'error') {
   setTimeout(() => {
     igMensaje = urlParams.get('meta') === 'conectado'
-      ? '✅ <strong>Instagram conectado correctamente.</strong>'
-      : '❌ <strong>Error conectando Instagram:</strong> ' + escHtml(urlParams.get('msg') || 'Error desconocido');
+      ? '✅ <strong>Instagram y Facebook conectados correctamente.</strong>'
+      : '❌ <strong>Error conectando con Meta:</strong> ' + escHtml(urlParams.get('msg') || 'Error desconocido');
     history.replaceState({}, '', '/');
     goPage('instagram');
   }, 300);
@@ -4810,11 +4815,11 @@ async function loadOpiniones(force = false) {
 }
 
 // =====================
-// INSTAGRAM
+// REDES (Instagram y Facebook)
 // =====================
 // Las publicaciones viven en Supabase (instagram_publicaciones) y las publica el cron
-// api/cron/instagram-publicar.js cuando llega su hora. Acá solo se programan, se miran y
-// se cancelan o publican a mano.
+// api/cron/instagram-publicar.js cuando llega su hora, en las redes que dice cada una.
+// Acá solo se programan, se miran y se cancelan o publican a mano.
 let igPublicaciones = [];
 // Mensaje que deja el callback de Meta (?meta=conectado / ?meta=error) para mostrar arriba.
 let igMensaje = '';
@@ -4827,6 +4832,20 @@ const IG_ESTADOS = {
   cancelado:  '<span class="badge badge-gray">Cancelado</span>',
 };
 const IG_TIPOS = { post: '🖼️ Post', carrusel: '🎠 Carrusel', historia: '⭕ Historia' };
+const IG_REDES = { instagram: { icono: '📸', nombre: 'Instagram', link: 'permalink', id: 'ig_media_id' },
+                   facebook:  { icono: '📘', nombre: 'Facebook',  link: 'fb_permalink', id: 'fb_post_id' } };
+
+// Una etiqueta por red: con link si ya salió, verde si salió sin link, gris si falta.
+function igRedesHtml(p) {
+  const redes = p.redes && p.redes.length ? p.redes : ['instagram'];
+  return redes.map(red => {
+    const r = IG_REDES[red];
+    if (!r) return escHtml(red);
+    if (p[r.link]) return `<a class="badge badge-green" href="${escHtml(p[r.link])}" target="_blank" rel="noopener" style="text-decoration:none">${r.icono} ${r.nombre} ↗</a>`;
+    if (p[r.id]) return `<span class="badge badge-green">${r.icono} ${r.nombre}</span>`;
+    return `<span class="badge badge-gray">${r.icono} ${r.nombre}</span>`;
+  }).join(' ');
+}
 
 function igContarCaption() {
   const n = document.getElementById('ig-caption').value.length;
@@ -4835,7 +4854,7 @@ function igContarCaption() {
 
 async function cargarInstagram() {
   const tbody = document.getElementById('ig-tbody');
-  tbody.innerHTML = '<tr><td colspan="6" style="padding:20px;color:var(--text-muted)">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="7" style="padding:20px;color:var(--text-muted)">Cargando...</td></tr>';
   const aviso = document.getElementById('ig-aviso');
   let r;
   try {
@@ -4851,14 +4870,14 @@ async function cargarInstagram() {
   const avisos = [];
   if (igMensaje) { avisos.push(igMensaje); igMensaje = ''; }
   if (r.faltaMigracion) avisos.push('⚠️ ' + escHtml(r.aviso));
-  else if (!r.cuenta) avisos.push('🔗 Instagram todavía no está conectado. Tocá <strong>Conectar Instagram</strong> e iniciá sesión con el Facebook que administra la página vinculada a @martinezmotos.uy.');
+  else if (!r.cuenta) avisos.push('🔗 Instagram y Facebook todavía no están conectados. Tocá <strong>Conectar Meta</strong> e iniciá sesión con el Facebook que administra la página vinculada a @martinezmotos.uy.');
   aviso.style.display = avisos.length ? 'block' : 'none';
   aviso.innerHTML = avisos.join('<br>');
-  document.getElementById('ig-btn-conectar').textContent = r.cuenta ? '🔗 Reconectar Instagram' : '🔗 Conectar Instagram';
+  document.getElementById('ig-btn-conectar').textContent = r.cuenta ? '🔗 Reconectar Meta' : '🔗 Conectar Meta';
 
   const cuenta = (e) => igPublicaciones.filter(p => p.estado === e).length;
   document.getElementById('ig-stats').innerHTML = `
-    <div class="stat-card ${r.cuenta ? 'green' : 'red'}"><div class="stat-icon">📸</div><div class="stat-value" style="font-size:20px">${r.cuenta ? '@' + escHtml(r.cuenta.ig_username || r.cuenta.ig_user_id) : 'Sin conectar'}</div><div class="stat-label">${r.cuenta ? 'Página: ' + escHtml(r.cuenta.page_name || '') : 'Cuenta de Instagram'}</div></div>
+    <div class="stat-card ${r.cuenta ? 'green' : 'red'}"><div class="stat-icon">📸</div><div class="stat-value" style="font-size:20px">${r.cuenta ? '@' + escHtml(r.cuenta.ig_username || r.cuenta.ig_user_id) : 'Sin conectar'}</div><div class="stat-label">${r.cuenta ? 'Facebook: ' + escHtml(r.cuenta.page_name || '') : 'Instagram y Facebook'}</div></div>
     <div class="stat-card blue"><div class="stat-icon">🗓️</div><div class="stat-value">${cuenta('programado')}</div><div class="stat-label">Programadas</div></div>
     <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-value">${cuenta('publicado')}</div><div class="stat-label">Publicadas</div></div>
     <div class="stat-card red"><div class="stat-icon">❌</div><div class="stat-value">${cuenta('error')}</div><div class="stat-label">Con error</div></div>`;
@@ -4881,10 +4900,10 @@ function renderInstagram() {
       acciones.push(`<button class="btn btn-ghost btn-sm" onclick="publicarInstagramYa(${p.id})">${p.estado === 'error' ? '🔁 Reintentar' : '🚀 Publicar ya'}</button>`);
       acciones.push(`<button class="btn btn-ghost btn-sm" onclick="cancelarInstagram(${p.id})">✖ Cancelar</button>`);
     }
-    if (p.permalink) acciones.push(`<a class="btn btn-ghost btn-sm" href="${escHtml(p.permalink)}" target="_blank" rel="noopener">Ver ↗</a>`);
     return `<tr>
       <td style="white-space:nowrap">${fecha}</td>
       <td>${IG_TIPOS[p.tipo] || escHtml(p.tipo)}</td>
+      <td style="white-space:nowrap">${igRedesHtml(p)}</td>
       <td style="white-space:nowrap">${miniaturas}</td>
       <td style="max-width:320px;font-size:12px">${texto}</td>
       <td>${IG_ESTADOS[p.estado] || escHtml(p.estado)}${error}</td>
@@ -4895,8 +4914,11 @@ function renderInstagram() {
 
 async function programarInstagram() {
   const fecha = document.getElementById('ig-fecha').value;
+  const redes = ['instagram', 'facebook'].filter(red => document.getElementById('ig-red-' + red).checked);
+  if (!redes.length) return alert('Elegí al menos una red: Instagram o Facebook');
   const body = {
     tipo: document.getElementById('ig-tipo').value,
+    redes,
     imagenes: document.getElementById('ig-imagenes').value,
     caption: document.getElementById('ig-caption').value,
     // datetime-local viene sin zona: se interpreta en la hora del navegador (Montevideo).
@@ -4918,7 +4940,9 @@ async function programarInstagram() {
 }
 
 async function publicarInstagramYa(id) {
-  if (!confirm('¿Publicar ahora en Instagram?')) return;
+  const p = igPublicaciones.find(x => x.id === id);
+  const redes = (p && p.redes && p.redes.length ? p.redes : ['instagram']).map(r => (IG_REDES[r] || {}).nombre || r).join(' y ');
+  if (!confirm(`¿Publicar ahora en ${redes}?`)) return;
   try {
     await api('POST', `/meta/instagram?accion=publicar&id=${id}`);
   } catch (e) {

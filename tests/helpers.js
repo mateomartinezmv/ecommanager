@@ -356,14 +356,17 @@ function mockearApi(page, estado, fallos = {}) {
     }
 
     // Instagram: lo que el front programa, publica y cancela queda en el estado, igual que
-    // lo dejaría api/meta/instagram.js en instagram_publicaciones.
+    // lo dejaría api/meta/instagram.js en instagram_publicaciones (Instagram y Facebook).
     if (ruta === '/meta/instagram') {
       const ig = estado.instagram = estado.instagram || { cuenta: null, publicaciones: [] };
       const id = Number(url.searchParams.get('id'));
       if (metodo === 'GET') return ok(ig);
       if (metodo === 'POST' && url.searchParams.get('accion') === 'publicar') {
         const p = ig.publicaciones.find(x => x.id === id);
-        Object.assign(p, { estado: 'publicado', permalink: 'https://instagram.com/p/demo', publicado_at: new Date().toISOString() });
+        const redes = p.redes || ['instagram'];
+        Object.assign(p, { estado: 'publicado', publicado_at: new Date().toISOString() },
+          redes.includes('instagram') && { ig_media_id: 'demo', permalink: 'https://instagram.com/p/demo' },
+          redes.includes('facebook') && { fb_post_id: 'demo', fb_permalink: 'https://facebook.com/demo' });
         return ok({ ok: true, id, permalink: p.permalink });
       }
       if (metodo === 'POST') {

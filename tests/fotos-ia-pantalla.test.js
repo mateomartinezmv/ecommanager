@@ -178,3 +178,73 @@ test('sin la migración, la pantalla lo avisa', async () => {
     assert.deepStrictEqual(erroresReales(errores), []);
   } finally { await cerrar(); }
 });
+
+// Un PNG de 1×1: alcanza para la vista previa del navegador (la API está mockeada).
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const archivo = name => ({ name, mimeType: 'image/png', buffer: PNG });
+
+test('subir fotos propias: se ordenan por el número del nombre, se pueden reordenar y se publican en ese orden', async () => {
+  const { page, estado, alertas, errores, cerrar } = await abrirCRM({ estado: estadoConFotos() });
+  try {
+    await page.evaluate(() => goPage('fotos'));
+    await page.waitForSelector('#fia-familia option[value^="g:Manillares"]', { state: 'attached' });
+    await page.selectOption('#fia-familia', 'g:Manillares|Universal 7/8');
+    await page.uncheck('.fia-var[value="ROJ"]');
+    await page.click('#fia-btn-subir-propias');
+    await page.waitForSelector('#fia-subir', { state: 'visible' });
+    assert.deepStrictEqual(await page.$$eval('.fia-sub-var', els => els.map(e => e.dataset.sku)), ['NEG'], 'sólo las variantes marcadas');
+
+    await page.setInputFiles('.fia-sub-var[data-sku="NEG"] .fia-sub-input', [archivo('2_medidas.png'), archivo('10_extra.png'), archivo('1_portada.png')]);
+    const orden = () => page.$$eval('.fia-sub-var[data-sku="NEG"] .fia-sub-foto', els => els.map(e => e.dataset.nombre));
+    assert.deepStrictEqual(await orden(), ['1_portada.png', '2_medidas.png', '10_extra.png'], '10 va después de 2');
+    assert.match(await page.textContent('.fia-sub-var[data-sku="NEG"] .fia-sub-foto'), /1 · portada/);
+
+    // Agregar más después: se mezclan y se reordenan; la repetida no se duplica.
+    await page.setInputFiles('.fia-sub-var[data-sku="NEG"] .fia-sub-input', [archivo('3_compatible.png'), archivo('1_portada.png')]);
+    assert.deepStrictEqual(await orden(), ['1_portada.png', '2_medidas.png', '3_compatible.png', '10_extra.png']);
+
+    // Subir "10_extra" un lugar y sacar "2_medidas".
+    await page.click('.fia-sub-foto[data-nombre="10_extra.png"] button[title="Antes"]');
+    await page.click('.fia-sub-foto[data-nombre="2_medidas.png"] button[title="Sacar"]');
+    assert.deepStrictEqual(await orden(), ['1_portada.png', '10_extra.png', '3_compatible.png']);
+    assert.strictEqual((await page.textContent('#fia-btn-subir')).trim(), '📤 Subir 3 fotos y publicar en MELI');
+
+    await page.click('#fia-btn-subir');
+    await page.waitForFunction(() => /publicación actualizada/.test((document.querySelector('.fia-variante[data-sku="NEG"]') || {}).textContent || ''));
+
+    const subidas = estado.fotosIA.llamadas.filter(l => l.accion === 'subir').map(l => l.cuerpo);
+    assert.deepStrictEqual(subidas.map(s => [s.nombre, s.orden]), [['1_portada.png', 0], ['10_extra.png', 1], ['3_compatible.png', 2]]);
+    assert.strictEqual(subidas[0].lote, null, 'la primera abre el pedido');
+    assert.ok(subidas.slice(1).every(s => s.lote === 'LOTE-SUB'), 'las demás van al mismo pedido');
+    assert.match(subidas[0].datos, /^data:image\/png;base64,/);
+    assert.deepStrictEqual(estado.fotosIA.llamadas.filter(l => l.accion === 'publicar').map(l => l.cuerpo), [{ lote: 'LOTE-SUB', sku: 'NEG', conservar: false }]);
+    assert.match(alertas[0], /Se suben 3 fotos y REEMPLAZAN/);
+
+    // En el resultado aparecen en ese orden, sin el botón de regenerar.
+    assert.deepStrictEqual(await page.$$eval('.fia-variante[data-sku="NEG"] .fia-foto', els => els.map(e => e.textContent.match(/Foto \d+/)[0])), ['Foto 1', 'Foto 2', 'Foto 3']);
+    assert.strictEqual(await page.$$eval('.fia-variante[data-sku="NEG"] button[title="Generarla de nuevo"]', b => b.length), 0);
+    assert.strictEqual(await page.isVisible('#fia-subir'), false, 'todo salió bien: se cierra el formulario');
+    assert.deepStrictEqual(erroresReales(errores), []);
+  } finally { await cerrar(); }
+});
+
+test('si falla una foto de una variante, esa variante no se publica (quedaría a medias); las otras sí', async () => {
+  const { page, estado, errores, cerrar } = await abrirCRM({ estado: estadoConFotos({ falloSubir: 'ROJ' }) });
+  try {
+    await page.evaluate(() => goPage('fotos'));
+    await page.waitForSelector('#fia-familia option[value^="g:Manillares"]', { state: 'attached' });
+    await page.selectOption('#fia-familia', 'g:Manillares|Universal 7/8');
+    await page.click('#fia-btn-subir-propias');
+    await page.setInputFiles('.fia-sub-var[data-sku="NEG"] .fia-sub-input', [archivo('1.png')]);
+    await page.setInputFiles('.fia-sub-var[data-sku="ROJ"] .fia-sub-input', [archivo('1.png'), archivo('2.png')]);
+    await page.click('#fia-btn-subir');
+    await page.waitForFunction(() => /publicación actualizada/.test((document.querySelector('.fia-variante[data-sku="NEG"]') || {}).textContent || ''));
+
+    assert.deepStrictEqual(estado.fotosIA.llamadas.filter(l => l.accion === 'publicar').map(l => l.cuerpo.sku), ['NEG']);
+    assert.strictEqual(estado.fotosIA.llamadas.filter(l => l.accion === 'subir' && l.cuerpo.sku === 'ROJ').length, 1, 'corta en la primera que falla');
+    assert.match(await page.textContent('#fia-subir-progreso'), /Manillar 22mm - Rojo no se publicó.*500 px/);
+    assert.strictEqual(await page.isVisible('#fia-subir'), true, 'queda abierto para corregir y reintentar');
+    // El 400 forzado de la subida del rojo es justamente lo que se prueba.
+    assert.deepStrictEqual(erroresReales(errores, [/status of 400/]), []);
+  } finally { await cerrar(); }
+});

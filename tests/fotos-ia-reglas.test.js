@@ -194,3 +194,34 @@ test('el logo: arriba a la derecha, y la versión que se lee sobre ese fondo', (
   assert.strictEqual(F.varianteLogo(239), 'negras', 'fondo claro → letras negras');
   assert.strictEqual(F.varianteLogo(12), 'blancas', 'fondo oscuro → el original');
 });
+
+test('fotos subidas a mano: van en el orden que les dio el vendedor, después de las generadas', () => {
+  const filas = [
+    { id: 10, sku: 'A', tipo: 'subida', orden: 2, estado: 'lista', url_final: 'u/tercera' },
+    { id: 11, sku: 'A', tipo: 'subida', orden: 0, estado: 'lista', url_final: 'u/primera' },
+    { id: 12, sku: 'A', tipo: 'subida', orden: 1, estado: 'publicada', url_final: 'u/segunda' },
+    { id: 13, sku: 'A', tipo: 'subida', orden: 3, estado: 'descartada', url_final: 'u/sacada' },
+    { id: 14, sku: 'B', tipo: 'subida', orden: 0, estado: 'lista', url_final: 'u/otra-variante' },
+  ];
+  assert.deepStrictEqual(F.fotosParaPublicar(filas, 'A').map(f => f.url_final), ['u/primera', 'u/segunda', 'u/tercera']);
+  const mezcla = [...filas, { id: 1, sku: 'A', tipo: 'portada', estado: 'lista', url_final: 'u/portada-ia' }];
+  assert.deepStrictEqual(F.fotosParaPublicar(mezcla, 'A').map(f => f.url_final)[0], 'u/portada-ia');
+});
+
+test('la imagen subida llega como data URL o base64; se rechaza lo que no es imagen o pesa de más', () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  assert.deepStrictEqual(F.decodificarSubida(`data:image/png;base64,${png.toString('base64')}`).buffer, png);
+  assert.deepStrictEqual(F.decodificarSubida(png.toString('base64')).buffer, png);
+  assert.match(F.decodificarSubida('data:application/pdf;base64,AAAA').error, /no es una imagen/);
+  assert.match(F.decodificarSubida('').error, /vacía/);
+  assert.match(F.decodificarSubida('no es base64 ###').error, /dañada/);
+  const grande = Buffer.alloc(F.SUBIDA_MAX_BYTES + 1).toString('base64');
+  assert.match(F.decodificarSubida(grande).error, /3 MB/);
+});
+
+test('MELI no acepta fotos de menos de 500 px de lado', () => {
+  assert.strictEqual(F.motivoTamanoSubida(2048, 2048), null);
+  assert.strictEqual(F.motivoTamanoSubida(500, 900), null);
+  assert.match(F.motivoTamanoSubida(499, 900), /499×900.*500 px/);
+  assert.match(F.motivoTamanoSubida(0, 0), /No se pudo leer/);
+});

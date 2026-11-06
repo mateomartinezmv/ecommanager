@@ -397,6 +397,15 @@ function mockearApi(page, estado, fallos = {}) {
       if (fia.errores && fia.errores[accion]) return error(400, fia.errores[accion]);
       if (accion === 'preparar') return ok(fia.preparar);
       if (accion === 'generar') { fia.fotos = fia.alGenerar || []; return ok({ lote: 'LOTE-1', fotos: fia.fotos }); }
+      // Foto propia: queda lista con su orden. `falloSubir` = SKU cuya subida falla.
+      if (accion === 'subir') {
+        if (fia.falloSubir === cuerpo.sku) return error(400, 'La imagen mide 300×300: MELI pide al menos 500 px de lado.');
+        if (!cuerpo.lote) fia.fotos = [];
+        const f = { id: fia.fotos.length + 1, lote: cuerpo.lote || 'LOTE-SUB', sku: cuerpo.sku, tipo: 'subida', orden: cuerpo.orden,
+          estado: 'lista', compartida: false, url_final: `https://cdn.example.com/sub-${cuerpo.sku}-${cuerpo.orden}.jpg` };
+        fia.fotos.push(f);
+        return ok(f);
+      }
       if (accion === 'avanzar') { if ((fia.avances || []).length) fia.fotos = fia.avances.shift(); return ok({ fotos: fia.fotos }); }
       if (accion === 'publicar') {
         for (const f of fia.fotos) if ((f.sku === cuerpo.sku || f.compartida) && f.estado === 'lista') f.estado = 'publicada';

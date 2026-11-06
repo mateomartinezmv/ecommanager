@@ -412,6 +412,16 @@ producto (grupo + subgrupo) y cuáles de sus variantes (cada SKU, por ejemplo ca
 
 Cada foto se puede descargar, regenerar o descartar antes de publicar.
 
+**📤 Subir mis fotos** (sin la API de Higgsfield): para fotos hechas afuera, por ejemplo con
+los créditos de la app de Higgsfield. Después de elegir las variantes, a cada una le cargás
+sus fotos (se pueden seleccionar todas las de la carpeta juntas). Se ordenan por el número del
+nombre (`1_portada`, `2_medidas`, …, `10_extra` va después de `2`) y se pueden reordenar con
+↑ ↓; la primera es la portada. Se suben tal cual (sin agregarles logo), pasadas a JPEG de
+hasta 2048 px, y se publican en todas las publicaciones de la variante en ese orden. Si una
+foto de una variante falla (por ejemplo, mide menos de 500 px), esa variante no se publica,
+para que no quede en MELI con la mitad de las fotos. Requiere además la migración
+`supabase/migrations/20261107010000_fotos_ia_subidas.sql`.
+
 **Lo que hay que hacer una sola vez:**
 
 1. **API key de Higgsfield:** entrá a https://console.higgsfield.ai → API Keys → crear. Es la

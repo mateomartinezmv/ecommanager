@@ -10,6 +10,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@supabase/supabase-js": "^2.99.2",
     "node-fetch": "^3.3.2",
+    "sharp": "^0.34.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -299,6 +299,7 @@
     <div class="nav-item" onclick="goPage('informacion')"><span class="icon">💡</span><span>Información</span></div>
     <div class="nav-section">Marketing</div>
     <div class="nav-item" onclick="goPage('instagram')"><span class="icon">📣</span><span>Redes</span></div>
+    <div class="nav-item" onclick="goPage('fotos')"><span class="icon">📸</span><span>Fotos</span></div>
   </nav>
   <div class="sidebar-footer">Datos en Supabase</div>
 </aside>
@@ -1265,6 +1266,83 @@
           <tbody id="ig-tbody"></tbody>
         </table>
         <div id="ig-empty" class="empty-state" style="display:none"><div class="empty-icon">📣</div><p>Todavía no hay publicaciones.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOTOS CON IA -->
+  <div id="page-fotos" class="page">
+    <div class="topbar">
+      <div class="page-title">📸 Fotos con IA</div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" onclick="cargarFotosIA()">🔄 Actualizar</button>
+      </div>
+    </div>
+    <div class="content">
+      <div id="fia-aviso" style="display:none;margin-bottom:16px;padding:12px 16px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);font-size:13px"></div>
+
+      <div class="table-wrap" style="margin-bottom:20px">
+        <div class="table-header"><span class="table-title">1 · Producto y variantes</span></div>
+        <div style="padding:16px 18px">
+          <div class="form-grid">
+            <div class="form-group form-full"><label class="form-label">Producto</label>
+              <select id="fia-familia" onchange="fiaElegirFamilia()"></select></div>
+          </div>
+          <div id="fia-variantes" style="margin-top:12px"></div>
+          <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="fia-btn-preparar" onclick="fiaPreparar()">✨ Preparar textos</button>
+            <span style="font-size:12px;color:var(--text-muted)">Lee las fotos y la ficha de cada variante en MELI y propone los textos de las imágenes. Todavía no se gasta nada.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="fia-paso2" style="margin-bottom:20px;display:none">
+        <div class="table-header"><span class="table-title">2 · Revisá los textos y elegí las fotos</span></div>
+        <div style="padding:16px 18px">
+          <div id="fia-referencias" style="margin-bottom:14px"></div>
+          <div id="fia-aviso-textos" style="display:none;margin-bottom:12px;font-size:12px;color:var(--yellow)"></div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;font-size:13px" id="fia-tipos">
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fia-tipo-portada" checked onchange="fiaActualizarTipos()" style="width:auto"> Portada (fondo blanco, sin logo)</label>
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fia-tipo-medidas" checked onchange="fiaActualizarTipos()" style="width:auto"> Medidas</label>
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fia-tipo-compatible" checked onchange="fiaActualizarTipos()" style="width:auto"> Compatibilidad</label>
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fia-tipo-beneficios" checked onchange="fiaActualizarTipos()" style="width:auto"> Beneficios</label>
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="fia-tipo-instalacion" checked onchange="fiaActualizarTipos()" style="width:auto"> Instalación (una para todas las variantes)</label>
+          </div>
+          <div class="form-grid">
+            <div class="form-group" data-fia-tipo="medidas"><label class="form-label">Medidas · título</label><input type="text" id="fia-t-med-titulo"></div>
+            <div class="form-group" data-fia-tipo="medidas"><label class="form-label">Medidas · subtítulo</label><input type="text" id="fia-t-med-sub"></div>
+            <div class="form-group" data-fia-tipo="medidas"><label class="form-label">Medidas (una por renglón, hasta 4) — revisalas bien</label><textarea id="fia-t-med-datos" rows="3"></textarea></div>
+            <div class="form-group" data-fia-tipo="medidas"><label class="form-label">Destacados (hasta 3)</label><textarea id="fia-t-med-dest" rows="3"></textarea></div>
+            <div class="form-group" data-fia-tipo="compatible"><label class="form-label">Compatibilidad · título</label><input type="text" id="fia-t-com-titulo"></div>
+            <div class="form-group" data-fia-tipo="compatible"><label class="form-label">Escena (dónde se ve el producto puesto)</label><input type="text" id="fia-t-com-escena"></div>
+            <div class="form-group" data-fia-tipo="compatible"><label class="form-label">Etiquetas (hasta 3)</label><textarea id="fia-t-com-etq" rows="3"></textarea></div>
+            <div class="form-group" data-fia-tipo="compatible"><label class="form-label">Verificaciones ✓ (hasta 3)</label><textarea id="fia-t-com-ver" rows="3"></textarea></div>
+            <div class="form-group" data-fia-tipo="beneficios"><label class="form-label">Beneficios · título</label><input type="text" id="fia-t-ben-titulo"></div>
+            <div class="form-group" data-fia-tipo="beneficios"><label class="form-label">Beneficios (hasta 4)</label><textarea id="fia-t-ben-items" rows="4"></textarea></div>
+            <div class="form-group" data-fia-tipo="instalacion"><label class="form-label">Instalación · título</label><input type="text" id="fia-t-ins-titulo"></div>
+            <div class="form-group" data-fia-tipo="instalacion"><label class="form-label">Escena de la instalación</label><input type="text" id="fia-t-ins-escena"></div>
+            <div class="form-group form-full" data-fia-tipo="instalacion"><label class="form-label">Pasos (hasta 4)</label><textarea id="fia-t-ins-pasos" rows="4"></textarea></div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-yellow" id="fia-btn-generar" onclick="fiaGenerar()">🎨 Generar</button>
+            <span style="font-size:12px;color:var(--text-muted)">Cada imagen se cobra en tu cuenta de la API de Higgsfield. Tardan alrededor de un minuto cada una; dejá esta pantalla abierta mientras se generan.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="fia-resultado" style="margin-bottom:20px;display:none">
+        <div class="table-header"><span class="table-title" id="fia-resultado-titulo">3 · Resultado</span>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12px;cursor:pointer;color:var(--text-dim)"><input type="checkbox" id="fia-conservar" style="width:auto"> Al publicar, dejar también las fotos actuales (después de las nuevas)</label></div>
+        <div id="fia-lote" style="padding:16px 18px"></div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header"><span class="table-title">Pedidos recientes</span></div>
+        <table>
+          <thead><tr><th>Fecha</th><th>Variantes</th><th>Fotos</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="fia-lotes"></tbody>
+        </table>
+        <div id="fia-lotes-empty" class="empty-state" style="display:none"><div class="empty-icon">📸</div><p>Todavía no generaste fotos.</p></div>
       </div>
     </div>
   </div>
@@ -3431,6 +3509,7 @@ function goPage(page) {
   if (page === 'angulos') renderAngulos();
   if (page === 'ads') renderAds();
   if (page === 'instagram') cargarInstagram();
+  if (page === 'fotos') cargarFotosIA();
 }
 
 // =====================
@@ -5153,6 +5232,352 @@ async function loadDashOpiniones() {
   } catch {
     el.textContent = '—';
   }
+}
+
+// =====================
+// RENDER: FOTOS CON IA (Higgsfield)
+// =====================
+// Se elige un producto (grupo + subgrupo) y cuáles de sus variantes (SKU). "Preparar" lee las
+// fotos y la ficha de MELI de cada variante y propone los textos de las infografías; recién
+// cuando el vendedor los revisa se generan las imágenes, que sí cuestan. Las imágenes tardan
+// ~1 minuto: mientras queden en camino, la pantalla le pide al servidor que avance cada pocos
+// segundos. Al final, cada variante se publica en todas sus publicaciones de MELI.
+
+const FIA_TIPOS = ['portada', 'medidas', 'compatible', 'beneficios', 'instalacion'];
+const FIA_TIPO_LABEL = { portada: 'Portada', medidas: 'Medidas', compatible: 'Compatibilidad', beneficios: 'Beneficios', instalacion: 'Instalación' };
+const FIA_ACTIVOS = ['pendiente', 'enviando', 'generando', 'procesando'];
+const FIA_ESTADOS = {
+  pendiente:  '<span class="badge badge-gray">⏳ En cola</span>',
+  enviando:   '<span class="badge badge-blue">🎨 Generando</span>',
+  generando:  '<span class="badge badge-blue">🎨 Generando</span>',
+  procesando: '<span class="badge badge-blue">🖼️ Poniendo el logo</span>',
+  lista:      '<span class="badge badge-green">✅ Lista</span>',
+  publicada:  '<span class="badge badge-meli">🚀 En MELI</span>',
+  error:      '<span class="badge badge-red">❌ Error</span>',
+};
+let FIA_INTERVALO_MS = 5000;
+let fiaEstado = { familias: [], preparado: null, lote: null, fotos: [], lotes: [], configurado: {}, mensajes: {} };
+let fiaTimer = null;
+let fiaAvanzando = false;
+
+const fiaNombre = sku => (db.productos.find(p => p.sku === sku) || {}).nombre || sku;
+const fiaLineas = id => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+
+// Un producto = grupo + subgrupo; sus variantes son los SKU. Lo que no tiene grupo va solo.
+function fiaArmarFamilias() {
+  const mapa = new Map();
+  for (const p of db.productos.filter(x => !x.discontinuado)) {
+    const clave = p.grupo || p.subgrupo ? `g:${p.grupo}|${p.subgrupo}` : `s:${p.sku}`;
+    if (!mapa.has(clave)) mapa.set(clave, { clave, nombre: [p.grupo, p.subgrupo].filter(Boolean).join(' / ') || p.nombre, productos: [] });
+    mapa.get(clave).productos.push(p);
+  }
+  fiaEstado.familias = [...mapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+async function cargarFotosIA() {
+  fiaArmarFamilias();
+  const sel = document.getElementById('fia-familia');
+  const elegida = sel.value;
+  sel.innerHTML = '<option value="">— Elegí un producto —</option>' + fiaEstado.familias.map(f =>
+    `<option value="${escHtml(f.clave)}">${escHtml(f.nombre)} (${f.productos.length} ${f.productos.length === 1 ? 'variante' : 'variantes'})</option>`).join('');
+  if (fiaEstado.familias.some(f => f.clave === elegida)) sel.value = elegida;
+  if (!document.getElementById('fia-variantes').innerHTML) fiaElegirFamilia();
+
+  const aviso = document.getElementById('fia-aviso');
+  let r;
+  try {
+    r = await api('GET', '/fotos-ia');
+  } catch (e) {
+    aviso.style.display = 'block';
+    aviso.innerHTML = '⚠️ ' + escHtml(e.message);
+    return;
+  }
+  fiaEstado.configurado = r.configurado || {};
+  fiaEstado.lotes = r.lotes || [];
+  const avisos = [];
+  if (r.faltaMigracion) avisos.push('⚠️ ' + escHtml(r.aviso));
+  if (!fiaEstado.configurado.higgsfield) avisos.push('🔑 Falta conectar Higgsfield: creá una API key en <strong>console.higgsfield.ai</strong> y cargala en Vercel como <code>HIGGSFIELD_API_KEY</code> con el formato <code>ID:SECRET</code>.');
+  if (!fiaEstado.configurado.ia) avisos.push('✍️ Sin <code>ANTHROPIC_API_KEY</code> los textos de las imágenes no se proponen solos: los completás a mano.');
+  aviso.style.display = avisos.length ? 'block' : 'none';
+  aviso.innerHTML = avisos.join('<br>');
+  fiaRenderLotes();
+  if (fiaEstado.lote) fiaProgramarAvance();
+}
+
+function fiaElegirFamilia() {
+  const clave = document.getElementById('fia-familia').value;
+  const fam = fiaEstado.familias.find(f => f.clave === clave);
+  fiaEstado.preparado = null;
+  document.getElementById('fia-paso2').style.display = 'none';
+  const cont = document.getElementById('fia-variantes');
+  if (!fam) { cont.innerHTML = '<div style="font-size:13px;color:var(--text-muted)">Elegí un producto para ver sus variantes.</div>'; return; }
+  cont.innerHTML = `
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">Variantes:
+      <a href="#" style="color:var(--accent)" onclick="fiaMarcarVariantes(true);return false">todas</a> ·
+      <a href="#" style="color:var(--accent)" onclick="fiaMarcarVariantes(false);return false">ninguna</a></div>
+    <div style="display:flex;flex-direction:column;gap:6px">${fam.productos.map(p => {
+      const conMeli = (p.meliIds || []).length > 0;
+      return `<label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-size:13px">
+        <input type="checkbox" class="fia-var" value="${escHtml(p.sku)}" ${conMeli ? 'checked' : ''} style="width:auto">
+        <span>${escHtml(p.nombre)}</span>
+        <span style="font-size:11px;color:var(--text-muted)">${escHtml(p.sku)} · ${conMeli ? `${p.meliIds.length} ${p.meliIds.length === 1 ? 'publicación' : 'publicaciones'}` : 'sin publicación en MELI'}</span>
+      </label>`;
+    }).join('')}</div>`;
+}
+
+function fiaMarcarVariantes(valor) {
+  document.querySelectorAll('.fia-var').forEach(c => { c.checked = valor; });
+}
+
+function fiaPonerTextos(t) {
+  const set = (id, v) => { document.getElementById(id).value = Array.isArray(v) ? v.join('\n') : (v || ''); };
+  set('fia-t-med-titulo', t.medidas?.titulo); set('fia-t-med-sub', t.medidas?.subtitulo);
+  set('fia-t-med-datos', t.medidas?.datos); set('fia-t-med-dest', t.medidas?.destacados);
+  set('fia-t-com-titulo', t.compatible?.titulo); set('fia-t-com-escena', t.compatible?.escena);
+  set('fia-t-com-etq', t.compatible?.etiquetas); set('fia-t-com-ver', t.compatible?.verificaciones);
+  set('fia-t-ben-titulo', t.beneficios?.titulo); set('fia-t-ben-items', t.beneficios?.items);
+  set('fia-t-ins-titulo', t.instalacion?.titulo); set('fia-t-ins-escena', t.instalacion?.escena);
+  set('fia-t-ins-pasos', t.instalacion?.pasos);
+}
+
+function fiaLeerTextos() {
+  const v = id => document.getElementById(id).value.trim();
+  return {
+    medidas: { titulo: v('fia-t-med-titulo'), subtitulo: v('fia-t-med-sub'), datos: fiaLineas('fia-t-med-datos'), destacados: fiaLineas('fia-t-med-dest') },
+    compatible: { titulo: v('fia-t-com-titulo'), escena: v('fia-t-com-escena'), etiquetas: fiaLineas('fia-t-com-etq'), verificaciones: fiaLineas('fia-t-com-ver') },
+    beneficios: { titulo: v('fia-t-ben-titulo'), items: fiaLineas('fia-t-ben-items') },
+    instalacion: { titulo: v('fia-t-ins-titulo'), escena: v('fia-t-ins-escena'), pasos: fiaLineas('fia-t-ins-pasos') },
+  };
+}
+
+const fiaTiposElegidos = () => FIA_TIPOS.filter(t => document.getElementById('fia-tipo-' + t).checked);
+const fiaVariantesUsables = () => (fiaEstado.preparado?.variantes || []).filter(v => (v.referencias || []).length);
+
+// Cuántas imágenes salen: una por variante y tipo, salvo instalación, que es una sola.
+function fiaCantidad() {
+  const tipos = fiaTiposElegidos();
+  const n = fiaVariantesUsables().length;
+  if (!n) return 0;
+  return tipos.filter(t => t !== 'instalacion').length * n + (tipos.includes('instalacion') ? 1 : 0);
+}
+
+function fiaActualizarTipos() {
+  const tipos = fiaTiposElegidos();
+  document.querySelectorAll('[data-fia-tipo]').forEach(el => { el.style.display = tipos.includes(el.dataset.fiaTipo) ? '' : 'none'; });
+  const n = fiaCantidad();
+  const btn = document.getElementById('fia-btn-generar');
+  btn.textContent = n ? `🎨 Generar ${n} ${n === 1 ? 'imagen' : 'imágenes'}` : '🎨 Generar';
+  btn.disabled = !n;
+}
+
+async function fiaPreparar() {
+  const skus = [...document.querySelectorAll('.fia-var:checked')].map(c => c.value);
+  if (!skus.length) return alert('Elegí al menos una variante.');
+  const btn = document.getElementById('fia-btn-preparar');
+  btn.disabled = true; btn.textContent = '⏳ Leyendo MELI y redactando…';
+  try {
+    const r = await api('POST', '/fotos-ia?accion=preparar', { skus });
+    fiaEstado.preparado = r;
+    document.getElementById('fia-referencias').innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:12px">${(r.variantes || []).map(v => `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px;width:220px" class="fia-ref">
+        <div style="display:flex;gap:4px;margin-bottom:6px;min-height:60px">${(v.referencias || []).map(u =>
+          `<img src="${escHtml(u)}" alt="" style="width:60px;height:60px;object-fit:contain;background:#fff;border-radius:4px">`).join('')}</div>
+        <div style="font-size:12px;font-weight:600">${escHtml(v.nombre || v.sku)}</div>
+        <div style="font-size:11px;color:var(--text-muted)">${escHtml(v.sku)}${v.color ? ' · ' + escHtml(v.color) : ''}</div>
+        ${v.aviso ? `<div style="font-size:11px;color:var(--yellow);margin-top:4px">⚠️ ${escHtml(v.aviso)} No se va a generar.</div>` : ''}
+      </div>`).join('')}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px">La IA copia el producto de estas fotos de MELI: si la foto de una variante no es la correcta, cambiala primero en MELI.</div>`;
+    fiaPonerTextos(r.textos || {});
+    const avisoT = document.getElementById('fia-aviso-textos');
+    avisoT.style.display = r.avisoTextos ? 'block' : 'none';
+    avisoT.textContent = r.avisoTextos ? '⚠️ ' + r.avisoTextos : '';
+    document.getElementById('fia-paso2').style.display = 'block';
+    fiaActualizarTipos();
+    document.getElementById('fia-paso2').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    alert('No se pudo preparar: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Preparar textos';
+  }
+}
+
+async function fiaGenerar() {
+  const n = fiaCantidad();
+  if (!n) return;
+  if (!confirm(`Se van a generar ${n} ${n === 1 ? 'imagen' : 'imágenes'} en Higgsfield y se cobran en tu cuenta de la API. ¿Seguir?`)) return;
+  const btn = document.getElementById('fia-btn-generar');
+  btn.disabled = true;
+  try {
+    const r = await api('POST', '/fotos-ia?accion=generar', {
+      variantes: fiaVariantesUsables(),
+      tipos: fiaTiposElegidos(),
+      textos: fiaLeerTextos(),
+    });
+    fiaAbrirLote(r.lote, r.fotos);
+    document.getElementById('fia-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    alert('No se pudo generar: ' + e.message);
+  } finally {
+    fiaActualizarTipos();
+  }
+}
+
+async function fiaAbrirLote(lote, fotos) {
+  fiaEstado.lote = lote;
+  fiaEstado.mensajes = {};
+  if (fotos) fiaEstado.fotos = fotos;
+  else {
+    try { fiaEstado.fotos = (await api('GET', '/fotos-ia?lote=' + encodeURIComponent(lote))).fotos || []; }
+    catch (e) { return alert(e.message); }
+  }
+  document.getElementById('fia-resultado').style.display = 'block';
+  fiaRenderLote();
+  fiaProgramarAvance(0);
+}
+
+const fiaHayActivas = () => fiaEstado.fotos.some(f => FIA_ACTIVOS.includes(f.estado));
+
+// Mientras quede algo en camino y la pantalla esté abierta, le pide al servidor que avance.
+function fiaProgramarAvance(espera = FIA_INTERVALO_MS) {
+  clearTimeout(fiaTimer);
+  if (!fiaEstado.lote || !fiaHayActivas()) return;
+  fiaTimer = setTimeout(fiaAvanzar, espera);
+}
+
+async function fiaAvanzar() {
+  if (fiaAvanzando || !fiaEstado.lote) return;
+  if (!document.getElementById('page-fotos').classList.contains('active')) return;
+  fiaAvanzando = true;
+  const lote = fiaEstado.lote;
+  try {
+    const r = await api('POST', '/fotos-ia?accion=avanzar', { lote });
+    if (fiaEstado.lote !== lote) return;
+    fiaEstado.fotos = r.fotos || [];
+    fiaEstado.errorAvance = null;
+  } catch (e) {
+    fiaEstado.errorAvance = e.message;
+  } finally {
+    fiaAvanzando = false;
+  }
+  fiaRenderLote();
+  if (fiaHayActivas()) fiaProgramarAvance();
+  else api('GET', '/fotos-ia').then(r => { fiaEstado.lotes = r.lotes || []; fiaRenderLotes(); }).catch(() => {});
+}
+
+function fiaTarjeta(f) {
+  const img = f.url_final
+    ? `<a href="${escHtml(f.url_final)}" target="_blank" rel="noopener"><img src="${escHtml(f.url_final)}" alt="" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;display:block"></a>`
+    : `<div style="width:100%;aspect-ratio:1;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:28px">${f.estado === 'error' ? '⚠️' : '⏳'}</div>`;
+  const acciones = [];
+  if (f.url_final) acciones.push(`<a class="btn btn-ghost btn-sm" href="${escHtml(f.url_final)}" download target="_blank" rel="noopener" title="Descargar">⬇</a>`);
+  if (['lista', 'error', 'publicada'].includes(f.estado)) acciones.push(`<button class="btn btn-ghost btn-sm" onclick="fiaRegenerar(${f.id})" title="Generarla de nuevo">🔁</button>`);
+  if (['lista', 'error', 'pendiente'].includes(f.estado)) acciones.push(`<button class="btn btn-ghost btn-sm" onclick="fiaDescartar(${f.id})" title="Descartar">🗑</button>`);
+  return `<div class="fia-foto" data-id="${f.id}" data-tipo="${escHtml(f.tipo)}" data-estado="${escHtml(f.estado)}" style="width:170px">
+    ${img}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:4px">
+      <span style="font-size:12px;font-weight:600">${escHtml(FIA_TIPO_LABEL[f.tipo] || f.tipo)}</span><span style="white-space:nowrap">${FIA_ESTADOS[f.estado] || ''}</span>
+    </div>
+    ${f.error && f.estado === 'error' ? `<div style="font-size:11px;color:var(--red);margin-top:4px">${escHtml(f.error)}</div>` : ''}
+    <div style="display:flex;gap:4px;margin-top:6px">${acciones.join('')}</div>
+  </div>`;
+}
+
+const fiaOrden = (a, b) => FIA_TIPOS.indexOf(a.tipo) - FIA_TIPOS.indexOf(b.tipo) || a.id - b.id;
+
+function fiaRenderLote() {
+  const fotos = fiaEstado.fotos.filter(f => f.estado !== 'descartada');
+  const compartidas = fotos.filter(f => f.compartida).sort(fiaOrden);
+  const skus = [...new Set(fotos.filter(f => !f.compartida).map(f => f.sku))];
+  // Un SKU que sólo tiene la compartida (instalación) también se publica.
+  for (const f of compartidas) if (!skus.includes(f.sku)) skus.push(f.sku);
+  const enCamino = fotos.filter(f => FIA_ACTIVOS.includes(f.estado)).length;
+  const listas = fotos.filter(f => f.estado === 'lista').length;
+
+  document.getElementById('fia-resultado-titulo').textContent = enCamino
+    ? `3 · Generando… ${fotos.length - enCamino} de ${fotos.length} terminadas`
+    : `3 · Resultado (${fotos.length} ${fotos.length === 1 ? 'imagen' : 'imágenes'})`;
+
+  const listaParaPublicar = sku => fotos.some(f => (f.sku === sku || f.compartida) && ['lista', 'publicada'].includes(f.estado) && f.url_final);
+  const filas = skus.map(sku => {
+    const propias = fotos.filter(f => f.sku === sku && !f.compartida).sort(fiaOrden);
+    const msg = fiaEstado.mensajes[sku];
+    return `<div class="fia-variante" data-sku="${escHtml(sku)}" style="margin-bottom:22px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div><strong>${escHtml(fiaNombre(sku))}</strong> <span style="font-size:11px;color:var(--text-muted)">${escHtml(sku)}</span></div>
+        <button class="btn btn-yellow btn-sm fia-btn-publicar" onclick="fiaPublicar('${escHtml(sku)}')" ${listaParaPublicar(sku) ? '' : 'disabled'}>🚀 Publicar en MELI</button>
+      </div>
+      ${msg ? `<div class="fia-msg" style="font-size:12px;margin-bottom:8px">${msg}</div>` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:12px">${propias.map(fiaTarjeta).join('')}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('fia-lote').innerHTML =
+    (fiaEstado.errorAvance ? `<div style="font-size:12px;color:var(--red);margin-bottom:10px">⚠️ ${escHtml(fiaEstado.errorAvance)} (se reintenta solo)</div>` : '') +
+    (enCamino ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Cada imagen tarda alrededor de un minuto. Dejá esta pantalla abierta: si la cerrás, sigue donde quedó cuando vuelvas.</div>` : '') +
+    (skus.length > 1 && listas ? `<div style="margin-bottom:14px"><button class="btn btn-yellow btn-sm" id="fia-btn-publicar-todas" onclick="fiaPublicarTodas()">🚀 Publicar todas las variantes</button></div>` : '') +
+    filas +
+    (compartidas.length ? `<div style="margin-bottom:8px"><strong>Para todas las variantes</strong> <span style="font-size:11px;color:var(--text-muted)">se publica en cada una</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px">${compartidas.map(fiaTarjeta).join('')}</div>` : '');
+}
+
+async function fiaRegenerar(id) {
+  if (!confirm('Se genera de nuevo con el mismo pedido y se cobra otra vez. ¿Seguir?')) return;
+  try {
+    await api('POST', '/fotos-ia?accion=regenerar', { id });
+    await fiaAbrirLote(fiaEstado.lote);
+  } catch (e) { alert(e.message); }
+}
+
+async function fiaDescartar(id) {
+  try {
+    await api('POST', '/fotos-ia?accion=descartar', { id });
+    await fiaAbrirLote(fiaEstado.lote);
+  } catch (e) { alert(e.message); }
+}
+
+async function fiaPublicar(sku, { sinConfirmar = false } = {}) {
+  const conservar = document.getElementById('fia-conservar').checked;
+  if (!sinConfirmar && !confirm(conservar
+    ? `Se suman las fotos nuevas adelante de las actuales en todas las publicaciones de ${sku} en MELI. ¿Seguir?`
+    : `Se REEMPLAZAN las fotos de todas las publicaciones de ${sku} en MELI (la original y los ángulos). ¿Seguir?`)) return;
+  fiaEstado.mensajes[sku] = '⏳ Publicando…';
+  fiaRenderLote();
+  try {
+    const r = await api('POST', '/fotos-ia?accion=publicar', { lote: fiaEstado.lote, sku, conservar });
+    const fallos = (r.resultados || []).filter(x => !x.ok);
+    fiaEstado.mensajes[sku] = [
+      r.publicadas ? `<span style="color:var(--green)">✅ ${r.publicadas} ${r.publicadas === 1 ? 'publicación actualizada' : 'publicaciones actualizadas'}</span>` : '',
+      ...fallos.map(x => `<span style="color:var(--red)">❌ ${escHtml(x.meli_id)}: ${escHtml(x.error)}</span>`),
+    ].filter(Boolean).join('<br>');
+    fiaEstado.fotos = (await api('GET', '/fotos-ia?lote=' + encodeURIComponent(fiaEstado.lote))).fotos || fiaEstado.fotos;
+  } catch (e) {
+    fiaEstado.mensajes[sku] = `<span style="color:var(--red)">❌ ${escHtml(e.message)}</span>`;
+  }
+  fiaRenderLote();
+}
+
+async function fiaPublicarTodas() {
+  const skus = [...document.querySelectorAll('.fia-variante')].map(el => el.dataset.sku)
+    .filter(sku => !document.querySelector(`.fia-variante[data-sku="${CSS.escape(sku)}"] .fia-btn-publicar`).disabled);
+  if (!skus.length) return;
+  const conservar = document.getElementById('fia-conservar').checked;
+  if (!confirm(`${conservar ? 'Se suman' : 'Se REEMPLAZAN'} las fotos en MELI de ${skus.length} variantes (todas sus publicaciones). ¿Seguir?`)) return;
+  for (const sku of skus) await fiaPublicar(sku, { sinConfirmar: true });
+}
+
+function fiaRenderLotes() {
+  const tbody = document.getElementById('fia-lotes');
+  document.getElementById('fia-lotes-empty').style.display = fiaEstado.lotes.length ? 'none' : 'block';
+  tbody.innerHTML = fiaEstado.lotes.map(l => {
+    const fecha = new Date(l.created_at).toLocaleString('es-UY', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const estado = l.activas ? '<span class="badge badge-blue">🎨 Generando</span>'
+      : l.publicadas && l.publicadas === l.total ? '<span class="badge badge-meli">🚀 En MELI</span>'
+      : l.errores ? `<span class="badge badge-red">❌ ${l.errores} con error</span>`
+      : '<span class="badge badge-green">✅ Listas</span>';
+    const nombres = l.skus.map(s => escHtml(fiaNombre(s))).join('<br>');
+    return `<tr><td>${fecha}</td><td style="font-size:12px">${nombres}</td><td>${l.listas + l.publicadas}/${l.total}</td><td>${estado}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="fiaAbrirLote('${escHtml(l.lote)}')">Abrir</button></td></tr>`;
+  }).join('');
 }
 
 // =====================

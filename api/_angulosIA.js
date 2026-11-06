@@ -169,4 +169,4 @@ async function redactarAngulos(opciones) {
     }));
 }
 
-module.exports = { MODELO, redactarAngulos, redactarDescripcion, construirPrompt, construirPromptDescripcion, extraerJson };
+module.exports = { MODELO, redactarAngulos, redactarDescripcion, construirPrompt, construirPromptDescripcion, extraerJson, pedirTexto };

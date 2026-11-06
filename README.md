@@ -386,3 +386,43 @@ como historia de la página.
 También se pueden programar publicaciones sin la pantalla, insertando filas en la tabla
 `instagram_publicaciones` (`tipo`, `imagenes`, `caption`, `programado_para` y, si no va en
 las dos redes, `redes`): el cron las publica igual.
+
+## Fotos de producto con IA (Marketing → 📸 Fotos)
+
+Genera con Higgsfield las fotos de una publicación —portada, medidas, compatibilidad,
+beneficios e instalación— con el logo de la tienda, y las sube directo a MELI. Se elige el
+producto (grupo + subgrupo) y cuáles de sus variantes (cada SKU, por ejemplo cada color).
+
+**Cómo funciona:**
+
+1. **Preparar textos** (no gasta nada): lee las fotos y la ficha de cada variante en MELI y
+   la IA de texto propone lo que va escrito dentro de cada imagen. **Revisalo**: las medidas
+   y la compatibilidad salen tal cual en la foto, y un dato mal puesto se paga en devoluciones.
+2. **Generar**: cada imagen se pide a Higgsfield usando como referencia las fotos de MELI de
+   esa variante, así copia el producto real en su color. La de instalación se genera una sola
+   vez y se usa en todas las variantes. Tardan alrededor de un minuto cada una y van de a 4;
+   la pantalla las sigue sola mientras esté abierta (si la cerrás, sigue cuando volvés).
+3. Al terminar, el CRM le pega el logo (`public/marca/`) arriba a la derecha —la versión con
+   letras negras sobre fondo claro, la original sobre fondo oscuro— y la guarda en Supabase
+   Storage. **La portada va sin logo**: MELI pide la foto principal limpia.
+4. **Publicar en MELI**: reemplaza las fotos de todas las publicaciones de esa variante (la
+   original y los ángulos), con la portada primero. Tildando "dejar también las fotos
+   actuales", las nuevas van adelante y las de antes quedan después. Las publicaciones de
+   catálogo y las que tienen variaciones clásicas se saltean (se avisa cuáles).
+
+Cada foto se puede descargar, regenerar o descartar antes de publicar.
+
+**Lo que hay que hacer una sola vez:**
+
+1. **API key de Higgsfield:** entrá a https://console.higgsfield.ai → API Keys → crear. Es la
+   API de pago por uso, **aparte de los créditos de la app de Higgsfield**: hay que cargarle
+   saldo en la consola.
+2. **Variable de entorno en Vercel:** `HIGGSFIELD_API_KEY` = `ID:SECRET` (los dos valores que
+   da la consola, separados por dos puntos). Después, **Redeploy**. La redacción de los textos
+   usa la `ANTHROPIC_API_KEY` que ya está; sin ella, los textos se completan a mano.
+3. **Crear la tabla y el bucket en Supabase:** SQL Editor → pegá
+   `supabase/migrations/20261107000000_add_fotos_ia.sql` → **Run**.
+
+El modelo es `marketing-studio/image/sunburst` (GPT Image de Higgsfield Marketing Studio): es
+el que copia bien el producto de una foto y escribe en español sin errores. Para cambiar el
+logo, reemplazá los dos PNG de `public/marca/`.

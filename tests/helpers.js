@@ -384,6 +384,34 @@ function mockearApi(page, estado, fallos = {}) {
       }
     }
 
+    // Fotos con IA (api/fotos-ia.js). `estado.fotosIA` trae lo que contesta cada acción y
+    // guarda en `llamadas` lo que mandó el front. `avances` es la secuencia de estados del
+    // lote que devuelve cada "avanzar", para simular imágenes que van terminando.
+    if (ruta === '/fotos-ia') {
+      const fia = estado.fotosIA = estado.fotosIA || {};
+      fia.llamadas = fia.llamadas || [];
+      const accion = url.searchParams.get('accion');
+      if (metodo === 'GET' && url.searchParams.get('lote')) return ok({ fotos: fia.fotos || [] });
+      if (metodo === 'GET') return ok({ configurado: fia.configurado || { higgsfield: true, ia: true }, lotes: fia.lotes || [], ...(fia.faltaMigracion ? { faltaMigracion: true, aviso: 'Falta correr la migración de fotos con IA' } : {}) });
+      fia.llamadas.push({ accion, cuerpo });
+      if (fia.errores && fia.errores[accion]) return error(400, fia.errores[accion]);
+      if (accion === 'preparar') return ok(fia.preparar);
+      if (accion === 'generar') { fia.fotos = fia.alGenerar || []; return ok({ lote: 'LOTE-1', fotos: fia.fotos }); }
+      if (accion === 'avanzar') { if ((fia.avances || []).length) fia.fotos = fia.avances.shift(); return ok({ fotos: fia.fotos }); }
+      if (accion === 'publicar') {
+        for (const f of fia.fotos) if ((f.sku === cuerpo.sku || f.compartida) && f.estado === 'lista') f.estado = 'publicada';
+        return ok(fia.alPublicar || { ok: true, publicadas: 1, fallidas: 0, resultados: [{ meli_id: 'MLU1', ok: true }] });
+      }
+      if (accion === 'descartar') { const f = fia.fotos.find(x => x.id === cuerpo.id); f.estado = 'descartada'; return ok(f); }
+      if (accion === 'regenerar') {
+        const f = fia.fotos.find(x => x.id === cuerpo.id);
+        f.estado = 'descartada';
+        const nueva = { ...f, id: 1000 + f.id, estado: 'pendiente', url_final: null };
+        fia.fotos.push(nueva);
+        return ok(nueva);
+      }
+    }
+
     // Réplica de api/meli/factura.js: sube el PDF y marca facturadas las líneas de la venta.
     if (ruta === '/meli/factura' && metodo === 'POST') {
       (estado.facturasMeli = estado.facturasMeli || []).push(cuerpo);

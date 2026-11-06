@@ -11,6 +11,7 @@
 
 const { sincronizarEnviosMeli } = require('../meli/sync-envios');
 const { sincronizarPedidosShopify } = require('../shopify/notify');
+const { recalcularSinCargos } = require('../meli/recalcular-comisiones');
 
 module.exports = async (req, res) => {
   // Vercel sólo permite llamadas al cron desde su propio sistema
@@ -38,6 +39,19 @@ module.exports = async (req, res) => {
     console.log(`sync-envios: ${r.actualizados} actualizados | ${r.sinCambio} sin cambio | ${r.errores} errores`);
     for (const linea of r.log) console.log(linea);
 
+    // Ventas MELI que entraron sin cargos por venta (el aviso llegó sin sale_fee): se les
+    // recalcula la comisión. Pocas por pasada; las que sigan sin dato vuelven en la próxima.
+    let comisiones;
+    try {
+      comisiones = await recalcularSinCargos({ dias: 60, limit: 15 });
+      if (comisiones.revisadas) {
+        console.log(`sync-envios · comisiones sin cargos: ${comisiones.revisadas} órdenes | ${comisiones.actualizadas} corregidas | ${comisiones.errores} sin dato`);
+      }
+    } catch (err) {
+      console.error('sync-envios · comisiones:', err.message);
+      comisiones = { error: err.message };
+    }
+
     return res.json({
       ok: true,
       actualizados: r.actualizados,
@@ -45,6 +59,7 @@ module.exports = async (req, res) => {
       errores: r.errores,
       cambios: r.cambios,
       shopify,
+      comisiones,
     });
   } catch (err) {
     console.error('Error en sync-envios.js:', err);

@@ -13,6 +13,7 @@ const {
 } = require('../_meliEnvios');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
+const { cargosDeLinea } = require('./_cargosMeli');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -146,13 +147,7 @@ async function handleOrder(resource) {
   // UNA compra, con UN envío. El pack es lo que las une.
   const packId = packIdDeOrden(order);
 
-  // ── Comisión real: lo que MELI descuenta según el pago aprobado ──────────
-  const approvedPayment = (order.payments || []).find((p) => p.status === 'approved');
-  const netReceived = approvedPayment?.net_received_amount || 0;
   const grossTotal = (order.order_items || []).reduce((s, i) => s + (i.unit_price * i.quantity), 0) || 1;
-  const totalDeduction = (netReceived > 0 && netReceived < grossTotal)
-    ? Math.round((grossTotal - netReceived) * 100) / 100
-    : null;
 
   for (const item of order.order_items) {
     const meliItemId = item.item.id;
@@ -178,12 +173,13 @@ async function handleOrder(resource) {
     }
 
     const ventaId = 'V_MELI_' + order.id + '_' + item.item.id;
-    // sale_fee es por unidad. El envío que cobra MELI (Mercado Envíos con envío gratis) o
-    // la bonificación de Flex no vienen en el pago: se ajustan aparte (ver _envioMeli.js).
-    const saleFeeItem = Math.abs(item.sale_fee || 0) * cantidad;
-    const cargosItem = totalDeduction !== null
-      ? Math.round((totalDeduction * (precioUnit * cantidad) / grossTotal) * 100) / 100
-      : Math.round(saleFeeItem * 100) / 100;
+    // Cargos por venta: del pago, del sale_fee o, si MELI todavía no los mandó, de la tabla
+    // de tarifas (ver _cargosMeli.js). El envío que cobra MELI (Mercado Envíos con envío
+    // gratis) o la bonificación de Flex se ajustan aparte (ver _envioMeli.js).
+    const { cargos: cargosItem, saleFee: saleFeeItem, fuente: fuenteCargos } = await cargosDeLinea({ order, item, token });
+    if (fuenteCargos !== 'pago' && fuenteCargos !== 'sale_fee') {
+      console.log(`⚠️ Orden ${order.id} ${item.item.id}: cargos por venta desde ${fuenteCargos} ($${cargosItem})`);
+    }
     const envioMeliItem = envioDeLinea(shipData, costosEnvio, precioUnit * cantidad, grossTotal);
     const comisionItem = comisionConEnvio({ cargos: cargosItem, saleFee: saleFeeItem, envio: envioMeliItem });
 

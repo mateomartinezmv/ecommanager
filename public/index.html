@@ -4252,9 +4252,15 @@ function renderMargenesEdicionVenta() {
     `<div class="ev-mg-row ${cls}"><span class="ev-mg-lbl">${lbl}${sub ? `<span class="ev-mg-sub">${sub}</span>` : ''}</span><span class="ev-mg-val" style="${style}">${val}</span></div>`;
 
   const nombreComision = esMeli ? 'Comisión MELI' : v.canal === 'shopify' ? 'Comisión / cargos Shopify' : 'Comisión / cargos';
-  const subComision = esMeli && envioMeli
-    ? `incluye ${envioMeli < 0 ? 'envío a favor' : 'envío MELI'} ${fmt2(Math.abs(envioMeli))}${pct(comision, total) != null ? ` · ${fmtPct(pct(comision, total))} del total` : ''}`
-    : (pct(comision, total) != null && comision ? `${fmtPct(pct(comision, total))} del total` : '');
+  // MELI nunca cobra $0 por vender: si la comisión es sólo el envío, faltan los cargos por venta
+  // (el aviso de la orden llegó sin sale_fee). El cron los recalcula solo; se avisa para no
+  // tomar como real una ganancia inflada.
+  const cargosVenta = comision - envioMeli;
+  const sinCargosMeli = esMeli && total > 0 && Math.abs(cargosVenta) < 0.01;
+  const subComision = (esMeli && envioMeli
+    ? `cargos por venta ${fmt2(cargosVenta)} ${envioMeli < 0 ? '− envío a favor' : '+ envío MELI'} ${fmt2(Math.abs(envioMeli))}${pct(comision, total) != null ? ` · ${fmtPct(pct(comision, total))} del total` : ''}`
+    : (pct(comision, total) != null && comision ? `${fmtPct(pct(comision, total))} del total` : ''))
+    + (sinCargosMeli ? '<span class="ev-mg-sub" style="color:var(--yellow)">⚠️ faltan los cargos por venta de MELI: se recalculan solos en la próxima sincronización</span>' : '');
   const subEnvio = envio
     ? [envio.transportista ? escHtml(String(envio.transportista)) : '', envio.colecta ? 'incl. colecta $75' : '', envioProrrateado ? `prorrateado entre ${lineas.length} productos` : ''].filter(Boolean).join(' · ')
     : 'sin envío propio cargado';

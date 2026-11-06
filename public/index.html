@@ -124,6 +124,26 @@
   .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px; width: 520px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
   .modal-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; letter-spacing: -0.3px; }
 
+  /* Desplegable de márgenes al pie de "Editar venta" (cerrado por defecto) */
+  .ev-margenes { margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface2); }
+  .ev-margenes > summary { list-style: none; cursor: pointer; padding: 11px 14px; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; user-select: none; }
+  .ev-margenes > summary::-webkit-details-marker { display: none; }
+  .ev-margenes > summary .ev-mg-chev { margin-left: auto; width: 7px; height: 7px; border-right: 2px solid var(--text-dim); border-bottom: 2px solid var(--text-dim); transform: rotate(45deg); margin-top: -3px; transition: transform .15s; }
+  .ev-margenes[open] > summary .ev-mg-chev { transform: rotate(-135deg); margin-top: 3px; }
+  .ev-margenes > summary .ev-mg-resumen { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; }
+  .ev-mg-body { padding: 4px 14px 14px; border-top: 1px solid var(--border); }
+  .ev-mg-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; }
+  .ev-mg-row .ev-mg-lbl { color: var(--text-dim); }
+  .ev-mg-row .ev-mg-sub { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+  .ev-mg-row .ev-mg-val { font-family: 'JetBrains Mono', monospace; white-space: nowrap; text-align: right; }
+  .ev-mg-row.ev-mg-total { border-top: 1px dashed var(--border); margin-top: 2px; padding-top: 8px; font-weight: 700; }
+  .ev-mg-row.ev-mg-total .ev-mg-lbl { color: var(--text); }
+  .ev-mg-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .ev-mg-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .ev-mg-kpi b { display: block; font-family: 'JetBrains Mono', monospace; font-size: 15px; }
+  .ev-mg-kpi span { font-size: 11px; color: var(--text-muted); }
+  .ev-mg-nota { margin-top: 10px; font-size: 11px; color: var(--text-muted); line-height: 1.45; }
+
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .form-full { grid-column: 1 / -1; }
   .form-group { display: flex; flex-direction: column; gap: 6px; }
@@ -1495,10 +1515,10 @@
         </select>
       </div>
       <div class="form-group"><label class="form-label">Comprador / Cliente</label><input type="text" id="ev-comprador" placeholder="Nombre"></div>
-      <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1"></div>
-      <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01"></div>
-      <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01"></div>
-      <div class="form-group" id="ev-envio-meli-wrap" style="display:none"><label class="form-label" title="Positivo: lo que MELI cobra por el envío (Mercado Envíos con envío gratis). Negativo: lo que MELI pasa a favor en Flex (bonificación o envío que pagó el comprador). Ya está incluido en la comisión, que por eso puede quedar negativa.">Envío MELI (incluido en comisión, − = a favor)</label><input type="number" id="ev-costo-envio-meli" step="0.01"></div>
+      <div class="form-group"><label class="form-label">Cantidad</label><input type="number" id="ev-cantidad" min="1" oninput="renderMargenesEdicionVenta()"></div>
+      <div class="form-group"><label class="form-label">Precio unitario</label><input type="number" id="ev-precio" step="0.01" oninput="renderMargenesEdicionVenta()"></div>
+      <div class="form-group"><label class="form-label">Comisión</label><input type="number" id="ev-comision" step="0.01" oninput="renderMargenesEdicionVenta()"></div>
+      <div class="form-group" id="ev-envio-meli-wrap" style="display:none"><label class="form-label" title="Positivo: lo que MELI cobra por el envío (Mercado Envíos con envío gratis). Negativo: lo que MELI pasa a favor en Flex (bonificación o envío que pagó el comprador). Ya está incluido en la comisión, que por eso puede quedar negativa.">Envío MELI (incluido en comisión, − = a favor)</label><input type="number" id="ev-costo-envio-meli" step="0.01" oninput="renderMargenesEdicionVenta()"></div>
       <div class="form-group"><label class="form-label">Método de pago</label>
         <select id="ev-metodo">
           <option value="">—</option>
@@ -1511,6 +1531,10 @@
       </div>
       <div class="form-group form-full"><label class="form-label">Notas</label><textarea id="ev-notas" rows="2"></textarea></div>
     </div>
+    <details class="ev-margenes" id="ev-margenes">
+      <summary>📊 Márgenes de la venta <span class="ev-mg-resumen" id="ev-mg-resumen"></span><span class="ev-mg-chev"></span></summary>
+      <div class="ev-mg-body" id="ev-mg-body"></div>
+    </details>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-editar-venta')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarEdicionVenta()">Guardar cambios</button>
@@ -4165,7 +4189,96 @@ function abrirEdicionVenta(id) {
   const esMeli = v.canal === 'meli';
   document.getElementById('ev-envio-meli-wrap').style.display = esMeli ? '' : 'none';
   document.getElementById('ev-costo-envio-meli').value = esMeli ? (v.costoEnvioMeli || 0) : 0;
+  // El desplegable de márgenes arranca siempre cerrado.
+  document.getElementById('ev-margenes').open = false;
+  renderMargenesEdicionVenta();
   openModal('modal-editar-venta');
+}
+
+// Desglose de márgenes de la venta que se está editando. Se recalcula con lo que hay en el
+// formulario (cantidad, precio, comisión), así se ve el efecto antes de guardar. Usa la misma
+// cuenta que Reportes: total − comisión − costo del producto − envío propio (+ colecta).
+function renderMargenesEdicionVenta() {
+  const body = document.getElementById('ev-mg-body');
+  const resumen = document.getElementById('ev-mg-resumen');
+  if (!body) return;
+  const v = db.ventas.find(x => x.id === document.getElementById('ev-id').value);
+  if (!v) { body.innerHTML = ''; resumen.textContent = ''; return; }
+  const num = (id, def) => { const n = parseFloat(document.getElementById(id).value); return isNaN(n) ? def : n; };
+  const cantidad = Math.max(0, num('ev-cantidad', v.cantidad || 0));
+  const precioUnit = num('ev-precio', v.precioUnit || 0);
+  const comision = num('ev-comision', v.comision || 0);
+  const esMeli = v.canal === 'meli';
+  const envioMeli = esMeli ? num('ev-costo-envio-meli', v.costoEnvioMeli || 0) : 0;
+
+  const subtotal = precioUnit * cantidad;
+  const descuento = redondear2(subtotal * (v.descuentoPct || 0) / 100);
+  const total = subtotal - descuento;
+
+  const p = db.productos.find(x => x.sku === v.sku);
+  const costoUnit = p ? (Number(p.costo) || 0) : 0;
+  const sinCosto = !p || !costoUnit;
+  const costoProd = costoUnit * cantidad;
+
+  // El envío va por ticket (carrito / pack): si la venta tiene varias líneas, a esta le toca
+  // la parte proporcional a lo que factura.
+  const lineas = lineasDelTicket(v);
+  const ids = new Set(lineas.map(x => x.id));
+  const envio = db.envios.find(e => ids.has(e.ventaId));
+  let costoEnvio = 0, envioProrrateado = false;
+  if (envio) {
+    const costoTicket = (envio.costo || 0) + (envio.colecta ? 75 : 0);
+    if (lineas.length > 1) {
+      const totTicket = lineas.reduce((a, x) => a + (x.id === v.id ? total : (x.total || 0)), 0);
+      costoEnvio = totTicket > 0 ? costoTicket * (total / totTicket) : costoTicket / lineas.length;
+      envioProrrateado = true;
+    } else {
+      costoEnvio = costoTicket;
+    }
+  }
+
+  const ingresoNeto = total - comision;
+  const margenBruto = total - costoProd;
+  const gananciaNeta = total - comision - costoProd - costoEnvio;
+  const pct = (n, base) => base > 0 ? (n / base * 100) : null;
+  const fmtPct = x => x == null ? '—' : x.toFixed(1).replace('.', ',') + '%';
+  const fmt2 = n => (n < 0 ? '−$' : '$') + Math.abs(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const color = x => x == null ? 'var(--text-muted)' : x >= 25 ? 'var(--green)' : x >= 10 ? 'var(--yellow)' : 'var(--red)';
+  const pctBruto = pct(margenBruto, total);
+  const pctNeto = pct(gananciaNeta, total);
+  const markup = pct(gananciaNeta, costoProd);
+
+  const fila = (lbl, val, sub = '', cls = '', style = '') =>
+    `<div class="ev-mg-row ${cls}"><span class="ev-mg-lbl">${lbl}${sub ? `<span class="ev-mg-sub">${sub}</span>` : ''}</span><span class="ev-mg-val" style="${style}">${val}</span></div>`;
+
+  const nombreComision = esMeli ? 'Comisión MELI' : v.canal === 'shopify' ? 'Comisión / cargos Shopify' : 'Comisión / cargos';
+  const subComision = esMeli && envioMeli
+    ? `incluye ${envioMeli < 0 ? 'envío a favor' : 'envío MELI'} ${fmt2(Math.abs(envioMeli))}${pct(comision, total) != null ? ` · ${fmtPct(pct(comision, total))} del total` : ''}`
+    : (pct(comision, total) != null && comision ? `${fmtPct(pct(comision, total))} del total` : '');
+  const subEnvio = envio
+    ? [envio.transportista ? escHtml(String(envio.transportista)) : '', envio.colecta ? 'incl. colecta $75' : '', envioProrrateado ? `prorrateado entre ${lineas.length} productos` : ''].filter(Boolean).join(' · ')
+    : 'sin envío propio cargado';
+
+  body.innerHTML =
+    fila('Precio de venta', fmt2(subtotal), `${cantidad} × ${fmt2(precioUnit)}`) +
+    (descuento ? fila('Descuento', '−' + fmt2(descuento), `${v.descuentoPct}% promo`) : '') +
+    (descuento ? fila('Total cobrado', fmt2(total), '', 'ev-mg-total') : '') +
+    fila('Costo del producto', '−' + fmt2(costoProd),
+      sinCosto ? '<span style="color:var(--yellow)">⚠️ el producto no tiene costo cargado</span>' : `${cantidad} × ${fmt2(costoUnit)}${v.sku ? ' · ' + escHtml(v.sku) : ''}`) +
+    fila('Margen bruto', fmt2(margenBruto), `${fmtPct(pctBruto)} sobre el total · antes de comisión y envío`, 'ev-mg-total', `color:${color(pctBruto)}`) +
+    fila(nombreComision, (comision < 0 ? '+' + fmt2(-comision) : '−' + fmt2(comision)), subComision) +
+    fila('Costo de envío', costoEnvio ? '−' + fmt2(costoEnvio) : '$0', subEnvio) +
+    fila('Ganancia neta', fmt2(gananciaNeta), `${fmtPct(pctNeto)} sobre el total`, 'ev-mg-total', `color:${gananciaNeta >= 0 ? color(pctNeto) : 'var(--red)'}`) +
+    `<div class="ev-mg-kpis">
+      <div class="ev-mg-kpi"><b>${fmt2(ingresoNeto)}</b><span>Ingreso neto (total − comisión)</span></div>
+      <div class="ev-mg-kpi"><b>${cantidad > 0 ? fmt2(gananciaNeta / cantidad) : '—'}</b><span>Ganancia por unidad</span></div>
+      <div class="ev-mg-kpi"><b>${fmtPct(markup)}</b><span>Markup sobre costo</span></div>
+    </div>
+    <div class="ev-mg-nota">Usa el costo actual del producto y lo que hay en el formulario (se actualiza mientras editás). No incluye ads, costos fijos ni IVA.</div>`;
+
+  resumen.innerHTML = sinCosto
+    ? '<span style="color:var(--yellow)">sin costo</span>'
+    : `<span style="color:${gananciaNeta >= 0 ? color(pctNeto) : 'var(--red)'}">${fmt2(gananciaNeta)} · ${fmtPct(pctNeto)}</span>`;
 }
 
 async function guardarEdicionVenta() {

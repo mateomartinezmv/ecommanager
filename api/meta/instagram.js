@@ -11,7 +11,7 @@
 
 const { getSupabase } = require('../_supabase');
 const { armarPublicacion } = require('../_metaInstagram');
-const { publicarFila } = require('../cron/instagram-publicar');
+const { publicarFila, MARGEN_MS } = require('../cron/instagram-publicar');
 
 // Postgres responde 42P01 cuando la tabla no existe: la migración todavía no se corrió.
 const faltaMigracion = err => err && (err.code === '42P01' || /does not exist|schema cache/i.test(err.message || ''));
@@ -36,7 +36,9 @@ module.exports = async (req, res) => {
     if (req.method === 'POST' && accion === 'publicar') {
       if (!id) return res.status(400).json({ error: 'Falta el id' });
       // Mismo camino que el cron: toma la fila solo si sigue programada, así no sale dos veces.
-      const r = await publicarFila(supabase, Number(id), { desde: ['programado', 'error'] });
+      // Con el mismo margen que el cron: si no llega a todas las redes, el resto lo publica el
+      // cron en su próxima vuelta (la fila vuelve a 'programado').
+      const r = await publicarFila(supabase, Number(id), { desde: ['programado', 'error'], hasta: Date.now() + MARGEN_MS });
       if (!r) return res.status(409).json({ error: 'Esa publicación ya no se puede publicar (salió, se canceló o se está publicando)' });
       if (r.error) return res.status(502).json({ error: r.error });
       return res.json(r);

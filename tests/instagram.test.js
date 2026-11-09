@@ -263,3 +263,23 @@ test('si falla una sola red, al reintentar se publica solo en la que faltaba', a
   assert.ok(!g.llamadas.some(l => l.ruta.startsWith('IG1/')));
   assert.strictEqual(fila.fb_post_id, 'PAGE1_foto1');
 });
+
+test('si no queda tiempo, lo que salió queda guardado y la red que falta sale en la próxima vuelta', async () => {
+  const fila = { id: 1, tipo: 'post', redes: ['instagram', 'facebook'], imagenes: [URL1], caption: 'x', estado: 'programado', intentos: 0 };
+  const sb = fakeSupabase([fila]);
+  // Instagram ya salió en una vuelta anterior y no queda margen para empezar Facebook.
+  fila.ig_media_id = 'media99';
+  const g1 = fakeGraph();
+  const r1 = await publicarFila(sb, 1, { fetchImpl: g1.fetchImpl, hasta: Date.now() - 1 });
+  assert.deepStrictEqual(r1.faltan, ['facebook']);
+  assert.strictEqual(r1.pendiente, true);
+  assert.strictEqual(fila.estado, 'programado');
+  assert.strictEqual(g1.llamadas.length, 0);
+
+  // En la vuelta siguiente, con tiempo, sale solo en Facebook.
+  const g2 = fakeGraph();
+  const r2 = await publicarFila(sb, 1, { fetchImpl: g2.fetchImpl, hasta: Date.now() + 60000 });
+  assert.strictEqual(r2.ok, true);
+  assert.strictEqual(fila.estado, 'publicado');
+  assert.ok(g2.llamadas.every(l => !l.ruta.startsWith('IG1/')));
+});

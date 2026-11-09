@@ -611,10 +611,40 @@
     <div class="topbar">
       <div class="page-title">💳 Transportistas</div>
       <div class="topbar-actions">
+        <button class="btn btn-ghost" id="btn-transp-info" onclick="toggleInfoTransportistas()">📊 Información</button>
         <button class="btn btn-primary" onclick="openModal('modal-pago-transportista')">+ Registrar pago</button>
       </div>
     </div>
-    <div class="content">
+
+    <!-- INFORMACIÓN: desglose de gastos del período y transportista elegidos -->
+    <div class="content" id="transp-vista-info" style="display:none">
+      <div class="table-wrap" style="margin-bottom:20px">
+        <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <span class="table-title">📊 Información de envíos</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <select id="tinfo-transportista" onchange="renderInfoTransportistas()" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;cursor:pointer">
+              <option value="">Todos los transportistas</option>
+              <option value="enviosuy">EnviosUy</option>
+              <option value="gestionpost">GestionPost</option>
+              <option value="ues">UES</option>
+              <option value="dac">DAC</option>
+              <option value="mmotos_mateo">MMOTOS MATEO</option>
+              <option value="mercado_envios">MELI Envíos</option>
+              <option value="otro">Otro</option>
+            </select>
+            <input type="month" id="tinfo-mes" onchange="aplicarMesInfoTransportistas()" title="Filtrar por mes" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <input type="date" id="tinfo-desde" onchange="renderInfoTransportistas()" title="Desde" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <span style="color:var(--text-muted);font-size:12px">→</span>
+            <input type="date" id="tinfo-hasta" onchange="renderInfoTransportistas()" title="Hasta" style="padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px">
+            <button class="btn btn-ghost btn-sm" onclick="limpiarFechaInfoTransportistas()" title="Limpiar filtro de fecha">✕ Fecha</button>
+          </div>
+        </div>
+        <div id="tinfo-periodo" style="padding:10px 20px;font-size:12px;color:var(--text-muted)"></div>
+      </div>
+      <div id="tinfo-contenido"></div>
+    </div>
+
+    <div class="content" id="transp-vista-pagos">
       <div class="cards-grid" id="transportistas-deudas"></div>
 
       <!-- Desglose de envíos pendientes de pago -->
@@ -10703,6 +10733,7 @@ async function renderTransportistas() {
     // Desglose de envíos pendientes
     _desgloseEnvios = data.envios || [];
     filtrarDesglose();
+    if (_transpVistaInfo) renderInfoTransportistas();
 
     // Historial de pagos
     const pagos = data.pagos || [];
@@ -10751,6 +10782,285 @@ function limpiarFiltroFechaDesglose() {
   document.getElementById('desglose-desde').value = '';
   document.getElementById('desglose-hasta').value = '';
   filtrarDesglose();
+}
+
+// ── Información: desglose de gastos de envíos del período y transportista elegidos.
+// A diferencia del desglose de pendientes, acá entran TODOS los envíos (pagados o no): es
+// cuánto se gastó, no cuánto se debe. Envío = costo del envío; retiro = colecta ($75).
+// La fecha es la misma que usa el desglose: la de despacho o, si no tiene, la de carga.
+const COSTO_RETIRO = 75;
+const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+let _transpVistaInfo = false;
+
+function toggleInfoTransportistas(forzar) {
+  _transpVistaInfo = typeof forzar === 'boolean' ? forzar : !_transpVistaInfo;
+  document.getElementById('transp-vista-info').style.display = _transpVistaInfo ? '' : 'none';
+  document.getElementById('transp-vista-pagos').style.display = _transpVistaInfo ? 'none' : '';
+  const btn = document.getElementById('btn-transp-info');
+  btn.innerHTML = _transpVistaInfo ? '💳 Pagos' : '📊 Información';
+  if (_transpVistaInfo) {
+    // Arranca con lo mismo que estaba filtrado en el desglose.
+    ['transportista:filtro', 'mes:mes', 'desde:desde', 'hasta:hasta'].forEach(par => {
+      const [info, desg] = par.split(':');
+      document.getElementById('tinfo-' + info).value = document.getElementById('desglose-' + desg)?.value || '';
+    });
+    renderInfoTransportistas();
+  }
+}
+
+function aplicarMesInfoTransportistas() {
+  const mes = document.getElementById('tinfo-mes').value;
+  if (!mes) return;
+  const [y, m] = mes.split('-').map(Number);
+  document.getElementById('tinfo-desde').value = `${mes}-01`;
+  document.getElementById('tinfo-hasta').value = `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+  renderInfoTransportistas();
+}
+
+function limpiarFechaInfoTransportistas() {
+  ['tinfo-mes', 'tinfo-desde', 'tinfo-hasta'].forEach(id => { document.getElementById(id).value = ''; });
+  renderInfoTransportistas();
+}
+
+// Días entre dos fechas YYYY-MM-DD (inclusive), en UTC para que no lo mueva el horario de verano.
+function _diasEntre(desde, hasta) {
+  const dias = [];
+  const fin = Date.parse(hasta + 'T00:00:00Z');
+  for (let t = Date.parse(desde + 'T00:00:00Z'); t <= fin; t += 86400000) dias.push(new Date(t).toISOString().slice(0, 10));
+  return dias;
+}
+
+function _diaSemana(fecha) { return new Date(fecha + 'T00:00:00Z').getUTCDay(); }
+
+function _fechaCorta(fecha) {
+  if (!fecha) return '—';
+  const [y, m, d] = fecha.split('-');
+  return `${DIAS_SEMANA[_diaSemana(fecha)].slice(0, 3)} ${d}/${m}/${y}`;
+}
+
+// envios: [{ transportista, costo, colecta, zona, fecha, pagado }]. Pura, para poder testearla.
+function calcularInfoTransportista(envios, { desde = '', hasta = '', hoy = new Date().toISOString().slice(0, 10) } = {}) {
+  const n = envios.length;
+  const gastoEnvios = envios.reduce((a, e) => a + (e.costo || 0), 0);
+  const retiros = envios.filter(e => e.colecta).length;
+  const gastoRetiros = retiros * COSTO_RETIRO;
+  const gastoTotal = gastoEnvios + gastoRetiros;
+  const pendiente = envios.filter(e => !e.pagado).reduce((a, e) => a + (e.costo || 0) + (e.colecta ? COSTO_RETIRO : 0), 0);
+
+  // Por zona
+  const zonas = {};
+  envios.forEach(e => {
+    const k = e.zona != null && e.zona !== '' ? String(e.zona) : '';
+    const z = zonas[k] ||= { zona: k, envios: 0, gastoEnvios: 0, retiros: 0, gastoTotal: 0 };
+    z.envios++;
+    z.gastoEnvios += e.costo || 0;
+    if (e.colecta) z.retiros++;
+    z.gastoTotal += (e.costo || 0) + (e.colecta ? COSTO_RETIRO : 0);
+  });
+  const porZona = Object.values(zonas).sort((a, b) => b.envios - a.envios || b.gastoTotal - a.gastoTotal
+    || (a.zona === '' ? 1 : b.zona === '' ? -1 : Number(a.zona) - Number(b.zona) || a.zona.localeCompare(b.zona)));
+  const conZona = porZona.filter(z => z.zona !== '');
+  const zonaMax = conZona[0] || null;
+  const zonaMin = conZona.length > 1 ? conZona[conZona.length - 1] : null;
+
+  // Por día. El período es el elegido; si no hay fechas, va del primer al último envío.
+  // No se cuentan días futuros: un mes en curso se promedia sobre lo que va del mes.
+  const porFecha = {};
+  envios.forEach(e => {
+    if (!e.fecha) return;
+    const d = porFecha[e.fecha] ||= { fecha: e.fecha, envios: 0, gasto: 0, retiros: 0 };
+    d.envios++;
+    d.gasto += (e.costo || 0) + (e.colecta ? COSTO_RETIRO : 0);
+    if (e.colecta) d.retiros++;
+  });
+  const fechasConEnvios = Object.keys(porFecha).sort();
+  let inicio = desde || fechasConEnvios[0] || '';
+  let fin = hasta || fechasConEnvios[fechasConEnvios.length - 1] || '';
+  if (fin > hoy) fin = [hoy, inicio, fechasConEnvios[fechasConEnvios.length - 1] || ''].sort().pop();
+  const dias = inicio && fin && inicio <= fin ? _diasEntre(inicio, fin).map(f => porFecha[f] || { fecha: f, envios: 0, gasto: 0, retiros: 0 }) : [];
+  const diasPeriodo = dias.length;
+  const diasActivos = dias.filter(d => d.envios > 0);
+  const masAlto = (a, b) => b.envios - a.envios || b.gasto - a.gasto || a.fecha.localeCompare(b.fecha);
+  const diaMax = diasActivos.slice().sort(masAlto)[0] || null;
+  const diaMin = diasActivos.length > 1 ? diasActivos.slice().sort((a, b) => a.envios - b.envios || a.gasto - b.gasto || a.fecha.localeCompare(b.fecha))[0] : null;
+
+  // Por día de la semana: cuántos envíos salen en promedio cada lunes, martes, etc.
+  const porDiaSemana = DIAS_SEMANA.map((nombre, i) => {
+    const ds = dias.filter(d => _diaSemana(d.fecha) === i);
+    const env = ds.reduce((a, d) => a + d.envios, 0);
+    return { dia: i, nombre, dias: ds.length, envios: env, gasto: ds.reduce((a, d) => a + d.gasto, 0), promedio: ds.length ? env / ds.length : 0 };
+  });
+
+  // Por transportista (sirve cuando se mira "Todos")
+  const transp = {};
+  envios.forEach(e => {
+    const t = transp[e.transportista || 'otro'] ||= { transportista: e.transportista || 'otro', envios: 0, retiros: 0, gastoEnvios: 0, gastoTotal: 0 };
+    t.envios++;
+    t.gastoEnvios += e.costo || 0;
+    if (e.colecta) t.retiros++;
+    t.gastoTotal += (e.costo || 0) + (e.colecta ? COSTO_RETIRO : 0);
+  });
+
+  return {
+    envios: n, gastoEnvios, retiros, gastoRetiros, gastoTotal, pendiente, pagado: gastoTotal - pendiente,
+    promedioEnvio: n ? gastoEnvios / n : 0,
+    promedioTotal: n ? gastoTotal / n : 0,
+    porZona, zonaMax, zonaMin,
+    inicio, fin, dias, diasPeriodo, diasConEnvios: diasActivos.length, diasSinEnvios: diasPeriodo - diasActivos.length,
+    promedioDia: diasPeriodo ? n / diasPeriodo : 0,
+    promedioDiaActivo: diasActivos.length ? n / diasActivos.length : 0,
+    gastoPromedioDia: diasPeriodo ? gastoTotal / diasPeriodo : 0,
+    diaMax, diaMin, porDiaSemana,
+    porTransportista: Object.values(transp).sort((a, b) => b.gastoTotal - a.gastoTotal || b.envios - a.envios),
+  };
+}
+
+// Envíos (todos, pagados o no) del transportista y período elegidos en la pestaña Información.
+function enviosParaInfoTransportistas() {
+  const t = document.getElementById('tinfo-transportista')?.value || '';
+  const desde = document.getElementById('tinfo-desde')?.value || '';
+  const hasta = document.getElementById('tinfo-hasta')?.value || '';
+  // La API de transportistas deduce la zona desde la dirección cuando el envío no la tiene
+  // guardada: se reaprovecha para no dejar esos envíos como "sin zona".
+  const zonaDetectada = Object.fromEntries(_desgloseEnvios.filter(e => e.zona).map(e => [e.id, e.zona]));
+  let envios = (db.envios || []).map(e => ({
+    id: e.id, transportista: e.transportista, costo: e.costo || 0, colecta: !!e.colecta, pagado: !!e.pagado,
+    zona: e.zona ?? zonaDetectada[e.id] ?? null,
+    fecha: e.fechaDespacho || (e.creado || '').slice(0, 10) || '',
+  }));
+  if (t) envios = envios.filter(e => (e.transportista || 'otro') === t);
+  if (desde) envios = envios.filter(e => e.fecha >= desde);
+  if (hasta) envios = envios.filter(e => e.fecha <= hasta);
+  return { envios, transportista: t, desde, hasta };
+}
+
+function renderInfoTransportistas() {
+  const cont = document.getElementById('tinfo-contenido');
+  if (!cont) return;
+  const { envios, transportista, desde, hasta } = enviosParaInfoTransportistas();
+  const r = calcularInfoTransportista(envios, { desde, hasta });
+  const nombreT = transportista ? (NOMBRES_TRANSPORTISTAS[transportista] || transportista) : 'Todos los transportistas';
+  document.getElementById('tinfo-periodo').innerHTML = `<strong style="color:var(--text)">${escHtml(nombreT)}</strong> · ` +
+    (r.inicio ? `del ${_fechaCorta(r.inicio)} al ${_fechaCorta(r.fin)} (${r.diasPeriodo} día${r.diasPeriodo === 1 ? '' : 's'})` : 'todo el historial') +
+    (hasta && r.fin && r.fin < hasta ? ' · los días que todavía no llegaron no cuentan para los promedios' : '');
+
+  if (!r.envios) {
+    cont.innerHTML = '<div class="table-wrap"><div class="empty-state"><div class="empty-icon">📊</div><p>No hay envíos para este transportista en el período elegido.</p></div></div>';
+    return;
+  }
+
+  const pct = (x, tot) => tot > 0 ? Math.round(x / tot * 100) : 0;
+  const num = x => x.toLocaleString('es-AR', { maximumFractionDigits: 1 });
+  const zonaTxt = z => z ? (z.zona ? `Zona ${escHtml(z.zona)}` : 'Sin zona') : '—';
+  const card = (color, icon, valor, label, sub = '') => `
+    <div class="stat-card ${color}">
+      ${icon ? `<div class="stat-icon">${icon}</div>` : ''}
+      <div class="stat-value">${valor}</div>
+      <div class="stat-label">${label}</div>
+      ${sub ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px">${sub}</div>` : ''}
+    </div>`;
+  const barra = (valor, max, color) => `<div style="background:var(--surface2);border-radius:4px;height:8px;min-width:80px;overflow:hidden"><div style="width:${max > 0 ? Math.max(2, valor / max * 100) : 0}%;height:100%;background:${color}"></div></div>`;
+
+  // ── Gastos
+  const gastos = `
+    <div class="cards-grid" id="tinfo-gastos">
+      ${card('red', '💸', fmt(r.gastoTotal), 'Gasto total', `${fmt(r.pagado)} pagado · ${fmt(r.pendiente)} pendiente`)}
+      ${card('blue', '🚚', fmt(r.gastoEnvios), 'Gasto en envíos', `${r.envios} envío${r.envios === 1 ? '' : 's'} · ${pct(r.gastoEnvios, r.gastoTotal)}% del gasto`)}
+      ${card('yellow', '🏷️', fmt(r.gastoRetiros), 'Gasto en retiros', `${r.retiros} retiro${r.retiros === 1 ? '' : 's'} × ${fmt(COSTO_RETIRO)} · ${pct(r.gastoRetiros, r.gastoTotal)}% del gasto`)}
+      ${card('purple', '📏', fmt(r.promedioEnvio), 'Costo promedio por envío', `${fmt(r.promedioTotal)} contando retiros`)}
+    </div>`;
+
+  // ── Zonas
+  const zonas = `
+    <div class="cards-grid" id="tinfo-zonas-resumen">
+      ${card('green', '🔝', zonaTxt(r.zonaMax), 'Zona a la que más se envió', r.zonaMax ? `${r.zonaMax.envios} envíos · ${fmt(r.zonaMax.gastoTotal)}` : 'Ningún envío tiene zona')}
+      ${card('blue', '🔻', zonaTxt(r.zonaMin), 'Zona a la que menos se envió', r.zonaMin ? `${r.zonaMin.envios} envío${r.zonaMin.envios === 1 ? '' : 's'} · ${fmt(r.zonaMin.gastoTotal)}` : 'Hace falta más de una zona')}
+    </div>
+    <div class="table-wrap" style="margin-bottom:24px">
+      <div class="table-header"><span class="table-title">📍 Envíos por zona</span></div>
+      <table id="tinfo-zonas">
+        <thead><tr><th>Zona</th><th style="text-align:center">Envíos</th><th>% de envíos</th><th style="text-align:center">Retiros</th><th>Gasto envíos</th><th>Gasto retiros</th><th>Gasto total</th><th>Promedio</th></tr></thead>
+        <tbody>${r.porZona.map(z => `
+          <tr>
+            <td><strong style="color:${z.zona ? 'var(--accent)' : 'var(--text-muted)'}">${zonaTxt(z)}</strong></td>
+            <td style="text-align:center;font-weight:700">${z.envios}</td>
+            <td><div style="display:flex;align-items:center;gap:8px">${barra(z.envios, r.porZona[0].envios, 'var(--accent)')}<span style="font-size:12px;color:var(--text-muted)">${pct(z.envios, r.envios)}%</span></div></td>
+            <td style="text-align:center">${z.retiros || '—'}</td>
+            <td>${fmt(z.gastoEnvios)}</td>
+            <td>${z.retiros ? fmt(z.retiros * COSTO_RETIRO) : '—'}</td>
+            <td style="color:var(--yellow);font-weight:700">${fmt(z.gastoTotal)}</td>
+            <td>${fmt(z.envios ? z.gastoEnvios / z.envios : 0)}</td>
+          </tr>`).join('')}</tbody>
+        <tfoot><tr style="font-weight:700;border-top:2px solid var(--border)">
+          <td>Total</td><td style="text-align:center">${r.envios}</td><td>100%</td><td style="text-align:center">${r.retiros || '—'}</td>
+          <td>${fmt(r.gastoEnvios)}</td><td>${fmt(r.gastoRetiros)}</td><td style="color:var(--yellow)">${fmt(r.gastoTotal)}</td><td>${fmt(r.promedioEnvio)}</td>
+        </tr></tfoot>
+      </table>
+    </div>`;
+
+  // ── Días
+  const diasCards = `
+    <div class="cards-grid" id="tinfo-dias">
+      ${card('blue', '📅', num(r.promedioDia), 'Envíos promedio por día', `${num(r.promedioDiaActivo)} por día contando sólo días con envíos`)}
+      ${card('purple', '💵', fmt(r.gastoPromedioDia), 'Gasto promedio por día', `${r.diasConEnvios} día${r.diasConEnvios === 1 ? '' : 's'} con envíos · ${r.diasSinEnvios} sin envíos`)}
+      ${card('green', '📈', r.diaMax ? r.diaMax.envios : '—', 'Día máximo', r.diaMax ? `${_fechaCorta(r.diaMax.fecha)} · ${fmt(r.diaMax.gasto)}` : '')}
+      ${card('red', '📉', r.diaMin ? r.diaMin.envios : '—', 'Día mínimo (con envíos)', r.diaMin ? `${_fechaCorta(r.diaMin.fecha)} · ${fmt(r.diaMin.gasto)}` : 'Hace falta más de un día con envíos')}
+    </div>`;
+
+  const maxDia = Math.max(...r.dias.map(d => d.envios), 1);
+  const grafico = r.dias.length > 1 && r.dias.length <= 120 ? `
+    <div class="table-wrap" style="margin-bottom:24px">
+      <div class="table-header"><span class="table-title">📆 Envíos por día</span></div>
+      <div style="overflow-x:auto;padding:16px 20px">
+        <div style="display:flex;align-items:flex-end;gap:3px;height:150px;min-width:${r.dias.length * 14}px">
+          ${r.dias.map(d => {
+            const esMax = r.diaMax && d.fecha === r.diaMax.fecha;
+            const finde = [0, 6].includes(_diaSemana(d.fecha));
+            return `<div title="${_fechaCorta(d.fecha)}: ${d.envios} envío${d.envios === 1 ? '' : 's'} · ${fmt(d.gasto)}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%">
+              <span style="font-size:10px;color:var(--text-muted);margin-bottom:2px">${d.envios || ''}</span>
+              <div style="width:100%;height:${d.envios / maxDia * 120}px;min-height:${d.envios ? 3 : 1}px;border-radius:3px 3px 0 0;background:${d.envios ? (esMax ? 'var(--green)' : 'var(--accent)') : 'var(--border)'}"></div>
+              <span style="font-size:9px;color:${finde ? 'var(--text-dim)' : 'var(--text-muted)'};margin-top:3px">${d.fecha.slice(8)}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>` : '';
+
+  const maxSemana = Math.max(...r.porDiaSemana.map(d => d.promedio), 0);
+  const semana = `
+    <div class="table-wrap" style="margin-bottom:24px">
+      <div class="table-header"><span class="table-title">🗓️ Por día de la semana</span></div>
+      <table id="tinfo-semana">
+        <thead><tr><th>Día</th><th style="text-align:center">Envíos</th><th>Promedio por día</th><th>Gasto</th></tr></thead>
+        <tbody>${[1, 2, 3, 4, 5, 6, 0].map(i => r.porDiaSemana[i]).map(d => `
+          <tr>
+            <td>${d.nombre}</td>
+            <td style="text-align:center;font-weight:700">${d.envios}</td>
+            <td><div style="display:flex;align-items:center;gap:8px">${barra(d.promedio, maxSemana, 'var(--accent2)')}<span style="font-size:12px;color:var(--text-muted)">${num(d.promedio)}</span></div></td>
+            <td>${fmt(d.gasto)}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+
+  const porTransp = !transportista && r.porTransportista.length > 1 ? `
+    <div class="table-wrap" style="margin-bottom:24px">
+      <div class="table-header"><span class="table-title">🚚 Por transportista</span></div>
+      <table id="tinfo-transportistas">
+        <thead><tr><th>Transportista</th><th style="text-align:center">Envíos</th><th style="text-align:center">Retiros</th><th>Gasto envíos</th><th>Gasto retiros</th><th>Gasto total</th><th>% del gasto</th></tr></thead>
+        <tbody>${r.porTransportista.map(t => `
+          <tr>
+            <td><strong>${escHtml(NOMBRES_TRANSPORTISTAS[t.transportista] || t.transportista)}</strong></td>
+            <td style="text-align:center">${t.envios}</td>
+            <td style="text-align:center">${t.retiros || '—'}</td>
+            <td>${fmt(t.gastoEnvios)}</td>
+            <td>${t.retiros ? fmt(t.retiros * COSTO_RETIRO) : '—'}</td>
+            <td style="color:var(--yellow);font-weight:700">${fmt(t.gastoTotal)}</td>
+            <td>${pct(t.gastoTotal, r.gastoTotal)}%</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '';
+
+  cont.innerHTML = gastos + zonas + diasCards + grafico + semana + porTransp;
 }
 
 async function eliminarSeleccionadosDesglose() {

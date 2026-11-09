@@ -12,12 +12,19 @@
 // de 15 minutos (se cortó la función a mitad de camino) no se reintenta sola, porque pudo
 // haber salido: se marca con error para que alguien mire las redes antes de reintentar.
 //
+// Vercel corta la función a los 60 segundos. Para no quedar a mitad de camino, antes de
+// empezar cada red se mira el reloj: si ya no queda margen, lo que salió queda guardado y la
+// fila vuelve a 'programado' para que la próxima vuelta publique solo lo que falta.
+//
 // Avisa por Telegram cada publicación que sale y cada una que falla.
 
 const { getSupabase } = require('../_supabase');
 const { publicar, publicarFacebook } = require('../_metaInstagram');
 
 const POR_VUELTA = 5;
+// Pasado este tiempo desde que arrancó la función no se empieza ninguna red nueva: lo que
+// tarda una (un carrusel de 10 en Instagram) tiene que entrar en lo que queda hasta los 60 s.
+const MARGEN_MS = 30 * 1000;
 const TRABADA_MS = 15 * 60 * 1000;
 // "Instagram sigue procesando la imagen" no es un error de la publicación: se vuelve a
 // intentar en las próximas vueltas antes de darla por fallida.
@@ -42,8 +49,10 @@ const RED_LABEL = { instagram: 'Instagram', facebook: 'Facebook' };
 // Devuelve null si no se pudo tomar, { ok, ... } si salió en todas o { error, ... } si alguna
 // falló. Cada red que sale se guarda en el momento (ig_media_id / fb_post_id): al reintentar
 // se publica solo en las que faltan, así nada sale dos veces.
+// `hasta` (ms) es la hora a partir de la cual no se empieza otra red: las que no llegan
+// quedan para la próxima vuelta y se devuelve { pendiente: true }.
 // `fetchImpl` y `espera` son para los tests.
-async function publicarFila(supabase, id, { desde = ['programado'], fetchImpl, espera } = {}) {
+async function publicarFila(supabase, id, { desde = ['programado'], hasta, fetchImpl, espera } = {}) {
   const { data: tomadas, error: errTomar } = await supabase.from('instagram_publicaciones')
     .update({ estado: 'publicando', publicando_desde: new Date().toISOString() })
     .eq('id', id).in('estado', desde)
@@ -65,8 +74,11 @@ async function publicarFila(supabase, id, { desde = ['programado'], fetchImpl, e
     errores.push(...redes.map(red => ({ red, message: err.message })));
   }
 
+  const pendientes = [];
   if (!errores.length) {
     for (const red of redes) {
+      const hecha = red === 'instagram' ? pub.ig_media_id : pub.fb_post_id;
+      if (!hecha && hasta && Date.now() > hasta) { pendientes.push(red); continue; }
       try {
         if (red === 'instagram' && !pub.ig_media_id) {
           const { mediaId, permalink } = await publicar(pub, cuenta, deps);
@@ -84,6 +96,10 @@ async function publicarFila(supabase, id, { desde = ['programado'], fetchImpl, e
   }
 
   const resumen = { id, tipo: pub.tipo, redes, permalink: pub.permalink || null, fbPermalink: pub.fb_permalink || null };
+  if (pendientes.length && !errores.length) {
+    await guardar({ estado: 'programado', intentos });
+    return { pendiente: true, faltan: pendientes, ...resumen };
+  }
   if (!errores.length) {
     await guardar({ estado: 'publicado', publicado_at: new Date().toISOString(), intentos, error: null });
     return { ok: true, ...resumen };
@@ -126,9 +142,11 @@ module.exports = async (req, res) => {
       .limit(POR_VUELTA);
     if (error) throw error;
 
+    const hasta = ahora.getTime() + MARGEN_MS;
     const resultados = [];
     for (const { id } of vencidas || []) {
-      const r = await publicarFila(supabase, id);
+      if (Date.now() > hasta) break; // las que quedan salen en la próxima vuelta
+      const r = await publicarFila(supabase, id, { hasta });
       if (r) resultados.push(r);
     }
 
@@ -156,3 +174,4 @@ module.exports = async (req, res) => {
 };
 
 module.exports.publicarFila = publicarFila;
+module.exports.MARGEN_MS = MARGEN_MS;

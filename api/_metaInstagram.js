@@ -164,12 +164,14 @@ async function publicar(pub, cuenta, { fetchImpl = fetch, espera } = {}) {
 
   let contenedor;
   if (pub.tipo === 'carrusel') {
+    // Primero se crean todos los hijos y recién después se espera a cada uno: Meta los procesa
+    // en paralelo, así un carrusel de 10 no tarda 10 veces lo que tarda una imagen.
     const hijos = [];
     for (const url of pub.imagenes) {
       const { id } = await graph(fetchImpl, 'POST', `${ig}/media`, { image_url: url, is_carousel_item: 'true' }, token);
-      await esperarContenedor(fetchImpl, id, token, espera);
       hijos.push(id);
     }
+    for (const id of hijos) await esperarContenedor(fetchImpl, id, token, espera);
     ({ id: contenedor } = await graph(fetchImpl, 'POST', `${ig}/media`,
       sinVacios({ media_type: 'CAROUSEL', children: hijos.join(','), caption }), token));
   } else if (pub.tipo === 'historia') {
@@ -210,8 +212,8 @@ async function publicarFacebook(pub, cuenta, { fetchImpl = fetch } = {}) {
     const r = await post(`${page}/photo_stories`, { photo_id: fotoId });
     postId = r.post_id || r.id;
   } else if (pub.tipo === 'carrusel') {
-    const fotos = [];
-    for (const url of pub.imagenes) fotos.push({ media_fbid: await fotoSinPublicar(url) });
+    // Las fotos se suben todas a la vez; Promise.all respeta el orden del carrusel.
+    const fotos = (await Promise.all(pub.imagenes.map(fotoSinPublicar))).map(id => ({ media_fbid: id }));
     ({ id: postId } = await post(`${page}/feed`, { message, attached_media: fotos }));
   } else {
     const r = await post(`${page}/photos`, { url: pub.imagenes[0], message, published: 'true' });

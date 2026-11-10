@@ -388,3 +388,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message });
   }
 };
+
+// Para /api/shopify/precios, que copia a la tienda los descuentos que corren en MELI.
+module.exports.promocionesDeItem = promocionesDeItem;
+module.exports.descuentoVigente = descuentoVigente;

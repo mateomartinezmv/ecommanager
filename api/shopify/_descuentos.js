@@ -88,4 +88,31 @@ function armarPlan(productos, shopify) {
   return { filas, sinShopify };
 }
 
-module.exports = { descuentoDelSku, armarPlan, aTexto };
+// Precios fijados a mano, para volver la tienda a la normalidad cuando termina una promoción.
+// Acepta "SKU:precio[:compare_at],..." (desde la URL) o [{ sku, precio, compare_at }] (POST).
+// Sin compare_at, el precio tachado se borra. Un precio que no es un número positivo es un
+// error: mejor no tocar nada que poner una variante a $0.
+function parsearPrecios(entrada) {
+  const crudos = Array.isArray(entrada)
+    ? entrada
+    : String(entrada || '').split(',').map(s => s.trim()).filter(Boolean).map(s => {
+      const [sku, precio, compare_at] = s.split(':').map(x => x.trim());
+      return { sku, precio, compare_at };
+    });
+
+  const vistos = new Set();
+  return crudos.map(c => {
+    const sku = String(c?.sku || '').trim();
+    const precio = Number(c?.precio);
+    const tieneCompare = c?.compare_at !== undefined && c?.compare_at !== null && c?.compare_at !== '';
+    const compare = Number(c?.compare_at);
+    if (!sku) throw new Error('Falta el SKU en uno de los precios');
+    if (vistos.has(sku)) throw new Error(`${sku} aparece dos veces`);
+    vistos.add(sku);
+    if (!(precio > 0)) throw new Error(`${sku}: el precio "${c?.precio}" no es válido`);
+    if (tieneCompare && !(compare > 0)) throw new Error(`${sku}: el precio tachado "${c?.compare_at}" no es válido`);
+    return { sku, nuevo: { precio: aTexto(precio), compare_at: tieneCompare ? aTexto(compare) : null } };
+  });
+}
+
+module.exports = { descuentoDelSku, armarPlan, aTexto, parsearPrecios };

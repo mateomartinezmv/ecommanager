@@ -6,6 +6,12 @@
 // GET  /api/shopify/precios?accion=aplicar[&sku=X] → lo mismo que el POST, para lanzarlo desde el navegador
 // ?excluir=A,B (o { excluir: [...] } en el POST)   → deja afuera esos SKUs
 //
+// Volver a la normalidad cuando termina la promoción:
+// GET  /api/shopify/precios?precios=SKU:1290,SKU2:890:990   → qué cambiaría (sin tocar nada)
+// GET  /api/shopify/precios?precios=…&accion=fijar          → lo aplica
+// POST /api/shopify/precios { precios: [{ sku, precio, compare_at? }] } → lo aplica
+// Sin compare_at, el precio tachado se borra.
+//
 // Copiar un descuento es dejar la variante de Shopify con:
 //   compare_at_price = precio de lista de MELI   (la tienda lo muestra tachado)
 //   price            = precio final de MELI       (con el descuento)
@@ -19,7 +25,7 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet } = require('../_meliPublicaciones');
 const { shopifyFetch } = require('../_stockSync');
 const { promocionesDeItem, descuentoVigente } = require('../meli/precios');
-const { armarPlan } = require('./_descuentos');
+const { armarPlan, aTexto, parsearPrecios } = require('./_descuentos');
 
 const LOTE_MELI = 20;      // multiget de MELI
 const CONCURRENCIA = 8;    // promociones: una llamada por publicación
@@ -127,6 +133,56 @@ async function actualizarVariante(token, variantId, nuevo) {
   }
 }
 
+// Precios a mano: deja cada SKU con el precio pedido y, si no se pide uno, sin precio tachado.
+async function fijarPrecios(res, crudo, aplicar) {
+  const pedidos = parsearPrecios(crudo);
+  const skus = pedidos.map(p => p.sku);
+  const { data, error } = await getSupabase()
+    .from('productos')
+    .select('sku, nombre, shopify_id')
+    .in('sku', skus);
+  if (error) throw error;
+  const porSku = new Map((data || []).map(p => [p.sku, p]));
+
+  const shopifyToken = await getShopifyToken();
+  const variantIds = [...new Set((data || []).map(p => p.shopify_id).filter(Boolean).map(String))];
+  const shopify = await variantesShopify(shopifyToken, variantIds);
+
+  const filas = [];
+  const noEncontrados = [];
+  for (const p of pedidos) {
+    const prod = porSku.get(p.sku);
+    const v = prod?.shopify_id ? shopify[String(prod.shopify_id)] : null;
+    if (!v) { noEncontrados.push(p.sku); continue; }
+    const actual = { precio: aTexto(v.precio), compare_at: aTexto(v.compare_at) };
+    filas.push({
+      sku: p.sku, nombre: prod.nombre, variantId: String(prod.shopify_id), actual, nuevo: p.nuevo,
+      alDia: actual.precio === p.nuevo.precio && actual.compare_at === p.nuevo.compare_at,
+    });
+  }
+
+  if (!aplicar) return res.json({ ok: true, a_actualizar: filas.filter(f => !f.alDia).length, filas, noEncontrados });
+
+  const resultados = [];
+  for (const f of filas.filter(x => !x.alDia)) {
+    const base = { sku: f.sku, nombre: f.nombre, antes: f.actual, pedido: f.nuevo };
+    try {
+      const v = await actualizarVariante(shopifyToken, f.variantId, f.nuevo);
+      resultados.push({ ...base, ok: true, ahora: { precio: v.price ?? null, compare_at: v.compare_at_price ?? null } });
+    } catch (err) {
+      resultados.push({ ...base, ok: false, error: err.message });
+    }
+  }
+  return res.json({
+    ok: true,
+    actualizados: resultados.filter(r => r.ok).length,
+    fallidos: resultados.filter(r => !r.ok).length,
+    al_dia: filas.filter(f => f.alDia).length,
+    resultados,
+    noEncontrados,
+  });
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
@@ -134,6 +190,12 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
+    const preciosCrudo = req.body?.precios ?? req.query?.precios;
+    if (preciosCrudo) {
+      const aplicar = req.method === 'POST' || (req.method === 'GET' && req.query?.accion === 'fijar');
+      return await fijarPrecios(res, preciosCrudo, aplicar);
+    }
+
     const aplicar = req.method === 'POST' || (req.method === 'GET' && req.query?.accion === 'aplicar');
     if (!aplicar && req.method !== 'GET') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 

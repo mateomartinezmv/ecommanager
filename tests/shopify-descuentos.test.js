@@ -69,3 +69,21 @@ test('plan: compara contra Shopify y separa lo que no está enlazado', () => {
   assert.strictEqual(filas.find(f => f.sku === 'B').alDia, true);
   assert.deepStrictEqual(sinShopify.map(x => x.sku), ['D']);
 });
+
+const { parsearPrecios } = require('../api/shopify/_descuentos');
+
+test('precios a mano: sin tachado se borra, con tachado se respeta', () => {
+  assert.deepStrictEqual(parsearPrecios('HP-Q0211:890, ALERONFINOSNK:1490,X:900:990'), [
+    { sku: 'HP-Q0211', nuevo: { precio: '890.00', compare_at: null } },
+    { sku: 'ALERONFINOSNK', nuevo: { precio: '1490.00', compare_at: null } },
+    { sku: 'X', nuevo: { precio: '900.00', compare_at: '990.00' } },
+  ]);
+  assert.deepStrictEqual(parsearPrecios([{ sku: 'A', precio: 450 }]), [{ sku: 'A', nuevo: { precio: '450.00', compare_at: null } }]);
+});
+
+test('precios a mano: un precio inválido o un SKU repetido no toca nada', () => {
+  assert.throws(() => parsearPrecios('A:0'));
+  assert.throws(() => parsearPrecios('A:abc'));
+  assert.throws(() => parsearPrecios('A:100,A:200'));
+  assert.throws(() => parsearPrecios(':100'));
+});

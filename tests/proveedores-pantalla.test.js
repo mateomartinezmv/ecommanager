@@ -334,9 +334,23 @@ test('una importación con puesta en puerto calcula el factor, los tres pagos y 
   assert.match(await ui.page.textContent('#new-factor'), /×1,50/);
   assert.match(await ui.page.textContent('#new-total'), /USD 300\.00/);
 
-  const pagos = await ui.page.$$eval('#new-pagos .pago-row', rs => rs.map(r => [r.querySelector('.pago-monto').textContent, r.querySelector('.pago-estimado').value]));
-  assert.deepStrictEqual(pagos, [['USD 100.00', '2026-11-11'], ['USD 100.00', '2026-11-21'], ['USD 100.00', '2027-01-20']]);
+  const pagos = await ui.page.$$eval('#new-pagos .pago-row', rs => rs.map(r => [r.querySelector('.pago-monto-input').value, r.querySelector('.pago-estimado').value]));
+  assert.deepStrictEqual(pagos, [['100', '2026-11-11'], ['100', '2026-11-21'], ['100', '2027-01-20']]);
   await ui.page.check('#new-pagos .pago-row[data-id="anticipo"] .pago-check');
+
+  // El monto de un pago se edita a mano: queda marcado, avisa la diferencia y se puede volver.
+  const monto2 = '#new-pagos .pago-row[data-id="saldo_proveedor"] .pago-monto-input';
+  await ui.page.fill(monto2, '115');
+  await ui.page.dispatchEvent(monto2, 'change');
+  assert.match(await ui.page.textContent('#new-pagos-dif'), /Los pagos suman USD 315\.00 y el costo total es USD 300\.00 \(\+USD 15\.00\)/);
+  assert.match(await ui.page.textContent('#new-pagos .pago-row[data-id="saldo_proveedor"]'), /calculado USD 100\.00 ↺/);
+  await ui.page.fill('#new-traslado', '0');   // otro recálculo no pisa lo editado
+  assert.strictEqual(await ui.page.inputValue(monto2), '115');
+  await ui.page.click('#new-pagos .pago-row[data-id="saldo_proveedor"] .pago-reset');
+  assert.strictEqual(await ui.page.inputValue(monto2), '100');
+  assert.strictEqual(await ui.page.textContent('#new-pagos-dif'), '');
+  await ui.page.fill(monto2, '120');
+  await ui.page.dispatchEvent(monto2, 'change');
 
   await ui.page.click('#modal-nueva button:text("Guardar importación")');
   await ui.page.waitForSelector('tr[data-id="IMP-NUEVA"]');
@@ -346,11 +360,12 @@ test('una importación con puesta en puerto calcula el factor, los tres pagos y 
   assert.strictEqual(post.cuerpo.nacional, 30);
   assert.strictEqual(post.cuerpo.cotizacion_usd, 40);
   assert.ok(!('total' in post.cuerpo), 'ya no se manda un total con IVA');
-  assert.deepStrictEqual(post.cuerpo.pagos.map(p => [p.id, p.pagado]), [['anticipo', true], ['saldo_proveedor', false], ['puerto', false]]);
+  assert.deepStrictEqual(post.cuerpo.pagos.map(p => [p.id, p.pagado, p.monto, p.monto_manual]),
+    [['anticipo', true, 100, false], ['saldo_proveedor', false, 120, true], ['puerto', false, 100, false]]);
 
   const fila = 'tr[data-id="IMP-NUEVA"]';
   assert.strictEqual((await ui.page.textContent(`${fila} .celda-factor`)).trim(), '×1,50');
-  assert.match(await ui.page.textContent(`${fila} .celda-pagos`), /Próximo: USD 100\.00 · 21\/11\/2026/);
+  assert.match(await ui.page.textContent(`${fila} .celda-pagos`), /Próximo: USD 120\.00 · 21\/11\/2026/);
   await ui.page.click(`${fila} .pago-chip[data-pago="saldo_proveedor"]`);
   await ui.page.waitForSelector(`${fila} .pago-chip.ok[data-pago="saldo_proveedor"]`);
   assert.deepStrictEqual(ultimoPost('/importaciones?id=IMP-NUEVA', 'PUT').cuerpo.pagos.map(p => p.pagado), [true, true, false]);

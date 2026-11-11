@@ -83,6 +83,26 @@ test('al recalcular los pagos se conserva lo marcado y los montos siguen a los c
   assert.deepStrictEqual(CI.resumenPagos(p), { pagado: 500, pendiente: 1000, proximo: p[1], completos: false });
 });
 
+test('un monto cambiado a mano se respeta al recalcular y se puede volver al calculado', () => {
+  const imp = { fecha: '2026-11-11', items: [{ sku: 'X', qty: 1, costo: 1064.45 }], costo_puerto: 1460.45 };
+  const p = CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: 575, monto_manual: true }]);
+  assert.strictEqual(p[1].monto, 575);
+  assert.strictEqual(p[1].monto_calculado, 532.22);
+  assert.strictEqual(p[1].monto_manual, true);
+  assert.strictEqual(p[0].monto, 532.23, 'los otros siguen calculados');
+  assert.deepStrictEqual(CI.diferenciaPagos(imp, p), { suma: 1503.23, total: 1460.45, diferencia: 42.78 });
+
+  // Cambian los costos: el editado queda, los demás se recalculan.
+  const p2 = CI.armarPagos({ ...imp, costo_puerto: 1500 }, p);
+  assert.strictEqual(p2[1].monto, 575);
+  assert.strictEqual(p2[2].monto, 435.55);
+
+  // Sin la marca de manual (↺), vuelve al calculado; un monto vacío no cuenta como manual.
+  assert.strictEqual(CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: 575, monto_manual: false }])[1].monto, 532.22);
+  assert.strictEqual(CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: '', monto_manual: true }])[1].monto, 532.22);
+  assert.strictEqual(CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: NaN, monto_manual: true }])[1].monto, 532.22);
+});
+
 test('PPP: promedio ponderado entre el depósito y lo que llega', () => {
   assert.strictEqual(CI.ppp(13, 342, 80, 212.8), 230.86);   // (13×342 + 80×212,8) ÷ 93 = 21.470 ÷ 93
   assert.strictEqual(CI.ppp(0, 342, 80, 212.8), 212.8, 'sin stock, el costo es el de la importación');
@@ -218,6 +238,20 @@ test('cargar la nacionalización después recalcula el total y el pago en puerto
   const pagos = imp.pagos.map(p => ({ ...p, pagado: true, fecha_pago: p.fecha_pago || '2026-11-20' }));
   await llamar({ method: 'PUT', query: { id }, body: { pagos } });
   assert.strictEqual(db.importaciones[0].saldo_pendiente, false);
+});
+
+test('un pago editado a mano se guarda y sobrevive a otros cambios de la importación', async () => {
+  const id = db.importaciones[0].id;
+  const antes = db.importaciones[0].pagos;
+  const pagos = antes.map(p => p.id === 'puerto' ? { ...p, monto: 350, monto_manual: true } : p);
+  await llamar({ method: 'PUT', query: { id }, body: { pagos } });
+  await llamar({ method: 'PUT', query: { id }, body: { notas: 'cambio de nota' } });
+  const p = db.importaciones[0].pagos.find(x => x.id === 'puerto');
+  assert.strictEqual(p.monto, 350);
+  assert.strictEqual(p.monto_calculado, 324.3);
+  assert.strictEqual(db.importaciones[0].total, 864.8, 'el costo total no cambia por editar un pago');
+  // Se deja como estaba para el test siguiente.
+  db.importaciones[0].pagos = antes;
 });
 
 test('al llegar, cada producto toma su costo por PPP y no se vuelve a aplicar', async () => {

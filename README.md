@@ -168,6 +168,10 @@ solo y cada producto lo carga en proporción a lo que costó en China.
 **Pagos**: 50% del costo en China al proveedor al pedir, el otro 50% cuando la mercadería está
 lista (fecha estimada a los 10 días) y, al llegar a puerto, el all in del importador.
 En la tabla, los círculos 1 · 2 · 3 marcan cada pago como hecho con un clic.
+Los montos se calculan solos, pero en ✏️ Editar se pueden cambiar a mano (ej: el proveedor pide
+USD 575 en vez de 532,22). El editado queda fijo aunque cambien los costos, se ve el calculado
+para volver a él con ↺, y se avisa cuánto difieren los pagos del costo total. El costo de los
+productos (y el PPP) sigue saliendo del costo total, no de los pagos.
 
 **Costo por PPP**: al marcar ✅ Llegó, el costo de cada producto pasa a ser el promedio
 ponderado entre las unidades que había en depósito, a su costo anterior, y las que llegan, a su

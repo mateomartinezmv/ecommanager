@@ -103,8 +103,10 @@
     });
   }
 
-  // Los tres pagos. Los montos salen siempre de los costos; de `previos` se conserva lo que el
-  // usuario marcó (pagado, fecha de pago) y las fechas estimadas que haya cambiado.
+  // Los tres pagos. Los montos salen de los costos, salvo el que el usuario haya cambiado a mano
+  // (monto_manual: ej. el proveedor pide USD 575 en vez de 532,22). De `previos` se conserva
+  // también lo marcado (pagado, fecha de pago) y las fechas estimadas cambiadas a mano.
+  // `monto_calculado` es siempre el que sale de los costos, para poder volver a él.
   function armarPagos(imp, previos) {
     const t = totales(imp);
     const mitad = r2(t.costoChina / 2);
@@ -122,14 +124,25 @@
     (Array.isArray(previos) ? previos : []).forEach(p => { if (p && p.id) porId[p.id] = p; });
     return base.map(p => {
       const prev = porId[p.id] || {};
+      const manual = !!prev.monto_manual && Number.isFinite(Number(prev.monto)) && prev.monto !== '' && prev.monto !== null;
       return {
         ...p,
+        monto: manual ? r2(num(prev.monto)) : p.monto,
+        monto_calculado: p.monto,
+        monto_manual: manual,
         estimado: prev.estimado_manual ? prev.estimado : p.estimado,
         estimado_manual: !!prev.estimado_manual,
         pagado: !!prev.pagado,
         fecha_pago: prev.pagado ? (prev.fecha_pago || null) : null,
       };
     });
+  }
+
+  // Cuánto suman los pagos contra el costo total (positivo: se paga más de lo que cuesta).
+  function diferenciaPagos(imp, pagos) {
+    const suma = r2((Array.isArray(pagos) ? pagos : []).reduce((s, p) => s + num(p.monto), 0));
+    const total = totales(imp).total;
+    return { suma, total, diferencia: r2(suma - total) };
   }
 
   function resumenPagos(pagos) {
@@ -184,7 +197,7 @@
 
   const CostoImportacion = {
     DIAS_SEGUNDO_PAGO, COTIZACION_DEFAULT, IMPORTADOR_DEFAULT,
-    costoChina, esPuerto, totales, cotizacionDe, costosUnitarios, armarPagos, resumenPagos, ppp, planPPP, sumarDias,
+    costoChina, esPuerto, totales, cotizacionDe, costosUnitarios, armarPagos, resumenPagos, diferenciaPagos, ppp, planPPP, sumarDias,
   };
   raiz.CostoImportacion = CostoImportacion;
   if (typeof module !== 'undefined' && module.exports) module.exports = CostoImportacion;

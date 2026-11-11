@@ -331,7 +331,7 @@
       <div class="form-group">
         <label class="form-label">Importador</label>
         <input type="text" id="new-importador" list="dl-importadores" placeholder="ej: GrupoRAS">
-        <span class="ayuda">Quien cotiza la puesta en puerto y nacionaliza.</span>
+        <span class="ayuda">Quien trae la mercadería desde el puerto de China y la nacionaliza.</span>
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de orden *</label>
@@ -907,8 +907,8 @@ function htmlCostos(pfx) {
     <div style="margin-top:20px">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px">Costos (USD, sin IVA)</div>
       <div class="form-grid">
-        ${n('puerto', 'Cotización puesta en puerto (FOB + flete) *', 'Lo que cotiza el importador: los productos más traerlos al puerto de Uruguay, todo pago.', 'placeholder="ej: 1460.45"')}
-        ${n('nacional', 'Importación, manejo y nacionalización', 'Sin IVA. Si todavía no la sabés, cargala antes de marcar que llegó: entra en el costo de cada producto.', 'placeholder="0.00"')}
+        ${n('allin', 'All in del importador (USD) *', 'Lo que cobra sobre el FOB: flete marítimo, gastos en Montevideo, depósito portuario y nacionalización. Sin IVA.', 'placeholder="ej: 396"')}
+        ${n('nacional', 'Otros gastos de importación', 'Sólo lo que el all in no cubra (ej: almacenaje extra). Sin IVA.', 'placeholder="0.00"')}
         ${n('traslado', 'Traslado interno (puerto → depósito)', 'Sólo si se paga aparte.', 'placeholder="0.00"')}
         ${n('cotiz', 'Cotización del dólar (UYU)', 'Para pasar el costo de cada unidad a pesos.', 'placeholder="40"')}
       </div>
@@ -934,11 +934,14 @@ function leerPagosForm(pfx) {
 }
 
 function impDelForm(pfx) {
+  const items = leerItems(`#${pfx === 'new' ? 'line-items-body' : 'edit-line-items-body'}`);
   return {
-    items: leerItems(`#${pfx === 'new' ? 'line-items-body' : 'edit-line-items-body'}`),
+    items,
     fecha: document.getElementById(`${pfx}-order-date`).value || null,
     llegada: document.getElementById(`${pfx}-est-arrival`).value || null,
-    costo_puerto: valorNum(`${pfx}-puerto`) || null,
+    // Puesta en puerto = productos (China) + all in del importador. Se guarda la suma, así el
+    // all in queda fijo aunque después cambien los artículos.
+    costo_puerto: valorNum(`${pfx}-allin`) > 0 ? Math.round((CI.costoChina(items) + valorNum(`${pfx}-allin`)) * 100) / 100 : null,
     nacional: valorNum(`${pfx}-nacional`),
     traslado: valorNum(`${pfx}-traslado`),
     cotizacion_usd: valorNum(`${pfx}-cotiz`) || CI.COTIZACION_DEFAULT,
@@ -953,20 +956,16 @@ function recalcCostos(pfx) {
   if (!CI.esPuerto(imp)) {
     box.innerHTML = `
       <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(china)}</span></div>
-      <div class="totals-row" style="color:var(--text-muted)"><span>Cargá la cotización puesta en puerto para ver el costo real y el factor.</span></div>`;
+      <div class="totals-row" style="color:var(--text-muted)"><span>Cargá el all in del importador para ver el costo real y el factor.</span></div>`;
   } else {
     const t = CI.totales(imp);
-    const aviso = t.flete < 0
-      ? `<div class="totals-row" style="color:var(--yellow)"><span>⚠️ La puesta en puerto es menor que el costo en China: tiene que incluir los productos.</span></div>` : '';
     box.innerHTML = `
       <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
-      <div class="totals-row"><span>Flete y puesta en puerto</span><span class="totals-val">${usd(t.flete)}</span></div>
-      <div class="totals-row"><span>Importación, manejo y nacionalización</span><span class="totals-val">${usd(t.nacional)}</span></div>
+      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
       ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
-      ${aviso}
       <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val" id="${pfx}-total">${usd(t.total)}</span></div>
-      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="${pfx}-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>
-      ${t.nacional ? '' : `<div class="totals-row" style="color:var(--yellow)"><span>Falta la nacionalización: el factor va a subir cuando la cargues.</span></div>`}`;
+      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="${pfx}-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>`;
   }
   renderPagosForm(pfx, CI.armarPagos(imp, leerPagosForm(pfx)));
 }
@@ -1004,7 +1003,7 @@ function leerCostos(pfx) {
 function llenarCostos(pfx, imp) {
   document.getElementById(`${pfx}-costos`).innerHTML = htmlCostos(pfx);
   const set = (id, v) => { document.getElementById(`${pfx}-${id}`).value = v ?? ''; };
-  set('puerto', imp?.costo_puerto ?? '');
+  set('allin', CI.esPuerto(imp) ? Math.round((Number(imp.costo_puerto) - CI.costoChina(imp.items)) * 100) / 100 : '');
   set('nacional', imp?.nacional || '');
   set('traslado', imp?.traslado || '');
   set('cotiz', imp?.cotizacion_usd || CI.COTIZACION_DEFAULT);
@@ -1122,7 +1121,7 @@ async function submitNew() {
   if (!proveedorId && !migracionProveedores) { alert('Elegí de qué proveedor es la importación.'); return; }
 
   const costos = leerCostos('new');
-  if (!(costos.costo_puerto > 0)) { alert('Ingresá la cotización puesta en puerto (FOB + flete, en USD).'); return; }
+  if (!(costos.costo_puerto > 0)) { alert('Ingresá el all in del importador (USD).'); return; }
 
   const items = leerItems('#line-items-body');
 
@@ -1167,10 +1166,8 @@ function avisarSyncProveedor(rec) {
 async function marcarLlegado(id) {
   const imp = imports.find(i => i.id === id);
   const puerto = CI.esPuerto(imp);
-  const sinNacional = puerto && !(Number(imp.nacional) > 0);
   const msg = '¿Marcar esta importación como llegada? Esto sumará automáticamente el stock de sus artículos' +
-    (puerto ? ' y recalculará el costo de cada producto por promedio ponderado (PPP).' : '.') +
-    (sinNacional ? '\n\n⚠️ No tiene cargada la importación, manejo y nacionalización: el costo de los productos va a quedar más bajo de lo real. Si ya la sabés, cancelá y cargala con ✏️ Editar.' : '');
+    (puerto ? ' y recalculará el costo de cada producto por promedio ponderado (PPP).' : '.');
   if (!confirm(msg)) return;
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
@@ -1354,8 +1351,8 @@ function verDetallePuerto(imp) {
     </div>
     <div class="totals-box" style="margin-bottom:18px">
       <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
-      <div class="totals-row"><span>Flete y puesta en puerto</span><span class="totals-val">${usd(t.flete)}</span></div>
-      <div class="totals-row"><span>Importación, manejo y nacionalización</span><span class="totals-val">${usd(t.nacional)}</span></div>
+      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
       ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
       <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val">${usd(t.total)}</span></div>
       <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="detalle-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>
@@ -1469,11 +1466,11 @@ async function submitEdit() {
   const imp = imports.find(i => i.id === id);
   const costos = leerCostos('edit');
   // Una importación del esquema anterior sigue con su total con IVA mientras no se le cargue
-  // la puesta en puerto; de ella sólo se tocan la nacionalización y el traslado.
+  // la puesta en puerto; de ella sólo se tocan los otros gastos y el traslado.
   const cuerpoCostos = costos.costo_puerto > 0 || CI.esPuerto(imp)
     ? costos
     : { importador: costos.importador, nacional: costos.nacional, traslado: costos.traslado };
-  if (CI.esPuerto(imp) && !(costos.costo_puerto > 0)) { alert('La cotización puesta en puerto no puede quedar vacía.'); return; }
+  if (CI.esPuerto(imp) && !(costos.costo_puerto > 0)) { alert('El all in del importador no puede quedar vacío.'); return; }
 
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {

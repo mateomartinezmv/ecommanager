@@ -168,7 +168,7 @@ test('una importación nueva no se guarda sin proveedor', async () => {
   await ui.page.waitForSelector('#modal-nueva.open');
   await ui.page.fill('#line-items-body .li-sku', 'GZ-N');
   await ui.page.fill('#line-items-body .li-qty', '5');
-  await ui.page.fill('#new-puerto', '100');
+  await ui.page.fill('#new-allin', '100');
   await ui.page.click('#modal-nueva button:text("Guardar importación")');
   assert.match(ui.alertas.pop(), /Elegí de qué proveedor/);
   assert.ok(await ui.page.isVisible('#modal-nueva.open'), 'el modal sigue abierto');
@@ -326,10 +326,10 @@ test('una importación con puesta en puerto calcula el factor, los tres pagos y 
   await fila2.locator('.li-qty').fill('5');
   await fila2.locator('.li-cost').fill('16');
   // China = 120 + 80 = 200. Sin puesta en puerto todavía no hay factor.
-  assert.match(await ui.page.textContent('#new-totales'), /Cargá la cotización puesta en puerto/);
-  await ui.page.fill('#new-puerto', '270');
+  assert.match(await ui.page.textContent('#new-totales'), /Cargá el all in del importador/);
+  await ui.page.fill('#new-allin', '70');
   assert.match(await ui.page.textContent('#new-factor'), /×1,35 \+35,0% sobre China/);
-  assert.match(await ui.page.textContent('#new-totales'), /Falta la nacionalización/);
+  assert.doesNotMatch(await ui.page.textContent('#new-totales'), /Otros gastos/, 'sin otros gastos no se muestra la fila');
   await ui.page.fill('#new-nacional', '30');
   assert.match(await ui.page.textContent('#new-factor'), /×1,50/);
   assert.match(await ui.page.textContent('#new-total'), /USD 300\.00/);
@@ -383,7 +383,7 @@ test('sin la migración, la página avisa y la importación se guarda sin provee
     await otro.page.click('button:text("+ Nueva Importación")');
     await otro.page.fill('#line-items-body .li-sku', 'GZ-N');
     await otro.page.fill('#line-items-body .li-qty', '5');
-    await otro.page.fill('#new-puerto', '100');
+    await otro.page.fill('#new-allin', '100');
     await otro.page.click('#modal-nueva button:text("Guardar importación")');
     await otro.page.waitForSelector('#modal-nueva.open', { state: 'hidden' });
     assert.deepStrictEqual(otro.alertas, [], 'no exige proveedor si la tabla no existe');

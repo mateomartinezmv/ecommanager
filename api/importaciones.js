@@ -150,7 +150,7 @@ module.exports = async (req, res) => {
       };
 
       if (numOrNull(b.costo_puerto) > 0) {
-        // Esquema de puesta en puerto: sin IVA, total = puerto + nacionalización + traslado.
+        // Esquema de puesta en puerto: sin IVA, total = puerto (China + all in) + otros gastos + traslado.
         fila = { ...fila, ...camposPuerto(b) };
         if (!fila.cotizacion_usd) fila.cotizacion_usd = Costo.COTIZACION_DEFAULT;
         fila = { ...fila, ...completarPuerto(fila, b.pagos) };

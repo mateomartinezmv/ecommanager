@@ -155,17 +155,18 @@ Desde noviembre 2026 se importa con GrupoRAS, sin IVA. Cada importación se carg
 
 - **Proveedor**: la fábrica en China. **Importador**: quien trae la mercadería (GrupoRAS).
 - **Artículos** con su costo unitario en China (USD).
-- **Cotización puesta en puerto**: FOB + flete hasta el puerto de Uruguay, todo pago (USD).
-  Incluye los productos.
-- **Importación, manejo y nacionalización** y, si se paga aparte, **traslado interno** (USD,
-  sin IVA). Si todavía no la sabés, se carga después con ✏️ Editar.
+- **All in del importador** (USD): lo que cobra GrupoRAS sobre el FOB Guangzhou. Incluye flete
+  marítimo, gastos en Montevideo, depósito portuario con 30 días de almacenaje, el 0,08% sobre
+  CIF y la nacionalización. No hay gastos de retiro aparte.
+- **Otros gastos de importación** y **traslado interno** (USD, sin IVA): sólo si hay algo que el
+  all in no cubra.
 - **Cotización del dólar** para pasar el costo a pesos (por defecto 40).
 
-El **factor** (costo total ÷ costo en China, ≈ ×1,37 sin la nacionalización) se calcula solo y
-cada producto lo carga en proporción a lo que costó en China.
+El **factor** (costo total ÷ costo en China, ×1,37 en la primera carga con GrupoRAS) se calcula
+solo y cada producto lo carga en proporción a lo que costó en China.
 
 **Pagos**: 50% del costo en China al proveedor al pedir, el otro 50% cuando la mercadería está
-lista (fecha estimada a los 10 días) y, al llegar a puerto, el saldo (flete + nacionalización).
+lista (fecha estimada a los 10 días) y, al llegar a puerto, el all in del importador.
 En la tabla, los círculos 1 · 2 · 3 marcan cada pago como hecho con un clic.
 
 **Costo por PPP**: al marcar ✅ Llegó, el costo de cada producto pasa a ser el promedio

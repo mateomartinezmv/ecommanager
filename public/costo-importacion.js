@@ -3,20 +3,22 @@
 // producto cuando llega. Sólo reglas, sin pantalla: la usan importaciones.html y
 // api/importaciones.js (vía require), y los tests la cargan directo.
 //
-// Cómo se importa desde noviembre 2026 (importador GrupoRAS):
+// Cómo se importa desde noviembre 2026 (importador GrupoRAS, FOB Guangzhou):
 //   · Costo en China      → lo que se le paga a la fábrica: Σ cantidad × costo unitario (USD).
-//   · Puesta en puerto    → la cotización del importador: FOB + flete hasta el puerto de
-//                           Montevideo, todo pago. Incluye el costo en China.
-//   · Nacionalización     → importación, manejo y nacionalización de la mercadería.
+//   · All in              → lo que cobra el importador sobre el FOB: flete marítimo, gastos en
+//                           Montevideo, depósito portuario (30 días) y el 0,08% sobre CIF. Ya
+//                           incluye la nacionalización: no hay gastos de retiro aparte.
+//   · Puesta en puerto    → costo en China + all in. Es lo que se guarda en costo_puerto.
+//   · Otros gastos        → (columna `nacional`) sólo lo que el all in no cubra.
 //   · Traslado interno    → del puerto al depósito, si se paga aparte.
 //   Ninguno lleva IVA: el costo total es la suma, y ése es el costo real.
 //
-//   factor = costo total ÷ costo en China (≈ 1,35–1,40 con este esquema; con el anterior,
-//   que pagaba IVA, se usaba 2,25). Cada producto carga el mismo factor: el flete y la
-//   nacionalización se reparten en proporción a lo que costó en China.
+//   factor = costo total ÷ costo en China (≈ 1,37 en la primera carga; con el esquema
+//   anterior, que pagaba IVA, se usaba 2,25). Cada producto carga el mismo factor: el all in se
+//   reparte en proporción a lo que costó en China.
 //
 // Pagos: 50% del costo en China al confirmar el pedido, el otro 50% cuando la mercadería está
-// lista (7 a 10 días después) y, al llegar a puerto, el saldo: flete + nacionalización +
+// lista (7 a 10 días después) y, al llegar a puerto, el saldo: all in + otros gastos +
 // traslado.
 //
 // Costo del producto por PPP (precio promedio ponderado): al llegar, el costo de cada SKU pasa
@@ -70,7 +72,7 @@
       modelo: 'puerto',
       costoChina: china,
       puerto: r2(puerto),
-      flete: r2(puerto - china),          // FOB + flete: lo que cobra el importador sobre China
+      flete: r2(puerto - china),          // all in: lo que cobra el importador sobre el FOB
       nacional: r2(nacional),
       traslado: r2(traslado),
       total,
@@ -113,7 +115,7 @@
         estimado: imp?.fecha || null },
       { id: 'saldo_proveedor', concepto: '50% restante, mercadería lista', a: 'proveedor', monto: segunda,
         estimado: sumarDias(imp?.fecha, DIAS_SEGUNDO_PAGO) },
-      { id: 'puerto', concepto: 'Saldo al llegar a puerto (flete + nacionalización)', a: 'importador', monto: saldo,
+      { id: 'puerto', concepto: 'All in del importador, al llegar a puerto', a: 'importador', monto: saldo,
         estimado: imp?.llegada || null },
     ];
     const porId = {};

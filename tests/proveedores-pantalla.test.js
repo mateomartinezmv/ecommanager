@@ -14,6 +14,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { chromium } = require('playwright');
 const { HOY, erroresReales, servirPublic } = require('./helpers');
+const CI = require('../public/costo-importacion');
 
 function estadoBase() {
   return {
@@ -90,6 +91,8 @@ function mockear(page, estado) {
     if (ruta === '/importaciones') {
       if (metodo === 'POST') {
         const imp = { id: 'IMP-NUEVA', ...cuerpo, proveedor_id: estado.sinMigracion ? undefined : cuerpo.proveedor_id };
+        // Como la API: con puesta en puerto el total y los montos de los pagos salen de los costos.
+        if (CI.esPuerto(imp)) Object.assign(imp, { total: CI.totales(imp).total, pagos: CI.armarPagos(imp, cuerpo.pagos) });
         estado.importaciones.unshift(imp);
         if (imp.proveedor_id) {
           estado.productos.forEach(p => { if (cuerpo.items.some(i => i.sku === p.sku)) p.proveedor_id = imp.proveedor_id; });
@@ -100,6 +103,7 @@ function mockear(page, estado) {
       if (metodo === 'PUT') {
         const imp = estado.importaciones.find(i => i.id === url.searchParams.get('id'));
         Object.assign(imp, cuerpo);
+        if (CI.esPuerto(imp)) Object.assign(imp, { total: CI.totales(imp).total, pagos: CI.armarPagos(imp, cuerpo.pagos ?? imp.pagos) });
         if (cuerpo.proveedor_id) {
           estado.productos.forEach(p => { if (imp.items.some(i => i.sku === p.sku)) p.proveedor_id = cuerpo.proveedor_id; });
           return ok({ ...imp, proveedor_sync: { asignados: 1 } });
@@ -164,7 +168,7 @@ test('una importación nueva no se guarda sin proveedor', async () => {
   await ui.page.waitForSelector('#modal-nueva.open');
   await ui.page.fill('#line-items-body .li-sku', 'GZ-N');
   await ui.page.fill('#line-items-body .li-qty', '5');
-  await ui.page.fill('#new-total-pagado', '100');
+  await ui.page.fill('#new-puerto', '100');
   await ui.page.click('#modal-nueva button:text("Guardar importación")');
   assert.match(ui.alertas.pop(), /Elegí de qué proveedor/);
   assert.ok(await ui.page.isVisible('#modal-nueva.open'), 'el modal sigue abierto');
@@ -304,6 +308,64 @@ test('el costo puesto en Uruguay es ×2.5, o ×3 si la importación trae baúles
   await ui.page.click('#modal-nueva button:text("Cancelar")');
 });
 
+test('una importación con puesta en puerto calcula el factor, los tres pagos y el costo por unidad', async () => {
+  await ui.page.click('#tab-importaciones');
+  await ui.page.click('button:text("+ Nueva Importación")');
+  await ui.page.waitForSelector('#modal-nueva.open');
+  assert.strictEqual(await ui.page.inputValue('#new-importador'), 'GrupoRAS', 'el importador viene sugerido');
+  await ui.page.selectOption('#new-proveedor', 'PROV-1');
+  await ui.page.fill('#new-order-date', '2026-11-11');
+  await ui.page.fill('#new-est-arrival', '2027-01-20');
+  await ui.page.dispatchEvent('#new-est-arrival', 'change');
+  await ui.page.fill('#line-items-body .li-sku', 'GZ-N');
+  await ui.page.fill('#line-items-body .li-qty', '10');
+  await ui.page.fill('#line-items-body .li-cost', '12');
+  await ui.page.click('#modal-nueva button:text("+ Agregar ítem")');
+  const fila2 = ui.page.locator('#line-items-body tr').nth(1);
+  await fila2.locator('.li-sku').fill('GZ-R');
+  await fila2.locator('.li-qty').fill('5');
+  await fila2.locator('.li-cost').fill('16');
+  // China = 120 + 80 = 200. Sin puesta en puerto todavía no hay factor.
+  assert.match(await ui.page.textContent('#new-totales'), /Cargá la cotización puesta en puerto/);
+  await ui.page.fill('#new-puerto', '270');
+  assert.match(await ui.page.textContent('#new-factor'), /×1,35 \+35,0% sobre China/);
+  assert.match(await ui.page.textContent('#new-totales'), /Falta la nacionalización/);
+  await ui.page.fill('#new-nacional', '30');
+  assert.match(await ui.page.textContent('#new-factor'), /×1,50/);
+  assert.match(await ui.page.textContent('#new-total'), /USD 300\.00/);
+
+  const pagos = await ui.page.$$eval('#new-pagos .pago-row', rs => rs.map(r => [r.querySelector('.pago-monto').textContent, r.querySelector('.pago-estimado').value]));
+  assert.deepStrictEqual(pagos, [['USD 100.00', '2026-11-11'], ['USD 100.00', '2026-11-21'], ['USD 100.00', '2027-01-20']]);
+  await ui.page.check('#new-pagos .pago-row[data-id="anticipo"] .pago-check');
+
+  await ui.page.click('#modal-nueva button:text("Guardar importación")');
+  await ui.page.waitForSelector('tr[data-id="IMP-NUEVA"]');
+  const post = ultimoPost('/importaciones');
+  assert.strictEqual(post.cuerpo.importador, 'GrupoRAS');
+  assert.strictEqual(post.cuerpo.costo_puerto, 270);
+  assert.strictEqual(post.cuerpo.nacional, 30);
+  assert.strictEqual(post.cuerpo.cotizacion_usd, 40);
+  assert.ok(!('total' in post.cuerpo), 'ya no se manda un total con IVA');
+  assert.deepStrictEqual(post.cuerpo.pagos.map(p => [p.id, p.pagado]), [['anticipo', true], ['saldo_proveedor', false], ['puerto', false]]);
+
+  const fila = 'tr[data-id="IMP-NUEVA"]';
+  assert.strictEqual((await ui.page.textContent(`${fila} .celda-factor`)).trim(), '×1,50');
+  assert.match(await ui.page.textContent(`${fila} .celda-pagos`), /Próximo: USD 100\.00 · 21\/11\/2026/);
+  await ui.page.click(`${fila} .pago-chip[data-pago="saldo_proveedor"]`);
+  await ui.page.waitForSelector(`${fila} .pago-chip.ok[data-pago="saldo_proveedor"]`);
+  assert.deepStrictEqual(ultimoPost('/importaciones?id=IMP-NUEVA', 'PUT').cuerpo.pagos.map(p => p.pagado), [true, true, false]);
+
+  await ui.page.click(`${fila} button:text("📋 Ver")`);
+  await ui.page.waitForSelector('#detalle-costos');
+  const unit = await ui.page.$$eval('#detalle-costos tbody tr', trs => trs.map(t => [...t.cells].slice(2, 5).map(c => c.textContent.trim())));
+  assert.deepStrictEqual(unit, [['USD 12.00', 'USD 18.00', '$720,00'], ['USD 16.00', 'USD 24.00', '$960,00']]);
+  await ui.page.click('#modal-detalle button:text("Cerrar")');
+
+  ui.estado.importaciones.shift();
+  ui.estado.productos.filter(p => ['GZ-N', 'GZ-R'].includes(p.sku)).forEach(p => { p.proveedor_id = 'PROV-1'; });
+  await ui.page.evaluate(() => { imports.shift(); compras = {}; renderTodo(); });
+});
+
 test('no hubo errores ni alertas inesperadas', () => {
   assert.deepStrictEqual(ui.alertas, []);
   const reales = erroresReales(ui.errores);
@@ -321,7 +383,7 @@ test('sin la migración, la página avisa y la importación se guarda sin provee
     await otro.page.click('button:text("+ Nueva Importación")');
     await otro.page.fill('#line-items-body .li-sku', 'GZ-N');
     await otro.page.fill('#line-items-body .li-qty', '5');
-    await otro.page.fill('#new-total-pagado', '100');
+    await otro.page.fill('#new-puerto', '100');
     await otro.page.click('#modal-nueva button:text("Guardar importación")');
     await otro.page.waitForSelector('#modal-nueva.open', { state: 'hidden' });
     assert.deepStrictEqual(otro.alertas, [], 'no exige proveedor si la tabla no existe');

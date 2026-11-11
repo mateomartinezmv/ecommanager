@@ -899,6 +899,16 @@ function recalcTotals() {
 function fmtFactor(f) { return f == null ? '—' : '×' + f.toFixed(2).replace('.', ','); }
 function pctSobreChina(f) { return f == null ? '' : `+${((f - 1) * 100).toFixed(1).replace('.', ',')}% sobre China`; }
 
+// Desglose de una importación con puesta en puerto: lo del proveedor y lo del importador.
+function filasCostos(t) {
+  return `
+      <div class="totals-row"><span>Productos (precio EXW de la PI)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
+      ${t.traslado ? `<div class="totals-row"><span>Puesta FOB (proveedor)</span><span class="totals-val">${usd(t.traslado)}</span></div>
+      <div class="totals-row main"><span>Total al proveedor</span><span class="totals-val">${usd(t.proveedor)}</span></div>` : ''}
+      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}`;
+}
+
 function htmlCostos(pfx) {
   const n = (id, label, ayuda, extra = '') => `
     <div class="form-group">
@@ -910,9 +920,9 @@ function htmlCostos(pfx) {
     <div style="margin-top:20px">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px">Costos (USD, sin IVA)</div>
       <div class="form-grid">
+        ${n('traslado', 'Puesta FOB (lo cobra el proveedor)', 'El «Shipping cost» de la PI: llevar la mercadería al puerto en China. Si al cobrar redondeó, ajustalo acá (PI 1.152 cobrada 1.150 → 23,10 − 2 = 21,10).', 'placeholder="0.00"')}
         ${n('allin', 'All in del importador (USD) *', 'Lo que cobra sobre el FOB: flete marítimo, gastos en Montevideo, depósito portuario y nacionalización. Sin IVA.', 'placeholder="ej: 396"')}
         ${n('nacional', 'Otros gastos de importación', 'Sólo lo que el all in no cubra (ej: almacenaje extra). Sin IVA.', 'placeholder="0.00"')}
-        ${n('traslado', 'Traslado interno (puerto → depósito)', 'Sólo si se paga aparte.', 'placeholder="0.00"')}
         ${n('cotiz', 'Cotización del dólar (UYU)', 'Para pasar el costo de cada unidad a pesos.', 'placeholder="40"')}
       </div>
       <div class="totals-box" id="${pfx}-totales"></div>
@@ -966,12 +976,9 @@ function recalcCostos(pfx) {
   } else {
     const t = CI.totales(imp);
     box.innerHTML = `
-      <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
-      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
-      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
-      ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
+${filasCostos(t)}
       <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val" id="${pfx}-total">${usd(t.total)}</span></div>
-      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="${pfx}-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>`;
+      <div class="totals-row main"><span>Factor sobre los productos</span><span class="totals-val" id="${pfx}-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>`;
   }
   const pagos = CI.armarPagos(imp, leerPagosForm(pfx));
   renderPagosForm(pfx, pagos);
@@ -1368,12 +1375,9 @@ function verDetallePuerto(imp) {
       ${imp.notas ? `<div style="grid-column:1/-1">${dato('Notas', escapeHtml(imp.notas))}</div>` : ''}
     </div>
     <div class="totals-box" style="margin-bottom:18px">
-      <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
-      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
-      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
-      ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
+      ${filasCostos(t)}
       <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val">${usd(t.total)}</span></div>
-      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="detalle-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>
+      <div class="totals-row main"><span>Factor sobre los productos</span><span class="totals-val" id="detalle-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>
     </div>
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">Costo por unidad puesto en Uruguay</div>
     <div class="items-table-wrap" style="overflow-x:auto">

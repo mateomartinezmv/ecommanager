@@ -149,6 +149,37 @@ Después de eso, en el menú lateral aparece **Finanzas → 💵 Gastos e ingres
 
 ---
 
+## Importaciones con puesta en puerto (GrupoRAS) y costo por PPP
+
+Desde noviembre 2026 se importa con GrupoRAS, sin IVA. Cada importación se carga con:
+
+- **Proveedor**: la fábrica en China. **Importador**: quien trae la mercadería (GrupoRAS).
+- **Artículos** con su costo unitario en China (USD).
+- **All in del importador** (USD): lo que cobra GrupoRAS sobre el FOB Guangzhou. Incluye flete
+  marítimo, gastos en Montevideo, depósito portuario con 30 días de almacenaje, el 0,08% sobre
+  CIF y la nacionalización. No hay gastos de retiro aparte.
+- **Otros gastos de importación** y **traslado interno** (USD, sin IVA): sólo si hay algo que el
+  all in no cubra.
+- **Cotización del dólar** para pasar el costo a pesos (por defecto 40).
+
+El **factor** (costo total ÷ costo en China, ×1,37 en la primera carga con GrupoRAS) se calcula
+solo y cada producto lo carga en proporción a lo que costó en China.
+
+**Pagos**: 50% del costo en China al proveedor al pedir, el otro 50% cuando la mercadería está
+lista (fecha estimada a los 10 días) y, al llegar a puerto, el all in del importador.
+En la tabla, los círculos 1 · 2 · 3 marcan cada pago como hecho con un clic.
+
+**Costo por PPP**: al marcar ✅ Llegó, el costo de cada producto pasa a ser el promedio
+ponderado entre las unidades que había en depósito, a su costo anterior, y las que llegan, a su
+costo puesto en Uruguay. Se aplica una sola vez y queda registrado en el 📋 Ver de la
+importación. Las importaciones cargadas antes (total con IVA) llegan como siempre, sin tocar
+costos. Un renglón sin SKU no suma stock ni costo.
+
+**Antes de usarlo hay que agregar las columnas una sola vez**: correr
+`supabase/migrations/20261111000000_importaciones_puerto_ppp.sql` en el SQL Editor.
+
+---
+
 ## Descatalogar productos (Stock → ⛔)
 
 Para los productos que no se vuelven a comprar: el que ya está en cero y no se importa más,

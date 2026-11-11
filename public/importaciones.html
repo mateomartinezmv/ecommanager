@@ -164,6 +164,21 @@
   .totals-row.grand { font-size: 16px; font-weight: 700; color: var(--green); border-top: 1px solid var(--border); padding-top: 8px; }
   .totals-val { font-family: 'JetBrains Mono', monospace; }
 
+  /* Los tres pagos de una importación */
+  .pagos-list { display: flex; flex-direction: column; gap: 6px; }
+  .pago-row { display: grid; grid-template-columns: 26px 1fr auto 150px auto; gap: 12px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+  .pago-row.pagado { border-color: rgba(34,197,94,0.35); }
+  .pago-row.pagado .pago-num { background: rgba(34,197,94,0.15); color: var(--green); }
+  .pago-num { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--text-muted); }
+  .pago-monto { font-weight: 600; }
+  .pago-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
+  .pago-row input[type=date] { padding: 5px 8px; font-size: 12px; }
+  .pago-chips { display: flex; gap: 4px; }
+  .pago-chip { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(245,158,11,0.4); background: rgba(245,158,11,0.1); color: var(--yellow); font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'JetBrains Mono', monospace; }
+  .pago-chip.ok { border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.15); color: var(--green); }
+  .pago-sig { font-size: 11px; color: var(--text-muted); margin-top: 4px; white-space: nowrap; }
+  @media (max-width: 700px) { .pago-row { grid-template-columns: 26px 1fr auto; } }
+
   /* Solapas de la sección (Importaciones / Proveedores / Compras), estilo buscador */
   .main-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 24px; overflow-x: auto; }
   .main-tab { background: none; border: none; border-bottom: 3px solid transparent; padding: 10px 18px; color: var(--text-muted); font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: color 0.15s; }
@@ -308,10 +323,15 @@
   <div class="modal">
     <div class="modal-title">Nueva Importación</div>
     <div class="form-grid">
-      <div class="form-group form-full">
-        <label class="form-label">Proveedor / importador *</label>
+      <div class="form-group">
+        <label class="form-label">Proveedor (fábrica en China) *</label>
         <select id="new-proveedor" onchange="onProveedorSelect(this);recalcTotals()"></select>
         <span class="ayuda" id="new-proveedor-ayuda"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Importador</label>
+        <input type="text" id="new-importador" list="dl-importadores" placeholder="ej: GrupoRAS">
+        <span class="ayuda">Quien trae la mercadería desde el puerto de China y la nacionaliza.</span>
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de orden *</label>
@@ -358,43 +378,8 @@
       <div id="new-minimo" class="ayuda" style="margin-top:8px"></div>
     </div>
 
-    <!-- Costos adicionales -->
-    <div style="margin-top:20px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Costos adicionales (USD)</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Traslado Interno</label>
-          <input type="number" id="new-traslado" placeholder="0.00" step="0.01" min="0" value="0" oninput="recalcTotals()">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Nacionalización y manejo de mercadería</label>
-          <input type="number" id="new-nacional" placeholder="0.00" step="0.01" min="0" value="0" oninput="recalcTotals()">
-        </div>
-      </div>
-    </div>
-
-    <!-- Pago en dos partes -->
-    <div style="margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:13px;font-weight:600">¿Falta pagar el 50% restante?</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">El primer pago (50%) ya fue realizado. Marcá si el saldo sigue pendiente.</div>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--yellow)">
-        <input type="checkbox" id="new-saldo-pendiente" style="width:18px;height:18px;accent-color:var(--yellow);cursor:pointer">
-        Saldo pendiente
-      </label>
-    </div>
-
-    <!-- Total pagado → cálculo inverso de IVA -->
-    <div style="margin-top:16px" class="form-group">
-      <label class="form-label">Total pagado con IVA (USD) * — el valor que figura en la factura</label>
-      <input type="number" id="new-total-pagado" placeholder="ej: 891.00" step="0.01" min="0" oninput="recalcTotals()" style="font-size:15px;font-weight:600;color:var(--green)">
-    </div>
-    <div class="totals-box">
-      <div class="totals-row"><span>Base imponible (sin IVA)</span><span class="totals-val" id="tot-base" style="color:var(--accent)">USD 0.00</span></div>
-      <div class="totals-row"><span>IVA 22%</span><span class="totals-val" id="tot-iva">USD 0.00</span></div>
-      <div class="totals-row grand"><span>Total pagado</span><span class="totals-val" id="tot-total">USD 0.00</span></div>
-    </div>
+    <!-- Costos sin IVA, factor y los tres pagos: los arma htmlCostos('new') -->
+    <div id="new-costos"></div>
 
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-nueva')">Cancelar</button>
@@ -419,9 +404,13 @@
     <div class="modal-title">✏️ Editar Importación</div>
     <input type="hidden" id="edit-id">
     <div class="form-grid">
-      <div class="form-group form-full">
-        <label class="form-label">Proveedor / importador</label>
+      <div class="form-group">
+        <label class="form-label">Proveedor (fábrica en China)</label>
         <select id="edit-proveedor" onchange="onProveedorSelect(this)"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Importador</label>
+        <input type="text" id="edit-importador" list="dl-importadores" placeholder="ej: GrupoRAS">
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de orden</label>
@@ -466,6 +455,8 @@
         </table>
       </div>
     </div>
+
+    <div id="edit-costos"></div>
 
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal('modal-editar')">Cancelar</button>
@@ -543,6 +534,9 @@
   </div>
 </div>
 
+<datalist id="dl-importadores"></datalist>
+
+<script src="costo-importacion.js"></script>
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 let imports  = [];
@@ -737,20 +731,19 @@ function render() {
     const fecha  = imp.order_date || imp.fecha;
     const llegada = imp.estimated_arrival_date || imp.llegada;
     const items  = imp.items || imp.import_items || [];
+    const t = CI.totales(imp);
     return `
     <tr data-id="${escapeHtml(imp.id)}">
       <td>${fmtDate(fecha)}</td>
       <td class="celda-prov">${celdaProveedor(imp)}</td>
+      <td>${imp.importador ? escapeHtml(imp.importador) : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td>${fmtDate(llegada)}</td>
       <td>${statusBadge(estado)}</td>
       <td style="text-align:center">${items.length}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent)">${usd(imp.subtotal)}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--green)">${usd(imp.total)}</td>
-      <td>
-        ${imp.saldo_pendiente
-          ? `<button class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:var(--yellow);border:1px solid rgba(245,158,11,0.3)" onclick="toggleSaldo('${imp.id}',false)">🔴 Saldo pendiente</button>`
-          : `<button class="btn btn-sm" style="background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.3)" onclick="toggleSaldo('${imp.id}',true)">✅ Pagado</button>`}
-      </td>
+      <td class="mono" style="font-size:12px;color:var(--accent)">${usd(t.costoChina)}</td>
+      <td class="mono celda-total" style="font-size:12px;font-weight:700;color:var(--green)">${usd(t.total)}${t.modelo === 'iva' ? '<div style="font-size:10px;font-weight:400;color:var(--text-muted)">con IVA</div>' : ''}</td>
+      <td class="mono celda-factor" style="font-size:12px">${t.modelo === 'puerto' ? fmtFactor(t.factor) : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td class="celda-pagos">${celdaPagos(imp)}</td>
       <td>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-ghost btn-sm" onclick="verDetalle('${imp.id}')">📋 Ver</button>
@@ -768,17 +761,52 @@ function render() {
         <tr>
           <th>Fecha orden</th>
           <th>Proveedor</th>
+          <th>Importador</th>
           <th>Llegada est.</th>
           <th>Estado</th>
           <th>Ítems</th>
-          <th>Base sin IVA</th>
-          <th>Total c/IVA (pagado)</th>
-          <th>2do Pago (50%)</th>
+          <th>Costo China</th>
+          <th>Costo total</th>
+          <th title="Costo total ÷ costo en China">Factor</th>
+          <th>Pagos</th>
           <th>Acciones</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+// Los tres pagos como 1·2·3 (verde pagado, amarillo pendiente) y el próximo vencimiento.
+// Una importación del esquema anterior conserva el botón de saldo pendiente.
+function celdaPagos(imp) {
+  if (!CI.esPuerto(imp)) {
+    return imp.saldo_pendiente
+      ? `<button class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:var(--yellow);border:1px solid rgba(245,158,11,0.3)" onclick="toggleSaldo('${imp.id}',false)">🔴 Saldo pendiente</button>`
+      : `<button class="btn btn-sm" style="background:rgba(34,197,94,0.12);color:var(--green);border:1px solid rgba(34,197,94,0.3)" onclick="toggleSaldo('${imp.id}',true)">✅ Pagado</button>`;
+  }
+  const pagos = Array.isArray(imp.pagos) ? imp.pagos : [];
+  const res = CI.resumenPagos(pagos);
+  const chips = pagos.map((p, i) => `<button class="pago-chip${p.pagado ? ' ok' : ''}" data-pago="${p.id}"
+      title="${escapeHtml(p.concepto)}: ${usd(p.monto)}${p.pagado ? ' — pagado' + (p.fecha_pago ? ' el ' + fmtDate(p.fecha_pago) : '') : ' — pendiente' + (p.estimado ? ', estimado ' + fmtDate(p.estimado) : '')}. Clic para cambiar."
+      onclick="togglePago('${escapeHtml(imp.id)}','${p.id}')">${i + 1}</button>`).join('');
+  const sig = res.proximo
+    ? `Próximo: <b class="mono">${usd(res.proximo.monto)}</b>${res.proximo.estimado ? ' · ' + fmtDate(res.proximo.estimado) : ''}`
+    : '<span style="color:var(--green)">Todo pagado</span>';
+  return `<div class="pago-chips">${chips}</div><div class="pago-sig">${sig}</div>`;
+}
+
+async function togglePago(id, pagoId) {
+  const imp = imports.find(i => i.id === id);
+  if (!imp) return;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const pagos = (imp.pagos || []).map(p => p.id !== pagoId ? p
+    : { ...p, pagado: !p.pagado, fecha_pago: !p.pagado ? hoy : null });
+  try {
+    const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, { pagos });
+    const idx = imports.findIndex(i => i.id === id);
+    if (idx !== -1) imports[idx] = { ...imports[idx], ...updated };
+    render();
+  } catch (e) { alert('Error actualizando el pago: ' + e.message); }
 }
 
 // La importación ya llegada no se puede abrir con ✏️ Editar, así que el proveedor se elige
@@ -854,16 +882,143 @@ function cerrarDd(input, delay) {
   }, delay);
 }
 
-// ─── Totals recalc (cálculo inverso: el usuario ingresa el total con IVA) ──────
-function recalcTotals() {
-  const total    = parseFloat(document.getElementById('new-total-pagado').value) || 0;
-  const base     = total / 1.22;
-  const iva      = total - base;
+// ─── Costos sin IVA, factor y pagos (nueva importación y edición) ─────────────
+// Las cuentas están en costo-importacion.js, compartidas con la API: acá sólo se leen los
+// campos y se muestra el resultado.
+const CI = window.CostoImportacion;
+const pagosForm = { new: [], edit: [] };   // lo marcado en cada modal (pagado, fechas)
 
-  document.getElementById('tot-base').textContent  = usd(base);
-  document.getElementById('tot-iva').textContent   = usd(iva);
-  document.getElementById('tot-total').textContent = usd(total);
+function recalcTotals() {
+  recalcCostos('new');
   recalcMinimo();
+}
+
+function fmtFactor(f) { return f == null ? '—' : '×' + f.toFixed(2).replace('.', ','); }
+function pctSobreChina(f) { return f == null ? '' : `+${((f - 1) * 100).toFixed(1).replace('.', ',')}% sobre China`; }
+
+function htmlCostos(pfx) {
+  const n = (id, label, ayuda, extra = '') => `
+    <div class="form-group">
+      <label class="form-label" for="${pfx}-${id}">${label}</label>
+      <input type="number" id="${pfx}-${id}" step="0.01" min="0" ${extra} oninput="recalcCostos('${pfx}')">
+      ${ayuda ? `<span class="ayuda">${ayuda}</span>` : ''}
+    </div>`;
+  return `
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Costos (USD, sin IVA)</div>
+      <div class="form-grid">
+        ${n('allin', 'All in del importador (USD) *', 'Lo que cobra sobre el FOB: flete marítimo, gastos en Montevideo, depósito portuario y nacionalización. Sin IVA.', 'placeholder="ej: 396"')}
+        ${n('nacional', 'Otros gastos de importación', 'Sólo lo que el all in no cubra (ej: almacenaje extra). Sin IVA.', 'placeholder="0.00"')}
+        ${n('traslado', 'Traslado interno (puerto → depósito)', 'Sólo si se paga aparte.', 'placeholder="0.00"')}
+        ${n('cotiz', 'Cotización del dólar (UYU)', 'Para pasar el costo de cada unidad a pesos.', 'placeholder="40"')}
+      </div>
+      <div class="totals-box" id="${pfx}-totales"></div>
+      <div style="font-size:13px;font-weight:600;margin:18px 0 8px">Pagos</div>
+      <div class="pagos-list" id="${pfx}-pagos"></div>
+    </div>`;
+}
+
+function valorNum(id) { const v = parseFloat(document.getElementById(id)?.value); return Number.isFinite(v) ? v : 0; }
+
+// Lo que hay en los renglones de pago ahora mismo (o lo que se cargó al abrir el modal).
+function leerPagosForm(pfx) {
+  const filas = document.querySelectorAll(`#${pfx}-pagos .pago-row`);
+  if (!filas.length) return pagosForm[pfx];
+  return [...filas].map(f => ({
+    id: f.dataset.id,
+    estimado: f.querySelector('.pago-estimado').value || null,
+    estimado_manual: f.dataset.manual === '1',
+    pagado: f.querySelector('.pago-check').checked,
+    fecha_pago: f.dataset.fechaPago || null,
+  }));
+}
+
+function impDelForm(pfx) {
+  const items = leerItems(`#${pfx === 'new' ? 'line-items-body' : 'edit-line-items-body'}`);
+  return {
+    items,
+    fecha: document.getElementById(`${pfx}-order-date`).value || null,
+    llegada: document.getElementById(`${pfx}-est-arrival`).value || null,
+    // Puesta en puerto = productos (China) + all in del importador. Se guarda la suma, así el
+    // all in queda fijo aunque después cambien los artículos.
+    costo_puerto: valorNum(`${pfx}-allin`) > 0 ? Math.round((CI.costoChina(items) + valorNum(`${pfx}-allin`)) * 100) / 100 : null,
+    nacional: valorNum(`${pfx}-nacional`),
+    traslado: valorNum(`${pfx}-traslado`),
+    cotizacion_usd: valorNum(`${pfx}-cotiz`) || CI.COTIZACION_DEFAULT,
+  };
+}
+
+function recalcCostos(pfx) {
+  const box = document.getElementById(`${pfx}-totales`);
+  if (!box) return;
+  const imp = impDelForm(pfx);
+  const china = CI.costoChina(imp.items);
+  if (!CI.esPuerto(imp)) {
+    box.innerHTML = `
+      <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(china)}</span></div>
+      <div class="totals-row" style="color:var(--text-muted)"><span>Cargá el all in del importador para ver el costo real y el factor.</span></div>`;
+  } else {
+    const t = CI.totales(imp);
+    box.innerHTML = `
+      <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
+      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
+      ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
+      <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val" id="${pfx}-total">${usd(t.total)}</span></div>
+      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="${pfx}-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>`;
+  }
+  renderPagosForm(pfx, CI.armarPagos(imp, leerPagosForm(pfx)));
+}
+
+function renderPagosForm(pfx, pagos) {
+  pagosForm[pfx] = pagos;
+  const hoy = new Date().toISOString().slice(0, 10);
+  document.getElementById(`${pfx}-pagos`).innerHTML = pagos.map((p, i) => `
+    <div class="pago-row${p.pagado ? ' pagado' : ''}" data-id="${p.id}" data-manual="${p.estimado_manual ? '1' : ''}" data-fecha-pago="${escapeHtml(p.fecha_pago || '')}">
+      <span class="pago-num">${i + 1}</span>
+      <div class="pago-txt">
+        <div style="font-weight:600">${escapeHtml(p.concepto)}</div>
+        <div class="ayuda">${p.a === 'proveedor' ? 'Al proveedor' : 'Al importador'}${p.pagado && p.fecha_pago ? ` · pagado el ${fmtDate(p.fecha_pago)}` : ''}</div>
+      </div>
+      <span class="mono pago-monto">${usd(p.monto)}</span>
+      <input type="date" class="pago-estimado" value="${p.estimado || ''}" title="Fecha estimada"
+             onchange="this.closest('.pago-row').dataset.manual='1';recalcCostos('${pfx}')">
+      <label class="pago-label"><input type="checkbox" class="pago-check chk" ${p.pagado ? 'checked' : ''}
+             onchange="const r=this.closest('.pago-row');r.dataset.fechaPago=this.checked?'${hoy}':'';recalcCostos('${pfx}')"> Pagado</label>
+    </div>`).join('');
+}
+
+function leerCostos(pfx) {
+  const imp = impDelForm(pfx);
+  return {
+    importador: document.getElementById(`${pfx}-importador`).value.trim() || null,
+    costo_puerto: imp.costo_puerto,
+    nacional: imp.nacional,
+    traslado: imp.traslado,
+    cotizacion_usd: imp.cotizacion_usd,
+    pagos: leerPagosForm(pfx),
+  };
+}
+
+function llenarCostos(pfx, imp) {
+  document.getElementById(`${pfx}-costos`).innerHTML = htmlCostos(pfx);
+  const set = (id, v) => { document.getElementById(`${pfx}-${id}`).value = v ?? ''; };
+  set('allin', CI.esPuerto(imp) ? Math.round((Number(imp.costo_puerto) - CI.costoChina(imp.items)) * 100) / 100 : '');
+  set('nacional', imp?.nacional || '');
+  set('traslado', imp?.traslado || '');
+  set('cotiz', imp?.cotizacion_usd || CI.COTIZACION_DEFAULT);
+  pagosForm[pfx] = Array.isArray(imp?.pagos) ? imp.pagos : [];
+  recalcCostos(pfx);
+}
+
+function importadorSugerido() {
+  const conImportador = imports.filter(i => i.importador).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+  return conImportador[0]?.importador || CI.IMPORTADOR_DEFAULT;
+}
+
+function renderImportadores() {
+  const nombres = [...new Set([CI.IMPORTADOR_DEFAULT, ...imports.map(i => i.importador).filter(Boolean)])];
+  document.getElementById('dl-importadores').innerHTML = nombres.map(n => `<option value="${escapeHtml(n)}">`).join('');
 }
 
 // Costo en China de lo cargado (cantidad × costo unitario) contra el mínimo del proveedor.
@@ -923,15 +1078,14 @@ function openNew(pre) {
   document.getElementById('new-est-arrival').value = '';
   document.getElementById('new-notes').value = '';
   document.getElementById('new-status').value = 'ordered';
-  document.getElementById('new-traslado').value = '0';
-  document.getElementById('new-nacional').value = '0';
-  document.getElementById('new-total-pagado').value = '';
-  document.getElementById('new-saldo-pendiente').checked = false;
+  document.getElementById('new-importador').value = importadorSugerido();
+  renderImportadores();
   document.getElementById('line-items-body').innerHTML = '';
   document.getElementById('items-error').style.display = 'none';
   const preItems = pre?.items || [];
   preItems.forEach(it => addLineItem(it));
   if (!preItems.length) addLineItem();
+  llenarCostos('new', null);
   recalcTotals();
   document.getElementById('modal-nueva').classList.add('open');
 }
@@ -966,8 +1120,8 @@ async function submitNew() {
   const proveedorId = document.getElementById('new-proveedor').value;
   if (!proveedorId && !migracionProveedores) { alert('Elegí de qué proveedor es la importación.'); return; }
 
-  const totalPagado = parseFloat(document.getElementById('new-total-pagado').value) || 0;
-  if (!totalPagado) { alert('Ingresá el total pagado con IVA.'); return; }
+  const costos = leerCostos('new');
+  if (!(costos.costo_puerto > 0)) { alert('Ingresá el all in del importador (USD).'); return; }
 
   const items = leerItems('#line-items-body');
 
@@ -977,9 +1131,6 @@ async function submitNew() {
   }
   document.getElementById('items-error').style.display = 'none';
 
-  const traslado = parseFloat(document.getElementById('new-traslado').value) || 0;
-  const nacional = parseFloat(document.getElementById('new-nacional').value) || 0;
-
   try {
     const rec = await apiFetch('POST', '/api/importaciones', {
       fecha,
@@ -987,10 +1138,7 @@ async function submitNew() {
       estado:   document.getElementById('new-status').value,
       notas:    document.getElementById('new-notes').value.trim() || null,
       items,
-      traslado,
-      nacional,
-      total:            totalPagado,
-      saldo_pendiente:  document.getElementById('new-saldo-pendiente').checked,
+      ...costos,
       ...(proveedorId ? { proveedor_id: proveedorId } : {}),
     });
     imports.unshift(rec);
@@ -1016,7 +1164,11 @@ function avisarSyncProveedor(rec) {
 
 // ─── Mark as Arrived ─────────────────────────────────────────────────────────
 async function marcarLlegado(id) {
-  if (!confirm('¿Marcar esta importación como llegada? Esto sumará automáticamente el stock de sus artículos.')) return;
+  const imp = imports.find(i => i.id === id);
+  const puerto = CI.esPuerto(imp);
+  const msg = '¿Marcar esta importación como llegada? Esto sumará automáticamente el stock de sus artículos' +
+    (puerto ? ' y recalculará el costo de cada producto por promedio ponderado (PPP).' : '.');
+  if (!confirm(msg)) return;
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
       estado: 'recibido',
@@ -1043,6 +1195,15 @@ async function marcarLlegado(id) {
         }
         if (sync.errores?.length) {
           partes.push('⚠️ Errores al sincronizar: ' + sync.errores.map(e => `${e.sku}: ${e.error}`).join(' | '));
+        }
+        const ppp = updated.costos_ppp;
+        if (ppp?.error) {
+          partes.push('⚠️ No se pudo recalcular el costo de los productos: ' + ppp.error);
+        } else if (ppp) {
+          if (ppp.aplicados?.length) {
+            partes.push('Costo promedio (PPP):\n' + ppp.aplicados.map(c => `• ${c.sku}: ${pesos(c.costoAntes)} → ${pesos(c.costoNuevo)}`).join('\n'));
+          }
+          if (ppp.errores?.length) partes.push('⚠️ Errores guardando costos: ' + ppp.errores.map(e => `${e.sku || ''} ${e.error}`).join(' | '));
         }
         const listos = updated.avisos_stock?.listos || [];
         if (listos.length) {
@@ -1077,12 +1238,14 @@ function verDetalle(id) {
   const imp = imports.find(i => i.id === id);
   if (!imp) return;
 
+  if (CI.esPuerto(imp)) return verDetallePuerto(imp);
+
   const items = imp.items || imp.import_items || [];
   const fecha   = imp.order_date || imp.fecha;
   const llegada = imp.estimated_arrival_date || imp.llegada;
   const estado  = imp.status || imp.estado;
 
-  // Cálculo inverso de IVA desde el total pagado (aplica a registros viejos y nuevos)
+  // Cálculo inverso de IVA desde el total pagado (importaciones del esquema anterior)
   const totalPagado = Number(imp.total || 0);
   const base        = totalPagado / 1.22;
   const ivaCalc     = totalPagado - base;
@@ -1131,6 +1294,84 @@ function verDetalle(id) {
   document.getElementById('modal-detalle').classList.add('open');
 }
 
+// Detalle del esquema de puesta en puerto: costos sin IVA, factor, costo de cada unidad puesta
+// en Uruguay, los pagos y, si ya llegó, cómo quedó el costo de cada producto por PPP.
+function pesos(v) { return '$' + Number(v || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function verDetallePuerto(imp) {
+  const t = CI.totales(imp);
+  const cotiz = CI.cotizacionDe(imp);
+  const unit = CI.costosUnitarios(imp);
+  const aplicados = Array.isArray(imp.costos_aplicados) ? imp.costos_aplicados : null;
+  const pppPorSku = {};
+  (aplicados || []).forEach(c => { pppPorSku[c.sku] = c; });
+  const prodPorSku = {};
+  productos.forEach(p => { prodPorSku[p.sku] = p; });
+  const estado = imp.status || imp.estado;
+  const dato = (label, val) => `<div><div class="dato-label">${label}</div><div class="dato-val">${val}</div></div>`;
+
+  const filas = unit.map(u => {
+    const ppp = pppPorSku[u.sku];
+    const p = prodPorSku[u.sku];
+    const costoHoy = p ? Number(p.costo) || 0 : null;
+    const colPPP = ppp
+      ? `${pesos(ppp.costoAntes)} → <b style="color:var(--green)">${pesos(ppp.costoNuevo)}</b><div class="ayuda">${ppp.stockAntes} en depósito + ${ppp.qty} que llegaron</div>`
+      : !u.sku ? '<span style="color:var(--yellow)">Sin SKU: no suma stock ni costo</span>'
+      : !p ? '<span style="color:var(--yellow)">El SKU no existe en productos</span>'
+      : `<span style="color:var(--text-muted)">Hoy ${pesos(costoHoy)} · se promedia al llegar</span>`;
+    return `<tr>
+      <td><div style="font-weight:600">${escapeHtml(u.nombre || '—')}</div><div class="mono" style="font-size:11px;color:var(--accent)">${escapeHtml(u.sku || 'sin SKU')}</div></td>
+      <td style="text-align:right">${u.qty}</td>
+      <td class="mono" style="text-align:right;white-space:nowrap">${usd(u.costoChina)}</td>
+      <td class="mono" style="text-align:right;white-space:nowrap">${u.costoUsd == null ? '—' : usd(u.costoUsd)}</td>
+      <td class="mono" style="text-align:right;white-space:nowrap">${u.costoUyu == null ? '—' : pesos(u.costoUyu)}</td>
+      <td>${colPPP}</td>
+    </tr>`;
+  }).join('');
+
+  const pagos = Array.isArray(imp.pagos) ? imp.pagos : [];
+  const pagosHtml = pagos.map((p, i) => `
+    <div class="pago-row${p.pagado ? ' pagado' : ''}" style="grid-template-columns:26px 1fr auto auto">
+      <span class="pago-num">${i + 1}</span>
+      <div><div style="font-weight:600">${escapeHtml(p.concepto)}</div><div class="ayuda">${p.a === 'proveedor' ? 'Al proveedor' : 'Al importador'}</div></div>
+      <span class="mono pago-monto">${usd(p.monto)}</span>
+      <span style="font-size:12px;color:${p.pagado ? 'var(--green)' : 'var(--yellow)'}">${p.pagado ? `✅ Pagado${p.fecha_pago ? ' ' + fmtDate(p.fecha_pago) : ''}` : `Pendiente${p.estimado ? ' · ' + fmtDate(p.estimado) : ''}`}</span>
+    </div>`).join('');
+
+  document.getElementById('detalle-content').innerHTML = `
+    <div class="modal-title">Detalle de importación</div>
+    <div class="datos-grid" style="margin-bottom:20px">
+      ${dato('Fecha orden', fmtDate(imp.fecha))}
+      ${dato('Estado', statusBadge(estado))}
+      ${dato('Llegada estimada', fmtDate(imp.llegada))}
+      ${dato('Proveedor', escapeHtml(nombreProveedor(imp.proveedor_id) || '—'))}
+      ${dato('Importador', escapeHtml(imp.importador || '—'))}
+      ${dato('Cotización del dólar', '$' + cotiz)}
+      ${imp.notas ? `<div style="grid-column:1/-1">${dato('Notas', escapeHtml(imp.notas))}</div>` : ''}
+    </div>
+    <div class="totals-box" style="margin-bottom:18px">
+      <div class="totals-row"><span>Costo en China (productos)</span><span class="totals-val">${usd(t.costoChina)}</span></div>
+      <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
+      ${t.traslado ? `<div class="totals-row"><span>Traslado interno</span><span class="totals-val">${usd(t.traslado)}</span></div>` : ''}
+      <div class="totals-row grand"><span>Costo total sin IVA</span><span class="totals-val">${usd(t.total)}</span></div>
+      <div class="totals-row main"><span>Factor sobre el costo en China</span><span class="totals-val" id="detalle-factor">${fmtFactor(t.factor)} <span style="font-weight:400;color:var(--text-muted);font-size:12px">${pctSobreChina(t.factor)}</span></span></div>
+    </div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">Costo por unidad puesto en Uruguay</div>
+    <div class="items-table-wrap" style="overflow-x:auto">
+      <table id="detalle-costos">
+        <thead><tr><th>Producto</th><th style="text-align:right">Cant.</th><th style="text-align:right">China/u</th><th style="text-align:right">Uruguay/u (USD)</th><th style="text-align:right">Uruguay/u ($)</th><th>${aplicados ? 'Costo del producto (PPP)' : 'Costo del producto'}</th></tr></thead>
+        <tbody>${filas}</tbody>
+      </table>
+    </div>
+    <p class="ayuda" style="margin-top:8px">${aplicados
+      ? 'El costo de cada producto se promedió (PPP) entre lo que había en depósito y lo que llegó.'
+      : 'Al marcar ✅ Llegó, el costo de cada producto pasa a ser el promedio ponderado (PPP) entre las unidades del depósito y las que llegan, a este costo en pesos.'}</p>
+    <div style="font-size:13px;font-weight:600;margin:18px 0 8px">Pagos</div>
+    <div class="pagos-list">${pagosHtml}</div>`;
+  document.getElementById('modal-detalle').classList.add('open');
+}
+
 // ─── Toggle 2do pago ─────────────────────────────────────────────────────────
 async function toggleSaldo(id, nuevoEstado) {
   try {
@@ -1161,6 +1402,10 @@ function openEdit(id) {
   items.forEach(it => addEditLineItem(it.sku, it.nombre, it.qty, it.costo));
   if (!items.length) addEditLineItem();
 
+  document.getElementById('edit-importador').value = imp.importador || '';
+  renderImportadores();
+  llenarCostos('edit', imp);
+
   document.getElementById('modal-editar').classList.add('open');
 }
 
@@ -1178,9 +1423,9 @@ function addEditLineItem(sku = '', nombre = '', qty = '', costo = '') {
       </div>
     </td>
     <td><input type="text" placeholder="Nombre del producto" class="li-name" value="${escapeHtml(nombre)}"></td>
-    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" value="${qty}"></td>
-    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" value="${costo}"></td>
-    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
+    <td><input type="number" placeholder="10" min="1" class="li-qty" style="width:70px" value="${qty}" oninput="recalcCostos('edit')"></td>
+    <td><input type="number" placeholder="0.00" step="0.01" min="0" class="li-cost" style="width:90px" value="${costo}" oninput="recalcCostos('edit')"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove();recalcCostos('edit')">✕</button></td>`;
   tbody.appendChild(tr);
 }
 
@@ -1218,13 +1463,23 @@ async function submitEdit() {
   const fecha   = document.getElementById('edit-order-date').value;
 
   const items = leerItems('#edit-line-items-body');
+  const imp = imports.find(i => i.id === id);
+  const costos = leerCostos('edit');
+  // Una importación del esquema anterior sigue con su total con IVA mientras no se le cargue
+  // la puesta en puerto; de ella sólo se tocan los otros gastos y el traslado.
+  const cuerpoCostos = costos.costo_puerto > 0 || CI.esPuerto(imp)
+    ? costos
+    : { importador: costos.importador, nacional: costos.nacional, traslado: costos.traslado };
+  if (CI.esPuerto(imp) && !(costos.costo_puerto > 0)) { alert('El all in del importador no puede quedar vacío.'); return; }
 
   try {
     const updated = await apiFetch('PUT', `/api/importaciones?id=${id}`, {
+      ...(fecha ? { fecha } : {}),
       llegada: llegada || null,
       estado,
       notas:   notas || null,
       items,
+      ...cuerpoCostos,
       ...(migracionProveedores ? {} : { proveedor_id: document.getElementById('edit-proveedor').value || null }),
     });
     const idx = imports.findIndex(i => i.id === id);
@@ -1793,6 +2048,11 @@ function closeModal(id) {
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
 });
+
+// La fecha de orden y la llegada mueven las fechas estimadas de los pagos.
+['new', 'edit'].forEach(pfx => ['order-date', 'est-arrival'].forEach(campo => {
+  document.getElementById(`${pfx}-${campo}`).addEventListener('change', () => recalcCostos(pfx));
+}));
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 // #proveedores y #compras abren directo esa solapa (sirve para volver con el botón atrás o

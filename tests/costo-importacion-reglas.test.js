@@ -83,6 +83,23 @@ test('al recalcular los pagos se conserva lo marcado y los montos siguen a los c
   assert.deepStrictEqual(CI.resumenPagos(p), { pagado: 500, pendiente: 1000, proximo: p[1], completos: false });
 });
 
+test('la PI real de JBL: la puesta FOB va al proveedor, que cobra dos pagos de USD 575', () => {
+  // Productos EXW USD 1.128,90 + shipping 23,10 = 1.152 en la PI, cobrados 1.150 en Alibaba.
+  const imp = { fecha: '2026-11-11', llegada: '2027-01-25', items: [{ sku: 'X', qty: 1, costo: 1128.9 }],
+    traslado: 21.1, costo_puerto: 1128.9 + 396 };
+  const t = CI.totales(imp);
+  assert.strictEqual(t.costoChina, 1128.9);
+  assert.strictEqual(t.proveedor, 1150);
+  assert.strictEqual(t.flete, 396, 'el all in del importador');
+  assert.strictEqual(t.total, 1546);
+  assert.strictEqual(t.factor, 1.3695);
+  const p = CI.armarPagos(imp, []);
+  assert.deepStrictEqual(p.map(x => [x.id, x.monto, x.a]), [
+    ['anticipo', 575, 'proveedor'], ['saldo_proveedor', 575, 'proveedor'], ['puerto', 396, 'importador'],
+  ]);
+  assert.strictEqual(CI.diferenciaPagos(imp, p).diferencia, 0);
+});
+
 test('un monto cambiado a mano se respeta al recalcular y se puede volver al calculado', () => {
   const imp = { fecha: '2026-11-11', items: [{ sku: 'X', qty: 1, costo: 1064.45 }], costo_puerto: 1460.45 };
   const p = CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: 575, monto_manual: true }]);

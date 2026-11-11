@@ -4,22 +4,25 @@
 // api/importaciones.js (vía require), y los tests la cargan directo.
 //
 // Cómo se importa desde noviembre 2026 (importador GrupoRAS, FOB Guangzhou):
-//   · Costo en China      → lo que se le paga a la fábrica: Σ cantidad × costo unitario (USD).
+//   · Costo en China      → los productos, a precio EXW de la PI: Σ cantidad × costo unitario (USD).
+//   · Puesta FOB          → (columna `traslado`) lo que el proveedor cobra aparte para llevar la
+//                           mercadería al puerto en China ("Shipping cost" de la PI), más o menos
+//                           lo que haya redondeado al cobrar (PI de USD 1.152 cobrada 1.150 en
+//                           Alibaba → 23,10 − 2 = 21,10). Se le paga al proveedor con los productos.
 //   · All in              → lo que cobra el importador sobre el FOB: flete marítimo, gastos en
 //                           Montevideo, depósito portuario (30 días) y el 0,08% sobre CIF. Ya
 //                           incluye la nacionalización: no hay gastos de retiro aparte.
 //   · Puesta en puerto    → costo en China + all in. Es lo que se guarda en costo_puerto.
 //   · Otros gastos        → (columna `nacional`) sólo lo que el all in no cubra.
-//   · Traslado interno    → del puerto al depósito, si se paga aparte.
 //   Ninguno lleva IVA: el costo total es la suma, y ése es el costo real.
 //
 //   factor = costo total ÷ costo en China (≈ 1,37 en la primera carga; con el esquema
-//   anterior, que pagaba IVA, se usaba 2,25). Cada producto carga el mismo factor: el all in se
-//   reparte en proporción a lo que costó en China.
+//   anterior, que pagaba IVA, se usaba 2,25). Cada producto carga el mismo factor: la puesta FOB
+//   y el all in se reparten en proporción a lo que costó en China.
 //
-// Pagos: 50% del costo en China al confirmar el pedido, el otro 50% cuando la mercadería está
-// lista (7 a 10 días después) y, al llegar a puerto, el saldo: all in + otros gastos +
-// traslado.
+// Pagos: al proveedor, productos + puesta FOB en dos mitades (al confirmar el pedido y cuando la
+// mercadería está lista, 7 a 10 días después); al importador, al llegar a puerto, el all in +
+// otros gastos.
 //
 // Costo del producto por PPP (precio promedio ponderado): al llegar, el costo de cada SKU pasa
 // a ser el promedio entre las unidades que ya había en depósito, a su costo anterior, y las que
@@ -64,7 +67,7 @@
     const traslado = num(imp?.traslado);
     if (!esPuerto(imp)) {
       return { modelo: 'iva', costoChina: china, total: num(imp?.total), nacional, traslado,
-        puerto: null, flete: null, factor: null };
+        puerto: null, flete: null, proveedor: null, factor: null };
     }
     const puerto = num(imp.costo_puerto);
     const total = r2(puerto + nacional + traslado);
@@ -75,6 +78,7 @@
       flete: r2(puerto - china),          // all in: lo que cobra el importador sobre el FOB
       nacional: r2(nacional),
       traslado: r2(traslado),
+      proveedor: r2(china + traslado),    // lo que se le paga al proveedor: productos + puesta FOB
       total,
       factor: china > 0 ? r4(total / china) : null,
     };
@@ -109,11 +113,12 @@
   // `monto_calculado` es siempre el que sale de los costos, para poder volver a él.
   function armarPagos(imp, previos) {
     const t = totales(imp);
-    const mitad = r2(t.costoChina / 2);
-    const segunda = r2(t.costoChina - mitad);
-    const saldo = r2(Math.max(0, t.total - t.costoChina));
+    const alProveedor = t.proveedor ?? t.costoChina;
+    const mitad = r2(alProveedor / 2);
+    const segunda = r2(alProveedor - mitad);
+    const saldo = r2(Math.max(0, t.total - alProveedor));
     const base = [
-      { id: 'anticipo', concepto: '50% del costo al proveedor', a: 'proveedor', monto: mitad,
+      { id: 'anticipo', concepto: '50% al proveedor', a: 'proveedor', monto: mitad,
         estimado: imp?.fecha || null },
       { id: 'saldo_proveedor', concepto: '50% restante, mercadería lista', a: 'proveedor', monto: segunda,
         estimado: sumarDias(imp?.fecha, DIAS_SEGUNDO_PAGO) },

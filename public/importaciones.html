@@ -173,6 +173,8 @@
   .pago-monto { font-weight: 600; text-align: right; }
   .pago-monto-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
   .pago-monto-input { width: 110px; padding: 5px 8px; font-size: 13px; font-weight: 600; text-align: right; }
+  .pago-fee { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .pago-fee .pago-fee-input { width: 70px; padding: 3px 6px; font-size: 12px; text-align: right; }
   .pago-reset { background: none; border: none; padding: 0; color: var(--accent); font-size: 11px; cursor: pointer; font-family: 'JetBrains Mono', monospace; }
   .pago-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
   .pago-row input[type=date] { padding: 5px 8px; font-size: 12px; }
@@ -790,7 +792,7 @@ function celdaPagos(imp) {
   const pagos = Array.isArray(imp.pagos) ? imp.pagos : [];
   const res = CI.resumenPagos(pagos);
   const chips = pagos.map((p, i) => `<button class="pago-chip${p.pagado ? ' ok' : ''}" data-pago="${p.id}"
-      title="${escapeHtml(p.concepto)}: ${usd(p.monto)}${p.pagado ? ' — pagado' + (p.fecha_pago ? ' el ' + fmtDate(p.fecha_pago) : '') : ' — pendiente' + (p.estimado ? ', estimado ' + fmtDate(p.estimado) : '')}. Clic para cambiar."
+      title="${escapeHtml(p.concepto)}: ${usd(p.monto)}${Number(p.fee) > 0 ? ' + ' + usd(p.fee) + ' de comisión' : ''}${p.pagado ? ' — pagado' + (p.fecha_pago ? ' el ' + fmtDate(p.fecha_pago) : '') : ' — pendiente' + (p.estimado ? ', estimado ' + fmtDate(p.estimado) : '')}. Clic para cambiar."
       onclick="togglePago('${escapeHtml(imp.id)}','${p.id}')">${i + 1}</button>`).join('');
   const sig = res.proximo
     ? `Próximo: <b class="mono">${usd(res.proximo.monto)}</b>${res.proximo.estimado ? ' · ' + fmtDate(res.proximo.estimado) : ''}`
@@ -906,7 +908,8 @@ function filasCostos(t) {
       ${t.traslado ? `<div class="totals-row"><span>Puesta FOB (proveedor)</span><span class="totals-val">${usd(t.traslado)}</span></div>
       <div class="totals-row main"><span>Total al proveedor</span><span class="totals-val">${usd(t.proveedor)}</span></div>` : ''}
       <div class="totals-row"><span>All in del importador</span><span class="totals-val">${usd(t.flete)}</span></div>
-      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}`;
+      ${t.nacional ? `<div class="totals-row"><span>Otros gastos de importación</span><span class="totals-val">${usd(t.nacional)}</span></div>` : ''}
+      ${t.comisiones ? `<div class="totals-row"><span>Comisiones de pago (Alibaba, banco)</span><span class="totals-val">${usd(t.comisiones)}</span></div>` : ''}`;
 }
 
 function htmlCostos(pfx) {
@@ -945,6 +948,7 @@ function leerPagosForm(pfx) {
     pagado: f.querySelector('.pago-check').checked,
     fecha_pago: f.dataset.fechaPago || null,
     monto: parseFloat(f.querySelector('.pago-monto-input').value),
+    fee: parseFloat(f.querySelector('.pago-fee-input').value) || 0,
     monto_manual: f.dataset.montoManual === '1',
   }));
 }
@@ -961,6 +965,7 @@ function impDelForm(pfx) {
     nacional: valorNum(`${pfx}-nacional`),
     traslado: valorNum(`${pfx}-traslado`),
     cotizacion_usd: valorNum(`${pfx}-cotiz`) || CI.COTIZACION_DEFAULT,
+    pagos: leerPagosForm(pfx),   // sus comisiones suman al costo total
   };
 }
 
@@ -1005,6 +1010,10 @@ function renderPagosForm(pfx, pagos) {
         ${p.monto_manual && Math.abs(p.monto - p.monto_calculado) >= 0.01
           ? `<button type="button" class="pago-reset" title="Volver al monto calculado"
                onclick="this.closest('.pago-row').dataset.montoManual='';recalcCostos('${pfx}')">calculado ${usd(p.monto_calculado)} ↺</button>` : ''}
+        <label class="pago-fee">+ comisión
+          <input type="number" class="pago-fee-input mono" step="0.01" min="0" value="${p.fee || ''}" placeholder="0" aria-label="Comisión del pago ${i + 1} en USD"
+                 title="Lo que cobró Alibaba o el banco por este pago. Suma al costo de la mercadería." onchange="recalcCostos('${pfx}')">
+        </label>
       </div>
       <input type="date" class="pago-estimado" value="${p.estimado || ''}" title="Fecha estimada"
              onchange="this.closest('.pago-row').dataset.manual='1';recalcCostos('${pfx}')">
@@ -1359,7 +1368,7 @@ function verDetallePuerto(imp) {
     <div class="pago-row${p.pagado ? ' pagado' : ''}" style="grid-template-columns:26px 1fr auto auto">
       <span class="pago-num">${i + 1}</span>
       <div><div style="font-weight:600">${escapeHtml(p.concepto)}</div><div class="ayuda">${p.a === 'proveedor' ? 'Al proveedor' : 'Al importador'}</div></div>
-      <span class="mono pago-monto">${usd(p.monto)}${p.monto_manual && Math.abs(p.monto - (p.monto_calculado ?? p.monto)) >= 0.01 ? `<div class="ayuda" style="font-weight:400">editado · calculado ${usd(p.monto_calculado)}</div>` : ''}</span>
+      <span class="mono pago-monto">${usd(p.monto)}${Number(p.fee) > 0 ? `<div class="ayuda" style="font-weight:400">+ ${usd(p.fee)} comisión</div>` : ''}${p.monto_manual && Math.abs(p.monto - (p.monto_calculado ?? p.monto)) >= 0.01 ? `<div class="ayuda" style="font-weight:400">editado · calculado ${usd(p.monto_calculado)}</div>` : ''}</span>
       <span style="font-size:12px;color:${p.pagado ? 'var(--green)' : 'var(--yellow)'}">${p.pagado ? `✅ Pagado${p.fecha_pago ? ' ' + fmtDate(p.fecha_pago) : ''}` : `Pendiente${p.estimado ? ' · ' + fmtDate(p.estimado) : ''}`}</span>
     </div>`).join('');
 

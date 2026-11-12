@@ -162,6 +162,8 @@ Desde noviembre 2026 se importa con GrupoRAS, sin IVA. Cada importación se carg
   puerto en China (el «Shipping cost» de la PI), ajustado a lo que cobró de verdad (PI de
   USD 1.152 cobrada 1.150 en Alibaba → 23,10 − 2 = 21,10). Se le paga al proveedor.
 - **Otros gastos de importación** (USD, sin IVA): sólo si hay algo que el all in no cubra.
+- **Comisión de cada pago** (USD): lo que cobra Alibaba o el banco por ese pago (ej: USD 20
+  sobre el anticipo de 575). Se carga en el renglón del pago y suma al costo de la mercadería.
 - **Cotización del dólar** para pasar el costo a pesos (por defecto 40).
 
 El **factor** (costo total ÷ costo en China, ×1,37 en la primera carga con GrupoRAS) se calcula

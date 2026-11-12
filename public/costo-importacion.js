@@ -14,6 +14,8 @@
 //                           incluye la nacionalización: no hay gastos de retiro aparte.
 //   · Puesta en puerto    → costo en China + all in. Es lo que se guarda en costo_puerto.
 //   · Otros gastos        → (columna `nacional`) sólo lo que el all in no cubra.
+//   · Comisiones de pago  → lo que cobra Alibaba o el banco por cada pago (`fee` de cada pago,
+//                           ej: USD 20 sobre el anticipo de 575). Es costo de la mercadería.
 //   Ninguno lleva IVA: el costo total es la suma, y ése es el costo real.
 //
 //   factor = costo total ÷ costo en China (≈ 1,37 en la primera carga; con el esquema
@@ -60,6 +62,10 @@
     return imp != null && imp.costo_puerto != null && imp.costo_puerto !== '' && num(imp.costo_puerto) > 0;
   }
 
+  function comisionesDe(pagos) {
+    return r2((Array.isArray(pagos) ? pagos : []).reduce((s, p) => s + Math.max(0, num(p?.fee)), 0));
+  }
+
   // Totales de una importación. Con el esquema viejo sólo se informa lo que había.
   function totales(imp) {
     const china = costoChina(imp?.items);
@@ -70,7 +76,8 @@
         puerto: null, flete: null, proveedor: null, factor: null };
     }
     const puerto = num(imp.costo_puerto);
-    const total = r2(puerto + nacional + traslado);
+    const comisiones = comisionesDe(imp?.pagos);
+    const total = r2(puerto + nacional + traslado + comisiones);
     return {
       modelo: 'puerto',
       costoChina: china,
@@ -79,6 +86,7 @@
       nacional: r2(nacional),
       traslado: r2(traslado),
       proveedor: r2(china + traslado),    // lo que se le paga al proveedor: productos + puesta FOB
+      comisiones,                         // comisiones de Alibaba / banco de los pagos
       total,
       factor: china > 0 ? r4(total / china) : null,
     };
@@ -116,7 +124,8 @@
     const alProveedor = t.proveedor ?? t.costoChina;
     const mitad = r2(alProveedor / 2);
     const segunda = r2(alProveedor - mitad);
-    const saldo = r2(Math.max(0, t.total - alProveedor));
+    // Al importador: all in + otros gastos. Las comisiones van aparte, con el pago que las genera.
+    const saldo = r2(Math.max(0, t.total - (t.comisiones || 0) - alProveedor));
     const base = [
       { id: 'anticipo', concepto: '50% al proveedor', a: 'proveedor', monto: mitad,
         estimado: imp?.fecha || null },
@@ -139,14 +148,16 @@
         estimado_manual: !!prev.estimado_manual,
         pagado: !!prev.pagado,
         fecha_pago: prev.pagado ? (prev.fecha_pago || null) : null,
+        fee: r2(Math.max(0, num(prev.fee))),
       };
     });
   }
 
   // Cuánto suman los pagos contra el costo total (positivo: se paga más de lo que cuesta).
   function diferenciaPagos(imp, pagos) {
-    const suma = r2((Array.isArray(pagos) ? pagos : []).reduce((s, p) => s + num(p.monto), 0));
-    const total = totales(imp).total;
+    const lista = Array.isArray(pagos) ? pagos : [];
+    const suma = r2(lista.reduce((s, p) => s + num(p.monto) + Math.max(0, num(p.fee)), 0));
+    const total = totales({ ...imp, pagos: lista }).total;
     return { suma, total, diferencia: r2(suma - total) };
   }
 
@@ -202,7 +213,7 @@
 
   const CostoImportacion = {
     DIAS_SEGUNDO_PAGO, COTIZACION_DEFAULT, IMPORTADOR_DEFAULT,
-    costoChina, esPuerto, totales, cotizacionDe, costosUnitarios, armarPagos, resumenPagos, diferenciaPagos, ppp, planPPP, sumarDias,
+    costoChina, comisionesDe, esPuerto, totales, cotizacionDe, costosUnitarios, armarPagos, resumenPagos, diferenciaPagos, ppp, planPPP, sumarDias,
   };
   raiz.CostoImportacion = CostoImportacion;
   if (typeof module !== 'undefined' && module.exports) module.exports = CostoImportacion;

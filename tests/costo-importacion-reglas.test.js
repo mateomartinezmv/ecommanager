@@ -100,6 +100,21 @@ test('la PI real de JBL: la puesta FOB va al proveedor, que cobra dos pagos de U
   assert.strictEqual(CI.diferenciaPagos(imp, p).diferencia, 0);
 });
 
+test('la comisión de Alibaba de un pago suma al costo y al factor, pero no al pago del importador', () => {
+  const imp = { fecha: '2026-11-11', items: [{ sku: 'X', qty: 1, costo: 1128.9 }], traslado: 21.1, costo_puerto: 1524.9 };
+  const pagos = CI.armarPagos(imp, [{ id: 'anticipo', pagado: true, fecha_pago: '2026-11-11', fee: 20 }]);
+  assert.deepStrictEqual(pagos.map(p => [p.monto, p.fee]), [[575, 20], [575, 0], [396, 0]]);
+  const t = CI.totales({ ...imp, pagos });
+  assert.strictEqual(t.comisiones, 20);
+  assert.strictEqual(t.total, 1566);
+  assert.strictEqual(t.factor, 1.3872);
+  assert.strictEqual(CI.diferenciaPagos(imp, pagos).diferencia, 0, 'lo que sale de la cuenta cuadra con el costo');
+  // Recalcular con las comisiones ya cargadas no las cuenta dos veces en el saldo al importador.
+  assert.strictEqual(CI.armarPagos({ ...imp, pagos }, pagos)[2].monto, 396);
+  // Una comisión negativa o vacía no resta.
+  assert.strictEqual(CI.comisionesDe([{ fee: -5 }, { fee: '' }, {}]), 0);
+});
+
 test('un monto cambiado a mano se respeta al recalcular y se puede volver al calculado', () => {
   const imp = { fecha: '2026-11-11', items: [{ sku: 'X', qty: 1, costo: 1064.45 }], costo_puerto: 1460.45 };
   const p = CI.armarPagos(imp, [{ id: 'saldo_proveedor', monto: 575, monto_manual: true }]);
@@ -269,6 +284,20 @@ test('un pago editado a mano se guarda y sobrevive a otros cambios de la importa
   assert.strictEqual(db.importaciones[0].total, 864.8, 'el costo total no cambia por editar un pago');
   // Se deja como estaba para el test siguiente.
   db.importaciones[0].pagos = antes;
+});
+
+test('la comisión de un pago se guarda y sube el costo total, el de los productos lo toma al llegar', async () => {
+  const id = db.importaciones[0].id;
+  const antes = JSON.parse(JSON.stringify(db.importaciones[0]));
+  const pagos = antes.pagos.map(p => p.id === 'anticipo' ? { ...p, fee: 8.65 } : p);
+  await llamar({ method: 'PUT', query: { id }, body: { pagos } });
+  const imp = db.importaciones[0];
+  assert.strictEqual(imp.pagos[0].fee, 8.65);
+  assert.strictEqual(imp.total, 873.45);
+  assert.strictEqual(imp.pagos[2].monto, 324.3, 'el pago al importador no cambia');
+  assert.strictEqual(CI.costosUnitarios(imp)[0].costoUsd, 6.1408, 'cada unidad carga su parte de la comisión');
+  // Se deja como estaba para el test siguiente.
+  db.importaciones[0] = antes;
 });
 
 test('al llegar, cada producto toma su costo por PPP y no se vuelve a aplicar', async () => {

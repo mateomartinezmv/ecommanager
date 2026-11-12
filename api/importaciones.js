@@ -49,8 +49,9 @@ function camposPuerto(b) {
 // Con costo_puerto el total es la suma de los costos, sin IVA, y los pagos salen de ahí.
 // `pagosUsuario` trae lo que se marcó en pantalla (pagado, fechas); los montos se recalculan.
 function completarPuerto(fila, pagosUsuario) {
-  const t = Costo.totales(fila);
   const pagos = Costo.armarPagos(fila, pagosUsuario !== undefined ? pagosUsuario : fila.pagos);
+  // Las comisiones de los pagos suman al costo total, así que se mide con los pagos nuevos.
+  const t = Costo.totales({ ...fila, pagos });
   return {
     total: t.total,
     subtotal: t.total,

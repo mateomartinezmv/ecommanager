@@ -352,6 +352,16 @@ test('una importación con puesta en puerto calcula el factor, los tres pagos y 
   await ui.page.fill(monto2, '120');
   await ui.page.dispatchEvent(monto2, 'change');
 
+  // La comisión de Alibaba de un pago suma al costo total.
+  const fee1 = '#new-pagos .pago-row[data-id="anticipo"] .pago-fee-input';
+  await ui.page.fill(fee1, '6');
+  await ui.page.dispatchEvent(fee1, 'change');
+  assert.match(await ui.page.textContent('#new-totales'), /Comisiones de pago \(Alibaba, banco\)\s*USD 6\.00/);
+  assert.match(await ui.page.textContent('#new-total'), /USD 306\.00/);
+  assert.match(await ui.page.textContent('#new-factor'), /×1,53/);
+  await ui.page.fill(fee1, '');
+  await ui.page.dispatchEvent(fee1, 'change');
+
   await ui.page.click('#modal-nueva button:text("Guardar importación")');
   await ui.page.waitForSelector('tr[data-id="IMP-NUEVA"]');
   const post = ultimoPost('/importaciones');

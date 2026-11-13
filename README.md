@@ -86,7 +86,7 @@ El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
 
 | Aviso | Cuándo |
 |---|---|
-| ❓ Nueva pregunta en MELI | Con la respuesta ya redactada y dos botones: **✅ Aceptar** la publica tal cual, **❌ Rechazar** la descarta (se responde desde MELI o el CRM). Cada pregunta tiene sus botones y el mismo aviso de MELI repetido no llega dos veces. Si la respondés por fuera, el mensaje pierde los botones. |
+| ❓ Nueva pregunta en MELI | Con la respuesta ya redactada según el stock real del CRM (la línea **📊 Stock CRM** muestra qué dato usó: disponible, sin stock, vuelve pronto si viene en una importación de los próximos 30 días, descatalogado o publicación sin vincular) y dos botones: **✅ Aceptar** la publica tal cual, **❌ Rechazar** la descarta (se responde desde MELI o el CRM). Cada pregunta tiene sus botones y el mismo aviso de MELI repetido no llega dos veces. Si la respondés por fuera, el mensaje pierde los botones. |
 | ⚠️ Venta sin registrar | Se vendió una publicación que no está vinculada a ningún SKU del CRM. |
 | ⚠️ Stock de MELI sin poder corregir | Una publicación lleva 3 horas seguidas con un stock distinto al del CRM y MELI rechaza la corrección. Una sola vez por publicación. |
 | 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |

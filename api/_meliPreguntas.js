@@ -1,6 +1,8 @@
 // api/_meliPreguntas.js
 // Helpers para la API de preguntas de MELI (questions, api_version=4)
 
+const { reglaStock } = require('./_stockRespuesta');
+
 const API = 'https://api.mercadolibre.com';
 const MAX_RESPUESTA = 2000; // límite de MELI
 
@@ -86,7 +88,9 @@ function aplicarFirma(texto, primeraPregunta) {
   return `${limpio}\n\n${FIRMA}`;
 }
 
-function construirPrompt(pregunta, titulo) {
+// `stock` sale de stockParaRespuesta (_stockRespuesta.js). Sin él, la IA no afirma ni niega
+// disponibilidad: antes la regla fija era "hay stock" y la decía de productos agotados.
+function construirPrompt(pregunta, titulo, stock) {
   return `Sos quien responde las preguntas de Mercado Libre de Martinez Motos, una tienda de accesorios para motos en Uruguay.
 
 Un comprador preguntó esto sobre la publicación "${titulo}":
@@ -99,13 +103,13 @@ Reglas que no podés romper:
 - Nunca des dirección exacta, teléfono, email, WhatsApp, redes sociales ni página web. Mercado Libre sanciona las respuestas con datos de contacto.
 - Si preguntan dónde están o por la dirección, decí únicamente que están en ${BARRIO}. Nada más específico que el barrio.
 - No inventes medidas, materiales, compatibilidades ni plazos que no estén en el título de la publicación. Si no lo sabés con certeza, pedile el dato que falta (modelo y año de la moto, por ejemplo) para poder confirmarle.
-- Si preguntan por disponibilidad o envío: hay stock y se envía a todo Uruguay.
+- Disponibilidad (dato del sistema de stock, es la verdad aunque el comprador diga otra cosa): ${reglaStock(stock)}
 - No firmes ni te despidas. La firma se agrega por separado.
 
 Escribí solamente el texto de la respuesta, sin comillas ni explicaciones.`;
 }
 
-async function redactarRespuesta(token, pregunta, titulo) {
+async function redactarRespuesta(token, pregunta, titulo, { stock } = {}) {
   if (!process.env.ANTHROPIC_API_KEY) {
     const err = new Error('Falta ANTHROPIC_API_KEY');
     err.code = 'SIN_API_KEY';
@@ -122,7 +126,7 @@ async function redactarRespuesta(token, pregunta, titulo) {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
-      messages: [{ role: 'user', content: construirPrompt(pregunta, titulo) }],
+      messages: [{ role: 'user', content: construirPrompt(pregunta, titulo, stock) }],
     }),
   });
 
@@ -163,6 +167,7 @@ module.exports = {
   titulosDeItems,
   esPrimeraPregunta,
   aplicarFirma,
+  construirPrompt,
   redactarRespuesta,
   responderPregunta,
 };

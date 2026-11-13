@@ -10,6 +10,7 @@
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
 const { marcarRespondidaFuera } = require('../_telegramPreguntas');
+const { stockParaRespuesta } = require('../_stockRespuesta');
 const {
   MAX_RESPUESTA,
   getSellerId,
@@ -81,8 +82,14 @@ module.exports = async (req, res) => {
     // ── Sin `respuesta` → sólo sugerir, no publica nada ─────────
     if (respuesta === undefined) {
       let borrador;
+      let stock = null;
       try {
-        borrador = await redactarRespuesta(token, pregunta, titulo);
+        stock = await stockParaRespuesta(getSupabase(), pregunta.item_id);
+      } catch (e) {
+        console.error('No se pudo leer el stock para la respuesta:', e.message);
+      }
+      try {
+        borrador = await redactarRespuesta(token, pregunta, titulo, { stock });
       } catch (e) {
         // Redactar automáticamente es opcional: sin la key igual se puede
         // listar preguntas y publicar una respuesta escrita a mano.
@@ -105,6 +112,7 @@ module.exports = async (req, res) => {
         pregunta: pregunta.text,
         primera_pregunta: borrador.primeraPregunta,
         respuesta_sugerida: borrador.texto,
+        stock,
         siguiente_paso: 'Para publicarla, repetí el POST agregando el campo "respuesta".',
       });
     }

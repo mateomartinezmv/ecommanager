@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS telegram_preguntas (
   item_titulo  TEXT,
   pregunta     TEXT,
   respuesta    TEXT,
+  -- Lo que dijo el CRM sobre la disponibilidad al redactar (la línea "📊 Stock CRM").
+  stock_crm    TEXT,
   estado       TEXT NOT NULL DEFAULT 'avisando'
                CHECK (estado IN ('avisando', 'pendiente', 'sin_borrador', 'publicando',
                                  'publicada', 'rechazada', 'respondida_fuera', 'ignorada')),
@@ -38,3 +40,6 @@ CREATE TABLE IF NOT EXISTS stock_sync_fallos (
 
 ALTER TABLE telegram_preguntas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_sync_fallos ENABLE ROW LEVEL SECURITY;
+
+-- Para la base donde la tabla ya se había creado sin la columna.
+ALTER TABLE telegram_preguntas ADD COLUMN IF NOT EXISTS stock_crm TEXT;

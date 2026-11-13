@@ -24,6 +24,7 @@ const { getMeliToken } = require('./_meliToken');
 const {
   obtenerPregunta, titulosDeItems, redactarRespuesta, responderPregunta, MAX_RESPUESTA,
 } = require('./_meliPreguntas');
+const { stockParaRespuesta, lineaStock } = require('./_stockRespuesta');
 
 const TABLA = 'telegram_preguntas';
 const ahora = () => new Date().toISOString();
@@ -33,6 +34,8 @@ function textoAviso(fila, pie) {
     `❓ <b>Nueva pregunta en MELI</b>\n\n` +
     `📦 <b>Producto:</b> ${esc(fila.item_titulo || fila.item_id || '—')}\n` +
     `💬 <b>Pregunta:</b> ${esc(fila.pregunta)}`;
+  // stock_crm ya viene armado en HTML por lineaStock (sólo números y fechas del CRM).
+  if (fila.stock_crm) t += `\n${fila.stock_crm}`;
   if (fila.respuesta) t += `\n\n📝 <b>Respuesta sugerida:</b>\n${esc(fila.respuesta)}`;
   if (pie) t += `\n\n${pie}`;
   return t;
@@ -103,11 +106,22 @@ async function avisarPregunta(supabase, questionId) {
     item_titulo: titulos[q.item_id] || q.item_id || null,
     pregunta: q.text || '',
     respuesta: null,
+    stock_crm: null,
   };
+
+  // La respuesta sugerida dice lo que dice el CRM sobre la disponibilidad, y el dueño ve
+  // en el mensaje qué dato usó antes de aceptarla.
+  let stock = null;
+  try {
+    stock = await stockParaRespuesta(supabase, q.item_id);
+    fila.stock_crm = lineaStock(stock);
+  } catch (err) {
+    console.error(`telegram_preguntas: no se pudo leer el stock de ${q.item_id}:`, err.message);
+  }
 
   let motivo = null;
   try {
-    const borrador = await redactarRespuesta(token, q, fila.item_titulo);
+    const borrador = await redactarRespuesta(token, q, fila.item_titulo, { stock });
     if (borrador.texto.length > MAX_RESPUESTA) {
       motivo = `la respuesta salió de ${borrador.texto.length} caracteres y MELI acepta ${MAX_RESPUESTA}`;
     } else {

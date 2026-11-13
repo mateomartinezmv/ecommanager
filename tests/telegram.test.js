@@ -28,6 +28,9 @@ function fakeSupabase(tablas, { faltan = [] } = {}) {
     delete() { this.op = 'delete'; return this; }
     eq(c, v) { this.filtros.push(r => String(r[c]) === String(v)); return this; }
     in(c, vals) { this.filtros.push(r => vals.includes(r[c])); return this; }
+    neq(c, v) { this.filtros.push(r => String(r[c]) !== String(v)); return this; }
+    contains(c, vals) { this.filtros.push(r => Array.isArray(r[c]) && vals.every(v => r[c].includes(v))); return this; }
+    limit(n) { this.tope = n; return this; }
     maybeSingle() { this.unica = true; return this; }
     then(ok, mal) { return Promise.resolve().then(() => this.correr()).then(ok, mal); }
     correr() {
@@ -60,7 +63,8 @@ function fakeSupabase(tablas, { faltan = [] } = {}) {
         return { data: null, error: null };
       }
       if (this.unica) return { data: cumplen[0] ? { ...cumplen[0] } : null, error: null };
-      return { data: cumplen.map(r => ({ ...r })), error: null };
+      const filasOk = this.tope ? cumplen.slice(0, this.tope) : cumplen;
+      return { data: filasOk.map(r => ({ ...r })), error: null };
     }
   }
   return { _tablas: tablas, from: t => new Q(t) };
@@ -68,7 +72,7 @@ function fakeSupabase(tablas, { faltan = [] } = {}) {
 
 // ── Telegram, MELI y Supabase simulados ────────────────────────────────────
 const tg = { enviados: [], editados: [], botones: [], proximoId: 100 };
-const meli = { preguntas: {}, publicadas: [], fallaPublicar: null, fallaLeer: null, borrador: null };
+const meli = { preguntas: {}, publicadas: [], fallaPublicar: null, fallaLeer: null, borrador: null, stocks: [] };
 let supa = fakeSupabase({});
 
 function simular(relativo, exportaciones) {
@@ -97,7 +101,8 @@ simular('api/_meliPreguntas.js', {
     return { ...q };
   },
   titulosDeItems: async (token, ids) => Object.fromEntries(ids.map(id => [id, `Título de ${id}`])),
-  redactarRespuesta: async (token, q) => {
+  redactarRespuesta: async (token, q, titulo, { stock } = {}) => {
+    meli.stocks.push(stock);
     if (meli.borrador) return meli.borrador(q);
     return { texto: `Hola, sí: ${q.text}\n\nSaludos, Mateo de Martinez Motos`, primeraPregunta: true };
   },
@@ -121,7 +126,7 @@ process.env.TELEGRAM_CHAT_ID = CHAT;
 
 beforeEach(() => {
   tg.enviados = []; tg.editados = []; tg.botones = [];
-  meli.preguntas = {}; meli.publicadas = []; meli.fallaPublicar = null; meli.fallaLeer = null; meli.borrador = null;
+  meli.preguntas = {}; meli.publicadas = []; meli.fallaPublicar = null; meli.fallaLeer = null; meli.borrador = null; meli.stocks = [];
   supa = fakeSupabase({});
 });
 
@@ -153,6 +158,29 @@ test('una pregunta nueva llega con la respuesta lista y los botones Aceptar / Re
   assert.strictEqual(fila('111').estado, 'pendiente');
   assert.strictEqual(fila('111').message_id, m.message_id);
   assert.strictEqual(meli.publicadas.length, 0, 'avisar no publica nada');
+});
+
+test('la respuesta se redacta con el stock del CRM y el mensaje muestra qué dato usó', async () => {
+  supa._tablas.productos = [
+    { sku: 'MAN-22MM-ROJO', nombre: 'Manillar 22mm Rojo', stock_dep: 0, unidades_por_venta: 1, discontinuado: false, meli_ids: ['MLU1'] },
+  ];
+  supa._tablas.importaciones = [];
+  nuevaPregunta('150', '¿Tenés stock?');
+  await avisarPregunta(supa, '150');
+  assert.strictEqual(meli.stocks[0].estado, 'sin_stock', 'la IA recibe que no hay stock');
+  assert.match(tg.enviados[0].texto, /Stock CRM:<\/b> sin stock/);
+  assert.match(fila('150').stock_crm, /sin stock/);
+
+  await resolverBoton(supa, tocar('pq:no:150'));
+  assert.match(tg.editados.at(-1).texto, /Stock CRM:<\/b> sin stock/, 'la línea sigue al editar el mensaje');
+});
+
+test('una publicación sin vincular al CRM se avisa como tal', async () => {
+  supa._tablas.productos = [];
+  nuevaPregunta('160');
+  await avisarPregunta(supa, '160');
+  assert.strictEqual(meli.stocks[0].estado, 'sin_vincular');
+  assert.match(tg.enviados[0].texto, /no está vinculada a ningún producto/);
 });
 
 test('el mismo aviso de MELI repetido (incluso a la vez) manda un solo mensaje', async () => {

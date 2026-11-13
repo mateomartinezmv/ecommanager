@@ -35,38 +35,78 @@ async function enTandas(lista, fn) {
   }
 }
 
-// Productos con publicaciones y lo que vendió cada SKU en MELI en los últimos 60 días.
+// Productos con publicaciones, lo que vendió cada SKU en MELI en los últimos 60 días, y la
+// economía real de cada venta (comisión y envío gratis) de los últimos 180.
+//
+// Comisión: lo que MELI cobró por venta sin el envío (ventas.comision trae los dos juntos y
+// el envío viene aparte en costo_envio_meli). Envío: el promedio de lo que costó cuando lo
+// pagó el vendedor. Con poca historia se usa el promedio de toda la cuenta: el negocio pone
+// envío gratis en todo, así que un producto sin envíos cobrados igual lo va a pagar.
+const DIAS_ECONOMIA = 180;
+const MIN_VENTAS_COMISION = 3;
+const MIN_ENVIOS = 2;
+
+function economia(ventas) {
+  const desde60 = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
+  const porSku = new Map();
+  const g = { total: 0, fee: 0, envio: 0, envios: 0 };
+  for (const v of ventas || []) {
+    if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
+    const k = normSku(v.sku);
+    if (!porSku.has(k)) porSku.set(k, { u60: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0 });
+    const a = porSku.get(k);
+    const env = num(v.costo_envio_meli);
+    const fee = num(v.comision) - env;
+    if (String(v.fecha || '') >= desde60) a.u60 += Math.max(1, num(v.cantidad));
+    a.n += 1; a.total += num(v.total); a.fee += fee;
+    g.total += num(v.total); g.fee += fee;
+    if (env > 0) { a.envio += env; a.envios += 1; g.envio += env; g.envios += 1; }
+  }
+  const global = {
+    comision: g.total > 0 ? g.fee / g.total : 0.15,
+    envio: g.envios ? g.envio / g.envios : 0,
+  };
+  return {
+    global,
+    de(sku) {
+      const a = porSku.get(normSku(sku));
+      return {
+        vendidas60: a ? a.u60 : 0,
+        comision: a && a.n >= MIN_VENTAS_COMISION && a.total > 0 ? Math.max(0.08, a.fee / a.total) : global.comision,
+        envio: a && a.envios >= MIN_ENVIOS ? a.envio / a.envios : global.envio,
+      };
+    },
+  };
+}
+
 async function cargarProductos(supabase) {
-  const desde = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
+  const desde = new Date(Date.now() - DIAS_ECONOMIA * 86400000).toISOString().slice(0, 10);
   const [{ data: productos, error: e1 }, { data: ventas, error: e2 }] = await Promise.all([
     supabase.from('productos')
       .select('sku, nombre, costo, precio, stock_meli, discontinuado, unidades_por_venta, meli_id, meli_ids')
       .limit(5000),
     supabase.from('ventas')
-      .select('sku, cantidad, canal, estado, fecha')
+      .select('sku, cantidad, canal, estado, fecha, total, comision, costo_envio_meli')
       .gte('fecha', desde)
       .limit(50000),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const vendidas = new Map();
-  for (const v of ventas || []) {
-    if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
-    const k = normSku(v.sku);
-    vendidas.set(k, (vendidas.get(k) || 0) + Math.max(1, num(v.cantidad)));
-  }
-
+  const eco = economia(ventas);
   return (productos || [])
     .filter(p => meliIdsDe(p).length)
     .map(p => {
       const costo = num(p.costo) * Math.max(1, num(p.unidades_por_venta) || 1);
-      const vendidas60 = vendidas.get(normSku(p.sku)) || 0;
+      const e = eco.de(p.sku);
+      const vendidas60 = e.vendidas60;
       const seg = R.segmento({ stock: p.stock_meli, vendidas60, discontinuado: p.discontinuado, costo });
       return {
         sku: p.sku,
         nombre: p.nombre,
         costo,
+        comision: Math.round(e.comision * 1000) / 1000,
+        envio: Math.round(e.envio),
         stock: num(p.stock_meli),
         vendidas60,
         dias_stock: R.diasDeStock(p.stock_meli, vendidas60),
@@ -126,7 +166,7 @@ async function referenciaDePrecio(token, itemId) {
 // Todo lo de una publicación: sus promociones evaluadas, la que está corriendo y el
 // descuento propio que corresponde.
 function armarPublicacion(prod, item, promosCrudas, referencia) {
-  const ctx = { costo: prod.costo, seg: prod.segmento };
+  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio) };
   const promos = promosCrudas.map(p => R.normalizarPromo(p, item.precio));
 
   const vigentes = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
@@ -134,10 +174,19 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
 
   const propuestas = promos
     .filter(p => p.estado === 'candidate' && p.lista > 0 && p.precio && p.precio < p.lista)
-    .map(p => ({ ...p, evaluacion: R.evaluarPromo(p, ctx) }));
+    .map(p => {
+      const evaluacion = R.evaluarPromo(p, ctx);
+      // Las ofertas con cupo (relámpago, oferta del día) piden un mínimo de unidades. Sin
+      // ese stock, MELI la rechaza: se avisa antes en vez de dejar que falle.
+      if (p.stock_min && num(prod.stock) < p.stock_min && evaluacion.veredicto !== 'rechazar') {
+        return { ...p, evaluacion: { ...evaluacion, veredicto: 'rechazar',
+          motivo: `MELI pide al menos ${p.stock_min} unidades para esta oferta y tenés ${num(prod.stock)}.` } };
+      }
+      return { ...p, evaluacion };
+    });
 
-  const lim = R.limites({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
-  const propio = R.descuentoPropio({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
+  const lim = R.limites({ precioLista: item.precio, ...ctx });
+  const propio = R.descuentoPropio({ precioLista: item.precio, ...ctx });
 
   // ¿Bajar hasta la referencia de MELI entra en las reglas? Es la pregunta de "PRECIO ALTO".
   let ref = null;
@@ -147,7 +196,7 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
       ...referencia,
       baja_pct: Math.round(pct * 1000) / 10,
       permitido: pct <= lim.maximo + 0.005,
-      rompe_piso: referencia.sugerido < 2 * prod.costo,
+      rompe_piso: lim.piso_precio === null || referencia.sugerido < lim.piso_precio,
     };
   } else if (referencia) {
     ref = { ...referencia, baja_pct: 0, permitido: true, rompe_piso: false };
@@ -162,6 +211,8 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
     objetivo_pct: Math.round(lim.objetivo * 1000) / 10,
     precio_minimo: Math.ceil(item.precio * (1 - lim.maximo)),
     piso_precio: lim.piso_precio,
+    neto_hoy: lim.neto_hoy,
+    neto_hoy_pct: lim.neto_hoy_pct,
     vigente: vigente ? { ...vigente, evaluacion: R.evaluarPromo(vigente, { ...ctx, corriendo: true }) } : null,
     propuestas,
     propio: vigente ? null : propio,   // con una promo corriendo MELI no deja sumar otra
@@ -176,6 +227,18 @@ async function auditar(token, supabase, soloMeliId = null) {
     .filter(id => !soloMeliId || id === soloMeliId);
 
   const items = await leerItems(token, ids);
+  // Para una sola publicación (el POST), si MELI no la devolvió se reintenta de a una: en
+  // los lotes, entre tantas llamadas seguidas, el multiget a veces vuelve vacío.
+  if (soloMeliId && !items[soloMeliId]) {
+    for (let intento = 0; intento < 2 && !items[soloMeliId]; intento++) {
+      await new Promise(r => setTimeout(r, 700));
+      const { ok, data } = await meliFetch(token, `/items/${soloMeliId}?attributes=id,title,status,price,permalink`);
+      if (ok && data?.id) {
+        items[soloMeliId] = { meli_id: data.id, titulo: data.title || null, estado: data.status || null,
+          precio: num(data.price), permalink: data.permalink || null };
+      }
+    }
+  }
   const activos = Object.values(items).filter(i => i.estado === 'active').map(i => i.meli_id);
   const promos = {};
   const refs = {};
@@ -197,20 +260,64 @@ async function auditar(token, supabase, soloMeliId = null) {
 
 // ── Acciones ────────────────────────────────────────────────────────────────
 
-async function aceptar(token, pub, promoId) {
-  const p = pub.propuestas.find(x => x.id === promoId);
+// Cuántas unidades van a una oferta que las pide (relámpagos: entre 5 y 10; oferta del día:
+// 15 o más): todo el stock del CRM, recortado al máximo de MELI. Nunca más de lo que hay:
+// si no llega al mínimo, la propuesta ya viene rechazada desde armarPublicacion.
+function stockParaOferta(p, stock) {
+  let s = Math.max(1, Math.floor(num(stock)));
+  if (p.stock_max) s = Math.min(s, p.stock_max);
+  return s;
+}
+
+const pideStock = p => !!(p.stock_min || p.stock_max) || /LIGHTNING|DOD/.test(p.tipo || '');
+
+// El cuerpo que pide MELI para entrar, según el tipo de promoción.
+function cuerpoParaAceptar(p, ev, stock) {
+  // Candidata PRICE_DISCOUNT: no es una campaña, es MELI diciendo "podés poner un descuento".
+  // Se crea como descuento individual, con fechas (sin fechas MELI lo rechaza).
+  if (p.tipo === 'PRICE_DISCOUNT') {
+    const fin = new Date(Date.now() + DIAS_DESCUENTO_PROPIO * 86400000);
+    return {
+      promotion_type: 'PRICE_DISCOUNT',
+      deal_price: ev.deal_price || p.precio,
+      start_date: soloFecha(Date.now()),
+      finish_date: soloFecha(fin),
+    };
+  }
+  const body = { promotion_id: p.id, promotion_type: p.tipo };
+  if (p.offer_id) body.offer_id = p.offer_id;
+  if (ev.deal_price) body.deal_price = Math.round(ev.deal_price * 100) / 100;
+  if (pideStock(p)) body.stock = stockParaOferta(p, stock);
+  return body;
+}
+
+async function aceptar(token, pub, promoClave, stock) {
+  const p = pub.propuestas.find(x => x.clave === promoClave || (x.id && x.id === promoClave));
   if (!p) return { ok: false, error: 'Esa propuesta ya no está: MELI la sacó o cambió. Actualizá la pantalla.' };
   const ev = p.evaluacion;
   if (ev.veredicto === 'rechazar') return { ok: false, error: `No se aplica: ${ev.motivo}` };
 
-  const body = { promotion_id: p.id, promotion_type: p.tipo };
-  if (p.offer_id) body.offer_id = p.offer_id;
-  if (ev.deal_price) body.deal_price = ev.deal_price;
+  const body = cuerpoParaAceptar(p, ev, stock);
   const r = await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?app_version=v2`, {
     method: 'POST', body: JSON.stringify(body),
   });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
-  return { ok: true, precio: ev.deal_price || p.precio, veredicto: ev.veredicto };
+  if (!r.ok) {
+    // Se registra todo: MELI a veces contesta un "Invalid request" pelado y el detalle
+    // sólo se ve comparando lo que se mandó con lo que había en la candidata.
+    console.error('promos aceptar:', pub.meli_id, p.tipo, JSON.stringify(body), r.status,
+      JSON.stringify(r.data), 'candidata:', JSON.stringify(p.crudo));
+    return { ok: false, error: errorDetallado(r) };
+  }
+  return { ok: true, precio: body.deal_price || p.precio, veredicto: ev.veredicto };
+}
+
+// El mensaje de MELI, y si viene genérico, el cuerpo entero (recortado) para ver qué pidió.
+function errorDetallado(r) {
+  const msg = mensajeDeError(r.data, r.status);
+  if (/^(invalid request|bad request|http \d+)$/i.test(String(msg).trim())) {
+    return `${msg} — ${JSON.stringify(r.data).slice(0, 300)}`;
+  }
+  return msg;
 }
 
 async function ponerPropio(token, pub) {
@@ -226,7 +333,7 @@ async function ponerPropio(token, pub) {
       finish_date: soloFecha(fin),
     }),
   });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
+  if (!r.ok) return { ok: false, error: errorDetallado(r) };
   return { ok: true, precio: pub.propio.precio, hasta: soloFecha(fin) };
 }
 
@@ -236,7 +343,7 @@ async function sacar(token, pub, promoId) {
   const r = await meliFetch(token,
     `/seller-promotions/items/${pub.meli_id}?promotion_type=${v.tipo}&promotion_id=${v.id || ''}&app_version=v2`,
     { method: 'DELETE' });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
+  if (!r.ok) return { ok: false, error: errorDetallado(r) };
   return { ok: true };
 }
 
@@ -263,6 +370,7 @@ module.exports = async (req, res) => {
         ok: true,
         reglas: {
           piso_multiplo: R.PISO_MULTIPLO,
+          piso_neto_pct: R.PISO_NETO * 100,
           tope_absoluto: R.TOPE_ABSOLUTO * 100,
           dias_bien: R.DIAS_BIEN,
           min_ventas_algo_60d: R.MIN_VENTAS_ALGO,
@@ -292,10 +400,11 @@ module.exports = async (req, res) => {
 
     // Se recalcula todo con datos frescos antes de tocar nada.
     const filas = await auditar(token, supabase, meliId);
-    const pub = filas.flatMap(f => f.publicaciones).find(p => p.meli_id === meliId);
+    const fila = filas.find(f => f.publicaciones.some(p => p.meli_id === meliId));
+    const pub = fila?.publicaciones.find(p => p.meli_id === meliId);
     if (!pub) return res.status(404).json({ ok: false, error: 'No encontré esa publicación activa en el CRM.' });
 
-    const r = accion === 'aceptar' ? await aceptar(token, pub, req.body.promo_id)
+    const r = accion === 'aceptar' ? await aceptar(token, pub, req.body.promo_id, fila.stock)
       : accion === 'propio' ? await ponerPropio(token, pub)
       : await sacar(token, pub, req.body.promo_id);
     return res.status(r.ok ? 200 : 422).json(r);
@@ -306,3 +415,4 @@ module.exports = async (req, res) => {
 };
 
 module.exports.armarPublicacion = armarPublicacion;
+module.exports.cuerpoParaAceptar = cuerpoParaAceptar;

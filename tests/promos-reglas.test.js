@@ -118,3 +118,110 @@ test('armarPublicacion: promo corriendo fuera de regla, propuestas y referencia 
   assert.strictEqual(pub.referencia.permitido, true);
   assert.strictEqual(pub.precio_minimo, 392);
 });
+
+// ── Formatos reales que devolvió MELI (13/11) ─────────────────────────────────
+
+const { cuerpoParaAceptar } = require('../api/meli/promos');
+
+test('relámpago con rango: el precio es el sugerido, no el `price` (que viene con 3%)', () => {
+  const p = R.normalizarPromo({
+    id: 'LGH-MLU1000', type: 'LIGHTNING', status: 'candidate', original_price: 274, price: 265.78,
+    min_discounted_price: 54.8, max_discounted_price: 246.6, suggested_discounted_price: 232.9,
+    ref_id: 'CANDIDATE-MLU1038861072-77202292965', stock: { min: 5, max: 10 },
+  }, 274);
+  assert.strictEqual(p.precio, 232.9);
+  const ev = R.evaluarPromo(p, { costo: 79, seg: 'quieto' });
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.deal_price, 232.9);
+  const body = cuerpoParaAceptar(p, ev, 16);
+  assert.deepStrictEqual(body, {
+    promotion_id: 'LGH-MLU1000', promotion_type: 'LIGHTNING',
+    offer_id: 'CANDIDATE-MLU1038861072-77202292965', deal_price: 232.9, stock: 10,   // tope de MELI: 10
+  });
+});
+
+test('candidata PRICE_DISCOUNT sin id: se encuentra por tipo y se crea con fechas', () => {
+  const p = R.normalizarPromo({
+    type: 'PRICE_DISCOUNT', status: 'candidate', original_price: 690, price: 655.5,
+    min_discounted_price: 138, max_discounted_price: 655.5, suggested_discounted_price: 655.5,
+  }, 690);
+  assert.strictEqual(p.id, null);
+  assert.strictEqual(p.clave, 'PRICE_DISCOUNT');
+  const ev = R.evaluarPromo(p, { costo: 153, seg: 'quieto' });
+  const body = cuerpoParaAceptar(p, ev, 29);
+  assert.strictEqual(body.promotion_type, 'PRICE_DISCOUNT');
+  assert.strictEqual(body.deal_price, 655.5);
+  assert.ok(body.start_date && body.finish_date);
+  assert.ok(!('promotion_id' in body));
+});
+
+test('relámpago compartida (cofondeada): manda offer_id y unidades, sin precio', () => {
+  const p = R.normalizarPromo({
+    id: 'P-MLU18023294', type: 'SMART_LIGHTNING', status: 'candidate', name: 'Relámpagos compartidas',
+    original_price: 990, price: 672.21, meli_percentage: 5.6, seller_percentage: 26.5,
+    ref_id: 'CANDIDATE-MLU1038796032-77281344782', stock: { min: 5, max: 10 },
+  }, 990);
+  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto' });
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.vendedor_pct, 26.5);
+  const body = cuerpoParaAceptar(p, ev, 18);
+  assert.deepStrictEqual(body, {
+    promotion_id: 'P-MLU18023294', promotion_type: 'SMART_LIGHTNING',
+    offer_id: 'CANDIDATE-MLU1038796032-77281344782', stock: 10,
+  });
+});
+
+test('oferta del día: manda las unidades; sin el mínimo de stock se rechaza antes de intentar', () => {
+  const crudo = {
+    id: 'DOD-MLU1000', type: 'DOD', ref_id: 'CANDIDATE-MLU1038821466-77105376144', status: 'candidate',
+    price: 1251.3, original_price: 1290, min_discounted_price: 258, max_discounted_price: 1161,
+    suggested_discounted_price: 1096.5, stock: { min: 15 },
+  };
+  const conStock = armarPublicacion({ costo: 405, segmento: 'algo', stock: 24 },
+    { meli_id: 'MLU1038821466', precio: 1290 }, [crudo], null);
+  const p = conStock.propuestas[0];
+  assert.strictEqual(p.evaluacion.veredicto, 'aceptar');           // 15% sugerido, máximo 20%
+  assert.strictEqual(cuerpoParaAceptar(p, p.evaluacion, 24).stock, 24);
+  const poco = armarPublicacion({ costo: 405, segmento: 'algo', stock: 8 },
+    { meli_id: 'MLU1038821466', precio: 1290 }, [crudo], null);
+  assert.strictEqual(poco.propuestas[0].evaluacion.veredicto, 'rechazar');
+  assert.match(poco.propuestas[0].evaluacion.motivo, /al menos 15 unidades/);
+});
+
+// ── Piso neto: después de comisión y envío gratis queda ≥ 30% ────────────────
+
+test('guardamanos azul: la relámpago compartida de 23% deja −$6 → rechazar', () => {
+  const ctx = { costo: 277, seg: 'quieto', comision: 0.189, envio: 285 };
+  const lim = R.limites({ precioLista: 890, ...ctx });
+  assert.strictEqual(lim.maximo, 0);                 // ni a precio lleno llega al 30% neto
+  assert.strictEqual(lim.limita, 'neto');
+  assert.strictEqual(lim.neto_hoy, 160);
+  const p = R.normalizarPromo({ id: 'P', type: 'SMART_LIGHTNING', status: 'candidate', original_price: 890,
+    price: 629.48, meli_percentage: 6.3, seller_percentage: 23 }, 890);
+  const ev = R.evaluarPromo(p, ctx);
+  assert.strictEqual(ev.veredicto, 'rechazar');
+  assert.ok(ev.neto < 0 && ev.neto > -10);           // −$6
+  assert.match(ev.motivo, /comisión y envío/);
+});
+
+test('pata de cabra: con envío gratis ya pierde a precio lleno', () => {
+  const lim = R.limites({ precioLista: 274, costo: 79, seg: 'quieto', comision: 0.205, envio: 159 });
+  assert.ok(lim.neto_hoy < 0);
+  assert.strictEqual(lim.maximo, 0);
+});
+
+test('soporte celular: el piso neto deja hasta ~10%, menos que el 20% del segmento', () => {
+  const ctx = { costo: 88, seg: 'algo', comision: 0.177, envio: 159 };
+  const lim = R.limites({ precioLista: 490, ...ctx });
+  // p ≥ (88 + 159) / (0,70 − 0,177) = $472 → máximo 3,6%
+  assert.strictEqual(lim.piso_precio, Math.ceil((88 + 159) / (0.70 - 0.177)));
+  assert.ok(lim.maximo < 0.05);
+  assert.strictEqual(R.descuentoPropio({ precioLista: 490, ...ctx }), null);   // menos del 5% que pide MELI
+});
+
+test('HS-30006: margen alto, el piso neto deja el 30% del segmento', () => {
+  const lim = R.limites({ precioLista: 690, costo: 153, seg: 'quieto', comision: 0.153, envio: 159 });
+  // p ≥ (153 + 159) / 0,547 = $571 → máximo 17,3%
+  assert.ok(lim.maximo > 0.17 && lim.maximo < 0.18);
+  assert.strictEqual(lim.limita, 'neto');
+});

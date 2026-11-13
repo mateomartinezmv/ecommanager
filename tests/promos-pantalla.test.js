@@ -83,7 +83,7 @@ test('el 28% en el stock quieto se ofrece aceptar; el 42% no tiene botón', asyn
   assert.strictEqual(await parabrisas.locator('.promo button').count(), 0);
   assert.match(await parabrisas.textContent(), /2 × costo/);
   // Referencia de MELI por debajo de 2×costo: se avisa que no conviene perseguirla.
-  assert.match(await parabrisas.textContent(), /Rompe el piso/);
+  assert.match(await parabrisas.textContent(), /Rompe tu piso/);
 });
 
 test('aceptar manda la publicación y la promoción al backend', async () => {

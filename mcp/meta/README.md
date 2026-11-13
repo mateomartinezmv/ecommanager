@@ -97,6 +97,14 @@ En una sesión en la nube no hay `.env`: cargá las variables en la configuraci�
 **Acceso a la red** agregá `graph.facebook.com` y tu dominio de Supabase a los dominios permitidos.
 Sin eso, el contenedor no llega a Meta.
 
+Lo demás ya viene resuelto:
+
+- Si no hay `node_modules` (pasa en cada sesión nueva), el servidor corre `npm install` solo al
+  arrancar. Tarda unos segundos la primera vez.
+- En la nube la salida a internet pasa por un proxy, y el `fetch` de Node no lo usa si no se lo
+  piden. `.mcp.json` arranca el servidor con `NODE_USE_ENV_PROXY=1` (Node 22.21 o más nuevo) para
+  que lo use. En tu compu, sin proxy configurado, no cambia nada.
+
 ## Límites de Meta
 
 - Instagram: hasta **100 publicaciones por API cada 24 h**; texto de hasta 2200 caracteres, 30

@@ -53,12 +53,28 @@ async function main() {
     fb_exchange_token: corto,
   });
 
-  // El token de página que sale de un token de usuario largo no vence.
-  const paginas = await get('me/accounts', {
-    fields: 'id,name,access_token,instagram_business_account{id,username}',
-    access_token: largo.access_token,
-  });
-  const lista = paginas.data || [];
+  // Si lo que se pegó ya es un token de página (en el Explorador se eligió la página en vez de
+  // "Token de usuario"), no hay /me/accounts. El canje igual devuelve un token de página, pero
+  // dura 60 días en vez de no vencer.
+  const debug = await get('debug_token', { input_token: largo.access_token, access_token: largo.access_token });
+  let lista;
+  if (debug.data?.type === 'PAGE') {
+    const p = await get('me', {
+      fields: 'id,name,instagram_business_account{id,username}',
+      access_token: largo.access_token,
+    });
+    lista = [{ ...p, access_token: largo.access_token }];
+    const vence = debug.data.expires_at ? new Date(debug.data.expires_at * 1000).toLocaleDateString('es-UY') : null;
+    console.log(`Ojo: pegaste un token de página, así que el nuevo vence${vence ? ` el ${vence}` : ''}. Para uno que `
+      + 'no venza, en el Explorador dejá elegido "Token de usuario" (no la página) y volvé a correr esto.\n');
+  } else {
+    // El token de página que sale de un token de usuario largo no vence.
+    const paginas = await get('me/accounts', {
+      fields: 'id,name,access_token,instagram_business_account{id,username}',
+      access_token: largo.access_token,
+    });
+    lista = paginas.data || [];
+  }
   if (!lista.length) {
     throw new Error('El usuario no administra ninguna página, o al token le falta pages_show_list.');
   }

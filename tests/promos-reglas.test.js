@@ -187,3 +187,41 @@ test('oferta del día: manda las unidades; sin el mínimo de stock se rechaza an
   assert.strictEqual(poco.propuestas[0].evaluacion.veredicto, 'rechazar');
   assert.match(poco.propuestas[0].evaluacion.motivo, /al menos 15 unidades/);
 });
+
+// ── Piso neto: después de comisión y envío gratis queda ≥ 30% ────────────────
+
+test('guardamanos azul: la relámpago compartida de 23% deja −$6 → rechazar', () => {
+  const ctx = { costo: 277, seg: 'quieto', comision: 0.189, envio: 285 };
+  const lim = R.limites({ precioLista: 890, ...ctx });
+  assert.strictEqual(lim.maximo, 0);                 // ni a precio lleno llega al 30% neto
+  assert.strictEqual(lim.limita, 'neto');
+  assert.strictEqual(lim.neto_hoy, 160);
+  const p = R.normalizarPromo({ id: 'P', type: 'SMART_LIGHTNING', status: 'candidate', original_price: 890,
+    price: 629.48, meli_percentage: 6.3, seller_percentage: 23 }, 890);
+  const ev = R.evaluarPromo(p, ctx);
+  assert.strictEqual(ev.veredicto, 'rechazar');
+  assert.ok(ev.neto < 0 && ev.neto > -10);           // −$6
+  assert.match(ev.motivo, /comisión y envío/);
+});
+
+test('pata de cabra: con envío gratis ya pierde a precio lleno', () => {
+  const lim = R.limites({ precioLista: 274, costo: 79, seg: 'quieto', comision: 0.205, envio: 159 });
+  assert.ok(lim.neto_hoy < 0);
+  assert.strictEqual(lim.maximo, 0);
+});
+
+test('soporte celular: el piso neto deja hasta ~10%, menos que el 20% del segmento', () => {
+  const ctx = { costo: 88, seg: 'algo', comision: 0.177, envio: 159 };
+  const lim = R.limites({ precioLista: 490, ...ctx });
+  // p ≥ (88 + 159) / (0,70 − 0,177) = $472 → máximo 3,6%
+  assert.strictEqual(lim.piso_precio, Math.ceil((88 + 159) / (0.70 - 0.177)));
+  assert.ok(lim.maximo < 0.05);
+  assert.strictEqual(R.descuentoPropio({ precioLista: 490, ...ctx }), null);   // menos del 5% que pide MELI
+});
+
+test('HS-30006: margen alto, el piso neto deja el 30% del segmento', () => {
+  const lim = R.limites({ precioLista: 690, costo: 153, seg: 'quieto', comision: 0.153, envio: 159 });
+  // p ≥ (153 + 159) / 0,547 = $571 → máximo 17,3%
+  assert.ok(lim.maximo > 0.17 && lim.maximo < 0.18);
+  assert.strictEqual(lim.limita, 'neto');
+});

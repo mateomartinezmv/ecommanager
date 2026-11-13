@@ -6,8 +6,13 @@
 // misma tanda llegaron propuestas del 28%, 31%, 37% y 42%. Acá se cruzan con tres reglas
 // del negocio:
 //
-//   1. Piso de margen bruto: lo que cobra el vendedor tiene que ser al menos 2 × costo
-//      (margen bruto del 100%). Es bruto: antes de comisión, envío y Ads.
+//   1. Pisos de margen, el más estricto de los dos:
+//        · bruto: lo que cobra el vendedor, al menos 2 × costo;
+//        · neto: después de la comisión de MELI y del envío gratis, tiene que quedar al
+//          menos el 30% de lo cobrado. Es el que manda casi siempre: con envío gratis, un
+//          guardamanos de $890 con 23% de descuento deja −$6 por venta, y la pata de cabra
+//          de $274 ya pierde $20 a precio lleno. Comisión y envío salen de las ventas reales
+//          de cada SKU (ver promos.js).
 //   2. Tope absoluto: ningún descuento a cargo del vendedor pasa del 30%, ni para liquidar.
 //   3. Cuánto se descuenta depende de cómo se vende el producto:
 //        · se vende bien (el stock dura < 30 días)        → nada: se vende igual;
@@ -20,6 +25,7 @@
 // reglas. Una promoción que paga MELI entera no le cuesta nada y siempre se acepta.
 
 const PISO_MULTIPLO = 2;          // lo cobrado tiene que ser al menos 2 × costo
+const PISO_NETO = 0.30;           // tras comisión y envío gratis, queda ≥ 30% de lo cobrado
 const TOPE_ABSOLUTO = 0.30;       // ningún descuento a cargo del vendedor por encima de esto
 const MIN_DESCUENTO_MELI = 0.05;  // MELI no acepta un descuento individual de menos del 5%
 const DIAS_BIEN = 30;             // stock para menos de esto: se vende solo
@@ -62,22 +68,47 @@ function diasDeStock(stock, vendidas60) {
 }
 
 /**
- * El descuento máximo a cargo del vendedor para un precio de lista: el menor entre el tope
- * de su segmento, el tope absoluto y el que deja cobrar todavía 2 × costo.
+ * Lo que queda de una venta cobrada a `precio`: menos costo, comisión de MELI y envío.
+ * `comision` es fracción del precio (0.189), `envio` es plata por unidad.
  */
-function limites({ precioLista, costo, seg }) {
+function neto({ precio, costo, comision = 0, envio = 0 }) {
+  return num(precio) * (1 - num(comision)) - num(costo) - num(envio);
+}
+
+/**
+ * El precio más bajo que se puede cobrar sin romper el piso neto: lo que queda tras costo,
+ * comisión y envío tiene que ser al menos el 30% de lo cobrado.
+ *   p·(1 − comisión) − costo − envío ≥ 0,30·p   →   p ≥ (costo + envío) / (0,70 − comisión)
+ * Infinity si con esa comisión no hay precio que alcance.
+ */
+function precioPisoNeto({ costo, comision = 0, envio = 0 }) {
+  const margen = 1 - PISO_NETO - num(comision);
+  return margen > 0 ? (num(costo) + num(envio)) / margen : Infinity;
+}
+
+/**
+ * El descuento máximo a cargo del vendedor para un precio de lista: el menor entre el tope
+ * de su segmento, el tope absoluto, el que deja cobrar todavía 2 × costo y el que deja el
+ * 30% neto después de comisión y envío gratis.
+ */
+function limites({ precioLista, costo, seg, comision = 0, envio = 0 }) {
   const s = SEGMENTOS[seg] || SEGMENTOS.bien;
   const lista = num(precioLista);
-  const piso = PISO_MULTIPLO * num(costo);
-  const porPiso = lista > 0 ? Math.max(0, 1 - piso / lista) : 0;
+  const pisoBruto = PISO_MULTIPLO * num(costo);
+  const pisoNeto = precioPisoNeto({ costo, comision, envio });
+  const piso = Math.max(pisoBruto, pisoNeto);
+  const porPiso = lista > 0 && Number.isFinite(piso) ? Math.max(0, 1 - piso / lista) : 0;
   const maximo = Math.max(0, Math.min(s.tope, TOPE_ABSOLUTO, porPiso));
+  const netoHoy = neto({ precio: lista, costo, comision, envio });
   return {
     objetivo: Math.min(s.objetivo, maximo),
     maximo,
-    piso_precio: Math.round(piso),
+    piso_precio: Number.isFinite(piso) ? Math.ceil(piso) : null,
+    neto_hoy: Math.round(netoHoy),
+    neto_hoy_pct: lista > 0 ? r1(netoHoy / lista) : 0,
     // Qué regla es la que aprieta: es lo que se le explica al vendedor.
-    limita: maximo === 0 && s.tope > 0 ? 'piso'
-      : porPiso < Math.min(s.tope, TOPE_ABSOLUTO) ? 'piso'
+    limita: maximo === 0 && s.tope > 0 ? (pisoNeto >= pisoBruto ? 'neto' : 'piso')
+      : porPiso < Math.min(s.tope, TOPE_ABSOLUTO) ? (pisoNeto >= pisoBruto ? 'neto' : 'piso')
       : s.tope < TOPE_ABSOLUTO ? 'segmento' : 'tope',
   };
 }
@@ -142,12 +173,19 @@ function aporteVendedor(promo, precio) {
  * La decisión sobre una promoción: aceptar como viene, entrar a otro precio dentro del
  * rango que MELI permite (contraoferta) o rechazar. Siempre con el motivo.
  */
-function evaluarPromo(promo, { costo, seg, corriendo = false }) {
-  const lim = limites({ precioLista: promo.lista, costo, seg });
+function evaluarPromo(promo, { costo, seg, corriendo = false, comision = 0, envio = 0 }) {
+  const lim = limites({ precioLista: promo.lista, costo, seg, comision, envio });
   const s = SEGMENTOS[seg] || SEGMENTOS.bien;
   const base = { ...lim, segmento: seg };
   const total = promo.lista > 0 && promo.precio ? 1 - promo.precio / promo.lista : 0;
   const vendedor = aporteVendedor(promo, promo.precio);
+  // Lo que queda de la venta en la promo. Se calcula sobre lo que cobra el vendedor (lista
+  // menos su parte): en las cofondeadas, lo que pone MELI no sale de su bolsillo.
+  const netoDe = v => {
+    const cobrado = promo.lista * (1 - v);
+    const n = neto({ precio: cobrado, costo, comision, envio });
+    return { neto: Math.round(n), neto_pct: cobrado > 0 ? r1(n / cobrado) : 0 };
+  };
   const out = (veredicto, motivo, extra = {}) => ({
     ...base,
     veredicto,
@@ -156,6 +194,7 @@ function evaluarPromo(promo, { costo, seg, corriendo = false }) {
     vendedor_pct: r1(vendedor),
     meli_pct: r1(num(promo.meli_pct)),
     precio_final: promo.precio,
+    ...netoDe(vendedor),
     ...extra,
   });
 
@@ -186,13 +225,17 @@ function evaluarPromo(promo, { costo, seg, corriendo = false }) {
       const v = aporteVendedor(promo, precio);
       return out('contraoferta',
         `MELI sugiere ${r1(total)}%; entrás con ${r1(1 - precio / promo.lista)}%, que es lo que permiten tus reglas.`,
-        { deal_price: precio, contra_pct: r1(1 - precio / promo.lista), contra_vendedor_pct: r1(v) });
+        { deal_price: precio, contra_pct: r1(1 - precio / promo.lista), contra_vendedor_pct: r1(v), ...netoDe(v) });
     }
   }
 
-  const motivo = lim.limita === 'piso'
-    ? `Tu parte sería ${r1(vendedor)}% y te dejaría cobrando menos de 2 × costo ($${lim.piso_precio}). Máximo: ${r1(lim.maximo)}%.`
-    : `Tu parte sería ${r1(vendedor)}%; para "${s.txt}" el máximo es ${r1(lim.maximo)}%.`;
+  const n = netoDe(vendedor);
+  const motivo = lim.limita === 'neto'
+    ? `Con ${r1(vendedor)}% a tu cargo, después de comisión y envío te quedarían $${n.neto} (${n.neto_pct}%): menos del ${PISO_NETO * 100}%. ${
+      lim.maximo > 0 ? `Máximo: ${r1(lim.maximo)}%.` : `A precio lleno te quedan $${lim.neto_hoy} (${lim.neto_hoy_pct}%): no aguanta descuento.`}`
+    : lim.limita === 'piso'
+      ? `Tu parte sería ${r1(vendedor)}% y te dejaría cobrando menos de 2 × costo. Máximo: ${r1(lim.maximo)}%.`
+      : `Tu parte sería ${r1(vendedor)}%; para "${s.txt}" el máximo es ${r1(lim.maximo)}%.`;
   return out('rechazar', motivo);
 }
 
@@ -206,8 +249,8 @@ function rangoAdmite(promo) {
  * del segmento, recortado por el piso. Null si no corresponde o si queda por debajo del
  * mínimo que MELI acepta.
  */
-function descuentoPropio({ precioLista, costo, seg }) {
-  const lim = limites({ precioLista, costo, seg });
+function descuentoPropio({ precioLista, costo, seg, comision = 0, envio = 0 }) {
+  const lim = limites({ precioLista, costo, seg, comision, envio });
   const pct = lim.objetivo;
   if (pct < MIN_DESCUENTO_MELI) return null;
   const precio = Math.ceil(num(precioLista) * (1 - pct));
@@ -215,6 +258,6 @@ function descuentoPropio({ precioLista, costo, seg }) {
 }
 
 module.exports = {
-  SEGMENTOS, PISO_MULTIPLO, TOPE_ABSOLUTO, MIN_DESCUENTO_MELI, DIAS_BIEN, MIN_VENTAS_ALGO,
-  segmento, diasDeStock, limites, normalizarPromo, aporteVendedor, evaluarPromo, descuentoPropio,
+  SEGMENTOS, PISO_MULTIPLO, PISO_NETO, TOPE_ABSOLUTO, MIN_DESCUENTO_MELI, DIAS_BIEN, MIN_VENTAS_ALGO,
+  segmento, diasDeStock, limites, neto, precioPisoNeto, normalizarPromo, aporteVendedor, evaluarPromo, descuentoPropio,
 };

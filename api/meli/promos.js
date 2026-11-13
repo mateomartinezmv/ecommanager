@@ -35,38 +35,78 @@ async function enTandas(lista, fn) {
   }
 }
 
-// Productos con publicaciones y lo que vendió cada SKU en MELI en los últimos 60 días.
+// Productos con publicaciones, lo que vendió cada SKU en MELI en los últimos 60 días, y la
+// economía real de cada venta (comisión y envío gratis) de los últimos 180.
+//
+// Comisión: lo que MELI cobró por venta sin el envío (ventas.comision trae los dos juntos y
+// el envío viene aparte en costo_envio_meli). Envío: el promedio de lo que costó cuando lo
+// pagó el vendedor. Con poca historia se usa el promedio de toda la cuenta: el negocio pone
+// envío gratis en todo, así que un producto sin envíos cobrados igual lo va a pagar.
+const DIAS_ECONOMIA = 180;
+const MIN_VENTAS_COMISION = 3;
+const MIN_ENVIOS = 2;
+
+function economia(ventas) {
+  const desde60 = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
+  const porSku = new Map();
+  const g = { total: 0, fee: 0, envio: 0, envios: 0 };
+  for (const v of ventas || []) {
+    if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
+    const k = normSku(v.sku);
+    if (!porSku.has(k)) porSku.set(k, { u60: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0 });
+    const a = porSku.get(k);
+    const env = num(v.costo_envio_meli);
+    const fee = num(v.comision) - env;
+    if (String(v.fecha || '') >= desde60) a.u60 += Math.max(1, num(v.cantidad));
+    a.n += 1; a.total += num(v.total); a.fee += fee;
+    g.total += num(v.total); g.fee += fee;
+    if (env > 0) { a.envio += env; a.envios += 1; g.envio += env; g.envios += 1; }
+  }
+  const global = {
+    comision: g.total > 0 ? g.fee / g.total : 0.15,
+    envio: g.envios ? g.envio / g.envios : 0,
+  };
+  return {
+    global,
+    de(sku) {
+      const a = porSku.get(normSku(sku));
+      return {
+        vendidas60: a ? a.u60 : 0,
+        comision: a && a.n >= MIN_VENTAS_COMISION && a.total > 0 ? Math.max(0.08, a.fee / a.total) : global.comision,
+        envio: a && a.envios >= MIN_ENVIOS ? a.envio / a.envios : global.envio,
+      };
+    },
+  };
+}
+
 async function cargarProductos(supabase) {
-  const desde = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
+  const desde = new Date(Date.now() - DIAS_ECONOMIA * 86400000).toISOString().slice(0, 10);
   const [{ data: productos, error: e1 }, { data: ventas, error: e2 }] = await Promise.all([
     supabase.from('productos')
       .select('sku, nombre, costo, precio, stock_meli, discontinuado, unidades_por_venta, meli_id, meli_ids')
       .limit(5000),
     supabase.from('ventas')
-      .select('sku, cantidad, canal, estado, fecha')
+      .select('sku, cantidad, canal, estado, fecha, total, comision, costo_envio_meli')
       .gte('fecha', desde)
       .limit(50000),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const vendidas = new Map();
-  for (const v of ventas || []) {
-    if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
-    const k = normSku(v.sku);
-    vendidas.set(k, (vendidas.get(k) || 0) + Math.max(1, num(v.cantidad)));
-  }
-
+  const eco = economia(ventas);
   return (productos || [])
     .filter(p => meliIdsDe(p).length)
     .map(p => {
       const costo = num(p.costo) * Math.max(1, num(p.unidades_por_venta) || 1);
-      const vendidas60 = vendidas.get(normSku(p.sku)) || 0;
+      const e = eco.de(p.sku);
+      const vendidas60 = e.vendidas60;
       const seg = R.segmento({ stock: p.stock_meli, vendidas60, discontinuado: p.discontinuado, costo });
       return {
         sku: p.sku,
         nombre: p.nombre,
         costo,
+        comision: Math.round(e.comision * 1000) / 1000,
+        envio: Math.round(e.envio),
         stock: num(p.stock_meli),
         vendidas60,
         dias_stock: R.diasDeStock(p.stock_meli, vendidas60),
@@ -126,7 +166,7 @@ async function referenciaDePrecio(token, itemId) {
 // Todo lo de una publicación: sus promociones evaluadas, la que está corriendo y el
 // descuento propio que corresponde.
 function armarPublicacion(prod, item, promosCrudas, referencia) {
-  const ctx = { costo: prod.costo, seg: prod.segmento };
+  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio) };
   const promos = promosCrudas.map(p => R.normalizarPromo(p, item.precio));
 
   const vigentes = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
@@ -145,8 +185,8 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
       return { ...p, evaluacion };
     });
 
-  const lim = R.limites({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
-  const propio = R.descuentoPropio({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
+  const lim = R.limites({ precioLista: item.precio, ...ctx });
+  const propio = R.descuentoPropio({ precioLista: item.precio, ...ctx });
 
   // ¿Bajar hasta la referencia de MELI entra en las reglas? Es la pregunta de "PRECIO ALTO".
   let ref = null;
@@ -156,7 +196,7 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
       ...referencia,
       baja_pct: Math.round(pct * 1000) / 10,
       permitido: pct <= lim.maximo + 0.005,
-      rompe_piso: referencia.sugerido < 2 * prod.costo,
+      rompe_piso: lim.piso_precio === null || referencia.sugerido < lim.piso_precio,
     };
   } else if (referencia) {
     ref = { ...referencia, baja_pct: 0, permitido: true, rompe_piso: false };
@@ -171,6 +211,8 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
     objetivo_pct: Math.round(lim.objetivo * 1000) / 10,
     precio_minimo: Math.ceil(item.precio * (1 - lim.maximo)),
     piso_precio: lim.piso_precio,
+    neto_hoy: lim.neto_hoy,
+    neto_hoy_pct: lim.neto_hoy_pct,
     vigente: vigente ? { ...vigente, evaluacion: R.evaluarPromo(vigente, { ...ctx, corriendo: true }) } : null,
     propuestas,
     propio: vigente ? null : propio,   // con una promo corriendo MELI no deja sumar otra
@@ -328,6 +370,7 @@ module.exports = async (req, res) => {
         ok: true,
         reglas: {
           piso_multiplo: R.PISO_MULTIPLO,
+          piso_neto_pct: R.PISO_NETO * 100,
           tope_absoluto: R.TOPE_ABSOLUTO * 100,
           dias_bien: R.DIAS_BIEN,
           min_ventas_algo_60d: R.MIN_VENTAS_ALGO,

@@ -134,7 +134,16 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
 
   const propuestas = promos
     .filter(p => p.estado === 'candidate' && p.lista > 0 && p.precio && p.precio < p.lista)
-    .map(p => ({ ...p, evaluacion: R.evaluarPromo(p, ctx) }));
+    .map(p => {
+      const evaluacion = R.evaluarPromo(p, ctx);
+      // Las ofertas con cupo (relámpago, oferta del día) piden un mínimo de unidades. Sin
+      // ese stock, MELI la rechaza: se avisa antes en vez de dejar que falle.
+      if (p.stock_min && num(prod.stock) < p.stock_min && evaluacion.veredicto !== 'rechazar') {
+        return { ...p, evaluacion: { ...evaluacion, veredicto: 'rechazar',
+          motivo: `MELI pide al menos ${p.stock_min} unidades para esta oferta y tenés ${num(prod.stock)}.` } };
+      }
+      return { ...p, evaluacion };
+    });
 
   const lim = R.limites({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
   const propio = R.descuentoPropio({ precioLista: item.precio, costo: prod.costo, seg: prod.segmento });
@@ -209,14 +218,16 @@ async function auditar(token, supabase, soloMeliId = null) {
 
 // ── Acciones ────────────────────────────────────────────────────────────────
 
-// Cuántas unidades se ofrecen en una relámpago: todo el stock del CRM, dentro de lo que
-// MELI pida para ese tipo (si lo informa).
+// Cuántas unidades van a una oferta que las pide (relámpagos: entre 5 y 10; oferta del día:
+// 15 o más): todo el stock del CRM, recortado al máximo de MELI. Nunca más de lo que hay:
+// si no llega al mínimo, la propuesta ya viene rechazada desde armarPublicacion.
 function stockParaOferta(p, stock) {
   let s = Math.max(1, Math.floor(num(stock)));
   if (p.stock_max) s = Math.min(s, p.stock_max);
-  if (p.stock_min) s = Math.max(s, p.stock_min);
   return s;
 }
+
+const pideStock = p => !!(p.stock_min || p.stock_max) || /LIGHTNING|DOD/.test(p.tipo || '');
 
 // El cuerpo que pide MELI para entrar, según el tipo de promoción.
 function cuerpoParaAceptar(p, ev, stock) {
@@ -234,7 +245,7 @@ function cuerpoParaAceptar(p, ev, stock) {
   const body = { promotion_id: p.id, promotion_type: p.tipo };
   if (p.offer_id) body.offer_id = p.offer_id;
   if (ev.deal_price) body.deal_price = Math.round(ev.deal_price * 100) / 100;
-  if (/LIGHTNING/.test(p.tipo || '')) body.stock = stockParaOferta(p, stock);
+  if (pideStock(p)) body.stock = stockParaOferta(p, stock);
   return body;
 }
 

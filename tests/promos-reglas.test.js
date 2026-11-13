@@ -127,7 +127,7 @@ test('relámpago con rango: el precio es el sugerido, no el `price` (que viene c
   const p = R.normalizarPromo({
     id: 'LGH-MLU1000', type: 'LIGHTNING', status: 'candidate', original_price: 274, price: 265.78,
     min_discounted_price: 54.8, max_discounted_price: 246.6, suggested_discounted_price: 232.9,
-    offer_id: 'CANDIDATE-MLU1038861072-77202292965',
+    ref_id: 'CANDIDATE-MLU1038861072-77202292965', stock: { min: 5, max: 10 },
   }, 274);
   assert.strictEqual(p.precio, 232.9);
   const ev = R.evaluarPromo(p, { costo: 79, seg: 'quieto' });
@@ -136,7 +136,7 @@ test('relámpago con rango: el precio es el sugerido, no el `price` (que viene c
   const body = cuerpoParaAceptar(p, ev, 16);
   assert.deepStrictEqual(body, {
     promotion_id: 'LGH-MLU1000', promotion_type: 'LIGHTNING',
-    offer_id: 'CANDIDATE-MLU1038861072-77202292965', deal_price: 232.9, stock: 16,
+    offer_id: 'CANDIDATE-MLU1038861072-77202292965', deal_price: 232.9, stock: 10,   // tope de MELI: 10
   });
 });
 
@@ -159,7 +159,7 @@ test('relámpago compartida (cofondeada): manda offer_id y unidades, sin precio'
   const p = R.normalizarPromo({
     id: 'P-MLU18023294', type: 'SMART_LIGHTNING', status: 'candidate', name: 'Relámpagos compartidas',
     original_price: 990, price: 672.21, meli_percentage: 5.6, seller_percentage: 26.5,
-    offer_id: 'CANDIDATE-MLU1038796032-77281344782',
+    ref_id: 'CANDIDATE-MLU1038796032-77281344782', stock: { min: 5, max: 10 },
   }, 990);
   const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto' });
   assert.strictEqual(ev.veredicto, 'aceptar');
@@ -167,6 +167,23 @@ test('relámpago compartida (cofondeada): manda offer_id y unidades, sin precio'
   const body = cuerpoParaAceptar(p, ev, 18);
   assert.deepStrictEqual(body, {
     promotion_id: 'P-MLU18023294', promotion_type: 'SMART_LIGHTNING',
-    offer_id: 'CANDIDATE-MLU1038796032-77281344782', stock: 18,
+    offer_id: 'CANDIDATE-MLU1038796032-77281344782', stock: 10,
   });
+});
+
+test('oferta del día: manda las unidades; sin el mínimo de stock se rechaza antes de intentar', () => {
+  const crudo = {
+    id: 'DOD-MLU1000', type: 'DOD', ref_id: 'CANDIDATE-MLU1038821466-77105376144', status: 'candidate',
+    price: 1251.3, original_price: 1290, min_discounted_price: 258, max_discounted_price: 1161,
+    suggested_discounted_price: 1096.5, stock: { min: 15 },
+  };
+  const conStock = armarPublicacion({ costo: 405, segmento: 'algo', stock: 24 },
+    { meli_id: 'MLU1038821466', precio: 1290 }, [crudo], null);
+  const p = conStock.propuestas[0];
+  assert.strictEqual(p.evaluacion.veredicto, 'aceptar');           // 15% sugerido, máximo 20%
+  assert.strictEqual(cuerpoParaAceptar(p, p.evaluacion, 24).stock, 24);
+  const poco = armarPublicacion({ costo: 405, segmento: 'algo', stock: 8 },
+    { meli_id: 'MLU1038821466', precio: 1290 }, [crudo], null);
+  assert.strictEqual(poco.propuestas[0].evaluacion.veredicto, 'rechazar');
+  assert.match(poco.propuestas[0].evaluacion.motivo, /al menos 15 unidades/);
 });

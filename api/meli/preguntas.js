@@ -9,6 +9,8 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { marcarRespondidaFuera } = require('../_telegramPreguntas');
+const { stockParaRespuesta } = require('../_stockRespuesta');
 const {
   MAX_RESPUESTA,
   getSellerId,
@@ -65,8 +67,7 @@ module.exports = async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Falta question_id' });
     }
 
-    // El estado real lo tiene MELI, no la tabla bot_estado (que sólo guarda
-    // la última pregunta recibida y no se limpia al responder).
+    // El estado real lo tiene MELI, no la base.
     const pregunta = await obtenerPregunta(token, question_id);
     if (pregunta.status !== 'UNANSWERED') {
       return res.status(409).json({
@@ -81,8 +82,14 @@ module.exports = async (req, res) => {
     // ── Sin `respuesta` → sólo sugerir, no publica nada ─────────
     if (respuesta === undefined) {
       let borrador;
+      let stock = null;
       try {
-        borrador = await redactarRespuesta(token, pregunta, titulo);
+        stock = await stockParaRespuesta(getSupabase(), pregunta.item_id);
+      } catch (e) {
+        console.error('No se pudo leer el stock para la respuesta:', e.message);
+      }
+      try {
+        borrador = await redactarRespuesta(token, pregunta, titulo, { stock });
       } catch (e) {
         // Redactar automáticamente es opcional: sin la key igual se puede
         // listar preguntas y publicar una respuesta escrita a mano.
@@ -105,6 +112,7 @@ module.exports = async (req, res) => {
         pregunta: pregunta.text,
         primera_pregunta: borrador.primeraPregunta,
         respuesta_sugerida: borrador.texto,
+        stock,
         siguiente_paso: 'Para publicarla, repetí el POST agregando el campo "respuesta".',
       });
     }
@@ -127,16 +135,11 @@ module.exports = async (req, res) => {
 
     const resultado = await responderPregunta(token, pregunta.id, texto);
 
-    // Limpiar el estado del bot de Telegram si apuntaba a esta pregunta,
-    // para que no la vuelva a ofrecer como pendiente.
+    // Si la pregunta está en Telegram con los botones, se los saca: ya está respondida.
     try {
-      const supabase = getSupabase();
-      await supabase
-        .from('bot_estado')
-        .update({ accion_pendiente: null })
-        .eq('accion_pendiente->>question_id', String(pregunta.id));
+      await marcarRespondidaFuera(getSupabase(), pregunta.id, 'desde el CRM');
     } catch (e) {
-      console.error('No se pudo limpiar bot_estado:', e.message);
+      console.error('No se pudo actualizar el aviso de Telegram:', e.message);
     }
 
     return res.status(200).json({

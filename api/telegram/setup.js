@@ -32,14 +32,15 @@ module.exports = async (req, res) => {
     return res.json({ ok: false, error: 'Token inválido', telegram: botInfo });
   }
 
-  // Registrar webhook para comandos entrantes
+  // Registrar webhook. callback_query = los toques de los botones Aceptar / Rechazar de las
+  // preguntas de MELI: sin eso en la lista, Telegram no los manda y los botones no hacen nada.
   const webhookUrl = `https://ecommanager.vercel.app/api/telegram/webhook`;
   let webhookResult = null;
   try {
     const whRes = await fetch(`${baseUrl}/setWebhook`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: webhookUrl, allowed_updates: ['message'] }),
+      body: JSON.stringify({ url: webhookUrl, allowed_updates: ['message', 'callback_query'] }),
     });
     webhookResult = await whRes.json();
   } catch (e) {
@@ -54,7 +55,7 @@ module.exports = async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: '✅ <b>Bot configurado correctamente</b>\n\nEcomManager está conectado. Vas a recibir notificaciones de ventas, entregas y stock bajo.',
+        text: '✅ <b>Bot configurado correctamente</b>\n\nLas preguntas de MELI te van a llegar con la respuesta lista y los botones ✅ Aceptar / ❌ Rechazar.',
         parse_mode: 'HTML',
       }),
     });

@@ -250,10 +250,34 @@ test('precio creíble imposible dentro de las reglas → rechazar con el motivo'
   assert.match(ev.motivo, /no lo toma como descuento/);
 });
 
-test('promos de precio fijo (cofondeadas) no se tocan por el precio reciente', () => {
+test('precio fijo (cofondeada) por debajo de la referencia: se acepta tal cual, sin tocar el precio', () => {
   const p = R.normalizarPromo({ id: 'P', type: 'SMART_LIGHTNING', status: 'candidate', original_price: 990,
     price: 672.21, meli_percentage: 5.6, seller_percentage: 26.5 }, 990);
-  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto', comision: 0.192, envio: 159, precioReciente: 600 });
+  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto', comision: 0.192, envio: 159, precioReciente: 700 });
   assert.strictEqual(ev.veredicto, 'aceptar');
   assert.strictEqual(ev.deal_price, null);
+});
+
+test('con una promo corriendo, lo que no queda por debajo de su precio no es creíble', () => {
+  // PUNBLACK corriendo a $700: la relámpago sugerida a $842 no entra; la compartida a $672 sí.
+  const pub = armarPublicacion({ costo: 180, segmento: 'quieto', stock: 18, comision: 0.192, envio: 159 },
+    { meli_id: 'MLU1038796032', precio: 990 }, [
+      { type: 'PRICE_DISCOUNT', status: 'started', price: 700, original_price: 990 },
+      { id: 'LGH', type: 'LIGHTNING', status: 'candidate', original_price: 990, price: 960.3,
+        min_discounted_price: 198, max_discounted_price: 891, suggested_discounted_price: 841.5, stock: { min: 5, max: 19 } },
+      { id: 'P-S', type: 'SMART_LIGHTNING', status: 'candidate', original_price: 990, price: 672.21,
+        meli_percentage: 5.6, seller_percentage: 26.5, stock: { min: 5, max: 18 } },
+    ], null);
+  const lgh = pub.propuestas.find(p => p.tipo === 'LIGHTNING').evaluacion;
+  assert.ok(lgh.deal_price < 700);                 // se bajó por debajo de la promo corriendo
+  const sl = pub.propuestas.find(p => p.tipo === 'SMART_LIGHTNING').evaluacion;
+  assert.strictEqual(sl.veredicto, 'aceptar');
+});
+
+test('precio fijo por encima de la referencia → rechazar (MELI no la va a creer)', () => {
+  const p = R.normalizarPromo({ id: 'P', type: 'SMART', status: 'candidate', original_price: 990,
+    price: 750, meli_percentage: 5, seller_percentage: 19.2 }, 990);
+  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto', comision: 0.192, envio: 159, precioReciente: 700 });
+  assert.strictEqual(ev.veredicto, 'rechazar');
+  assert.match(ev.motivo, /no la va a tomar como descuento/);
 });

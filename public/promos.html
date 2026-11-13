@@ -426,6 +426,7 @@ async function ejecutarLote(grupo) {
   document.querySelectorAll('.card-lote button').forEach(b => { b.disabled = true; });
   const ok = [];
   const yaEstaban = [];   // al sacar: ya no corría (se sacó desde MELI o venció)
+  const apartadas = [];   // MELI dijo "no creíble": se pasan a rechazadas solas
   const errores = [];
   for (let i = 0; i < lote.length; i++) {
     const it = lote[i];
@@ -436,11 +437,14 @@ async function ejecutarLote(grupo) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meli_id: it.meli_id, accion: grupo === 'sacar' ? 'sacar' : 'aceptar', promo_id: it.promo_id || undefined }),
       }).then(x => x.json());
-      if (r.ok) (r.ya_estaba ? yaEstaban : ok).push(it); else errores.push({ it, error: r.error || 'error desconocido' });
+      if (r.ok) (r.ya_estaba ? yaEstaban : ok).push(it);
+      else if (r.no_creible) { apartadas.push(it); rechazadas.add(it.key); }
+      else errores.push({ it, error: r.error || 'error desconocido' });
     } catch (e) {
       errores.push({ it, error: e.message });
     }
   }
+  if (apartadas.length) guardarRechazadas();
   progreso(lote.length, lote.length, 'Listo');
   setTimeout(() => progreso(null), 600);
   sel[grupo].clear();
@@ -448,7 +452,8 @@ async function ejecutarLote(grupo) {
   const box = $('resultado-lote');
   box.style.display = 'block';
   box.innerHTML = `<b>${verbo}: ${ok.length + yaEstaban.length} de ${lote.length} listas.</b>${yaEstaban.length
-    ? `<div style="margin-top:4px;color:var(--text-dim)">${yaEstaban.length} ya no estaban corriendo (las sacaste desde MELI o vencieron): no hacía falta nada.</div>` : ''}${errores.length
+    ? `<div style="margin-top:4px;color:var(--text-dim)">${yaEstaban.length} ya no estaban corriendo (las sacaste desde MELI o vencieron): no hacía falta nada.</div>` : ''}${apartadas.length
+    ? `<div style="margin-top:4px;color:var(--text-dim)">${apartadas.length} se dejaron de lado porque MELI no las toma como descuento creíble: ${apartadas.map(a => esc(a.pub.titulo || a.meli_id)).join(', ')}. Pasaron a rechazadas.</div>` : ''}${errores.length
     ? `<div style="margin-top:6px;color:var(--red)">${errores.length} con error (MELI las rechazó):</div><ul>${errores.map(e =>
         `<li>${esc(e.it.pub.titulo || e.it.meli_id)} (${esc(e.it.meli_id)}): ${esc(e.error)}</li>`).join('')}</ul>`
     : ''}`;
@@ -482,6 +487,8 @@ function render() {
     return `<div class="card">
       <div class="card-num" style="color:${cfg.color}">${items.length}</div>
       <div class="card-label">${cfg.titulo}</div>
+      ${(grupo === 'aceptar' || grupo === 'contraoferta') && items.length
+        ? `<div class="muted" style="margin-top:3px">en ${new Set(items.map(it => it.meli_id)).size} publicaciones · MELI aplica una por publicación</div>` : ''}
       ${items.length || extra ? `<div class="card-lote">
         ${items.length ? `<label><input type="checkbox" data-grupo="${grupo}" ${todasMarcadas ? 'checked' : ''} onchange="seleccionarTodas('${grupo}', this.checked)"> Seleccionar todas</label>
         <button class="btn btn-sm ${cfg.cls}" ${n ? '' : 'disabled'} onclick="ejecutarLote('${grupo}')">${cfg.boton} (${n})</button>` : ''}
@@ -622,6 +629,13 @@ async function accion(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ meli_id: meliId, accion, promo_id: promoId || undefined }),
     }).then(x => x.json());
+    if (!r.ok && r.no_creible && promoId) {
+      rechazadas.add(idRech(meliId, promoId));
+      guardarRechazadas();
+      toast('MELI no la toma como descuento creíble: se dejó de lado.', false);
+      render();
+      return;
+    }
     if (!r.ok) {
       toast('MELI no lo aceptó: ' + (r.error || 'error desconocido'), false);
       btn.disabled = false;

@@ -150,3 +150,13 @@ test('envío gratis sí/no: el interruptor guarda el producto', async () => {
   for (let i = 0; i < 50 && posts.length === antes; i++) await page.waitForTimeout(100);
   assert.deepStrictEqual(posts[posts.length - 1], { accion: 'envio', sku: 'SOP-CEL-ESP-001', envio_gratis: false });
 });
+
+test('la tarjeta de aceptar dice en cuántas publicaciones están las propuestas', async () => {
+  await cargarDeNuevo();
+  assert.match(await page.textContent('#cards'), /en \d+ publicaciones · MELI aplica una por publicación/);
+});
+
+async function cargarDeNuevo() {
+  await page.evaluate(() => cargar());
+  await page.waitForSelector('#tbody tr td .prod-nombre');
+}

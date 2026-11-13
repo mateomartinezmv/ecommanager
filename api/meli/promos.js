@@ -183,9 +183,14 @@ async function referenciaDePrecio(token, itemId) {
 // Todo lo de una publicación: sus promociones evaluadas, la que está corriendo y el
 // descuento propio que corresponde.
 function armarPublicacion(prod, item, promosCrudas, referencia) {
-  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio),
-    precioReciente: num(prod.precio_reciente) };
   const promos = promosCrudas.map(p => R.normalizarPromo(p, item.precio));
+  const vigentes0 = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
+  // El precio de referencia para que MELI crea un descuento: lo más bajo vendido en 30 días
+  // y, si hay una promo corriendo, su precio (PUNBLACK corriendo a $700 no puede entrar a
+  // una relámpago a $842).
+  const referencias = [num(prod.precio_reciente), ...vigentes0.map(v => num(v.precio))].filter(x => x > 0);
+  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio),
+    precioReciente: referencias.length ? Math.min(...referencias) : 0 };
 
   const vigentes = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
   const vigente = vigentes.sort((a, b) => a.precio - b.precio)[0] || null;
@@ -320,11 +325,13 @@ async function aceptar(token, pub, promoClave, stock) {
     method: 'POST', body: JSON.stringify(body),
   });
   if (!r.ok) {
+    const noCreible = /CREDIBILITY/i.test(JSON.stringify(r.data || {}));
     // Se registra todo: MELI a veces contesta un "Invalid request" pelado y el detalle
     // sólo se ve comparando lo que se mandó con lo que había en la candidata.
     console.error('promos aceptar:', pub.meli_id, p.tipo, JSON.stringify(body), r.status,
       JSON.stringify(r.data), 'candidata:', JSON.stringify(p.crudo));
-    return { ok: false, error: errorDetallado(r) };
+    // no_creible: la pantalla la aparta sola (pasa a rechazadas), así no vuelve a intentarse.
+    return { ok: false, error: errorDetallado(r), no_creible: noCreible };
   }
   return { ok: true, precio: body.deal_price || p.precio, veredicto: ev.veredicto };
 }
@@ -333,7 +340,7 @@ async function aceptar(token, pub, promoClave, stock) {
 function errorDetallado(r) {
   const msg = mensajeDeError(r.data, r.status);
   if (/CREDIBILITY/i.test(JSON.stringify(r.data || {}))) {
-    return 'MELI no lo toma como descuento creíble: lo vendiste más barato hace poco. Actualizá la pantalla: el precio se recalcula por debajo de tus ventas de los últimos 30 días.';
+    return 'MELI no lo toma como descuento creíble (lo vendiste más barato hace poco o tiene otra promo más barata). Se deja de lado.';
   }
   if (/^(invalid request|bad request|http \d+)$/i.test(String(msg).trim())) {
     return `${msg} — ${JSON.stringify(r.data).slice(0, 300)}`;

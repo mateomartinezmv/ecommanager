@@ -252,7 +252,17 @@ function evaluarSegunReglas(promo, { costo, seg, corriendo = false, comision = 0
  */
 function ajustarCredible(promo, ctx, ev) {
   const reciente = num(ctx.precioReciente);
-  if (ctx.corriendo || !reciente || ev.veredicto === 'rechazar' || !ev.deal_price || !rangoAdmite(promo)) return ev;
+  if (ctx.corriendo || !reciente || ev.veredicto === 'rechazar') return ev;
+  const r0 = x => `$${Math.round(x).toLocaleString('es-UY')}`;
+  // Precio fijo (no se elige): si no queda por debajo de la referencia, MELI no la va a creer
+  // y no hay forma de corregirla. Se deja de lado.
+  if (!ev.deal_price || !rangoAdmite(promo)) {
+    if (num(promo.precio) >= reciente) {
+      return { ...ev, veredicto: 'rechazar', deal_price: null,
+        motivo: `MELI no la va a tomar como descuento: el precio de la oferta (${r0(promo.precio)}) no queda por debajo de ${r0(reciente)}, lo más barato que se vendió o está corriendo.` };
+    }
+    return ev;
+  }
   if (ev.deal_price < reciente) return ev;
 
   const nuevo = Math.floor(reciente) - 1;

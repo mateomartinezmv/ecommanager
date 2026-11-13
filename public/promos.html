@@ -214,7 +214,7 @@
     <div class="reglas" id="reglas">
       <b>Tus reglas.</b> Se mira sólo lo que ponés <b>vos</b>: en las campañas donde MELI paga una parte, esa parte no cuenta.
       <ul>
-        <li><b>Piso neto:</b> después de la <b>comisión de MELI</b> y del <b>envío gratis</b>, te tiene que quedar al menos el <b>30%</b> de lo que cobrás. Comisión y envío salen de tus ventas reales de cada producto (sin historia de envíos, tu promedio). Y nunca menos de <b>2 × costo</b>.</li>
+        <li><b>Piso neto:</b> después de la <b>comisión de MELI</b> y del <b>envío gratis</b>, te tiene que quedar al menos el <b>30%</b> de lo que cobrás. Comisión y envío salen de tus ventas reales de cada producto (sin historia de envíos, tu promedio); en los productos sin envío gratis no se descuenta envío. Y nunca menos de <b>2 × costo</b>.</li>
         <li><b>Tope:</b> ningún descuento a tu cargo pasa del <b>30%</b>, ni para liquidar.</li>
         <li><b>Se vende bien</b> (el stock dura menos de 30 días) → sin descuento: se vende igual.
           <b>Se vende algo</b> (una venta por semana o más) → 15–20%.
@@ -517,7 +517,9 @@ function filaHtml({ prod, pub }) {
     <td>
       <div class="prod-nombre">${esc(pub.titulo || prod.nombre)}</div>
       <div class="muted mono">${esc(prod.sku)} · ${pub.permalink ? `<a href="${esc(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(pub.meli_id)}</a>` : esc(pub.meli_id)}</div>
-      <div class="muted">Costo ${plata(prod.costo)} · comisión ${pct((prod.comision || 0) * 100)} · envío ${plata(prod.envio)}</div>
+      <div class="muted">Costo ${plata(prod.costo)} · comisión ${pct((prod.comision || 0) * 100)} · envío ${prod.envio_gratis === false ? 'lo paga el comprador' : plata(prod.envio)}</div>
+      <label class="muted" style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:2px">
+        <input type="checkbox" style="width:13px;height:13px" data-sku="${esc(prod.sku)}" ${prod.envio_gratis === false ? '' : 'checked'} onchange="cambiarEnvio(this)"> Envío gratis</label>
       <div class="muted">Stock ${prod.stock} · ${prod.vendidas60} vendidas en 60 días</div>
     </td>
     <td><span class="badge ${SEG_BADGE[prod.segmento] || 'badge-gray'}">${esc(prod.segmento_txt)}</span><div class="muted" style="margin-top:4px">${dias}</div></td>
@@ -589,6 +591,25 @@ function refHtml(pub) {
       ? '<span class="badge badge-green">Entra en tus reglas</span>'
       : '<span class="badge badge-orange">Más de lo que permiten tus reglas</span>';
   return `<div class="ref">MELI sugiere <span class="mono">${plata(r.sugerido)}</span> <span class="muted">(−${pct(r.baja_pct)})</span></div>${verdict}`;
+}
+
+// Envío gratis sí/no: se guarda en el producto y se recalcula todo (cambia el neto).
+async function cambiarEnvio(input) {
+  input.disabled = true;
+  try {
+    const r = await fetch('/api/meli/promos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'envio', sku: input.dataset.sku, envio_gratis: input.checked }),
+    }).then(x => x.json());
+    if (!r.ok) { toast(r.error || 'No se pudo guardar.', false); input.checked = !input.checked; input.disabled = false; return; }
+    toast(input.checked ? 'Guardado: con envío gratis.' : 'Guardado: el envío lo paga el comprador.');
+    cargar();
+  } catch (e) {
+    toast('Error: ' + e.message, false);
+    input.checked = !input.checked;
+    input.disabled = false;
+  }
 }
 
 async function accion(btn) {

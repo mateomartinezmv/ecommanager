@@ -146,6 +146,17 @@
   .btn:disabled { opacity: 0.5; cursor: wait; }
   td.col-promos { min-width: 340px; }
   .ref { font-size: 12px; line-height: 1.45; }
+  .card-lote { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .card-lote label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+  .card-lote input, .promo-top input, .sel-vig input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+  .card-lote .link { background: none; border: none; color: var(--text-muted); font: inherit; font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0; }
+  .promo-top .izq { display: flex; align-items: center; gap: 7px; }
+  .sel-vig { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); margin-top: 6px; cursor: pointer; }
+  .progreso { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface2); border: 1px solid var(--accent); border-radius: 8px; padding: 12px 18px; font-size: 13px; z-index: 210; display: none; min-width: 300px; }
+  .progreso .barra { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .progreso .barra div { height: 100%; background: var(--accent); width: 0; transition: width 0.2s; }
+  .resultado-lote { margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; display: none; }
+  .resultado-lote ul { margin: 6px 0 0 18px; color: var(--text-dim); font-size: 12px; line-height: 1.5; }
   .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; max-width: 420px; z-index: 200; display: none; }
   .toast.ok { border-color: rgba(34,197,94,0.5); }
   .toast.err { border-color: rgba(239,68,68,0.5); }
@@ -198,6 +209,7 @@
 
   <div class="content">
     <div class="aviso" id="aviso"></div>
+    <div class="resultado-lote" id="resultado-lote"></div>
 
     <div class="reglas" id="reglas">
       <b>Tus reglas.</b> Se mira sólo lo que ponés <b>vos</b>: en las campañas donde MELI paga una parte, esa parte no cuenta.
@@ -242,6 +254,7 @@
 </main>
 
 <div class="toast" id="toast"></div>
+<div class="progreso" id="progreso"><div id="progreso-txt"></div><div class="barra"><div id="progreso-barra"></div></div></div>
 
 <script>
 let datos = null;
@@ -295,7 +308,140 @@ function filas() {
   return (datos?.productos || []).flatMap(p => p.publicaciones.map(pub => ({ prod: p, pub })));
 }
 
-const paraDecidir = f => f.pub.propuestas.length > 0 || (f.pub.vigente && f.pub.vigente.evaluacion.veredicto === 'rechazar');
+// ── Selección y lotes ────────────────────────────────────────────────────────
+// Rechazar una propuesta no le manda nada a MELI (una propuesta que no se acepta, vence
+// sola): se oculta acá. Se guarda en este navegador para que no vuelva a aparecer.
+const CLAVE_RECHAZADAS = 'promos_rechazadas_v1';
+let rechazadas = new Set();
+try { rechazadas = new Set(JSON.parse(localStorage.getItem(CLAVE_RECHAZADAS) || '[]')); } catch { /* sin storage */ }
+function guardarRechazadas() {
+  try { localStorage.setItem(CLAVE_RECHAZADAS, JSON.stringify([...rechazadas])); } catch { /* sin storage */ }
+}
+const idRech = (meliId, promoId) => meliId + '|' + promoId;
+const oculta = (pub, p) => rechazadas.has(idRech(pub.meli_id, p.id));
+const propuestasVisibles = pub => pub.propuestas.filter(p => !oculta(pub, p));
+
+const sel = { aceptar: new Set(), contraoferta: new Set(), rechazar: new Set(), sacar: new Set() };
+const LOTE = {
+  aceptar: { titulo: 'Propuestas para aceptar', color: 'var(--green)', boton: 'Aceptar', cls: 'btn-ok' },
+  contraoferta: { titulo: 'Para entrar con menos descuento', color: 'var(--accent)', boton: 'Entrar', cls: 'btn-blue' },
+  rechazar: { titulo: 'Propuestas que no te convienen', color: 'var(--red)', boton: 'Rechazar', cls: 'btn-red' },
+  sacar: { titulo: 'Promos corriendo fuera de tus reglas', color: 'var(--orange)', boton: 'Sacar', cls: 'btn-red' },
+};
+
+// Qué tan buena es una propuesta para el comprador: el precio final con el que se entra.
+const precioDeEntrada = p => p.evaluacion.deal_price || p.evaluacion.precio_final || p.precio;
+
+// Los elementos de cada grupo, con una clave estable para la selección.
+function itemsDe(grupo) {
+  const out = [];
+  for (const { pub } of filas()) {
+    if (grupo === 'sacar') {
+      if (pub.vigente && pub.vigente.evaluacion.veredicto === 'rechazar') {
+        out.push({ key: pub.meli_id + '|' + (pub.vigente.id || ''), meli_id: pub.meli_id, promo_id: pub.vigente.id || '', pub });
+      }
+      continue;
+    }
+    for (const p of propuestasVisibles(pub)) {
+      if (p.evaluacion.veredicto === grupo) out.push({ key: idRech(pub.meli_id, p.id), meli_id: pub.meli_id, promo_id: p.id, pub, p });
+    }
+  }
+  return out;
+}
+
+// Para aceptar o contraofertar en lote: una sola por publicación (MELI aplica una promo a la
+// vez). Gana la que deja el precio más bajo al comprador: todas ya están dentro de la regla.
+function mejorPorPublicacion(items) {
+  const mejor = new Map();
+  for (const it of items) {
+    const actual = mejor.get(it.meli_id);
+    if (!actual || precioDeEntrada(it.p) < precioDeEntrada(actual.p)) mejor.set(it.meli_id, it);
+  }
+  return [...mejor.values()];
+}
+
+function seleccionarTodas(grupo, marcar) {
+  sel[grupo].clear();
+  if (marcar) {
+    const items = itemsDe(grupo);
+    const elegidas = grupo === 'aceptar' || grupo === 'contraoferta' ? mejorPorPublicacion(items) : items;
+    elegidas.forEach(it => sel[grupo].add(it.key));
+  }
+  render();
+}
+
+function toggleSel(input) {
+  const { grupo, key } = input.dataset;
+  if (input.checked) sel[grupo].add(key); else sel[grupo].delete(key);
+  render();
+}
+
+function restablecerRechazadas() {
+  rechazadas.clear();
+  guardarRechazadas();
+  render();
+}
+
+function progreso(i, n, txt) {
+  const box = $('progreso');
+  if (i === null) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  $('progreso-txt').textContent = txt;
+  $('progreso-barra').style.width = Math.round((i / n) * 100) + '%';
+}
+
+async function ejecutarLote(grupo) {
+  const elegidos = itemsDe(grupo).filter(it => sel[grupo].has(it.key));
+  if (!elegidos.length) return;
+
+  if (grupo === 'rechazar') {
+    if (!confirm(`¿Rechazar ${elegidos.length} propuesta(s)? No se les manda nada a MELI: se ocultan de esta pantalla y vencen solas.`)) return;
+    elegidos.forEach(it => rechazadas.add(it.key));
+    guardarRechazadas();
+    sel.rechazar.clear();
+    toast(`Listo: ${elegidos.length} propuesta(s) rechazada(s).`);
+    render();
+    return;
+  }
+
+  // Aceptar/contraofertar: si quedó más de una de la misma publicación, va la mejor.
+  const lote = grupo === 'sacar' ? elegidos : mejorPorPublicacion(elegidos);
+  const descartadas = elegidos.length - lote.length;
+  const verbo = { aceptar: 'Aceptar', contraoferta: 'Entrar con menos descuento en', sacar: 'Sacar de su promo a' }[grupo];
+  if (!confirm(`¿${verbo} ${lote.length} publicación(es)?${descartadas ? `\n\n${descartadas} se descartan: había más de una propuesta en la misma publicación y va la que deja mejor precio.` : ''}`)) return;
+
+  document.querySelectorAll('.card-lote button').forEach(b => { b.disabled = true; });
+  const ok = [];
+  const errores = [];
+  for (let i = 0; i < lote.length; i++) {
+    const it = lote[i];
+    progreso(i, lote.length, `${verbo} ${i + 1} de ${lote.length}: ${it.pub.titulo || it.meli_id}`);
+    try {
+      const r = await fetch('/api/meli/promos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meli_id: it.meli_id, accion: grupo === 'sacar' ? 'sacar' : 'aceptar', promo_id: it.promo_id || undefined }),
+      }).then(x => x.json());
+      if (r.ok) ok.push(it); else errores.push({ it, error: r.error || 'error desconocido' });
+    } catch (e) {
+      errores.push({ it, error: e.message });
+    }
+  }
+  progreso(lote.length, lote.length, 'Listo');
+  setTimeout(() => progreso(null), 600);
+  sel[grupo].clear();
+
+  const box = $('resultado-lote');
+  box.style.display = 'block';
+  box.innerHTML = `<b>${verbo}: ${ok.length} de ${lote.length} aplicadas.</b>${errores.length
+    ? `<div style="margin-top:6px;color:var(--red)">${errores.length} con error (MELI las rechazó):</div><ul>${errores.map(e =>
+        `<li>${esc(e.it.pub.titulo || e.it.meli_id)} (${esc(e.it.meli_id)}): ${esc(e.error)}</li>`).join('')}</ul>`
+    : ''}`;
+  toast(errores.length ? `${ok.length} aplicadas, ${errores.length} con error. Detalle arriba.` : `Listo: ${ok.length} aplicadas.`, !errores.length);
+  cargar();
+}
+
+const paraDecidir = f => propuestasVisibles(f.pub).length > 0 || (f.pub.vigente && f.pub.vigente.evaluacion.veredicto === 'rechazar');
 const conPrecioAlto = f => f.pub.referencia && f.pub.referencia.baja_pct > 0;
 
 function cambiarTab(t) {
@@ -306,14 +452,31 @@ function cambiarTab(t) {
 
 function render() {
   const todas = filas();
+  // Las cuentas salen de lo que se ve: sin las propuestas ya rechazadas.
+  const tarjetas = Object.entries(LOTE).map(([grupo, cfg]) => {
+    const items = itemsDe(grupo);
+    // Lo seleccionado que ya no existe (MELI la sacó, se aplicó) no cuenta.
+    const vivas = new Set(items.map(it => it.key));
+    [...sel[grupo]].forEach(k => { if (!vivas.has(k)) sel[grupo].delete(k); });
+    const n = sel[grupo].size;
+    const todasMarcadas = items.length > 0 && (grupo === 'aceptar' || grupo === 'contraoferta'
+      ? n === mejorPorPublicacion(items).length
+      : n === items.length);
+    const extra = grupo === 'rechazar' && rechazadas.size
+      ? `<button class="link" onclick="restablecerRechazadas()">Volver a mostrar ${rechazadas.size} rechazada(s)</button>` : '';
+    return `<div class="card">
+      <div class="card-num" style="color:${cfg.color}">${items.length}</div>
+      <div class="card-label">${cfg.titulo}</div>
+      ${items.length || extra ? `<div class="card-lote">
+        ${items.length ? `<label><input type="checkbox" data-grupo="${grupo}" ${todasMarcadas ? 'checked' : ''} onchange="seleccionarTodas('${grupo}', this.checked)"> Seleccionar todas</label>
+        <button class="btn btn-sm ${cfg.cls}" ${n ? '' : 'disabled'} onclick="ejecutarLote('${grupo}')">${cfg.boton} (${n})</button>` : ''}
+        ${extra}
+      </div>` : ''}
+    </div>`;
+  });
   const r = datos?.resumen || {};
-  $('cards').innerHTML = [
-    [r.aceptar || 0, 'Propuestas para aceptar', 'var(--green)'],
-    [r.contraoferta || 0, 'Para entrar con menos descuento', 'var(--accent)'],
-    [r.rechazar || 0, 'Propuestas que no te convienen', 'var(--red)'],
-    [r.vigentes_fuera_de_regla || 0, 'Promos corriendo fuera de tus reglas', 'var(--orange)'],
-    [r.precio_alto || 0, 'Publicaciones sobre la referencia de MELI', 'var(--yellow)'],
-  ].map(([n, l, c]) => `<div class="card"><div class="card-num" style="color:${c}">${n}</div><div class="card-label">${l}</div></div>`).join('');
+  tarjetas.push(`<div class="card"><div class="card-num" style="color:var(--yellow)">${r.precio_alto || 0}</div><div class="card-label">Publicaciones sobre la referencia de MELI</div></div>`);
+  $('cards').innerHTML = tarjetas.join('');
 
   $('n-decidir').textContent = todas.filter(paraDecidir).length;
   $('n-alto').textContent = todas.filter(conPrecioAlto).length;
@@ -348,7 +511,7 @@ function filaHtml({ prod, pub }) {
       <div class="muted">Piso 2×costo: <span class="mono">${plata(pub.piso_precio)}</span></div>
     </td>
     <td>${vigenteHtml(pub)}</td>
-    <td class="col-promos">${pub.propuestas.length ? pub.propuestas.map(p => propuestaHtml(pub, p)).join('') : '<span class="muted">Sin propuestas</span>'}</td>
+    <td class="col-promos">${propuestasVisibles(pub).length ? propuestasVisibles(pub).map(p => propuestaHtml(pub, p)).join('') : '<span class="muted">Sin propuestas</span>'}</td>
     <td>${propioHtml(pub)}</td>
     <td>${refHtml(pub)}</td>
   </tr>`;
@@ -363,12 +526,14 @@ function vigenteHtml(pub) {
     <div class="muted">${esc(v.nombre || v.tipo)}${v.fin ? ' · hasta ' + fecha(v.fin) : ''}</div>
     <span class="badge ${cls}" style="margin-top:4px">${txt}</span>
     ${ev.veredicto === 'rechazar' ? `<div class="promo-motivo">${esc(ev.motivo)}</div>
+      <label class="sel-vig"><input type="checkbox" class="sel" data-grupo="sacar" data-key="${esc(pub.meli_id + '|' + (v.id || ''))}" ${sel.sacar.has(pub.meli_id + '|' + (v.id || '')) ? 'checked' : ''} onchange="toggleSel(this)"> Seleccionar</label>
       <button class="btn btn-sm btn-red" style="margin-top:6px" data-meli="${esc(pub.meli_id)}" data-accion="sacar" data-promo="${esc(v.id || '')}" data-pregunta="¿Sacar esta publicación de ${esc(v.nombre || v.tipo)}? Vuelve a ${plata(pub.precio)}." onclick="accion(this)">Sacar de la promo</button>` : ''}`;
 }
 
 function propuestaHtml(pub, p) {
   const ev = p.evaluacion;
   const [cls, txt] = VEREDICTO[ev.veredicto];
+  const clave = idRech(pub.meli_id, p.id);
   const nums = ev.meli_pct > 0
     ? `${pct(ev.total_pct)} total: vos ${pct(ev.vendedor_pct)} + MELI ${pct(ev.meli_pct)}`
     : `${pct(ev.total_pct)}, todo a tu cargo`;
@@ -380,7 +545,8 @@ function propuestaHtml(pub, p) {
   }
   return `<div class="promo ${ev.veredicto}">
     <div class="promo-top">
-      <span style="font-size:12px;font-weight:600">${esc(p.nombre || p.tipo)}</span>
+      <span class="izq"><input type="checkbox" class="sel" data-grupo="${ev.veredicto}" data-key="${esc(clave)}" ${sel[ev.veredicto].has(clave) ? 'checked' : ''} onchange="toggleSel(this)" title="Seleccionar para aplicar en lote">
+      <span style="font-size:12px;font-weight:600">${esc(p.nombre || p.tipo)}</span></span>
       <span class="badge ${cls}">${txt}</span>
     </div>
     <div class="promo-nums"><span class="mono">${plata(p.precio)}</span> · ${nums}${p.inicio ? ' · ' + fecha(p.inicio) + '–' + fecha(p.fin) : ''}</div>

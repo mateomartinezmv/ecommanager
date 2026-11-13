@@ -21,7 +21,8 @@ function fixture() {
 
   soporte.publicaciones = [armarPublicacion(soporte,
     { meli_id: 'MLU1503030820', titulo: 'Soporte Celular Moto', precio: 490 },
-    [{ id: 'P-28', type: 'SMART', status: 'candidate', price: 352.8, original_price: 490, offer_id: 'OF1', name: 'Ganar exposición' }],
+    [{ id: 'P-28', type: 'SMART', status: 'candidate', price: 352.8, original_price: 490, offer_id: 'OF1', name: 'Ganar exposición' },
+     { id: 'P-10S', type: 'LIGHTNING', status: 'candidate', price: 441, original_price: 490, name: 'Relámpago' }],
     { sugerido: 420, actual: 490 })];
   parabrisas.publicaciones = [armarPublicacion(parabrisas,
     { meli_id: 'MLU698507115', titulo: 'Parabrisas 45cm', precio: 2790 },
@@ -77,7 +78,7 @@ test('muestra las tres publicaciones para decidir con su veredicto', async () =>
 
 test('el 28% en el stock quieto se ofrece aceptar; el 42% no tiene botón', async () => {
   const soporte = page.locator('tr', { hasText: 'Soporte Celular Moto' });
-  assert.strictEqual(await soporte.locator('button', { hasText: 'Aceptar' }).count(), 1);
+  assert.strictEqual(await soporte.locator('button', { hasText: 'Aceptar' }).count(), 2);
   const parabrisas = page.locator('tr', { hasText: 'Parabrisas 45cm' });
   assert.strictEqual(await parabrisas.locator('.promo button').count(), 0);
   assert.match(await parabrisas.textContent(), /2 × costo/);
@@ -86,7 +87,7 @@ test('el 28% en el stock quieto se ofrece aceptar; el 42% no tiene botón', asyn
 });
 
 test('aceptar manda la publicación y la promoción al backend', async () => {
-  await page.locator('tr', { hasText: 'Soporte Celular Moto' }).locator('button', { hasText: 'Aceptar' }).click();
+  await page.locator('tr', { hasText: 'Soporte Celular Moto' }).locator('button', { hasText: 'Aceptar a $353' }).click();
   await page.waitForFunction(() => document.getElementById('toast').style.display === 'block');
   assert.deepStrictEqual(posts[0], { meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-28' });
 });
@@ -98,4 +99,46 @@ test('la promo corriendo fuera de regla ofrece sacarla', async () => {
   await espejos.locator('button', { hasText: 'Sacar de la promo' }).click();
   for (let i = 0; i < 50 && posts.length === antes; i++) await page.waitForTimeout(100);
   assert.deepStrictEqual(posts[posts.length - 1], { meli_id: 'MLU884316822', accion: 'sacar', promo_id: 'P-10' });
+});
+
+// Espera a que lleguen `n` POST nuevos (o se rinde a los 5 s).
+async function esperarPosts(antes, n = 1) {
+  for (let i = 0; i < 50 && posts.length < antes + n; i++) await page.waitForTimeout(100);
+}
+
+test('aceptar en lote: "Seleccionar todas" marca una por publicación, la de mejor precio', async () => {
+  await page.waitForSelector('#cards input[data-grupo="aceptar"]');
+  await page.check('#cards input[data-grupo="aceptar"]');
+  // Dos propuestas aceptables en el soporte (28% y 10%): queda marcada sólo la de 28%.
+  const boton = page.locator('#cards button', { hasText: 'Aceptar (1)' });
+  assert.strictEqual(await boton.count(), 1);
+  const antes = posts.length;
+  await boton.click();
+  await esperarPosts(antes);
+  await page.waitForFunction(() => document.getElementById('resultado-lote').style.display === 'block');
+  assert.deepStrictEqual(posts.slice(antes), [{ meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-28' }]);
+  assert.match(await page.textContent('#resultado-lote'), /1 de 1 aplicadas/);
+});
+
+test('rechazar en lote: no llama a MELI, oculta y se puede deshacer', async () => {
+  await page.waitForSelector('#cards input[data-grupo="rechazar"]');
+  const antes = posts.length;
+  await page.check('#cards input[data-grupo="rechazar"]');
+  await page.locator('#cards button', { hasText: /^Rechazar \(/ }).click();
+  await page.waitForTimeout(200);
+  assert.strictEqual(posts.length, antes);
+  // El parabrisas sólo tenía esa propuesta: sale de "Para decidir".
+  assert.doesNotMatch(await page.textContent('#tbody'), /Parabrisas 45cm/);
+  assert.ok((await page.evaluate(() => localStorage.getItem('promos_rechazadas_v1'))).includes('P-42'));
+  await page.locator('#cards button', { hasText: 'Volver a mostrar' }).click();
+  assert.match(await page.textContent('#tbody'), /Parabrisas 45cm/);
+});
+
+test('sacar en lote las promos corriendo fuera de regla', async () => {
+  await page.waitForSelector('#cards input[data-grupo="sacar"]');
+  await page.check('#cards input[data-grupo="sacar"]');
+  const antes = posts.length;
+  await page.locator('#cards button', { hasText: 'Sacar (1)' }).click();
+  await esperarPosts(antes);
+  assert.deepStrictEqual(posts.slice(antes), [{ meli_id: 'MLU884316822', accion: 'sacar', promo_id: 'P-10' }]);
 });

@@ -425,6 +425,7 @@ async function ejecutarLote(grupo) {
 
   document.querySelectorAll('.card-lote button').forEach(b => { b.disabled = true; });
   const ok = [];
+  const yaEstaban = [];   // al sacar: ya no corría (se sacó desde MELI o venció)
   const errores = [];
   for (let i = 0; i < lote.length; i++) {
     const it = lote[i];
@@ -435,7 +436,7 @@ async function ejecutarLote(grupo) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meli_id: it.meli_id, accion: grupo === 'sacar' ? 'sacar' : 'aceptar', promo_id: it.promo_id || undefined }),
       }).then(x => x.json());
-      if (r.ok) ok.push(it); else errores.push({ it, error: r.error || 'error desconocido' });
+      if (r.ok) (r.ya_estaba ? yaEstaban : ok).push(it); else errores.push({ it, error: r.error || 'error desconocido' });
     } catch (e) {
       errores.push({ it, error: e.message });
     }
@@ -446,11 +447,12 @@ async function ejecutarLote(grupo) {
 
   const box = $('resultado-lote');
   box.style.display = 'block';
-  box.innerHTML = `<b>${verbo}: ${ok.length} de ${lote.length} aplicadas.</b>${errores.length
+  box.innerHTML = `<b>${verbo}: ${ok.length + yaEstaban.length} de ${lote.length} listas.</b>${yaEstaban.length
+    ? `<div style="margin-top:4px;color:var(--text-dim)">${yaEstaban.length} ya no estaban corriendo (las sacaste desde MELI o vencieron): no hacía falta nada.</div>` : ''}${errores.length
     ? `<div style="margin-top:6px;color:var(--red)">${errores.length} con error (MELI las rechazó):</div><ul>${errores.map(e =>
         `<li>${esc(e.it.pub.titulo || e.it.meli_id)} (${esc(e.it.meli_id)}): ${esc(e.error)}</li>`).join('')}</ul>`
     : ''}`;
-  toast(errores.length ? `${ok.length} aplicadas, ${errores.length} con error. Detalle arriba.` : `Listo: ${ok.length} aplicadas.`, !errores.length);
+  toast(errores.length ? `${ok.length + yaEstaban.length} listas, ${errores.length} con error. Detalle arriba.` : `Listo: ${ok.length + yaEstaban.length} listas.`, !errores.length);
   cargar();
 }
 
@@ -553,7 +555,7 @@ function propuestaHtml(pub, p) {
     : `${pct(ev.total_pct)}, todo a tu cargo`;
   let boton = '';
   if (ev.veredicto === 'aceptar') {
-    boton = `<button class="btn btn-sm btn-ok" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(claveDe(p))}" data-pregunta="Entrar a ${esc(nombrePromo(p))} a ${plata(ev.precio_final)}?" onclick="accion(this)">Aceptar a ${plata(ev.precio_final)}</button>`;
+    boton = `<button class="btn btn-sm btn-ok" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(claveDe(p))}" data-pregunta="Entrar a ${esc(nombrePromo(p))} a ${plata(ev.deal_price || ev.precio_final)}?" onclick="accion(this)">Aceptar a ${plata(ev.deal_price || ev.precio_final)}</button>`;
   } else if (ev.veredicto === 'contraoferta') {
     boton = `<button class="btn btn-sm btn-blue" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(claveDe(p))}" data-pregunta="Entrar a ${esc(nombrePromo(p))} a ${plata(ev.deal_price)} (${pct(ev.contra_pct)}) en vez de ${plata(ev.precio_final)}?" onclick="accion(this)">Entrar a ${plata(ev.deal_price)} (${pct(ev.contra_pct)})</button>`;
   }
@@ -563,7 +565,7 @@ function propuestaHtml(pub, p) {
       <span style="font-size:12px;font-weight:600">${esc(nombrePromo(p))}</span></span>
       <span class="badge ${cls}">${txt}</span>
     </div>
-    <div class="promo-nums"><span class="mono">${plata(p.precio)}</span> · ${nums}${p.inicio ? ' · ' + fecha(p.inicio) + '–' + fecha(p.fin) : ''}</div>
+    <div class="promo-nums"><span class="mono">${plata(ev.deal_price || p.precio)}</span> · ${nums}${p.inicio ? ' · ' + fecha(p.inicio) + '–' + fecha(p.fin) : ''}</div>
     ${ev.neto !== undefined ? `<div class="promo-nums">Te quedan <span class="mono" style="color:${ev.neto_pct < 30 ? 'var(--red)' : 'var(--green)'}">${plata(ev.neto)} (${pct(ev.neto_pct)})</span> después de comisión y envío</div>` : ''}
     <div class="promo-motivo">${esc(ev.motivo)}</div>
     ${boton ? `<div style="margin-top:6px">${boton}</div>` : ''}
@@ -604,7 +606,7 @@ async function accion(btn) {
       btn.disabled = false;
       return;
     }
-    toast(accion === 'sacar' ? 'Listo: salió de la promoción.' : `Listo: queda a ${plata(r.precio)}.`);
+    toast(accion === 'sacar' ? (r.ya_estaba ? 'Ya no estaba corriendo: nada que hacer.' : 'Listo: salió de la promoción.') : `Listo: queda a ${plata(r.precio)}.`);
     cargar();
   } catch (e) {
     toast('Error: ' + e.message, false);

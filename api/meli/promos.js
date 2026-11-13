@@ -45,19 +45,24 @@ async function enTandas(lista, fn) {
 const DIAS_ECONOMIA = 180;
 const MIN_VENTAS_COMISION = 3;
 const MIN_ENVIOS = 2;
+const DIAS_CREIBLE = 30;   // ventana con la que se mira el precio más bajo reciente
 
 function economia(ventas) {
   const desde60 = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
+  const desde30 = new Date(Date.now() - DIAS_CREIBLE * 86400000).toISOString().slice(0, 10);
   const porSku = new Map();
   const g = { total: 0, fee: 0, envio: 0, envios: 0 };
   for (const v of ventas || []) {
     if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
     const k = normSku(v.sku);
-    if (!porSku.has(k)) porSku.set(k, { u60: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0 });
+    if (!porSku.has(k)) porSku.set(k, { u60: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0, min30: 0 });
     const a = porSku.get(k);
     const env = num(v.costo_envio_meli);
     const fee = num(v.comision) - env;
     if (String(v.fecha || '') >= desde60) a.u60 += Math.max(1, num(v.cantidad));
+    // El precio más bajo al que se vendió hace poco: debajo de eso MELI cree un descuento.
+    const pu = num(v.precio_unit);
+    if (pu > 0 && String(v.fecha || '') >= desde30 && (!a.min30 || pu < a.min30)) a.min30 = pu;
     a.n += 1; a.total += num(v.total); a.fee += fee;
     g.total += num(v.total); g.fee += fee;
     if (env > 0) { a.envio += env; a.envios += 1; g.envio += env; g.envios += 1; }
@@ -72,6 +77,7 @@ function economia(ventas) {
       const a = porSku.get(normSku(sku));
       return {
         vendidas60: a ? a.u60 : 0,
+        precio_reciente: a ? a.min30 : 0,
         comision: a && a.n >= MIN_VENTAS_COMISION && a.total > 0 ? Math.max(0.08, a.fee / a.total) : global.comision,
         envio: a && a.envios >= MIN_ENVIOS ? a.envio / a.envios : global.envio,
       };
@@ -86,7 +92,7 @@ async function cargarProductos(supabase) {
       .select('sku, nombre, costo, precio, stock_meli, discontinuado, unidades_por_venta, meli_id, meli_ids')
       .limit(5000),
     supabase.from('ventas')
-      .select('sku, cantidad, canal, estado, fecha, total, comision, costo_envio_meli')
+      .select('sku, cantidad, canal, estado, fecha, total, comision, costo_envio_meli, precio_unit')
       .gte('fecha', desde)
       .limit(50000),
   ]);
@@ -107,6 +113,7 @@ async function cargarProductos(supabase) {
         costo,
         comision: Math.round(e.comision * 1000) / 1000,
         envio: Math.round(e.envio),
+        precio_reciente: Math.round(e.precio_reciente * 100) / 100,
         stock: num(p.stock_meli),
         vendidas60,
         dias_stock: R.diasDeStock(p.stock_meli, vendidas60),
@@ -166,7 +173,8 @@ async function referenciaDePrecio(token, itemId) {
 // Todo lo de una publicación: sus promociones evaluadas, la que está corriendo y el
 // descuento propio que corresponde.
 function armarPublicacion(prod, item, promosCrudas, referencia) {
-  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio) };
+  const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio),
+    precioReciente: num(prod.precio_reciente) };
   const promos = promosCrudas.map(p => R.normalizarPromo(p, item.precio));
 
   const vigentes = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
@@ -314,6 +322,9 @@ async function aceptar(token, pub, promoClave, stock) {
 // El mensaje de MELI, y si viene genérico, el cuerpo entero (recortado) para ver qué pidió.
 function errorDetallado(r) {
   const msg = mensajeDeError(r.data, r.status);
+  if (/CREDIBILITY/i.test(JSON.stringify(r.data || {}))) {
+    return 'MELI no lo toma como descuento creíble: lo vendiste más barato hace poco. Actualizá la pantalla: el precio se recalcula por debajo de tus ventas de los últimos 30 días.';
+  }
   if (/^(invalid request|bad request|http \d+)$/i.test(String(msg).trim())) {
     return `${msg} — ${JSON.stringify(r.data).slice(0, 300)}`;
   }
@@ -339,7 +350,8 @@ async function ponerPropio(token, pub) {
 
 async function sacar(token, pub, promoId) {
   const v = pub.vigente;
-  if (!v || (promoId && v.id && v.id !== promoId)) return { ok: false, error: 'Esa promoción ya no está corriendo.' };
+  // Si ya no corre (la sacaron desde MELI o venció), no hay nada que hacer: está hecho.
+  if (!v || (promoId && v.id && v.id !== promoId)) return { ok: true, ya_estaba: true };
   const r = await meliFetch(token,
     `/seller-promotions/items/${pub.meli_id}?promotion_type=${v.tipo}&promotion_id=${v.id || ''}&app_version=v2`,
     { method: 'DELETE' });

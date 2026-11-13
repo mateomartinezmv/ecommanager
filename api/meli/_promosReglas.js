@@ -173,7 +173,11 @@ function aporteVendedor(promo, precio) {
  * La decisión sobre una promoción: aceptar como viene, entrar a otro precio dentro del
  * rango que MELI permite (contraoferta) o rechazar. Siempre con el motivo.
  */
-function evaluarPromo(promo, { costo, seg, corriendo = false, comision = 0, envio = 0 }) {
+function evaluarPromo(promo, ctx) {
+  return ajustarCredible(promo, ctx, evaluarSegunReglas(promo, ctx));
+}
+
+function evaluarSegunReglas(promo, { costo, seg, corriendo = false, comision = 0, envio = 0 }) {
   const lim = limites({ precioLista: promo.lista, costo, seg, comision, envio });
   const s = SEGMENTOS[seg] || SEGMENTOS.bien;
   const base = { ...lim, segmento: seg };
@@ -239,6 +243,46 @@ function evaluarPromo(promo, { costo, seg, corriendo = false, comision = 0, envi
   return out('rechazar', motivo);
 }
 
+/**
+ * Precio creíble. MELI no deja mostrar como descuento un precio que no está por debajo de lo
+ * que el producto se vendió hace poco: el portapatente vendido a $1.188 la semana pasada no
+ * puede anunciar "5% off a $1.226" (ERROR_CREDIBILITY_DISCOUNTED_PRICE). Cuando el vendedor
+ * elige el precio (rango), se lo baja a apenas debajo del más bajo de los últimos 30 días si
+ * las reglas lo permiten; si no, se rechaza explicando por qué.
+ */
+function ajustarCredible(promo, ctx, ev) {
+  const reciente = num(ctx.precioReciente);
+  if (ctx.corriendo || !reciente || ev.veredicto === 'rechazar' || !ev.deal_price || !rangoAdmite(promo)) return ev;
+  if (ev.deal_price < reciente) return ev;
+
+  const nuevo = Math.floor(reciente) - 1;
+  const v = aporteVendedor(promo, nuevo);
+  const cobrado = promo.lista * (1 - v);
+  const n = neto({ precio: cobrado, costo: ctx.costo, comision: ctx.comision, envio: ctx.envio });
+  const entra = v <= ev.maximo + TOLERANCIA
+    && (!promo.min || nuevo >= promo.min)
+    && 1 - nuevo / promo.lista >= MIN_DESCUENTO_MELI - TOLERANCIA;
+  const r = x => `$${Math.round(x).toLocaleString('es-UY')}`;
+  if (!entra) {
+    return {
+      ...ev,
+      veredicto: 'rechazar',
+      deal_price: null,
+      motivo: `MELI no lo toma como descuento: en los últimos 30 días lo vendiste a ${r(reciente)}. Para quedar abajo hace falta ${r1(v)}% y tu máximo es ${r1(ev.maximo)}%.`,
+    };
+  }
+  return {
+    ...ev,
+    deal_price: nuevo,
+    precio_reciente: reciente,
+    vendedor_pct: r1(v),
+    total_pct: r1(1 - nuevo / promo.lista),
+    neto: Math.round(n),
+    neto_pct: cobrado > 0 ? r1(n / cobrado) : 0,
+    motivo: `${ev.motivo} Entrás a ${r(nuevo)} (${r1(1 - nuevo / promo.lista)}%): MELI sólo acepta el descuento por debajo de lo que lo vendiste en los últimos 30 días (${r(reciente)}).`,
+  };
+}
+
 // Promociones donde el vendedor elige el precio dentro de un rango.
 function rangoAdmite(promo) {
   return !!(promo.min || promo.max) || ['DEAL', 'SELLER_CAMPAIGN', 'PRICE_DISCOUNT'].includes(promo.tipo);
@@ -249,12 +293,18 @@ function rangoAdmite(promo) {
  * del segmento, recortado por el piso. Null si no corresponde o si queda por debajo del
  * mínimo que MELI acepta.
  */
-function descuentoPropio({ precioLista, costo, seg, comision = 0, envio = 0 }) {
+function descuentoPropio({ precioLista, costo, seg, comision = 0, envio = 0, precioReciente = 0 }) {
   const lim = limites({ precioLista, costo, seg, comision, envio });
   const pct = lim.objetivo;
   if (pct < MIN_DESCUENTO_MELI) return null;
-  const precio = Math.ceil(num(precioLista) * (1 - pct));
-  return { pct: r1(1 - precio / num(precioLista)), precio };
+  const lista = num(precioLista);
+  let precio = Math.ceil(lista * (1 - pct));
+  // Tiene que quedar por debajo de lo vendido en los últimos 30 días o MELI no lo acepta.
+  if (num(precioReciente) && precio >= num(precioReciente)) {
+    precio = Math.floor(num(precioReciente)) - 1;
+    if (1 - precio / lista > lim.maximo + TOLERANCIA) return null;
+  }
+  return { pct: r1(1 - precio / lista), precio };
 }
 
 module.exports = {

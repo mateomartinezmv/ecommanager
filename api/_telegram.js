@@ -33,13 +33,15 @@ async function telegram(metodo, payload) {
 }
 
 // botones: [[{ text, callback_data }, ...], ...] — una fila por array.
-async function enviar(texto, { botones } = {}) {
+// html: false manda el texto tal cual (sin parse_mode): sirve de respaldo cuando un texto
+// que no armó el sistema trae HTML que Telegram rechaza.
+async function enviar(texto, { botones, html = true } = {}) {
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!chatId) return null;
   return telegram('sendMessage', {
     chat_id: chatId,
     text: texto,
-    parse_mode: 'HTML',
+    ...(html ? { parse_mode: 'HTML' } : {}),
     ...(botones ? { reply_markup: { inline_keyboard: botones } } : {}),
   });
 }

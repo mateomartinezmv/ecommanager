@@ -21,7 +21,8 @@ const AYUDA =
   '📦 Publicaciones cuyo stock no se pudo corregir.\n' +
   '📣 Lo que se publica en Instagram y Facebook.\n' +
   '📊 El resumen del día a las 20:00.\n' +
-  '📈 La revisión semanal de Ads, los lunes a la tarde.\n\n' +
+  '📈 La revisión semanal de Ads, los lunes a la tarde.\n' +
+  '🔍 La auditoría de publicaciones, los días 1 y 15.\n\n' +
   'Lo demás se maneja desde el CRM.';
 
 module.exports = async (req, res) => {

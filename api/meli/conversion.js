@@ -80,3 +80,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+// La auditoría quincenal de publicaciones (api/_auditoriaPubs.js) pide las visitas de cada
+// publicación por separado, con la misma lectura que esta pantalla.
+module.exports.traerVisitas = traerVisitas;

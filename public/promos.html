@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Promos MELI — EcomManager</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c26;
+    --border: #2a2a38;
+    --accent: #4f8ef7;
+    --accent2: #7c3aed;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --red: #ef4444;
+    --meli: #ffe600;
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Space Grotesk', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+
+  /* ── Sidebar ── */
+  #sidebar { width: 220px; height: 100vh; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; }
+  .logo { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+  .logo-title { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .logo-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  /* Sólo scrollea la lista; el logo y el pie quedan fijos. min-height:0 es lo que deja
+     que el hijo flex se encoja y recorte de verdad. */
+  nav {
+    flex: 1; min-height: 0; padding: 12px 0;
+    overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  nav::-webkit-scrollbar { width: 8px; }
+  nav::-webkit-scrollbar-track { background: transparent; }
+  nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  nav::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .nav-section { padding: 6px 16px 4px; font-size: 10px; font-weight: 600; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 14px; color: var(--text-dim); transition: all 0.15s; border-left: 3px solid transparent; text-decoration: none; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--surface2); color: var(--accent); border-left-color: var(--accent); }
+  .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border); font-size: 11px; color: var(--text-muted); }
+
+  /* ── Layout ── */
+  #main { margin-left: 220px; flex: 1; min-height: 100vh; }
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .page-title { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+  .content { padding: 28px; }
+
+  /* ── Buttons ── */
+  .btn { padding: 8px 16px; border-radius: 7px; border: none; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+  .btn-ghost { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
+  .btn-ghost.active-view { background: var(--surface2); color: var(--accent); border-color: var(--accent); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+
+  /* ── Badges ── */
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; gap: 4px; }
+  .badge-green  { background: rgba(34,197,94,0.15);  color: var(--green); }
+  .badge-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
+  .badge-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+  .badge-red    { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .badge-gray   { background: rgba(100,116,139,0.15);color: var(--text-muted); }
+  .badge-blue   { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-nota { font-size: 10px; color: var(--text-muted); margin-top: 3px; max-width: 280px; line-height: 1.4; }
+
+  /* ── Filters bar ── */
+  .filter-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+  .search-box { position: relative; display: flex; align-items: center; }
+  .search-box input { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 28px 8px 30px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; width: 280px; max-width: 100%; }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box input::placeholder { color: var(--text-muted); }
+  .search-icon { position: absolute; left: 9px; font-size: 12px; pointer-events: none; opacity: 0.6; }
+  .search-clear { position: absolute; right: 5px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 5px; border-radius: 4px; }
+  .search-clear:hover { color: var(--text); background: var(--border); }
+  .search-hint { font-size: 12px; color: var(--yellow); }
+  .search-hint button { background: none; border: none; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; padding: 0; }
+  mark.hit { background: rgba(79,142,247,0.28); color: inherit; border-radius: 3px; padding: 0 1px; }
+  select { background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; color: var(--text); font-family: 'Space Grotesk', sans-serif; font-size: 13px; outline: none; cursor: pointer; }
+  select:focus { border-color: var(--accent); }
+  select option { background: var(--surface2); }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 4px; width: fit-content; margin-bottom: 20px; }
+  .tab { padding: 7px 16px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); transition: all 0.15s; border: none; background: none; font-family: 'Space Grotesk', sans-serif; }
+  .tab.active { background: var(--surface2); color: var(--text); }
+  .seg-count { display:inline-block; margin-left:5px; padding:1px 6px; border-radius:20px; background:var(--surface2); border:1px solid var(--border); font-size:11px; font-family:'JetBrains Mono',monospace; color:var(--text-muted); }
+  .tab.active .seg-count { background:var(--bg); color:var(--text-dim); }
+
+  /* ── Transit pill ── */
+  .transit-pill { display:inline-flex; align-items:center; gap:5px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.25); border-radius:6px; padding:3px 8px; font-size:11px; color:var(--green); font-weight:600; }
+  .transit-pill.ordered { background:rgba(79,142,247,0.1); border-color:rgba(79,142,247,0.25); color:var(--accent); }
+  .transit-pill + .transit-pill { margin-top:3px; }
+
+  /* ── List view ── */
+  .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .table-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .table-title { font-size: 15px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 16px; font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; background: var(--surface2); border-bottom: 1px solid var(--border); }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(79,142,247,0.04); }
+
+    /* ── Promos ── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .card-num { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .card-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .reglas { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 20px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .reglas b { color: var(--text); }
+  .reglas ul { margin: 6px 0 0 18px; }
+  .aviso { display: none; margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); font-size: 13px; }
+  .prod-nombre { font-weight: 600; font-size: 13px; max-width: 260px; }
+  .muted { color: var(--text-muted); font-size: 11px; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .promo { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; background: var(--surface2); }
+  .promo:last-child { margin-bottom: 0; }
+  .promo.aceptar { border-color: rgba(34,197,94,0.35); }
+  .promo.contraoferta { border-color: rgba(79,142,247,0.4); }
+  .promo.rechazar { border-color: rgba(239,68,68,0.3); opacity: 0.85; }
+  .promo-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .promo-nums { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+  .promo-motivo { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+  .btn-ok { background: var(--green); color: #04130a; }
+  .btn-ok:hover { filter: brightness(1.1); }
+  .btn-blue { background: var(--accent); color: #fff; }
+  .btn-blue:hover { filter: brightness(1.1); }
+  .btn-red { background: transparent; color: var(--red); border: 1px solid rgba(239,68,68,0.4); }
+  .btn:disabled { opacity: 0.5; cursor: wait; }
+  td.col-promos { min-width: 340px; }
+  .ref { font-size: 12px; line-height: 1.45; }
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; font-size: 13px; max-width: 420px; z-index: 200; display: none; }
+  .toast.ok { border-color: rgba(34,197,94,0.5); }
+  .toast.err { border-color: rgba(239,68,68,0.5); }
+
+  @media (max-width: 900px) {
+    #sidebar { width: 60px; }
+    .nav-item span:not(.icon) { display: none; }
+    .logo-title, .logo-sub, .nav-section, .sidebar-footer { display: none; }
+    #main { margin-left: 60px; }
+    .table-wrap { overflow-x: auto; }
+  }
+</style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="logo">
+    <div class="logo-title">EcomManager</div>
+    <div class="logo-sub">v1.0 — local</div>
+  </div>
+  <nav>
+    <div class="nav-section">Principal</div>
+    <a class="nav-item" href="/"><span class="icon">📊</span><span>Dashboard</span></a>
+    <a class="nav-item" href="/?goto=stock"><span class="icon">📦</span><span>Stock</span></a>
+    <div class="nav-section">Ventas</div>
+    <a class="nav-item" href="/?goto=ventas"><span class="icon">🛒</span><span>Ventas</span></a>
+    <a class="nav-item" href="/?goto=envios"><span class="icon">🚚</span><span>Envíos</span></a>
+    <div class="nav-section">Compras</div>
+    <a class="nav-item" href="/importaciones.html"><span class="icon">📥</span><span>Importaciones</span></a>
+    <a class="nav-item" href="/reposicion.html"><span class="icon">📅</span><span>Reposición</span></a>
+    <div class="nav-section">Análisis</div>
+    <a class="nav-item" href="/?goto=reportes"><span class="icon">📈</span><span>Reportes</span></a>
+    <a class="nav-item" href="/?goto=ads"><span class="icon">📣</span><span>Ads MELI</span></a>
+    <a class="nav-item active" href="/promos.html"><span class="icon">🏷️</span><span>Promos MELI</span></a>
+  </nav>
+  <div class="sidebar-footer">Datos en Supabase + MELI</div>
+</aside>
+
+<main id="main">
+  <div class="topbar">
+    <div class="page-title">🏷️ Promos MELI</div>
+    <div class="topbar-actions">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="buscar" placeholder="Buscar producto, SKU o MLU..." oninput="render()">
+      </div>
+      <button class="btn btn-ghost" id="btn-actualizar" onclick="cargar()">🔄 Actualizar</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="aviso" id="aviso"></div>
+
+    <div class="reglas" id="reglas">
+      <b>Tus reglas.</b> Se mira sólo lo que ponés <b>vos</b>: en las campañas donde MELI paga una parte, esa parte no cuenta.
+      <ul>
+        <li><b>Piso:</b> lo que cobrás nunca baja de <b>2 × costo</b> (margen bruto del 100%).</li>
+        <li><b>Tope:</b> ningún descuento a tu cargo pasa del <b>30%</b>, ni para liquidar.</li>
+        <li><b>Se vende bien</b> (el stock dura menos de 30 días) → sin descuento: se vende igual.
+          <b>Se vende algo</b> (una venta por semana o más) → 15–20%.
+          <b>No se vende</b> (menos de una venta por semana) → 25–30%.
+          <b>Discontinuado</b> → hasta 30%.</li>
+        <li><b>"PRECIO ALTO"</b> lo pone MELI comparando tu precio con productos parecidos, no con tu costo ni con tu margen. Se saca acercando el precio a su referencia: la columna de la derecha dice cuánto es y si tus reglas lo permiten.</li>
+      </ul>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="decidir" onclick="cambiarTab('decidir')">Para decidir <span class="seg-count" id="n-decidir">0</span></button>
+      <button class="tab" data-tab="alto" onclick="cambiarTab('alto')">"Precio alto" <span class="seg-count" id="n-alto">0</span></button>
+      <button class="tab" data-tab="todas" onclick="cambiarTab('todas')">Todas <span class="seg-count" id="n-todas">0</span></button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Publicación</th>
+            <th>Situación</th>
+            <th>Precio y límite</th>
+            <th>Corriendo ahora</th>
+            <th>Propuestas de MELI</th>
+            <th>Descuento propio</th>
+            <th>Referencia MELI</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr><td colspan="7" class="muted" style="padding:24px">Leyendo publicaciones y promociones de MELI...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let datos = null;
+let tab = 'decidir';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const plata = n => n === null || n === undefined ? '—' : '$' + Math.round(Number(n)).toLocaleString('es-UY');
+const pct = n => (Math.round(Number(n) * 10) / 10).toLocaleString('es-UY') + '%';
+// En hora de Uruguay: MELI manda el fin como 23:59:59-03:00 y en UTC ya es el día siguiente.
+const fecha = s => s ? new Date(s).toLocaleDateString('es-UY', { day: 'numeric', month: 'short', timeZone: 'America/Montevideo' }) : '';
+
+const SEG_BADGE = {
+  bien: 'badge-green', algo: 'badge-blue', quieto: 'badge-orange',
+  liquidar: 'badge-red', sin_stock: 'badge-gray', sin_costo: 'badge-gray',
+};
+const VEREDICTO = {
+  aceptar: ['badge-green', '✅ Aceptar'],
+  contraoferta: ['badge-blue', '↘️ Entrar con menos'],
+  rechazar: ['badge-red', '✋ Rechazar'],
+};
+
+function toast(msg, ok = true) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (ok ? 'ok' : 'err');
+  t.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.style.display = 'none'; }, ok ? 4000 : 9000);
+}
+
+async function cargar() {
+  $('btn-actualizar').disabled = true;
+  $('aviso').style.display = 'none';
+  $('tbody').innerHTML = '<tr><td colspan="7" class="muted" style="padding:24px">Leyendo publicaciones y promociones de MELI... (puede tardar un minuto)</td></tr>';
+  try {
+    datos = await fetch('/api/meli/promos').then(r => r.json());
+  } catch (e) {
+    datos = { ok: false, error: e.message, productos: [] };
+  }
+  $('btn-actualizar').disabled = false;
+  if (datos.ok === false) {
+    $('aviso').style.display = 'block';
+    $('aviso').textContent = '⚠️ ' + (datos.error || 'No se pudo leer MELI.');
+  }
+  render();
+}
+
+// Una fila por publicación, con los datos del producto pegados.
+function filas() {
+  return (datos?.productos || []).flatMap(p => p.publicaciones.map(pub => ({ prod: p, pub })));
+}
+
+const paraDecidir = f => f.pub.propuestas.length > 0 || (f.pub.vigente && f.pub.vigente.evaluacion.veredicto === 'rechazar');
+const conPrecioAlto = f => f.pub.referencia && f.pub.referencia.baja_pct > 0;
+
+function cambiarTab(t) {
+  tab = t;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+  render();
+}
+
+function render() {
+  const todas = filas();
+  const r = datos?.resumen || {};
+  $('cards').innerHTML = [
+    [r.aceptar || 0, 'Propuestas para aceptar', 'var(--green)'],
+    [r.contraoferta || 0, 'Para entrar con menos descuento', 'var(--accent)'],
+    [r.rechazar || 0, 'Propuestas que no te convienen', 'var(--red)'],
+    [r.vigentes_fuera_de_regla || 0, 'Promos corriendo fuera de tus reglas', 'var(--orange)'],
+    [r.precio_alto || 0, 'Publicaciones sobre la referencia de MELI', 'var(--yellow)'],
+  ].map(([n, l, c]) => `<div class="card"><div class="card-num" style="color:${c}">${n}</div><div class="card-label">${l}</div></div>`).join('');
+
+  $('n-decidir').textContent = todas.filter(paraDecidir).length;
+  $('n-alto').textContent = todas.filter(conPrecioAlto).length;
+  $('n-todas').textContent = todas.length;
+
+  const q = $('buscar').value.trim().toLowerCase();
+  const lista = todas
+    .filter(f => tab === 'todas' || (tab === 'decidir' ? paraDecidir(f) : conPrecioAlto(f)))
+    .filter(f => !q || [f.prod.nombre, f.prod.sku, f.pub.meli_id, f.pub.titulo].some(x => String(x || '').toLowerCase().includes(q)));
+
+  if (!datos) return;
+  if (!lista.length) {
+    $('tbody').innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">🏷️</div><p>${
+      tab === 'decidir' ? 'No hay propuestas de MELI pendientes ni promos fuera de regla.' : 'Nada para mostrar.'}</p></div></td></tr>`;
+    return;
+  }
+  $('tbody').innerHTML = lista.map(filaHtml).join('');
+}
+
+function filaHtml({ prod, pub }) {
+  const dias = prod.dias_stock === null ? 'sin ventas en 60 días' : `stock para ~${prod.dias_stock} días`;
+  return `<tr>
+    <td>
+      <div class="prod-nombre">${esc(pub.titulo || prod.nombre)}</div>
+      <div class="muted mono">${esc(prod.sku)} · ${pub.permalink ? `<a href="${esc(pub.permalink)}" target="_blank" rel="noopener" style="color:var(--accent)">${esc(pub.meli_id)}</a>` : esc(pub.meli_id)}</div>
+      <div class="muted">Costo ${plata(prod.costo)} · stock ${prod.stock} · ${prod.vendidas60} vendidas en 60 días</div>
+    </td>
+    <td><span class="badge ${SEG_BADGE[prod.segmento] || 'badge-gray'}">${esc(prod.segmento_txt)}</span><div class="muted" style="margin-top:4px">${dias}</div></td>
+    <td>
+      <div class="mono">${plata(pub.precio)}</div>
+      <div class="muted">Máx. ${pct(pub.maximo_pct)} → no menos de <span class="mono">${plata(pub.precio_minimo)}</span></div>
+      <div class="muted">Piso 2×costo: <span class="mono">${plata(pub.piso_precio)}</span></div>
+    </td>
+    <td>${vigenteHtml(pub)}</td>
+    <td class="col-promos">${pub.propuestas.length ? pub.propuestas.map(p => propuestaHtml(pub, p)).join('') : '<span class="muted">Sin propuestas</span>'}</td>
+    <td>${propioHtml(pub)}</td>
+    <td>${refHtml(pub)}</td>
+  </tr>`;
+}
+
+function vigenteHtml(pub) {
+  const v = pub.vigente;
+  if (!v) return '<span class="muted">Nada</span>';
+  const ev = v.evaluacion;
+  const [cls, txt] = ev.veredicto === 'rechazar' ? ['badge-red', '⚠️ Fuera de regla'] : ['badge-green', '✓ Dentro de regla'];
+  return `<div class="mono">${plata(v.precio)} <span class="muted">(${pct(ev.total_pct)})</span></div>
+    <div class="muted">${esc(v.nombre || v.tipo)}${v.fin ? ' · hasta ' + fecha(v.fin) : ''}</div>
+    <span class="badge ${cls}" style="margin-top:4px">${txt}</span>
+    ${ev.veredicto === 'rechazar' ? `<div class="promo-motivo">${esc(ev.motivo)}</div>
+      <button class="btn btn-sm btn-red" style="margin-top:6px" data-meli="${esc(pub.meli_id)}" data-accion="sacar" data-promo="${esc(v.id || '')}" data-pregunta="¿Sacar esta publicación de ${esc(v.nombre || v.tipo)}? Vuelve a ${plata(pub.precio)}." onclick="accion(this)">Sacar de la promo</button>` : ''}`;
+}
+
+function propuestaHtml(pub, p) {
+  const ev = p.evaluacion;
+  const [cls, txt] = VEREDICTO[ev.veredicto];
+  const nums = ev.meli_pct > 0
+    ? `${pct(ev.total_pct)} total: vos ${pct(ev.vendedor_pct)} + MELI ${pct(ev.meli_pct)}`
+    : `${pct(ev.total_pct)}, todo a tu cargo`;
+  let boton = '';
+  if (ev.veredicto === 'aceptar') {
+    boton = `<button class="btn btn-sm btn-ok" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(p.id)}" data-pregunta="Entrar a ${esc(p.nombre || p.tipo)} a ${plata(ev.precio_final)}?" onclick="accion(this)">Aceptar a ${plata(ev.precio_final)}</button>`;
+  } else if (ev.veredicto === 'contraoferta') {
+    boton = `<button class="btn btn-sm btn-blue" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(p.id)}" data-pregunta="Entrar a ${esc(p.nombre || p.tipo)} a ${plata(ev.deal_price)} (${pct(ev.contra_pct)}) en vez de ${plata(ev.precio_final)}?" onclick="accion(this)">Entrar a ${plata(ev.deal_price)} (${pct(ev.contra_pct)})</button>`;
+  }
+  return `<div class="promo ${ev.veredicto}">
+    <div class="promo-top">
+      <span style="font-size:12px;font-weight:600">${esc(p.nombre || p.tipo)}</span>
+      <span class="badge ${cls}">${txt}</span>
+    </div>
+    <div class="promo-nums"><span class="mono">${plata(p.precio)}</span> · ${nums}${p.inicio ? ' · ' + fecha(p.inicio) + '–' + fecha(p.fin) : ''}</div>
+    <div class="promo-motivo">${esc(ev.motivo)}</div>
+    ${boton ? `<div style="margin-top:6px">${boton}</div>` : ''}
+  </div>`;
+}
+
+function propioHtml(pub) {
+  if (pub.vigente) return '<span class="muted">Ya tiene una promo corriendo</span>';
+  if (!pub.propio) return '<span class="muted">No corresponde</span>';
+  return `<div class="mono">${plata(pub.propio.precio)} <span class="muted">(${pct(pub.propio.pct)})</span></div>
+    <button class="btn btn-sm btn-ghost" style="margin-top:6px" data-meli="${esc(pub.meli_id)}" data-accion="propio" data-promo="" data-pregunta="Poner un descuento propio de ${pct(pub.propio.pct)} (${plata(pub.propio.precio)}) por 14 días?" onclick="accion(this)">Poner por 14 días</button>`;
+}
+
+function refHtml(pub) {
+  const r = pub.referencia;
+  if (!r) return '<span class="muted">MELI no da referencia</span>';
+  if (!(r.baja_pct > 0)) return `<span class="badge badge-green">Precio competitivo</span><div class="muted">Referencia ${plata(r.sugerido)}</div>`;
+  const verdict = r.rompe_piso
+    ? '<span class="badge badge-red">Rompe el piso 2×costo</span><div class="promo-motivo">Para sacar "precio alto" habría que cobrar menos de 2 × costo. No conviene: aceptá la etiqueta o revisá el costo.</div>'
+    : r.permitido
+      ? '<span class="badge badge-green">Entra en tus reglas</span>'
+      : '<span class="badge badge-orange">Más de lo que permiten tus reglas</span>';
+  return `<div class="ref">MELI sugiere <span class="mono">${plata(r.sugerido)}</span> <span class="muted">(−${pct(r.baja_pct)})</span></div>${verdict}`;
+}
+
+async function accion(btn) {
+  const { meli: meliId, accion, promo: promoId, pregunta } = btn.dataset;
+  if (pregunta && !confirm(pregunta)) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/meli/promos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ meli_id: meliId, accion, promo_id: promoId || undefined }),
+    }).then(x => x.json());
+    if (!r.ok) {
+      toast('MELI no lo aceptó: ' + (r.error || 'error desconocido'), false);
+      btn.disabled = false;
+      return;
+    }
+    toast(accion === 'sacar' ? 'Listo: salió de la promoción.' : `Listo: queda a ${plata(r.precio)}.`);
+    cargar();
+  } catch (e) {
+    toast('Error: ' + e.message, false);
+    btn.disabled = false;
+  }
+}
+
+cargar();
+</script>
+</body>
+</html>

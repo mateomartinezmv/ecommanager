@@ -9,6 +9,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
+const { marcarRespondidaFuera } = require('../_telegramPreguntas');
 const {
   MAX_RESPUESTA,
   getSellerId,
@@ -65,8 +66,7 @@ module.exports = async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Falta question_id' });
     }
 
-    // El estado real lo tiene MELI, no la tabla bot_estado (que sólo guarda
-    // la última pregunta recibida y no se limpia al responder).
+    // El estado real lo tiene MELI, no la base.
     const pregunta = await obtenerPregunta(token, question_id);
     if (pregunta.status !== 'UNANSWERED') {
       return res.status(409).json({
@@ -127,16 +127,11 @@ module.exports = async (req, res) => {
 
     const resultado = await responderPregunta(token, pregunta.id, texto);
 
-    // Limpiar el estado del bot de Telegram si apuntaba a esta pregunta,
-    // para que no la vuelva a ofrecer como pendiente.
+    // Si la pregunta está en Telegram con los botones, se los saca: ya está respondida.
     try {
-      const supabase = getSupabase();
-      await supabase
-        .from('bot_estado')
-        .update({ accion_pendiente: null })
-        .eq('accion_pendiente->>question_id', String(pregunta.id));
+      await marcarRespondidaFuera(getSupabase(), pregunta.id, 'desde el CRM');
     } catch (e) {
-      console.error('No se pudo limpiar bot_estado:', e.message);
+      console.error('No se pudo actualizar el aviso de Telegram:', e.message);
     }
 
     return res.status(200).json({

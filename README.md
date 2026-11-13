@@ -80,6 +80,28 @@
 
 ---
 
+## Avisos por Telegram
+
+El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
+
+| Aviso | Cuándo |
+|---|---|
+| ❓ Nueva pregunta en MELI | Con la respuesta ya redactada y dos botones: **✅ Aceptar** la publica tal cual, **❌ Rechazar** la descarta (se responde desde MELI o el CRM). Cada pregunta tiene sus botones y el mismo aviso de MELI repetido no llega dos veces. Si la respondés por fuera, el mensaje pierde los botones. |
+| ⚠️ Venta sin registrar | Se vendió una publicación que no está vinculada a ningún SKU del CRM. |
+| ⚠️ Stock de MELI sin poder corregir | Una publicación lleva 3 horas seguidas con un stock distinto al del CRM y MELI rechaza la corrección. Una sola vez por publicación. |
+| 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |
+| 📦 Resumen del día | Todos los días a las 20:00: ventas por canal, envíos activos y stock bajo (sin descatalogados). |
+
+Ya no avisa las publicaciones pausadas en MELI ni responde comandos (`stock`, `ventas hoy`,
+`ganancia`, cargar ventas escribiendo, etc.).
+
+**Después de cada cambio en el bot**, abrí una vez `https://ecommanager.vercel.app/api/telegram/setup`:
+vuelve a registrar el webhook. Sin eso Telegram no manda los toques de los botones y
+Aceptar / Rechazar no hacen nada. Las tablas que usa están en
+`supabase/migrations/20261113010000_telegram_preguntas_fallos_stock.sql`.
+
+---
+
 ## Regenerar credenciales (recomendado)
 
 Como las credenciales fueron compartidas por chat, conviene regenerarlas:

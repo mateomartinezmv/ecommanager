@@ -87,10 +87,17 @@ function economia(ventas) {
 
 async function cargarProductos(supabase) {
   const desde = new Date(Date.now() - DIAS_ECONOMIA * 86400000).toISOString().slice(0, 10);
+  const COLS = 'sku, nombre, costo, precio, stock_meli, discontinuado, unidades_por_venta, meli_id, meli_ids';
+  const leerProductos = async () => {
+    const r = await supabase.from('productos').select(`${COLS}, envio_gratis`).limit(5000);
+    // Sin la migración 20261113000000_add_envio_gratis todavía corrida: todos con envío gratis.
+    if (r.error && /envio_gratis/.test(r.error.message || '')) {
+      return supabase.from('productos').select(COLS).limit(5000);
+    }
+    return r;
+  };
   const [{ data: productos, error: e1 }, { data: ventas, error: e2 }] = await Promise.all([
-    supabase.from('productos')
-      .select('sku, nombre, costo, precio, stock_meli, discontinuado, unidades_por_venta, meli_id, meli_ids')
-      .limit(5000),
+    leerProductos(),
     supabase.from('ventas')
       .select('sku, cantidad, canal, estado, fecha, total, comision, costo_envio_meli, precio_unit')
       .gte('fecha', desde)
@@ -105,6 +112,8 @@ async function cargarProductos(supabase) {
     .map(p => {
       const costo = num(p.costo) * Math.max(1, num(p.unidades_por_venta) || 1);
       const e = eco.de(p.sku);
+      // Sin envío gratis lo paga el comprador: no le resta nada al vendedor.
+      const envioGratis = p.envio_gratis !== false;
       const vendidas60 = e.vendidas60;
       const seg = R.segmento({ stock: p.stock_meli, vendidas60, discontinuado: p.discontinuado, costo });
       return {
@@ -112,7 +121,8 @@ async function cargarProductos(supabase) {
         nombre: p.nombre,
         costo,
         comision: Math.round(e.comision * 1000) / 1000,
-        envio: Math.round(e.envio),
+        envio_gratis: envioGratis,
+        envio: envioGratis ? Math.round(e.envio) : 0,
         precio_reciente: Math.round(e.precio_reciente * 100) / 100,
         stock: num(p.stock_meli),
         vendidas60,
@@ -404,8 +414,25 @@ module.exports = async (req, res) => {
 
     if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
 
-    const meliId = String(req.body?.meli_id || '').trim();
     const accion = String(req.body?.accion || '');
+
+    // Envío gratis sí/no de un producto: cambia el neto y lo que aguanta cada promo.
+    if (accion === 'envio') {
+      const sku = String(req.body?.sku || '').trim();
+      if (!sku) return res.status(400).json({ ok: false, error: 'Falta el SKU.' });
+      const { error } = await supabase.from('productos')
+        .update({ envio_gratis: req.body?.envio_gratis !== false })
+        .eq('sku', sku);
+      if (error) {
+        const falta = /envio_gratis/.test(error.message || '');
+        return res.status(falta ? 409 : 500).json({ ok: false, error: falta
+          ? 'Falta correr la migración supabase/migrations/20261113000000_add_envio_gratis.sql en Supabase.'
+          : error.message });
+      }
+      return res.json({ ok: true });
+    }
+
+    const meliId = String(req.body?.meli_id || '').trim();
     if (!meliId || !['aceptar', 'propio', 'sacar'].includes(accion)) {
       return res.status(400).json({ ok: false, error: 'Falta meli_id o la acción no es válida.' });
     }

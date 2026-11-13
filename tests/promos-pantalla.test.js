@@ -142,3 +142,11 @@ test('sacar en lote las promos corriendo fuera de regla', async () => {
   await esperarPosts(antes);
   assert.deepStrictEqual(posts.slice(antes), [{ meli_id: 'MLU884316822', accion: 'sacar', promo_id: 'P-10' }]);
 });
+
+test('envío gratis sí/no: el interruptor guarda el producto', async () => {
+  const antes = posts.length;
+  const input = page.locator('tr', { hasText: 'Soporte Celular Moto' }).locator('input[data-sku]');
+  await input.uncheck();
+  for (let i = 0; i < 50 && posts.length === antes; i++) await page.waitForTimeout(100);
+  assert.deepStrictEqual(posts[posts.length - 1], { accion: 'envio', sku: 'SOP-CEL-ESP-001', envio_gratis: false });
+});

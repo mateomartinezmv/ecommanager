@@ -225,3 +225,35 @@ test('HS-30006: margen alto, el piso neto deja el 30% del segmento', () => {
   assert.ok(lim.maximo > 0.17 && lim.maximo < 0.18);
   assert.strictEqual(lim.limita, 'neto');
 });
+
+// ── Precio creíble: por debajo de lo vendido en los últimos 30 días ─────────
+
+test('portapatente: el 5% a $1.226 no es creíble (vendido a $1.188); entra a $1.175', () => {
+  const p = R.normalizarPromo({ type: 'PRICE_DISCOUNT', status: 'candidate', original_price: 1290, price: 0,
+    min_discounted_price: 490.2, max_discounted_price: 1225.5, suggested_discounted_price: 1225.5 }, 1290);
+  const ctx = { costo: 405, seg: 'algo', comision: 0.151, envio: 125, precioReciente: 1176.85 };
+  const ev = R.evaluarPromo(p, ctx);
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.deal_price, 1175);
+  assert.match(ev.motivo, /últimos 30 días/);
+  assert.ok(ev.neto_pct >= 30);
+  // El descuento propio también queda por debajo.
+  assert.ok(R.descuentoPropio({ precioLista: 1290, ...ctx }).precio < 1176.85);
+});
+
+test('precio creíble imposible dentro de las reglas → rechazar con el motivo', () => {
+  const p = R.normalizarPromo({ type: 'PRICE_DISCOUNT', status: 'candidate', original_price: 1190, price: 0,
+    min_discounted_price: 238, max_discounted_price: 1130.5, suggested_discounted_price: 1130.5 }, 1190);
+  // Fat bar rojo: máximo ~6% por el piso neto; si se vendió a $1.000 hace poco, no llega.
+  const ev = R.evaluarPromo(p, { costo: 484, seg: 'quieto', comision: 0.146, envio: 135, precioReciente: 1000 });
+  assert.strictEqual(ev.veredicto, 'rechazar');
+  assert.match(ev.motivo, /no lo toma como descuento/);
+});
+
+test('promos de precio fijo (cofondeadas) no se tocan por el precio reciente', () => {
+  const p = R.normalizarPromo({ id: 'P', type: 'SMART_LIGHTNING', status: 'candidate', original_price: 990,
+    price: 672.21, meli_percentage: 5.6, seller_percentage: 26.5 }, 990);
+  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto', comision: 0.192, envio: 159, precioReciente: 600 });
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.deal_price, null);
+});

@@ -117,7 +117,7 @@ test('aceptar en lote: "Seleccionar todas" marca una por publicación, la de mej
   await esperarPosts(antes);
   await page.waitForFunction(() => document.getElementById('resultado-lote').style.display === 'block');
   assert.deepStrictEqual(posts.slice(antes), [{ meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-28' }]);
-  assert.match(await page.textContent('#resultado-lote'), /1 de 1 aplicadas/);
+  assert.match(await page.textContent('#resultado-lote'), /1 de 1 listas/);
 });
 
 test('rechazar en lote: no llama a MELI, oculta y se puede deshacer', async () => {

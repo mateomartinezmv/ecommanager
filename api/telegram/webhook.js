@@ -20,7 +20,8 @@ const AYUDA =
   '⚠️ Ventas de publicaciones sin vincular al CRM.\n' +
   '📦 Publicaciones cuyo stock no se pudo corregir.\n' +
   '📣 Lo que se publica en Instagram y Facebook.\n' +
-  '📊 El resumen del día a las 20:00.\n\n' +
+  '📊 El resumen del día a las 20:00.\n' +
+  '📈 La revisión semanal de Ads, los lunes a la tarde.\n\n' +
   'Lo demás se maneja desde el CRM.';
 
 module.exports = async (req, res) => {

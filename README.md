@@ -91,6 +91,7 @@ El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
 | ⚠️ Stock de MELI sin poder corregir | Una publicación lleva 3 horas seguidas con un stock distinto al del CRM y MELI rechaza la corrección. Una sola vez por publicación. |
 | 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |
 | 📦 Resumen del día | Todos los días a las 20:00: ventas por canal, envíos activos y stock bajo (sin descatalogados). |
+| 📊 Revisión semanal de Ads | Los lunes a la tarde: cómo le fue a cada campaña contra la semana anterior, qué pausar, qué escalar, qué empezar a anunciar, qué promos aceptar y si sirvieron los cambios de la semana anterior. Sólo recomienda: los cambios se hacen desde el CRM. |
 
 Ya no avisa las publicaciones pausadas en MELI ni responde comandos (`stock`, `ventas hoy`,
 `ganancia`, cargar ventas escribiendo, etc.).
@@ -99,6 +100,23 @@ Ya no avisa las publicaciones pausadas en MELI ni responde comandos (`stock`, `v
 vuelve a registrar el webhook. Sin eso Telegram no manda los toques de los botones y
 Aceptar / Rechazar no hacen nada. Las tablas que usa están en
 `supabase/migrations/20261113010000_telegram_preguntas_fallos_stock.sql`.
+
+### Revisión semanal de Ads
+
+1. **Lunes 12:00 a 12:20 (Uruguay)**, el cron `api/cron/ads-semanal.js` junta la semana cerrada
+   (lunes a domingo) en `ads_revision_partes`, una fila por parte: `campanas` (la semana y la
+   anterior), `anuncios` (cada anuncio con margen, ROAS de equilibrio y ganancia),
+   `recomendaciones` (qué anunciar, apagar o escalar), `promos` (invitaciones con su veredicto)
+   y `cambios` (antes y después de lo que se tocó en Ads). Son las mismas cuentas que muestran
+   las pestañas de Ads y Promos: el cron llama a esos endpoints.
+2. **Lunes a la tarde**, una tarea programada de Claude lee esas filas, arma la revisión y la
+   deja en `telegram_cola` (y como fila `informe`, que la de la semana siguiente lee para ver
+   qué se aplicó).
+3. El cron `api/cron/telegram-cola.js` (cada 5 minutos) la manda al chat. Un texto largo sale
+   en varios mensajes y, si Telegram rechaza el HTML, sale sin formato.
+
+Para correr una parte a mano: en Vercel → Settings → Cron Jobs → **Run** en la que quieras.
+Las tablas están en `supabase/migrations/20261114000000_ads_revision_telegram_cola.sql`.
 
 ---
 

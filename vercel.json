@@ -79,6 +79,30 @@
     {
       "path": "/api/cron/instagram-publicar",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/ads-semanal?parte=campanas",
+      "schedule": "0 15 * * 1"
+    },
+    {
+      "path": "/api/cron/ads-semanal?parte=anuncios",
+      "schedule": "5 15 * * 1"
+    },
+    {
+      "path": "/api/cron/ads-semanal?parte=recomendaciones",
+      "schedule": "10 15 * * 1"
+    },
+    {
+      "path": "/api/cron/ads-semanal?parte=promos",
+      "schedule": "15 15 * * 1"
+    },
+    {
+      "path": "/api/cron/ads-semanal?parte=cambios",
+      "schedule": "20 15 * * 1"
+    },
+    {
+      "path": "/api/cron/telegram-cola",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

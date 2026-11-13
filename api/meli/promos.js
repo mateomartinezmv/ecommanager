@@ -176,6 +176,18 @@ async function auditar(token, supabase, soloMeliId = null) {
     .filter(id => !soloMeliId || id === soloMeliId);
 
   const items = await leerItems(token, ids);
+  // Para una sola publicación (el POST), si MELI no la devolvió se reintenta de a una: en
+  // los lotes, entre tantas llamadas seguidas, el multiget a veces vuelve vacío.
+  if (soloMeliId && !items[soloMeliId]) {
+    for (let intento = 0; intento < 2 && !items[soloMeliId]; intento++) {
+      await new Promise(r => setTimeout(r, 700));
+      const { ok, data } = await meliFetch(token, `/items/${soloMeliId}?attributes=id,title,status,price,permalink`);
+      if (ok && data?.id) {
+        items[soloMeliId] = { meli_id: data.id, titulo: data.title || null, estado: data.status || null,
+          precio: num(data.price), permalink: data.permalink || null };
+      }
+    }
+  }
   const activos = Object.values(items).filter(i => i.estado === 'active').map(i => i.meli_id);
   const promos = {};
   const refs = {};
@@ -197,20 +209,62 @@ async function auditar(token, supabase, soloMeliId = null) {
 
 // ── Acciones ────────────────────────────────────────────────────────────────
 
-async function aceptar(token, pub, promoId) {
-  const p = pub.propuestas.find(x => x.id === promoId);
+// Cuántas unidades se ofrecen en una relámpago: todo el stock del CRM, dentro de lo que
+// MELI pida para ese tipo (si lo informa).
+function stockParaOferta(p, stock) {
+  let s = Math.max(1, Math.floor(num(stock)));
+  if (p.stock_max) s = Math.min(s, p.stock_max);
+  if (p.stock_min) s = Math.max(s, p.stock_min);
+  return s;
+}
+
+// El cuerpo que pide MELI para entrar, según el tipo de promoción.
+function cuerpoParaAceptar(p, ev, stock) {
+  // Candidata PRICE_DISCOUNT: no es una campaña, es MELI diciendo "podés poner un descuento".
+  // Se crea como descuento individual, con fechas (sin fechas MELI lo rechaza).
+  if (p.tipo === 'PRICE_DISCOUNT') {
+    const fin = new Date(Date.now() + DIAS_DESCUENTO_PROPIO * 86400000);
+    return {
+      promotion_type: 'PRICE_DISCOUNT',
+      deal_price: ev.deal_price || p.precio,
+      start_date: soloFecha(Date.now()),
+      finish_date: soloFecha(fin),
+    };
+  }
+  const body = { promotion_id: p.id, promotion_type: p.tipo };
+  if (p.offer_id) body.offer_id = p.offer_id;
+  if (ev.deal_price) body.deal_price = Math.round(ev.deal_price * 100) / 100;
+  if (/LIGHTNING/.test(p.tipo || '')) body.stock = stockParaOferta(p, stock);
+  return body;
+}
+
+async function aceptar(token, pub, promoClave, stock) {
+  const p = pub.propuestas.find(x => x.clave === promoClave || (x.id && x.id === promoClave));
   if (!p) return { ok: false, error: 'Esa propuesta ya no está: MELI la sacó o cambió. Actualizá la pantalla.' };
   const ev = p.evaluacion;
   if (ev.veredicto === 'rechazar') return { ok: false, error: `No se aplica: ${ev.motivo}` };
 
-  const body = { promotion_id: p.id, promotion_type: p.tipo };
-  if (p.offer_id) body.offer_id = p.offer_id;
-  if (ev.deal_price) body.deal_price = ev.deal_price;
+  const body = cuerpoParaAceptar(p, ev, stock);
   const r = await meliFetch(token, `/seller-promotions/items/${pub.meli_id}?app_version=v2`, {
     method: 'POST', body: JSON.stringify(body),
   });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
-  return { ok: true, precio: ev.deal_price || p.precio, veredicto: ev.veredicto };
+  if (!r.ok) {
+    // Se registra todo: MELI a veces contesta un "Invalid request" pelado y el detalle
+    // sólo se ve comparando lo que se mandó con lo que había en la candidata.
+    console.error('promos aceptar:', pub.meli_id, p.tipo, JSON.stringify(body), r.status,
+      JSON.stringify(r.data), 'candidata:', JSON.stringify(p.crudo));
+    return { ok: false, error: errorDetallado(r) };
+  }
+  return { ok: true, precio: body.deal_price || p.precio, veredicto: ev.veredicto };
+}
+
+// El mensaje de MELI, y si viene genérico, el cuerpo entero (recortado) para ver qué pidió.
+function errorDetallado(r) {
+  const msg = mensajeDeError(r.data, r.status);
+  if (/^(invalid request|bad request|http \d+)$/i.test(String(msg).trim())) {
+    return `${msg} — ${JSON.stringify(r.data).slice(0, 300)}`;
+  }
+  return msg;
 }
 
 async function ponerPropio(token, pub) {
@@ -226,7 +280,7 @@ async function ponerPropio(token, pub) {
       finish_date: soloFecha(fin),
     }),
   });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
+  if (!r.ok) return { ok: false, error: errorDetallado(r) };
   return { ok: true, precio: pub.propio.precio, hasta: soloFecha(fin) };
 }
 
@@ -236,7 +290,7 @@ async function sacar(token, pub, promoId) {
   const r = await meliFetch(token,
     `/seller-promotions/items/${pub.meli_id}?promotion_type=${v.tipo}&promotion_id=${v.id || ''}&app_version=v2`,
     { method: 'DELETE' });
-  if (!r.ok) return { ok: false, error: mensajeDeError(r.data, r.status) };
+  if (!r.ok) return { ok: false, error: errorDetallado(r) };
   return { ok: true };
 }
 
@@ -292,10 +346,11 @@ module.exports = async (req, res) => {
 
     // Se recalcula todo con datos frescos antes de tocar nada.
     const filas = await auditar(token, supabase, meliId);
-    const pub = filas.flatMap(f => f.publicaciones).find(p => p.meli_id === meliId);
+    const fila = filas.find(f => f.publicaciones.some(p => p.meli_id === meliId));
+    const pub = fila?.publicaciones.find(p => p.meli_id === meliId);
     if (!pub) return res.status(404).json({ ok: false, error: 'No encontré esa publicación activa en el CRM.' });
 
-    const r = accion === 'aceptar' ? await aceptar(token, pub, req.body.promo_id)
+    const r = accion === 'aceptar' ? await aceptar(token, pub, req.body.promo_id, fila.stock)
       : accion === 'propio' ? await ponerPropio(token, pub)
       : await sacar(token, pub, req.body.promo_id);
     return res.status(r.ok ? 200 : 422).json(r);
@@ -306,3 +361,4 @@ module.exports = async (req, res) => {
 };
 
 module.exports.armarPublicacion = armarPublicacion;
+module.exports.cuerpoParaAceptar = cuerpoParaAceptar;

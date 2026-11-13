@@ -118,3 +118,55 @@ test('armarPublicacion: promo corriendo fuera de regla, propuestas y referencia 
   assert.strictEqual(pub.referencia.permitido, true);
   assert.strictEqual(pub.precio_minimo, 392);
 });
+
+// ── Formatos reales que devolvió MELI (13/11) ─────────────────────────────────
+
+const { cuerpoParaAceptar } = require('../api/meli/promos');
+
+test('relámpago con rango: el precio es el sugerido, no el `price` (que viene con 3%)', () => {
+  const p = R.normalizarPromo({
+    id: 'LGH-MLU1000', type: 'LIGHTNING', status: 'candidate', original_price: 274, price: 265.78,
+    min_discounted_price: 54.8, max_discounted_price: 246.6, suggested_discounted_price: 232.9,
+    offer_id: 'CANDIDATE-MLU1038861072-77202292965',
+  }, 274);
+  assert.strictEqual(p.precio, 232.9);
+  const ev = R.evaluarPromo(p, { costo: 79, seg: 'quieto' });
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.deal_price, 232.9);
+  const body = cuerpoParaAceptar(p, ev, 16);
+  assert.deepStrictEqual(body, {
+    promotion_id: 'LGH-MLU1000', promotion_type: 'LIGHTNING',
+    offer_id: 'CANDIDATE-MLU1038861072-77202292965', deal_price: 232.9, stock: 16,
+  });
+});
+
+test('candidata PRICE_DISCOUNT sin id: se encuentra por tipo y se crea con fechas', () => {
+  const p = R.normalizarPromo({
+    type: 'PRICE_DISCOUNT', status: 'candidate', original_price: 690, price: 655.5,
+    min_discounted_price: 138, max_discounted_price: 655.5, suggested_discounted_price: 655.5,
+  }, 690);
+  assert.strictEqual(p.id, null);
+  assert.strictEqual(p.clave, 'PRICE_DISCOUNT');
+  const ev = R.evaluarPromo(p, { costo: 153, seg: 'quieto' });
+  const body = cuerpoParaAceptar(p, ev, 29);
+  assert.strictEqual(body.promotion_type, 'PRICE_DISCOUNT');
+  assert.strictEqual(body.deal_price, 655.5);
+  assert.ok(body.start_date && body.finish_date);
+  assert.ok(!('promotion_id' in body));
+});
+
+test('relámpago compartida (cofondeada): manda offer_id y unidades, sin precio', () => {
+  const p = R.normalizarPromo({
+    id: 'P-MLU18023294', type: 'SMART_LIGHTNING', status: 'candidate', name: 'Relámpagos compartidas',
+    original_price: 990, price: 672.21, meli_percentage: 5.6, seller_percentage: 26.5,
+    offer_id: 'CANDIDATE-MLU1038796032-77281344782',
+  }, 990);
+  const ev = R.evaluarPromo(p, { costo: 180, seg: 'quieto' });
+  assert.strictEqual(ev.veredicto, 'aceptar');
+  assert.strictEqual(ev.vendedor_pct, 26.5);
+  const body = cuerpoParaAceptar(p, ev, 18);
+  assert.deepStrictEqual(body, {
+    promotion_id: 'P-MLU18023294', promotion_type: 'SMART_LIGHTNING',
+    offer_id: 'CANDIDATE-MLU1038796032-77281344782', stock: 18,
+  });
+});

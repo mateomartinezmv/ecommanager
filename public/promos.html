@@ -318,7 +318,20 @@ function guardarRechazadas() {
   try { localStorage.setItem(CLAVE_RECHAZADAS, JSON.stringify([...rechazadas])); } catch { /* sin storage */ }
 }
 const idRech = (meliId, promoId) => meliId + '|' + promoId;
-const oculta = (pub, p) => rechazadas.has(idRech(pub.meli_id, p.id));
+// Las candidatas PRICE_DISCOUNT no traen id: se identifican por `clave` (id o tipo).
+const claveDe = p => p.clave || p.id || p.tipo;
+const NOMBRE_TIPO = {
+  PRICE_DISCOUNT: 'Descuento propio (habilitado por MELI)',
+  LIGHTNING: 'Oferta relámpago',
+  SMART_LIGHTNING: 'Relámpago compartida',
+  DOD: 'Oferta del día',
+  DEAL: 'Campaña',
+  SMART: 'Campaña automatizada',
+  PRICE_MATCHING: 'Precio competitivo',
+  MARKETPLACE_CAMPAIGN: 'Campaña de MELI',
+};
+const nombrePromo = p => p.nombre || NOMBRE_TIPO[p.tipo] || p.tipo;
+const oculta = (pub, p) => rechazadas.has(idRech(pub.meli_id, claveDe(p)));
 const propuestasVisibles = pub => pub.propuestas.filter(p => !oculta(pub, p));
 
 const sel = { aceptar: new Set(), contraoferta: new Set(), rechazar: new Set(), sacar: new Set() };
@@ -343,7 +356,7 @@ function itemsDe(grupo) {
       continue;
     }
     for (const p of propuestasVisibles(pub)) {
-      if (p.evaluacion.veredicto === grupo) out.push({ key: idRech(pub.meli_id, p.id), meli_id: pub.meli_id, promo_id: p.id, pub, p });
+      if (p.evaluacion.veredicto === grupo) out.push({ key: idRech(pub.meli_id, claveDe(p)), meli_id: pub.meli_id, promo_id: claveDe(p), pub, p });
     }
   }
   return out;
@@ -523,30 +536,30 @@ function vigenteHtml(pub) {
   const ev = v.evaluacion;
   const [cls, txt] = ev.veredicto === 'rechazar' ? ['badge-red', '⚠️ Fuera de regla'] : ['badge-green', '✓ Dentro de regla'];
   return `<div class="mono">${plata(v.precio)} <span class="muted">(${pct(ev.total_pct)})</span></div>
-    <div class="muted">${esc(v.nombre || v.tipo)}${v.fin ? ' · hasta ' + fecha(v.fin) : ''}</div>
+    <div class="muted">${esc(nombrePromo(v))}${v.fin ? ' · hasta ' + fecha(v.fin) : ''}</div>
     <span class="badge ${cls}" style="margin-top:4px">${txt}</span>
     ${ev.veredicto === 'rechazar' ? `<div class="promo-motivo">${esc(ev.motivo)}</div>
       <label class="sel-vig"><input type="checkbox" class="sel" data-grupo="sacar" data-key="${esc(pub.meli_id + '|' + (v.id || ''))}" ${sel.sacar.has(pub.meli_id + '|' + (v.id || '')) ? 'checked' : ''} onchange="toggleSel(this)"> Seleccionar</label>
-      <button class="btn btn-sm btn-red" style="margin-top:6px" data-meli="${esc(pub.meli_id)}" data-accion="sacar" data-promo="${esc(v.id || '')}" data-pregunta="¿Sacar esta publicación de ${esc(v.nombre || v.tipo)}? Vuelve a ${plata(pub.precio)}." onclick="accion(this)">Sacar de la promo</button>` : ''}`;
+      <button class="btn btn-sm btn-red" style="margin-top:6px" data-meli="${esc(pub.meli_id)}" data-accion="sacar" data-promo="${esc(v.id || '')}" data-pregunta="¿Sacar esta publicación de ${esc(nombrePromo(v))}? Vuelve a ${plata(pub.precio)}." onclick="accion(this)">Sacar de la promo</button>` : ''}`;
 }
 
 function propuestaHtml(pub, p) {
   const ev = p.evaluacion;
   const [cls, txt] = VEREDICTO[ev.veredicto];
-  const clave = idRech(pub.meli_id, p.id);
+  const clave = idRech(pub.meli_id, claveDe(p));
   const nums = ev.meli_pct > 0
     ? `${pct(ev.total_pct)} total: vos ${pct(ev.vendedor_pct)} + MELI ${pct(ev.meli_pct)}`
     : `${pct(ev.total_pct)}, todo a tu cargo`;
   let boton = '';
   if (ev.veredicto === 'aceptar') {
-    boton = `<button class="btn btn-sm btn-ok" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(p.id)}" data-pregunta="Entrar a ${esc(p.nombre || p.tipo)} a ${plata(ev.precio_final)}?" onclick="accion(this)">Aceptar a ${plata(ev.precio_final)}</button>`;
+    boton = `<button class="btn btn-sm btn-ok" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(claveDe(p))}" data-pregunta="Entrar a ${esc(nombrePromo(p))} a ${plata(ev.precio_final)}?" onclick="accion(this)">Aceptar a ${plata(ev.precio_final)}</button>`;
   } else if (ev.veredicto === 'contraoferta') {
-    boton = `<button class="btn btn-sm btn-blue" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(p.id)}" data-pregunta="Entrar a ${esc(p.nombre || p.tipo)} a ${plata(ev.deal_price)} (${pct(ev.contra_pct)}) en vez de ${plata(ev.precio_final)}?" onclick="accion(this)">Entrar a ${plata(ev.deal_price)} (${pct(ev.contra_pct)})</button>`;
+    boton = `<button class="btn btn-sm btn-blue" data-meli="${esc(pub.meli_id)}" data-accion="aceptar" data-promo="${esc(claveDe(p))}" data-pregunta="Entrar a ${esc(nombrePromo(p))} a ${plata(ev.deal_price)} (${pct(ev.contra_pct)}) en vez de ${plata(ev.precio_final)}?" onclick="accion(this)">Entrar a ${plata(ev.deal_price)} (${pct(ev.contra_pct)})</button>`;
   }
   return `<div class="promo ${ev.veredicto}">
     <div class="promo-top">
       <span class="izq"><input type="checkbox" class="sel" data-grupo="${ev.veredicto}" data-key="${esc(clave)}" ${sel[ev.veredicto].has(clave) ? 'checked' : ''} onchange="toggleSel(this)" title="Seleccionar para aplicar en lote">
-      <span style="font-size:12px;font-weight:600">${esc(p.nombre || p.tipo)}</span></span>
+      <span style="font-size:12px;font-weight:600">${esc(nombrePromo(p))}</span></span>
       <span class="badge ${cls}">${txt}</span>
     </div>
     <div class="promo-nums"><span class="mono">${plata(p.precio)}</span> · ${nums}${p.inicio ? ' · ' + fecha(p.inicio) + '–' + fecha(p.fin) : ''}</div>

@@ -87,14 +87,24 @@ function limites({ precioLista, costo, seg }) {
  * Cada tipo trae los números con nombres distintos: unas un precio fijo (`price`), otras un
  * rango donde el vendedor elige (`min_discounted_price`…`max_discounted_price`).
  */
+//
+// OJO con `price` en las candidatas con rango (LIGHTNING, DOD, PRICE_DISCOUNT): no es el
+// precio de la oferta. En una relámpago llega un 3% de descuento cuando el rango que MELI
+// acepta arranca en 10%; mandar ese precio es "Invalid request". Con rango, manda el
+// sugerido (y si no hay, el tope del rango).
 function normalizarPromo(p, precioItem) {
   const lista = num(p.original_price) || num(precioItem);
   const min = num(p.min_discounted_price) || null;
   const max = num(p.max_discounted_price) || null;
   const sugerido = num(p.suggested_discounted_price) || null;
-  const precio = num(p.price) || sugerido || max || null;
+  const conRango = !!(min || max);
+  const precio = conRango ? (sugerido || max) : (num(p.price) || sugerido || null);
+  const id = p.id || p.promotion_id || null;
   return {
-    id: p.id || p.promotion_id || null,
+    id,
+    // Las candidatas PRICE_DISCOUNT ("podés poner tu descuento") no traen id: la clave para
+    // encontrarlas de nuevo es el tipo, que en una publicación no se repite.
+    clave: id || p.type || null,
     tipo: p.type || null,
     nombre: p.name || null,
     estado: p.status || null,
@@ -106,6 +116,12 @@ function normalizarPromo(p, precioItem) {
     meli_pct: num(p.meli_percentage) / 100,
     seller_pct: p.seller_percentage !== undefined && p.seller_percentage !== null ? num(p.seller_percentage) / 100 : null,
     offer_id: p.offer_id || p.ref_id || null,
+    // Las relámpago piden cuántas unidades van a la oferta. MELI no documenta igual el nombre
+    // en todos los tipos: se toma el que venga.
+    stock_min: num(p.min_stock ?? p.stock?.min ?? p.min_quantity) || null,
+    stock_max: num(p.max_stock ?? p.stock?.max ?? p.max_quantity) || null,
+    // Lo que mandó MELI tal cual, para diagnosticar tipos nuevos sin adivinar.
+    crudo: p,
   };
 }
 

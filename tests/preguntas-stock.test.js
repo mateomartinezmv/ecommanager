@@ -9,7 +9,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { stockParaRespuesta, lineaStock, reglaStock } = require('../api/_stockRespuesta');
+const { stockParaRespuesta, lineaStock, reglaStock, partirNombre } = require('../api/_stockRespuesta');
 const { construirPrompt } = require('../api/_meliPreguntas');
 
 function fakeSupabase(tablas) {
@@ -77,13 +77,13 @@ test('encuentra el producto también por una publicación secundaria o por meli_
 test('el prompt sólo dice que hay stock cuando el CRM lo confirma', () => {
   const q = { text: '¿Tenés stock?' };
   const con = construirPrompt(q, 'Manillar', { estado: 'con_stock', disponibles: 4 });
-  assert.match(con, /Hay stock y se envía a todo Uruguay/);
+  assert.match(con, /Hay stock\. No digas cuántas unidades quedan/);
   assert.doesNotMatch(con, /\b4\b/, 'no le pasa la cantidad');
 
   for (const stock of [{ estado: 'sin_stock' }, { estado: 'descatalogado' }, { estado: 'vuelve_pronto', llegada: '2026-12-05' }]) {
     const p = construirPrompt(q, 'Manillar', stock);
     assert.match(p, /NO hay stock|ya no se vende/, stock.estado);
-    assert.doesNotMatch(p, /Hay stock y se envía/, stock.estado);
+    assert.doesNotMatch(p, /Hay stock\. No digas/, stock.estado);
     assert.match(p, /aclarale en una frase corta que por ahora no hay stock/, stock.estado);
   }
   const pronto = construirPrompt(q, 'Manillar', { estado: 'vuelve_pronto', llegada: '2026-12-05' });
@@ -94,7 +94,7 @@ test('el prompt sólo dice que hay stock cuando el CRM lo confirma', () => {
   for (const stock of [undefined, { estado: 'sin_vincular' }]) {
     const p = construirPrompt(q, 'Manillar', stock);
     assert.match(p, /no lo confirmes ni lo niegues/);
-    assert.doesNotMatch(p, /Hay stock y se envía/);
+    assert.doesNotMatch(p, /Hay stock\. No digas/);
   }
 });
 
@@ -134,4 +134,63 @@ test('listarRecientes: pagina hasta la fecha de corte, con la respuesta de cada 
   } finally {
     global.fetch = original;
   }
+});
+
+// ── Variantes (el mismo producto en otros colores) ─────────────────────────
+
+const guardamanos = (color, stock, extra = {}) => ({
+  sku: `GM-${color}`, nombre: `Guardamanos Protector Puños Moto Enduro Cross ABS - ${color}`, grupo: 'Protección',
+  stock_dep: stock, unidades_por_venta: 1, discontinuado: false, meli_ids: [`MLU-${color}`], ...extra,
+});
+
+test('partirNombre: la última palabra es la variante, con o sin guion', () => {
+  assert.deepStrictEqual(partirNombre('Guardamanos Protector Puños Moto Enduro Cross ABS - Rojo'),
+    { base: 'guardamanos protector punos moto enduro cross abs', variante: 'Rojo' });
+  assert.deepStrictEqual(partirNombre('Puños Domino Para Moto Manubrio Goma Antideslizante Azul'),
+    { base: 'punos domino para moto manubrio goma antideslizante', variante: 'Azul' });
+});
+
+test('variantes: el rojo sabe que el azul tiene stock y el negro no', async () => {
+  const s = fakeSupabase({
+    productos: [
+      guardamanos('Rojo', 3), guardamanos('Azul', 6), guardamanos('Negro', 0),
+      // Otro guardamanos, otro producto: no es variante.
+      { sku: 'HP-HS010', nombre: 'Guardamanos Moto Con Señalero LED Integrado Negro', grupo: 'Protección', stock_dep: 1, unidades_por_venta: 1, discontinuado: false, meli_ids: ['MLU9'] },
+      // Mismo nombre base en otro grupo: tampoco.
+      { sku: 'OTRO', nombre: 'Guardamanos Protector Puños Moto Enduro Cross ABS - Verde', grupo: 'Otros', stock_dep: 4, unidades_por_venta: 1, discontinuado: false, meli_ids: [] },
+    ],
+    importaciones: [],
+  });
+  const r = await stockParaRespuesta(s, 'MLU-Rojo', HOY);
+  assert.strictEqual(r.estado, 'con_stock');
+  assert.deepStrictEqual(r.variantes.map(v => [v.variante, v.estado, v.actual]),
+    [['Rojo', 'con_stock', true], ['Azul', 'con_stock', false], ['Negro', 'sin_stock', false]]);
+
+  const prompt = construirPrompt({ text: 'hola. Tenés Blancos o Negros?' }, 'Guardamanos Rojo', r);
+  assert.match(prompt, /Rojo \(la de esta publicación\): hay stock; Azul: hay stock; Negro: sin stock por ahora/);
+  assert.match(prompt, /esa no la traemos/);
+  assert.match(prompt, /Nunca le digas que consulte de nuevo/);
+  assert.doesNotMatch(prompt, /Verde/);
+
+  assert.match(lineaStock(r), /3 disponibles\n🎨 <b>Otras variantes:<\/b> Azul 6 · Negro sin stock/);
+});
+
+test('variantes: la que llega en una importación dice que llega pronto; la descatalogada, que no se trae', async () => {
+  const s = fakeSupabase({
+    productos: [guardamanos('Rojo', 3), guardamanos('Negro', 0), guardamanos('Azul', 0, { discontinuado: true })],
+    importaciones: [imp('2026-12-05', 'ordered', 'GM-Negro')],
+  });
+  const r = await stockParaRespuesta(s, 'MLU-Rojo', HOY);
+  const prompt = construirPrompt({ text: '¿En negro?' }, 'Guardamanos Rojo', r);
+  assert.match(prompt, /Negro: sin stock, pero llega pronto/);
+  assert.match(prompt, /Azul: ya no la traemos/);
+  assert.match(lineaStock(r), /Negro sin stock \(llega ~2026-12-05\)/);
+});
+
+test('sin variantes: a otro color se contesta que solo está la de la publicación', async () => {
+  const s = fakeSupabase({ productos: [prod({ stock_dep: 2 })], importaciones: [] });
+  const r = await stockParaRespuesta(s, 'MLU1', HOY);
+  assert.strictEqual(r.variantes, undefined);
+  assert.match(reglaStock(r), /solo tenemos la de la publicación/);
+  assert.doesNotMatch(lineaStock(r), /Otras variantes/);
 });

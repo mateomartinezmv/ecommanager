@@ -105,3 +105,33 @@ test('la línea para Telegram dice qué dato usó', () => {
   assert.strictEqual(lineaStock(null), null);
   assert.ok(reglaStock({ estado: 'con_stock' }));
 });
+
+test('listarRecientes: pagina hasta la fecha de corte, con la respuesta de cada pregunta', async () => {
+  const { listarRecientes } = require('../api/_meliPreguntas');
+  const pedidas = [];
+  const pagina = (offset) => Array.from({ length: 50 }, (_, i) => {
+    const n = offset + i;
+    const dia = String(30 - Math.floor(n / 4)).padStart(2, '0');
+    return { id: n, item_id: 'MLU1', date_created: `2026-11-${dia}T10:00:00.000-03:00`, status: 'ANSWERED',
+      text: `pregunta ${n}`, answer: n % 2 ? { text: `respuesta ${n}` } : null };
+  });
+  const original = global.fetch;
+  global.fetch = async (url) => {
+    pedidas.push(String(url));
+    const offset = Number(new URL(url).searchParams.get('offset'));
+    return { ok: true, status: 200, json: async () => ({ questions: pagina(offset) }) };
+  };
+  try {
+    const r = await listarRecientes('tok', 123, { desde: '2026-11-10', max: 1000 });
+    assert.ok(r.every(q => q.fecha >= '2026-11-10'), 'nada anterior al corte');
+    assert.strictEqual(r.length, 84, 'del 30 al 10 de noviembre, 4 por día');
+    assert.deepStrictEqual(r[1], { id: 1, item_id: 'MLU1', fecha: '2026-11-30', estado: 'ANSWERED', texto: 'pregunta 1', respuesta: 'respuesta 1' });
+    assert.strictEqual(pedidas.length, 2, 'deja de paginar al pasar la fecha');
+    assert.match(pedidas[0], /seller_id=123/);
+
+    const tope = await listarRecientes('tok', 123, { max: 30 });
+    assert.strictEqual(tope.length, 30);
+  } finally {
+    global.fetch = original;
+  }
+});

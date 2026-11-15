@@ -103,6 +103,26 @@
     {
       "path": "/api/cron/telegram-cola",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/pubs-auditoria?parte=conversion",
+      "schedule": "30 15 1,15 * *"
+    },
+    {
+      "path": "/api/cron/pubs-auditoria?parte=angulos",
+      "schedule": "35 15 1,15 * *"
+    },
+    {
+      "path": "/api/cron/pubs-auditoria?parte=fotos",
+      "schedule": "40 15 1,15 * *"
+    },
+    {
+      "path": "/api/cron/pubs-auditoria?parte=publicaciones",
+      "schedule": "45 15 1,15 * *"
+    },
+    {
+      "path": "/api/cron/pubs-auditoria?parte=preguntas",
+      "schedule": "50 15 1,15 * *"
     }
   ]
 }

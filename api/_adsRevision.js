@@ -8,22 +8,13 @@
 // ninguna se coma el tiempo de las otras.
 
 const { invocar } = require('./_invocar');
+const { hoyEnUruguay, sumarDias, aligerar, resultado, correrYGuardar } = require('./_revisiones');
 
 const TABLA = 'ads_revision_partes';
 
 // ── La semana que se revisa ────────────────────────────────────────────────────────────
 // Siempre la última semana cerrada de lunes a domingo, en hora de Montevideo: si el cron
 // corre el lunes, es la que terminó ayer; si se corre a mano un miércoles, la misma.
-function hoyEnUruguay(fecha = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo' }).format(fecha);
-}
-
-function sumarDias(iso, n) {
-  const d = new Date(`${iso}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
 function semanaCerrada(fecha = new Date()) {
   const hoy = hoyEnUruguay(fecha);
   const dow = new Date(`${hoy}T12:00:00Z`).getUTCDay();        // 0 = domingo
@@ -34,22 +25,6 @@ function semanaCerrada(fecha = new Date()) {
     hasta: sumarDias(desde, 6),
     anterior: { desde: sumarDias(desde, -7), hasta: sumarDias(desde, -1) },
   };
-}
-
-// ── Aligerar ───────────────────────────────────────────────────────────────────────────
-const SOBRAN = new Set(['thumbnail', 'permalink', 'imagen', 'imagenes', 'pictures', 'foto', 'fotos']);
-
-function aligerar(valor) {
-  if (Array.isArray(valor)) return valor.map(aligerar);
-  if (valor && typeof valor === 'object') {
-    const out = {};
-    for (const [k, v] of Object.entries(valor)) {
-      if (SOBRAN.has(k)) continue;
-      out[k] = aligerar(v);
-    }
-    return out;
-  }
-  return valor;
 }
 
 // Promos: interesa lo que pide una decisión, no el catálogo entero. Quedan las
@@ -112,35 +87,11 @@ const PARTES = {
   },
 };
 
-function resultado(datos, respuestas) {
-  const fallas = respuestas
-    .filter(r => r.status >= 400 || !r.data || r.data.ok === false)
-    .map(r => r.data?.error || r.data?.mensaje || `HTTP ${r.status}`);
-  return { ok: fallas.length === 0, datos, error: fallas.length ? fallas.join(' · ') : null };
-}
-
 async function correrParte(supabase, parte, fecha = new Date()) {
-  const fn = PARTES[parte];
-  if (!fn) throw new Error(`Parte desconocida: ${parte}. Opciones: ${Object.keys(PARTES).join(', ')}`);
   const sem = semanaCerrada(fecha);
-
-  let r;
-  try {
-    r = await fn(sem);
-  } catch (err) {
-    r = { ok: false, datos: null, error: err.message };
-  }
-
-  const { error } = await supabase.from(TABLA).upsert({
-    semana: sem.desde,
-    parte,
-    ok: r.ok,
-    error: r.error,
-    datos: r.datos,
-    generado_at: new Date().toISOString(),
+  return correrYGuardar({
+    supabase, tabla: TABLA, partes: PARTES, parte, clave: { semana: sem.desde }, contexto: sem,
   });
-  if (error) throw new Error(`No se pudo guardar ${parte}: ${error.message}`);
-  return { semana: sem.desde, parte, ok: r.ok, error: r.error };
 }
 
 module.exports = {

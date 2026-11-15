@@ -32,6 +32,37 @@ async function listarSinResponder(token, sellerId, limit = 50) {
   return { total: data.total || 0, questions: data.questions || [] };
 }
 
+// Las preguntas recibidas (respondidas o no) desde una fecha, de la más nueva a la más vieja.
+// La usa la auditoría de publicaciones para encontrar lo que los compradores preguntan una y
+// otra vez y que la publicación no aclara. Corta en `max` y nunca pasa del offset que MELI
+// deja paginar.
+async function listarRecientes(token, sellerId, { desde, max = 300 } = {}) {
+  const POR_PAGINA = 50;
+  const salida = [];
+  for (let offset = 0; offset < Math.min(max, 1000); offset += POR_PAGINA) {
+    const data = await meliGet(
+      token,
+      `/questions/search?seller_id=${sellerId}&api_version=4` +
+      `&sort_fields=date_created&sort_types=DESC&limit=${POR_PAGINA}&offset=${offset}`
+    );
+    const lote = data.questions || [];
+    for (const q of lote) {
+      if (desde && String(q.date_created || '').slice(0, 10) < desde) return salida;
+      salida.push({
+        id: q.id,
+        item_id: q.item_id,
+        fecha: String(q.date_created || '').slice(0, 10),
+        estado: q.status,
+        texto: q.text,
+        respuesta: q.answer?.text || null,
+      });
+      if (salida.length >= max) return salida;
+    }
+    if (lote.length < POR_PAGINA) break;
+  }
+  return salida;
+}
+
 async function obtenerPregunta(token, questionId) {
   return meliGet(token, `/questions/${questionId}?api_version=4`);
 }
@@ -163,6 +194,7 @@ module.exports = {
   FIRMA,
   getSellerId,
   listarSinResponder,
+  listarRecientes,
   obtenerPregunta,
   titulosDeItems,
   esPrimeraPregunta,

@@ -92,6 +92,7 @@ El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
 | 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |
 | 📦 Resumen del día | Todos los días a las 20:00: ventas por canal, envíos activos y stock bajo (sin descatalogados). |
 | 📊 Revisión semanal de Ads | Los lunes a la tarde: cómo le fue a cada campaña contra la semana anterior, qué pausar, qué escalar, qué empezar a anunciar, qué promos aceptar y si sirvieron los cambios de la semana anterior. Sólo recomienda: los cambios se hacen desde el CRM. |
+| 🔍 Auditoría de publicaciones | Los días 1 y 15 a la tarde: las publicaciones que la gente ve y no compra y las que casi nadie ve (sólo con stock), con títulos nuevos propuestos, fotos y atributos que faltan, ángulos a crear y qué agregar a la descripción según lo que más preguntan. Sólo propone: los cambios se hacen desde el CRM o MELI. |
 
 Ya no avisa las publicaciones pausadas en MELI ni responde comandos (`stock`, `ventas hoy`,
 `ganancia`, cargar ventas escribiendo, etc.).
@@ -117,6 +118,20 @@ Aceptar / Rechazar no hacen nada. Las tablas que usa están en
 
 Para correr una parte a mano: en Vercel → Settings → Cron Jobs → **Run** en la que quieras.
 Las tablas están en `supabase/migrations/20261114000000_ads_revision_telegram_cola.sql`.
+
+### Auditoría quincenal de publicaciones
+
+Mismo esquema que la de Ads. **Los días 1 y 15 de 12:30 a 12:50 (Uruguay)**, el cron
+`api/cron/pubs-auditoria.js` guarda en `pubs_auditoria_partes`, una fila por parte:
+`conversion` (30 días por producto, endpoint `api/meli/conversion`), `angulos` (publicaciones
+activas y títulos de cada producto), `fotos` (ángulos con otras fotos que la original),
+`publicaciones` (el detalle de las candidatas: las que peor convierten con visitas suficientes,
+las que casi nadie ve y unas pocas de referencia, siempre con stock; título, precio, fotos,
+atributos, envío, visitas por publicación y la descripción de la principal) y `preguntas` (lo
+que preguntaron los compradores en 60 días, por producto). La tarea programada lo analiza esa
+tarde y manda las propuestas por la cola de Telegram.
+
+Tablas: `supabase/migrations/20261114010000_pubs_auditoria.sql`.
 
 ---
 

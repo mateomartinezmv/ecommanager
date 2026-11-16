@@ -77,6 +77,10 @@
       "schedule": "15 * * * *"
     },
     {
+      "path": "/api/cron/sync-ordenes-meli",
+      "schedule": "10 */2 * * *"
+    },
+    {
       "path": "/api/cron/instagram-publicar",
       "schedule": "*/5 * * * *"
     },

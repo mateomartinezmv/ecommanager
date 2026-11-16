@@ -38,14 +38,14 @@ function partirNombre(nombre) {
 }
 
 // Las fechas de llegada de cada SKU que viene en una importación cercana.
-async function llegadasCercanas(supabase, hoy) {
+async function llegadasCercanas(supabase, hoy = new Date(), dias = DIAS_VUELVE_PRONTO) {
   const { data, error } = await supabase
     .from('importaciones')
     .select('llegada, estado, items')
     .neq('estado', 'recibido');
   if (error || !data) return {};
 
-  const limite = new Date(hoy.getTime() + DIAS_VUELVE_PRONTO * 86400000).toISOString().slice(0, 10);
+  const limite = new Date(hoy.getTime() + dias * 86400000).toISOString().slice(0, 10);
   const porSku = {};
   for (const i of data) {
     if (i.estado === 'cancelada' || !i.llegada || i.llegada > limite) continue;
@@ -168,4 +168,4 @@ function reglaStock(stock) {
   return regla;
 }
 
-module.exports = { stockParaRespuesta, lineaStock, reglaStock, partirNombre, DIAS_VUELVE_PRONTO };
+module.exports = { stockParaRespuesta, lineaStock, reglaStock, partirNombre, llegadasCercanas, DIAS_VUELVE_PRONTO };

@@ -10,6 +10,7 @@ const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('..
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 const { cargosDeLinea } = require('./_cargosMeli');
+const { fechaEnUruguay } = require('../_fechas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex', 'fulfillment'];
 
@@ -135,7 +136,7 @@ module.exports = async (req, res) => {
       // estar procesando la misma orden en paralelo.
       const alta = await ventaNueva(supabase, {
         id: ventaId, canal: 'meli',
-        fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+        fecha: fechaEnUruguay(order.date_created),
         orden_meli: String(order.id), pack_id: packId, meli_item_id: meliItemId,
         comprador: order.buyer?.nickname || '',
         sku: producto.sku, producto: producto.nombre,

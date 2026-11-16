@@ -1,5 +1,6 @@
 // api/cron/resumen-diario.js
-// Cron job — se ejecuta todos los días a las 23:00 UTC (20:00 Uruguay)
+// Cron job — todos los días a las 13:00 UTC (10:00 Uruguay): el resumen del día anterior
+// completo, de 00:00 a 23:59 en hora de Montevideo. Envíos y stock son los del momento.
 
 const { getSupabase } = require('../_supabase');
 const { esc, enviar } = require('../_telegram');
@@ -8,6 +9,20 @@ const { esc, enviar } = require('../_telegram');
 // es mañana, y el resumen salía vacío o con el día equivocado.
 function hoyEnUruguay(fecha = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Montevideo' }).format(fecha);
+}
+
+// "2026-11-15" → "2026-11-14"
+function diaAnterior(iso) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+// "2026-11-15" → "domingo 15/11"
+function fechaLarga(iso) {
+  const d = new Date(`${iso}T12:00:00Z`);
+  return `${DIAS[d.getUTCDay()]} ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
 
 const pesos = n => `$${Math.round(n || 0).toLocaleString('es-AR')}`;
@@ -21,10 +36,10 @@ const CANALES = [
 function armarResumen({ fecha, ventas, envios, productos }) {
   // Las canceladas (devoluciones, pedidos de Shopify cancelados) no son ventas del día.
   const v = (ventas || []).filter(x => x.estado !== 'cancelada');
-  let msg = `📦 <b>Resumen del día — ${fecha}</b>\n\n`;
+  let msg = `📦 <b>Resumen de ayer — ${fechaLarga(fecha)}</b>\n\n`;
 
   if (v.length === 0) {
-    msg += `🛒 Sin ventas hoy.\n`;
+    msg += `🛒 Sin ventas.\n`;
   } else {
     const ingresos = v.reduce((a, x) => a + (x.total || 0), 0);
     const comisiones = v.reduce((a, x) => a + (x.comision || 0), 0);
@@ -52,7 +67,7 @@ function armarResumen({ fecha, ventas, envios, productos }) {
 
   const e = envios || [];
   const pendientes = e.filter(x => x.estado === 'pendiente').length;
-  msg += `\n🚚 <b>Envíos activos:</b> ${e.length}` +
+  msg += `\n🚚 <b>Envíos activos ahora:</b> ${e.length}` +
     (e.length ? ` (⏳ sin despachar: ${pendientes} | en camino: ${e.length - pendientes})` : '');
 
   // Los descatalogados no se reponen: no cuentan como stock bajo.
@@ -60,7 +75,7 @@ function armarResumen({ fecha, ventas, envios, productos }) {
     .filter(p => !p.discontinuado && (p.stock_dep ?? 0) <= (p.alerta_min ?? 0))
     .sort((a, b) => (a.stock_dep ?? 0) - (b.stock_dep ?? 0));
   if (stockBajo.length > 0) {
-    msg += `\n\n⚠️ <b>Stock bajo (${stockBajo.length} productos):</b>\n`;
+    msg += `\n\n⚠️ <b>Stock bajo ahora (${stockBajo.length} productos):</b>\n`;
     msg += stockBajo.slice(0, 5).map(p =>
       `${p.stock_dep === 0 ? '🔴' : '🟡'} ${esc(p.nombre)} — ${p.stock_dep} uds`
     ).join('\n');
@@ -79,7 +94,8 @@ module.exports = async (req, res) => {
   }
 
   const supabase = getSupabase();
-  const fecha = hoyEnUruguay();
+  // El día que terminó anoche a las 23:59 en Montevideo.
+  const fecha = diaAnterior(hoyEnUruguay());
 
   try {
     const [ventasRes, enviosRes, productosRes] = await Promise.all([
@@ -105,3 +121,4 @@ module.exports = async (req, res) => {
 
 module.exports.armarResumen = armarResumen;
 module.exports.hoyEnUruguay = hoyEnUruguay;
+module.exports.diaAnterior = diaAnterior;

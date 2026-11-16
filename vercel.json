@@ -58,7 +58,7 @@
   "crons": [
     {
       "path": "/api/cron/resumen-diario",
-      "schedule": "0 23 * * *"
+      "schedule": "0 13 * * *"
     },
     {
       "path": "/api/cron/ads-diario",

@@ -16,6 +16,7 @@ const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMel
 const { cargosDeLinea } = require('./_cargosMeli');
 const { esc, enviar: sendTelegram } = require('../_telegram');
 const { avisarPregunta } = require('../_telegramPreguntas');
+const { fechaEnUruguay } = require('../_fechas');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
@@ -169,7 +170,7 @@ async function handleOrder(resource) {
     const alta = await ventaNueva(supabase, {
       id: ventaId,
       canal: 'meli',
-      fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      fecha: fechaEnUruguay(order.date_created),
       orden_meli: String(order.id),
       // El panel de MELI muestra el pack_id, no el order_id: sin esto, buscar la
       // venta por el número que figura en pantalla no la encuentra. Además es lo

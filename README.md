@@ -90,7 +90,7 @@ El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
 | ⚠️ Venta sin registrar | Se vendió una publicación que no está vinculada a ningún SKU del CRM. |
 | ⚠️ Stock de MELI sin poder corregir | Una publicación lleva 3 horas seguidas con un stock distinto al del CRM y MELI rechaza la corrección. Una sola vez por publicación. |
 | 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |
-| 📦 Resumen del día | Todos los días a las 20:00: ventas por canal, envíos activos y stock bajo (sin descatalogados). |
+| 📦 Resumen de ayer | Todos los días a las 10:00, el día anterior completo (00:00 a 23:59 en Uruguay): ventas por canal y producto más vendido; envíos activos y stock bajo (sin descatalogados) al momento del aviso. |
 | 📊 Revisión semanal de Ads | Los lunes a la tarde: cómo le fue a cada campaña contra la semana anterior, qué pausar, qué escalar, qué empezar a anunciar, qué promos aceptar y si sirvieron los cambios de la semana anterior. Sólo recomienda: los cambios se hacen desde el CRM. |
 | 🔍 Auditoría de publicaciones | Los días 1 y 15 a la tarde: las publicaciones que la gente ve y no compra y las que casi nadie ve (sólo con stock), con títulos nuevos propuestos, fotos y atributos que faltan, ángulos a crear y qué agregar a la descripción según lo que más preguntan. Sólo propone: los cambios se hacen desde el CRM o MELI. |
 

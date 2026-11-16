@@ -119,7 +119,7 @@ const { avisarPregunta, resolverBoton, marcarRespondidaFuera } = require('../api
 const webhook = require('../api/telegram/webhook');
 const notify = require('../api/meli/notify');
 const { contarFallos, registrarFallos } = require('../api/_fallosStock');
-const { armarResumen, hoyEnUruguay, diaAnterior } = require('../api/cron/resumen-diario');
+const { armarResumen, hoyEnUruguay, diaAnterior, stockDeLoVendido } = require('../api/cron/resumen-diario');
 
 const CHAT = '555';
 process.env.TELEGRAM_CHAT_ID = CHAT;
@@ -414,29 +414,61 @@ test('resumen: usa el día de Montevideo, no el de UTC', () => {
   assert.strictEqual(hoyEnUruguay(new Date('2026-11-13T23:00:00Z')), '2026-11-13');
 });
 
-test('resumen: sin canceladas, con Shopify y sin descatalogados en stock bajo', () => {
+test('resumen: sin canceladas y con Shopify', () => {
   const msg = armarResumen({
     fecha: '2026-11-13',
     ventas: [
-      { canal: 'meli', estado: 'pagada', producto: 'Espejo', cantidad: 2, total: 2000, comision: 300 },
-      { canal: 'shopify', estado: 'pagada', producto: 'Puños <Domino>', cantidad: 1, total: 450, comision: 0 },
-      { canal: 'mostrador', estado: 'cancelada', producto: 'Casco', cantidad: 1, total: 9000, comision: 0 },
+      { sku: 'E', canal: 'meli', estado: 'pagada', producto: 'Espejo', cantidad: 2, total: 2000, comision: 300 },
+      { sku: 'P', canal: 'shopify', estado: 'pagada', producto: 'Puños <Domino>', cantidad: 1, total: 450, comision: 0 },
+      { sku: 'C', canal: 'mostrador', estado: 'cancelada', producto: 'Casco', cantidad: 1, total: 9000, comision: 0 },
     ],
     envios: [{ estado: 'pendiente' }, { estado: 'en_camino' }],
-    productos: [
-      { nombre: 'Manillar', stock_dep: 0, alerta_min: 2, discontinuado: false },
-      { nombre: 'Viejo', stock_dep: 0, alerta_min: 2, discontinuado: true },
-      { nombre: 'Slider', stock_dep: 10, alerta_min: 2, discontinuado: false },
-    ],
+    productos: [],
   });
   assert.match(msg, /Ingresos:<\/b> \$2\.450/);
   assert.match(msg, /Ventas:<\/b> 2 \(🟡 MELI: 1 \| 🛍️ Shopify: 1\)/);
   assert.doesNotMatch(msg, /Mostrador/, 'la cancelada no cuenta');
-  assert.match(msg, /Puños &lt;Domino&gt;|Espejo/);
-  assert.match(msg, /Stock bajo ahora \(1 productos\)/);
-  assert.match(msg, /Manillar/);
-  assert.doesNotMatch(msg, /Viejo/);
   assert.match(msg, /sin despachar: 1 \| en camino: 1/);
+});
+
+test('resumen: stock sólo de lo que se vendió — sin stock y menos de 45 días de cobertura', () => {
+  const prod = (sku, nombre, stock_dep, extra = {}) => ({ sku, nombre, stock_dep, unidades_por_venta: 1, discontinuado: false, ...extra });
+  const venta = (sku, cantidad, extra = {}) => ({ sku, canal: 'meli', estado: 'pagada', producto: sku, cantidad, total: 100, comision: 0, ...extra });
+  const ventasDia = [venta('ROJO', 1), venta('ESPEJO', 2), venta('SOPORTE', 1), venta('VIEJO', 1), venta('SLIDER', 1), venta('CANCEL', 1, { estado: 'cancelada' })];
+  const ventasRitmo = [
+    ...ventasDia,
+    venta('ESPEJO', 31),          // 33 en 30 días: 1,1 por día → 10 alcanzan para ~9 días
+    venta('SOPORTE', 2),          // 3 en 30 días: 0,1 por día → 82 alcanzan para 820 días
+    venta('SLIDER', 5),           // 6 pares en 30 días: 0,2 por día → 5 pares para 25 días
+  ];
+  const productos = [
+    prod('ROJO', 'Manillar 22mm - Rojo', 0),
+    prod('ESPEJO', 'Espejos Alerón Grande', 10),
+    prod('SOPORTE', 'Soporte Celular', 82),
+    prod('VIEJO', 'Escape descatalogado', 0, { discontinuado: true }),
+    prod('SLIDER', 'Slider (par)', 11, { unidades_por_venta: 2 }),
+    prod('CANCEL', 'Casco', 0),
+    prod('NOVENDIO', 'Gato elevador', 0),
+  ];
+  const r = stockDeLoVendido({ ventasDia, ventasRitmo, productos, llegadas: { ROJO: '2026-12-12' } });
+  assert.deepStrictEqual(r.quiebres.map(f => f.sku), ['ROJO']);
+  assert.deepStrictEqual(r.cortos.map(f => [f.sku, Math.round(f.dias)]), [['ESPEJO', 9], ['SLIDER', 25]]);
+
+  const msg = armarResumen({ fecha: '2026-11-15', ventas: ventasDia, ventasRitmo, envios: [], productos, llegadas: { ROJO: '2026-12-12' } });
+  assert.match(msg, /Stock de lo que se vendió/);
+  assert.match(msg, /🔴 Manillar 22mm - Rojo: <b>se quedó sin stock<\/b> \(vendió 1\) · llega ~12\/12/);
+  assert.match(msg, /🟡 Espejos Alerón Grande: quedan 10, para ~9 días \(vende 1,1 por día\)/);
+  assert.match(msg, /🟡 Slider \(par\): quedan 5, para ~25 días/);
+  assert.doesNotMatch(msg, /Soporte Celular|Escape descatalogado|Gato elevador|Casco/);
+  assert.doesNotMatch(msg, /Stock bajo/, 'ya no manda la lista general de stock bajo');
+});
+
+test('resumen: si todo lo vendido tiene stock de sobra, lo dice en una línea; sin ventas, no habla de stock', () => {
+  const productos = [{ sku: 'S', nombre: 'Soporte', stock_dep: 80, unidades_por_venta: 1, discontinuado: false }];
+  const ventas = [{ sku: 'S', canal: 'meli', estado: 'pagada', producto: 'Soporte', cantidad: 1, total: 490, comision: 0 }];
+  assert.match(armarResumen({ fecha: '2026-11-15', ventas, ventasRitmo: ventas, envios: [], productos }),
+    /✅ <b>Stock:<\/b> lo que se vendió tiene para más de 45 días/);
+  assert.doesNotMatch(armarResumen({ fecha: '2026-11-15', ventas: [], envios: [], productos }), /Stock/);
 });
 
 test('resumen: a las 10:00 de Montevideo resume el día anterior completo', () => {

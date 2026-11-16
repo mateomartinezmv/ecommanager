@@ -90,7 +90,7 @@ El bot sólo avisa; todo lo demás se maneja desde el CRM. Lo que manda:
 | ⚠️ Venta sin registrar | Se vendió una publicación que no está vinculada a ningún SKU del CRM. |
 | ⚠️ Stock de MELI sin poder corregir | Una publicación lleva 3 horas seguidas con un stock distinto al del CRM y MELI rechaza la corrección. Una sola vez por publicación. |
 | 📣 Instagram / Facebook | Lo que publicó o no pudo publicar la cola de 📣 Redes. |
-| 📦 Resumen de ayer | Todos los días a las 10:00, el día anterior completo (00:00 a 23:59 en Uruguay): ventas por canal y producto más vendido; envíos activos y stock bajo (sin descatalogados) al momento del aviso. |
+| 📦 Resumen de ayer | Todos los días a las 10:00, el día anterior completo (00:00 a 23:59 en Uruguay): ventas por canal y producto más vendido, envíos activos, y el stock de **lo que se vendió ese día**: lo que se quedó sin stock y lo que tiene para menos de 45 días al ritmo de los últimos 30 (con la llegada estimada si viene en una importación). Ya no manda la lista general de stock bajo. |
 | 📊 Revisión semanal de Ads | Los lunes a la tarde: cómo le fue a cada campaña contra la semana anterior, qué pausar, qué escalar, qué empezar a anunciar, qué promos aceptar y si sirvieron los cambios de la semana anterior. Sólo recomienda: los cambios se hacen desde el CRM. |
 | 🔍 Auditoría de publicaciones | Los días 1 y 15 a la tarde: las publicaciones que la gente ve y no compra y las que casi nadie ve (sólo con stock), con títulos nuevos propuestos, fotos y atributos que faltan, ángulos a crear y qué agregar a la descripción según lo que más preguntan. Sólo propone: los cambios se hacen desde el CRM o MELI. |
 
@@ -101,6 +101,14 @@ Ya no avisa las publicaciones pausadas en MELI ni responde comandos (`stock`, `v
 vuelve a registrar el webhook. Sin eso Telegram no manda los toques de los botones y
 Aceptar / Rechazar no hacen nada. Las tablas que usa están en
 `supabase/migrations/20261113010000_telegram_preguntas_fallos_stock.sql`.
+
+### Red de seguridad de las ventas de MELI
+
+Las ventas de MELI entran por el webhook (`api/meli/notify.js`). Si un aviso se pierde, el cron
+`api/cron/sync-ordenes-meli.js` (cada 2 horas) revisa las últimas 50 órdenes pagadas y manda
+por el mismo webhook las que no están en ventas; el webhook no descuenta stock dos veces. Cada
+orden se intenta una sola vez (`meli_notify_log`, topic `sync_ordenes`). Reemplaza a las Edge
+Functions de Supabase `sync-meli-orders` y `procesar-orden-meli`, que quedaron apagadas.
 
 ### Revisión semanal de Ads
 

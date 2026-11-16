@@ -20,6 +20,7 @@ const { descontarStock, sincronizarStock, resumenSync } = require('../_stockSync
 const { getShopifyToken } = require('../_shopifyToken');
 const { unidadesDeDeposito } = require('../_packs');
 const { detectarZona, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { fechaEnUruguay } = require('../_fechas');
 
 const SHOP = 'martinez-motos.myshopify.com';
 const API = `https://${SHOP}/admin/api/2024-01`;
@@ -210,7 +211,7 @@ async function procesarOrden(order, supabase, log) {
   if (estado === 'cancelada') return cancelarOrden(supabase, order, log);
 
   const metodoPago = metodoPagoDeOrden(order);
-  const fecha = order.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+  const fecha = fechaEnUruguay(order.created_at);
   const items = (order.line_items || []).filter(i => (Number(i.quantity) || 0) > 0);
   // Un pedido con varios productos es un carrito: se ve y se cuenta como una sola venta.
   const ventaGrupo = items.length > 1 ? `SHOP_${order.id}` : null;

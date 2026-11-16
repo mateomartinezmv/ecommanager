@@ -119,7 +119,7 @@ const { avisarPregunta, resolverBoton, marcarRespondidaFuera } = require('../api
 const webhook = require('../api/telegram/webhook');
 const notify = require('../api/meli/notify');
 const { contarFallos, registrarFallos } = require('../api/_fallosStock');
-const { armarResumen, hoyEnUruguay } = require('../api/cron/resumen-diario');
+const { armarResumen, hoyEnUruguay, diaAnterior } = require('../api/cron/resumen-diario');
 
 const CHAT = '555';
 process.env.TELEGRAM_CHAT_ID = CHAT;
@@ -433,8 +433,21 @@ test('resumen: sin canceladas, con Shopify y sin descatalogados en stock bajo', 
   assert.match(msg, /Ventas:<\/b> 2 \(🟡 MELI: 1 \| 🛍️ Shopify: 1\)/);
   assert.doesNotMatch(msg, /Mostrador/, 'la cancelada no cuenta');
   assert.match(msg, /Puños &lt;Domino&gt;|Espejo/);
-  assert.match(msg, /Stock bajo \(1 productos\)/);
+  assert.match(msg, /Stock bajo ahora \(1 productos\)/);
   assert.match(msg, /Manillar/);
   assert.doesNotMatch(msg, /Viejo/);
   assert.match(msg, /sin despachar: 1 \| en camino: 1/);
+});
+
+test('resumen: a las 10:00 de Montevideo resume el día anterior completo', () => {
+  // 16/11 13:00 UTC = 10:00 en Montevideo → el día que se resume es el 15/11.
+  assert.strictEqual(diaAnterior(hoyEnUruguay(new Date('2026-11-16T13:00:00Z'))), '2026-11-15');
+  // Cambio de mes y de año.
+  assert.strictEqual(diaAnterior('2026-12-01'), '2026-11-30');
+  assert.strictEqual(diaAnterior('2027-01-01'), '2026-12-31');
+
+  const msg = armarResumen({ fecha: '2026-11-15', ventas: [], envios: [], productos: [] });
+  assert.match(msg, /Resumen de ayer — domingo 15\/11/);
+  assert.match(msg, /Sin ventas\./);
+  assert.match(msg, /Envíos activos ahora:<\/b> 0/);
 });

@@ -7,6 +7,7 @@ const { getSupabase } = require('../_supabase');
 const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
+const { fechaEnUruguay } = require('../_fechas');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -85,7 +86,7 @@ module.exports = async (req, res) => {
         const alta = await ventaNueva(supabase, {
           id: ventaId,
           canal: 'meli',
-          fecha: order.date_created?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+          fecha: fechaEnUruguay(order.date_created),
           orden_meli: String(order.id),
           pack_id: order.pack_id ? String(order.pack_id) : null,
           meli_item_id: meliItemId,

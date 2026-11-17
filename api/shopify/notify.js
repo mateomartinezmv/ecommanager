@@ -19,7 +19,8 @@ const { getSupabase } = require('../_supabase');
 const { descontarStock, sincronizarStock, resumenSync } = require('../_stockSync');
 const { getShopifyToken } = require('../_shopifyToken');
 const { unidadesDeDeposito } = require('../_packs');
-const { detectarZona, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { detectarZona, costoFlex, TRANSPORTISTA_FLEX } = require('../_flexZonas');
+const { recalcularRetiroSeguro, TRANSPORTISTA_RETIRO } = require('../_retiroFlex');
 const { fechaEnUruguay } = require('../_fechas');
 
 const SHOP = 'martinez-motos.myshopify.com';
@@ -173,7 +174,11 @@ async function cancelarOrden(supabase, order, log) {
     }
     resultados.push({ ventaId: venta.id, estado: 'cancelada' });
   }
-  await supabase.from('envios').delete().eq('id', `E_SHOP_${order.id}`).eq('estado', 'pendiente');
+  const envioId = `E_SHOP_${order.id}`;
+  const { data: previo } = await supabase.from('envios').select('transportista, created_at').eq('id', envioId).eq('estado', 'pendiente').maybeSingle();
+  await supabase.from('envios').delete().eq('id', envioId).eq('estado', 'pendiente');
+  // Un envío menos en la jornada: el retiro de los que quedan puede cambiar.
+  if (previo?.transportista === TRANSPORTISTA_RETIRO) await recalcularRetiroSeguro(supabase, previo.created_at);
   return resultados;
 }
 
@@ -187,13 +192,13 @@ async function crearEnvio(supabase, order, lineas, log) {
     orden: order.name || String(order.order_number || order.id),
     comprador: (order.shipping_address?.name || nombreDeOrden(order) || '').trim() || null,
     producto: lineas.length === 1 ? lineas[0].producto : lineas.map(v => `${v.producto} x${v.cantidad}`).join(' + '),
-    // Lo mismo que propone el formulario de envío de mostrador: EnviosUy, con el costo
+    // Lo mismo que propone el formulario de envío de mostrador: GestionPost, con el costo
     // de la zona si se reconoce el barrio. Se corrige desde Envíos si va por otro lado.
-    transportista: 'enviosuy',
+    transportista: TRANSPORTISTA_FLEX,
     estado: 'pendiente',
     direccion,
     zona,
-    costo: zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0,
+    costo: costoFlex(TRANSPORTISTA_FLEX, zona, direccion) ?? 0,
     colecta: false,
   };
   const { error } = await supabase.from('envios').insert(envio);
@@ -203,6 +208,9 @@ async function crearEnvio(supabase, order, lineas, log) {
     return null;
   }
   if (log) log.push(`🚚 Envío ${envio.id} → ${direccion || 'sin dirección'}${zona ? ` (zona ${zona})` : ''}`);
+  // Un envío más en la jornada: puede prender o apagar el retiro de todos (_retiroFlex.js).
+  const retiro = await recalcularRetiroSeguro(supabase, new Date());
+  if (retiro && log) log.push(`🚚 Jornada ${retiro.dia}: ${retiro.envios} envío(s) de GestionPost, retiro ${retiro.retiro ? 'cobrado' : 'sin cobrar'}`);
   return envio.id;
 }
 

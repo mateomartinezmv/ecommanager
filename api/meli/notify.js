@@ -6,7 +6,8 @@ const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
 const { unidadesDeDeposito } = require('../_packs');
-const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { detectarZona, detectarZonaDesdeShipData, costoFlex, TRANSPORTISTA_FLEX } = require('../_flexZonas');
+const { recalcularRetiroSeguro } = require('../_retiroFlex');
 const {
   obtenerShipment, ordenesDelShipment, sincronizarEnviosDeOrden,
   estadoDesdeShipment, fechaDespachoDesdeShipment,
@@ -119,8 +120,8 @@ async function handleOrder(resource) {
   // Qué cobra o bonifica MELI por el envío al vendedor (ver _envioMeli.js).
   const costosEnvio = await leerCostosEnvio(shippingId, token);
   const esFlex = FLEX_TYPES.includes(logisticType);
-  const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
-  const costoEnvio = esFlex ? (zonaFlex ? (COSTOS_ENVIOSUY[zonaFlex] ?? 0) : 0) : 0;
+  const transportista = esFlex ? TRANSPORTISTA_FLEX : 'mercado_envios';
+  const costoEnvio = esFlex ? (costoFlex(transportista, zonaFlex, direccion) ?? 0) : 0;
 
   // Un carrito de MELI llega como varias órdenes atadas por el mismo pack: es
   // UNA compra, con UN envío. El pack es lo que las une.
@@ -233,6 +234,8 @@ async function handleOrder(resource) {
     });
     if (r.creado) {
       console.log(`✅ Envío creado: ${r.id} (orden ${order.id}${packId ? `, pack ${packId}` : ''}) — ${transportista} $${costoEnvio}`);
+      // Un envío más en la jornada: puede prender o apagar el retiro de todos (_retiroFlex.js).
+      if (esFlex) await recalcularRetiroSeguro(supabase, new Date());
     } else if (r.id) {
       console.log(`ℹ Envío ${r.id} ya existía para el paquete — no se duplica (orden ${order.id})`);
     }

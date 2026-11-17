@@ -12,7 +12,7 @@
 
 const { getMeliToken } = require('../_meliToken');
 const { getSupabase } = require('../_supabase');
-const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { detectarZona, detectarZonaDesdeShipData, costoFlex, TRANSPORTISTA_FLEX } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
@@ -92,8 +92,8 @@ module.exports = async (req, res) => {
         if (esFlex) {
           zona = detectarZonaDesdeShipData(shipData) || (direccion ? detectarZona(direccion) : null);
         }
-        const transportista = esFlex ? 'enviosuy' : 'mercado_envios';
-        const costo = esFlex ? (zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0) : 0;
+        const transportista = esFlex ? TRANSPORTISTA_FLEX : 'mercado_envios';
+        const costo = esFlex ? (costoFlex(transportista, zona, direccion) ?? 0) : 0;
 
         // Un paquete, un envío: si esta venta viaja en un carrito ya resuelto
         // (o que ya tenía envío) no se crea otro, sólo se completa el detalle.

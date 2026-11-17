@@ -39,6 +39,8 @@ Lo que sí vive en un módulo de `api/` se testea directo, sin navegador: es el 
 
 | Archivo | Qué cubre |
 |---|---|
+| `envio-gestionpost-pantalla.test.js` | El formulario de envío nuevo: que proponga GestionPost y complete el costo de su tarifa por zona (El Dorado a $290), y que con EnviosUy tome la de EnviosUy. |
+| `retiro-gestionpost.test.js` | GestionPost, directo sobre `api/_flexZonas.js`, `api/_retiroFlex.js` y `api/envios.js` (sin navegador): la tarifa por zona con El Dorado a $290 (mirando el barrio, no la calle), que el Flex nuevo salga por GestionPost, la jornada de corte a corte (16:00 entre semana, 13:00 sábado, 14:00 domingo) y el retiro de $75 en cada envío cuando la jornada tiene menos de 3, recalculado al crear, borrar o cambiar de transportista y no al tocar el toggle a mano. |
 | `finanzas.test.js` | Gastos e ingresos extra: totales por período, gráficos circulares por categoría, filtros, conversión USD→UYU con la cotización del día, el check del Literal E, el recálculo de la ganancia neta en Reportes, el ABM de categorías y la exportación a PDF. |
 | `sin-migracion.test.js` | El estado en el que una migración todavía no se corrió en Supabase (la tabla `movimientos`, las columnas del motivo de descatalogado): el resto del CRM tiene que funcionar igual y la pantalla nueva tiene que explicar qué falta. |
 | `descatalogado-reglas.test.js` | Las reglas que no pasan por la pantalla, directo sobre `api/_discontinuado.js` (sin navegador): qué columnas se escriben al descatalogar, reactivar y editar, y qué productos entran en la sincronización de stock. |

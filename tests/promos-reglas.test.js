@@ -69,10 +69,14 @@ test('la que paga MELI entera se acepta siempre, aunque el producto se venda sol
   assert.strictEqual(R.evaluarPromo(p, { costo: 342, seg: 'bien' }).veredicto, 'aceptar');
 });
 
-test('lo que se vende solo no entra a promos que paga el vendedor', () => {
-  const ev = R.evaluarPromo(promo({ original_price: 1690, price: 1530 }), { costo: 342, seg: 'bien' });
+test('lo que se vende bien acepta las de MELI hasta 15%, no más', () => {
+  // Espejos alerón: relámpago 15% y black friday 13% entran; un 20% no.
+  const ctx = { costo: 342, seg: 'bien', comision: 0.149, envio: 132 };
+  assert.strictEqual(R.evaluarPromo(promo({ original_price: 1690, price: 1436.5 }), ctx).veredicto, 'aceptar');
+  assert.strictEqual(R.evaluarPromo(promo({ original_price: 1690, price: 1470 }), ctx).veredicto, 'aceptar');
+  const ev = R.evaluarPromo(promo({ original_price: 1690, price: 1352 }), ctx);
   assert.strictEqual(ev.veredicto, 'rechazar');
-  assert.match(ev.motivo, /se vende solo/i);
+  assert.match(ev.motivo, /Se vende bien/);
 });
 
 test('contraoferta: si MELI deja elegir el precio, entra con el objetivo en vez del sugerido', () => {

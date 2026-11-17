@@ -15,7 +15,8 @@
 //          de cada SKU (ver promos.js).
 //   2. Tope absoluto: ningún descuento a cargo del vendedor pasa del 30%, ni para liquidar.
 //   3. Cuánto se descuenta depende de cómo se vende el producto:
-//        · se vende bien (el stock dura < 30 días)        → nada: se vende igual;
+//        · se vende bien (el stock dura < 30 días)        → hasta 15% (el negocio prefiere
+//          sumarse a los eventos de MELI aunque el producto se venda solo, si el neto da);
 //        · se vende algo (1 o más ventas por semana)       → 15–20%;
 //        · no se vende (menos de 1 venta por semana)       → 25–30%;
 //        · discontinuado con stock                         → hasta 30%, para liquidar.
@@ -33,7 +34,8 @@ const MIN_VENTAS_ALGO = 8;        // en 60 días: una por semana. Menos es "no s
 const TOLERANCIA = 0.005;         // redondeos de MELI (28,4% contra un tope de 28%)
 
 const SEGMENTOS = {
-  bien:        { objetivo: 0,    tope: 0,    txt: 'Se vende bien' },
+  // Objetivo 0: no se le propone un descuento propio, pero acepta las de MELI hasta 15%.
+  bien:        { objetivo: 0,    tope: 0.15, txt: 'Se vende bien' },
   algo:        { objetivo: 0.15, tope: 0.20, txt: 'Se vende algo' },
   quieto:      { objetivo: 0.25, tope: 0.30, txt: 'No se vende' },
   liquidar:    { objetivo: 0.30, tope: 0.30, txt: 'Discontinuado' },
@@ -209,7 +211,6 @@ function evaluarSegunReglas(promo, { costo, seg, corriendo = false, comision = 0
 
   if (seg === 'sin_costo') return out('rechazar', 'El producto no tiene costo cargado en Stock: sin costo no se puede saber si conviene.');
   if (seg === 'sin_stock') return out('rechazar', 'Sin stock no tiene sentido entrar a una promoción.');
-  if (seg === 'bien') return out('rechazar', `Se vende solo (stock para menos de ${DIAS_BIEN} días): el descuento sería plata regalada.`);
 
   if (vendedor <= lim.maximo + TOLERANCIA) {
     return out('aceptar', `Tu parte (${r1(vendedor)}%) está dentro de lo permitido (${r1(lim.maximo)}%).`, { deal_price: rangoAdmite(promo) ? promo.precio : null });

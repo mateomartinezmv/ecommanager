@@ -1656,8 +1656,8 @@
       </div>
       <div class="form-group"><label class="form-label">Transportista</label>
         <select id="env-transportista" onchange="autoCompletarCostoEnvio('env')">
+          <option value="gestionpost" selected>GestionPost</option>
           <option value="enviosuy">EnviosUy</option>
-          <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
           <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
@@ -1807,8 +1807,8 @@
       <div class="form-group">
         <label class="form-label">Transportista</label>
         <select id="pag-transportista">
+          <option value="gestionpost" selected>GestionPost</option>
           <option value="enviosuy">EnviosUy</option>
-          <option value="gestionpost">GestionPost</option>
           <option value="ues">UES</option>
           <option value="dac">DAC</option>
           <option value="mmotos_mateo">MMOTOS MATEO</option>
@@ -4245,6 +4245,7 @@ async function saveVenta(canal) {
           cliSelSet('env', venta.comprador, null, false);
           document.getElementById('env-fecha').value = venta.fecha;
           document.getElementById('env-costo').value = '';
+          document.getElementById('env-transportista').value = TRANSPORTISTA_FLEX;
           document.getElementById('modal-envio-title').textContent = `🚚 Envío — Orden ${venta.ordenMeli || venta.id}`;
           openModal('modal-envio');
         }, 200);
@@ -4472,18 +4473,39 @@ async function cambiarEstadoVenta(id, estado) {
 // =====================
 // ENVÍOS
 // =====================
-// Tabla de costos Flex por zona (EnviosUy) — para autocompletar el costo en los modales de envío
+// Tablas de costos Flex por zona, para autocompletar el costo en los modales de envío. Son
+// las mismas de api/_flexZonas.js, que las manda al cargar el catálogo de zonas: estas son
+// el respaldo si esa carga falla.
+// Todo envío Flex sale por GestionPost salvo que se elija otro transportista.
+let TRANSPORTISTA_FLEX = 'gestionpost';
+const COSTOS_GESTIONPOST = { 1:200, 2:200, 3:200, 4:200, 5:169, 6:169, 7:169, 8:290, 9:290, 10:200, 11:290 };
+// Localidades que GestionPost cobra distinto que el resto de su zona (se mira el barrio, no la calle).
+let EXCEPCIONES_GESTIONPOST = [{ localidad: 'el dorado', costo: 290 }];
 const COSTOS_ENVIOSUY = { 1:190, 2:190, 3:190, 4:190, 5:180, 6:160, 7:180, 8:240, 9:240, 10:200, 11:null };
 
-// Autocompleta el costo del envío cuando se elige zona + transportista EnviosUy.
-// prefix: 'env' (modal crear) o 'ee' (modal editar)
+// Lo que cobra el transportista por un envío a esa zona, o null si no tiene tarifa fija.
+// Mismo criterio que costoFlex() del backend: el primer tramo de la dirección es la calle y
+// no cuenta para las excepciones, salvo que sea el único (un barrio elegido del catálogo).
+function costoFlexDe(transportista, zona, direccion) {
+  if (!zona) return null;
+  if (transportista === 'gestionpost') {
+    const todos = String(direccion || '').split(',').map(dirNormalizar).filter(Boolean);
+    const tramos = todos.length > 1 ? todos.slice(1) : todos;
+    const ex = EXCEPCIONES_GESTIONPOST.find(x => tramos.includes(dirNormalizar(x.localidad)));
+    if (ex) return ex.costo;
+    return COSTOS_GESTIONPOST[zona] ?? null;
+  }
+  if (transportista === 'enviosuy') return COSTOS_ENVIOSUY[zona] ?? null;
+  return null;
+}
+
+// Autocompleta el costo del envío cuando se elige zona + un transportista con tarifa
+// (GestionPost o EnviosUy). prefix: 'env' (modal crear) o 'ee' (modal editar)
 function autoCompletarCostoEnvio(prefix) {
   const transportista = document.getElementById(`${prefix}-transportista`).value;
   const zona = parseInt(document.getElementById(`${prefix}-zona`).value) || null;
-  if (transportista === 'enviosuy' && zona) {
-    const costo = COSTOS_ENVIOSUY[zona];
-    if (costo != null) document.getElementById(`${prefix}-costo`).value = costo;
-  }
+  const costo = costoFlexDe(transportista, zona, dirComponerDireccion(prefix));
+  if (costo != null) document.getElementById(`${prefix}-costo`).value = costo;
   dirMostrarHint(prefix, zona);
 }
 
@@ -4506,6 +4528,9 @@ async function cargarCatalogoZonas() {
     const data = await api('GET', '/direcciones?catalogo=1');
     ZONAS_LOCALIDADES = data.localidades || [];
     if (data.costos) Object.assign(COSTOS_ENVIOSUY, data.costos);
+    if (data.costosGestionPost) Object.assign(COSTOS_GESTIONPOST, data.costosGestionPost);
+    if (Array.isArray(data.excepcionesGestionPost)) EXCEPCIONES_GESTIONPOST = data.excepcionesGestionPost;
+    if (data.transportistaFlex) TRANSPORTISTA_FLEX = data.transportistaFlex;
   } catch(e) {
     console.warn('No se pudo cargar el catálogo de zonas, se sigue con la tabla local:', e.message);
   }
@@ -4535,9 +4560,12 @@ function dirDetectarZona(texto) {
   return mejor ? mejor.zona : null;
 }
 
-function dirCostoDeZona(zona) {
-  const c = COSTOS_ENVIOSUY[zona];
-  return c == null ? null : c;
+// Costo de la zona con el transportista elegido en el formulario. `lugar` es el barrio o la
+// ciudad (sin calle); si no viene se usa la dirección cargada.
+function dirCostoDeZona(zona, prefix, lugar) {
+  const transportista = document.getElementById(`${prefix}-transportista`)?.value || TRANSPORTISTA_FLEX;
+  const direccion = lugar != null ? `, ${lugar}` : dirComponerDireccion(prefix);
+  return costoFlexDe(transportista, zona, direccion);
 }
 
 // Junta la dirección con el número de puerta, que se carga en un campo aparte para que
@@ -4559,7 +4587,7 @@ function dirMostrarHint(prefix, zona) {
   const hint = document.getElementById(`${prefix}-zona-hint`);
   if (!hint) return;
   if (!zona) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
-  const costo = dirCostoDeZona(zona);
+  const costo = dirCostoDeZona(zona, prefix);
   hint.style.display = '';
   hint.innerHTML = costo != null
     ? `<span style="color:var(--green)">📍 Zona ${zona} · envío ${fmt(costo)}</span>`
@@ -4615,8 +4643,9 @@ function dirRenderDropdown(prefix) {
   const dd = document.getElementById(`${prefix}-direccion-dd`);
   if (!st.items.length) { dd.style.display = 'none'; return; }
   dd.innerHTML = st.items.map((s, i) => {
+    const costo = s.zona ? dirCostoDeZona(s.zona, prefix, [s.barrio, s.ciudad].filter(Boolean).join(', ')) : null;
     const etiquetaZona = s.zona
-      ? `<span class="badge badge-blue" style="font-size:10px">Zona ${s.zona}${s.costo != null ? ' · ' + fmt(s.costo) : ''}</span>`
+      ? `<span class="badge badge-blue" style="font-size:10px">Zona ${s.zona}${costo != null ? ' · ' + fmt(costo) : ''}</span>`
       : '<span class="badge badge-gray" style="font-size:10px">Sin zona</span>';
     return `<div data-i="${i}" onmousedown="event.preventDefault();dirElegir('${prefix}',${i})"
       style="padding:7px 10px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid var(--border);background:${i === st.idx ? 'var(--bg-tertiary)' : ''}">
@@ -4731,6 +4760,7 @@ function openEnvioManual(ventaId) {
   imprimirEtiquetaAlGuardarEnvio = false;
   cliSelSet('env', v ? (v.comprador || v.cliente || '') : '', v?.clienteId, v?.canal === 'mostrador');
   document.getElementById('env-fecha').value = v ? v.fecha : hoyLocal();
+  document.getElementById('env-transportista').value = TRANSPORTISTA_FLEX;
   document.getElementById('env-costo').value = '';
   document.getElementById('env-zona').value = '';
   document.getElementById('env-colecta').checked = false;
@@ -10794,7 +10824,7 @@ function renderDesglose(envios) {
     const fecha = fechaEnvioParaFiltro(e) || '—';
     return `
       <tr>
-        <td><input type="checkbox" class="desglose-check" data-id="${e.id}" data-costo="${costoTotal}" data-transportista="${e.transportista || 'enviosuy'}" onchange="actualizarSeleccionBar()"></td>
+        <td><input type="checkbox" class="desglose-check" data-id="${e.id}" data-costo="${costoTotal}" data-transportista="${e.transportista || TRANSPORTISTA_FLEX}" onchange="actualizarSeleccionBar()"></td>
         <td>${zonaLabel}</td>
         <td><span style="color:var(--yellow);font-weight:600">${fmt(costoTotal)}</span></td>
         <td style="font-size:13px">${e.comprador || '—'}</td>
@@ -10826,7 +10856,7 @@ function pagarSeleccionados() {
   const checks = [...document.querySelectorAll('.desglose-check:checked')];
   if (!checks.length) return;
   const total = checks.reduce((s, cb) => s + parseFloat(cb.dataset.costo || 0), 0);
-  const transportistaDetectado = checks[0]?.dataset.transportista || 'enviosuy';
+  const transportistaDetectado = checks[0]?.dataset.transportista || TRANSPORTISTA_FLEX;
   document.getElementById('pag-transportista').value = transportistaDetectado;
   document.getElementById('pag-monto').value = total.toFixed(2);
   document.getElementById('pag-fecha').value = hoyLocal();

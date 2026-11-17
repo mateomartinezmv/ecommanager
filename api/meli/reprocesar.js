@@ -6,7 +6,7 @@ const { getSupabase } = require('../_supabase');
 const { buscarProductoPorMeliId } = require('../_meliIds');
 const { unidadesDeDeposito } = require('../_packs');
 const { descontarStock, ventaNueva, resumenSync } = require('../_stockSync');
-const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { detectarZona, detectarZonaDesdeShipData, costoFlex, TRANSPORTISTA_FLEX } = require('../_flexZonas');
 const { packIdDeOrden, ordenesDelPaquete, registrarEnvioDePaquete } = require('../_meliPaquetes');
 const { envioDeLinea, comisionConEnvio, leerCostosEnvio } = require('./_envioMeli');
 const { cargosDeLinea } = require('./_cargosMeli');
@@ -93,7 +93,7 @@ module.exports = async (req, res) => {
 
     const costosEnvio = await leerCostosEnvio(shippingId, token);
     const esFlex = FLEX_TYPES.includes(logisticType);
-    log.push(`📬 Tipo de envío: ${esFlex ? 'flex/EnviosUy' : 'mercado_envios'} (logistic_type: "${logisticType}")`);
+    log.push(`📬 Tipo de envío: ${esFlex ? `flex/${TRANSPORTISTA_FLEX}` : 'mercado_envios'} (logistic_type: "${logisticType}")`);
 
     // Detectar zona Flex usando datos estructurados de MELI (barrio primero)
     if (esFlex && shipDataRef) {
@@ -102,8 +102,8 @@ module.exports = async (req, res) => {
     }
     log.push(`🗺️ Zona: ${zonaEnvio ?? 'no detectada'}`);
 
-    const costoEnvioFinal = esFlex ? (zonaEnvio ? (COSTOS_ENVIOSUY[zonaEnvio] ?? 0) : 0) : 0;
-    const tipoEnvio = esFlex ? 'enviosuy' : 'mercado_envios';
+    const tipoEnvio = esFlex ? TRANSPORTISTA_FLEX : 'mercado_envios';
+    const costoEnvioFinal = esFlex ? (costoFlex(tipoEnvio, zonaEnvio, direccion) ?? 0) : 0;
 
     // Un carrito de MELI son varias órdenes bajo un mismo pack y un solo envío.
     const packId = packIdDeOrden(order);

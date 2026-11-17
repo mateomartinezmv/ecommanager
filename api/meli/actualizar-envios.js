@@ -14,7 +14,7 @@ const { getSupabase } = require('../_supabase');
 
 const FLEX_TYPES = ['self_service', 'self_service_flex'];
 
-const { detectarZona, detectarZonaDesdeShipData, COSTOS_ENVIOSUY } = require('../_flexZonas');
+const { detectarZona, detectarZonaDesdeShipData, costoFlex, TRANSPORTISTA_FLEX, TRANSPORTISTAS_FLEX } = require('../_flexZonas');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -91,8 +91,10 @@ module.exports = async (req, res) => {
           zona = detectarZonaDesdeShipData(shipData);
           // Fallback a dirección si no se detectó por datos del shipment
           if (!zona && direccion) zona = detectarZona(direccion);
-          transportistaCorrecto = 'enviosuy';
-          costoCorrecto = zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0;
+          // Un Flex que ya va por un transportista de Flex se respeta (se eligió a mano);
+          // sólo se corrige el que figura como Mercado Envíos u otro.
+          transportistaCorrecto = TRANSPORTISTAS_FLEX.includes(envio.transportista) ? envio.transportista : TRANSPORTISTA_FLEX;
+          costoCorrecto = costoFlex(transportistaCorrecto, zona, direccion) ?? (envio.costo || 0);
         } else {
           transportistaCorrecto = 'mercado_envios';
           costoCorrecto = 0;

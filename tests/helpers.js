@@ -491,7 +491,8 @@ async function abrirCRM({ estado, fallos, viewport } = {}) {
   const alertas = [];
   page.on('pageerror', e => errores.push('pageerror: ' + e.message));
   page.on('console', m => { if (m.type() === 'error') errores.push('console: ' + m.text()); });
-  page.on('dialog', async d => { alertas.push(d.message()); await d.accept(); });
+  // El test puede cerrar la página mientras se acepta un diálogo: eso no es un fallo.
+  page.on('dialog', async d => { alertas.push(d.message()); await d.accept().catch(() => {}); });
 
   await mockearApi(page, estado, fallos);
   await page.goto(`http://127.0.0.1:${servidor.address().port}/index.html`);

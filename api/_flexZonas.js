@@ -1,6 +1,32 @@
 // api/_flexZonas.js
-// Detecta zona Flex y calcula costo para EnviosUy.
-// Todo envío Flex va por EnviosUy. Si hay excepción, el usuario la corrige manualmente.
+// Detecta la zona de un envío Flex y calcula lo que cobra el transportista.
+//
+// Todo envío Flex sale por GestionPost salvo que se cambie a mano. Las zonas son las de
+// ZONAS_KEYWORDS (las mismas para todos los transportistas); lo que cambia es la tarifa.
+
+// El transportista que se propone para un envío Flex, en el webhook y en los formularios.
+const TRANSPORTISTA_FLEX = 'gestionpost';
+
+// Los que hacen Flex en Montevideo con un transportista propio (el resto es Mercado Envíos,
+// interior u otro). Un envío que ya va por uno de estos no se cambia al reprocesar.
+const TRANSPORTISTAS_FLEX = ['gestionpost', 'enviosuy', 'mmotos_mateo'];
+
+// Tarifa de GestionPost por zona, sacada de sus envíos reales (sep-nov 2026) y confirmada
+// con lo que cobraron.
+const COSTOS_GESTIONPOST = {
+  1: 200, 2: 200, 3: 200, 4: 200,
+  5: 169, 6: 169, 7: 169,
+  8: 290, 9: 290,
+  10: 200,
+  11: 290,
+};
+
+// Localidades que GestionPost cobra distinto que el resto de su zona. Se comparan contra
+// el barrio o la ciudad del envío, nunca contra la calle: "esq. El Dorado" en el
+// Aeropuerto es zona 10 común ($200).
+const EXCEPCIONES_GESTIONPOST = [
+  { localidad: 'el dorado', costo: 290 }, // zona 10, pero sale como zona 8/9
+];
 
 const COSTOS_ENVIOSUY = {
   1: 190, 2: 190, 3: 190, 4: 190,
@@ -89,20 +115,45 @@ function detectarZonaDesdeShipData(shipData) {
   return detectarZona(partes);
 }
 
+// La excepción de GestionPost que aplica a la dirección, si hay. La dirección tiene la
+// forma "calle, número, barrio, ciudad, departamento" (la arma el webhook de MELI) o
+// "calle 1234, barrio" (la cargada a mano): el primer tramo es la calle y no cuenta. Si
+// hay un solo tramo es el barrio elegido del catálogo ("El Dorado") y ése sí cuenta.
+function excepcionGestionPost(direccion) {
+  const todos = String(direccion || '').split(',').map(normalizarTexto).filter(Boolean);
+  const tramos = todos.length > 1 ? todos.slice(1) : todos;
+  return EXCEPCIONES_GESTIONPOST.find(ex => tramos.includes(normalizarTexto(ex.localidad))) || null;
+}
+
 /**
- * Calcula zona y costo Flex para EnviosUy usando datos del shipment MELI
+ * Lo que cobra el transportista por un envío Flex a esa zona. null si no tiene tarifa
+ * fija (EnviosUy en zona 11) o si el transportista no tiene tabla: se carga a mano.
  */
-function calcularCostoFlexDesdeShipData(shipData) {
+function costoFlex(transportista, zona, direccion) {
+  if (!zona) return null;
+  if (transportista === 'gestionpost') {
+    const ex = excepcionGestionPost(direccion);
+    if (ex) return ex.costo;
+    return COSTOS_GESTIONPOST[zona] ?? null;
+  }
+  if (transportista === 'enviosuy') return COSTOS_ENVIOSUY[zona] ?? null;
+  return null;
+}
+
+/**
+ * Calcula zona y costo Flex usando datos del shipment MELI, con el transportista por defecto.
+ */
+function calcularCostoFlexDesdeShipData(shipData, direccion) {
   const zona = detectarZonaDesdeShipData(shipData);
-  const costo = zona ? (COSTOS_ENVIOSUY[zona] ?? 0) : 0;
-  return { zona, transportista: 'enviosuy', costo };
+  const costo = costoFlex(TRANSPORTISTA_FLEX, zona, direccion) ?? 0;
+  return { zona, transportista: TRANSPORTISTA_FLEX, costo };
 }
 
 // Backward-compat: calcula desde string de dirección
 function calcularCostoFlex(direccion) {
   const zona = detectarZona(direccion);
   if (!zona) return null;
-  return { zona, transportista: 'enviosuy', costo: COSTOS_ENVIOSUY[zona] ?? 0 };
+  return { zona, transportista: TRANSPORTISTA_FLEX, costo: costoFlex(TRANSPORTISTA_FLEX, zona, direccion) ?? 0 };
 }
 
 module.exports = {
@@ -110,6 +161,12 @@ module.exports = {
   detectarZonaDesdeShipData,
   calcularCostoFlexDesdeShipData,
   calcularCostoFlex,
+  costoFlex,
+  excepcionGestionPost,
+  TRANSPORTISTA_FLEX,
+  TRANSPORTISTAS_FLEX,
+  COSTOS_GESTIONPOST,
+  EXCEPCIONES_GESTIONPOST,
   COSTOS_ENVIOSUY,
   ZONAS_KEYWORDS,
 };

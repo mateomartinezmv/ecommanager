@@ -3,11 +3,16 @@
 // (típicamente ventas mostrador: en los Flex de MELI la zona ya viene del shipment).
 //
 // GET /api/direcciones?catalogo=1 → barrios/localidades con su zona y costo (para buscar
-//                                   sin red desde el navegador)
+//                                   sin red desde el navegador), y las tarifas por zona
 // GET /api/direcciones?q=texto    → sugerencias de dirección real (OpenStreetMap/Nominatim)
-//                                   ya resueltas a zona y costo EnviosUy
+//                                   ya resueltas a zona y costo
+//
+// El costo es el del transportista Flex por defecto (GestionPost).
 
-const { detectarZona, COSTOS_ENVIOSUY, ZONAS_KEYWORDS } = require('./_flexZonas');
+const {
+  detectarZona, costoFlex, TRANSPORTISTA_FLEX, COSTOS_GESTIONPOST, EXCEPCIONES_GESTIONPOST,
+  COSTOS_ENVIOSUY, ZONAS_KEYWORDS,
+} = require('./_flexZonas');
 
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 // Nominatim exige identificar la aplicación y pide como mucho 1 consulta por segundo.
@@ -19,10 +24,9 @@ const cache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX = 300;
 
-function costoDeZona(zona) {
-  if (!zona) return null;
-  const costo = COSTOS_ENVIOSUY[zona];
-  return costo === undefined ? null : costo;
+// `lugar` es el barrio o la ciudad (sin la calle): define las excepciones como El Dorado.
+function costoDeZona(zona, lugar) {
+  return costoFlex(TRANSPORTISTA_FLEX, zona, lugar ? `, ${lugar}` : '');
 }
 
 function titulo(t) {
@@ -35,7 +39,7 @@ function catalogo() {
   const items = [];
   for (const [zona, keywords] of Object.entries(ZONAS_KEYWORDS)) {
     for (const kw of keywords) {
-      items.push({ nombre: titulo(kw), zona: parseInt(zona), costo: costoDeZona(parseInt(zona)) });
+      items.push({ nombre: titulo(kw), zona: parseInt(zona), costo: costoDeZona(parseInt(zona), kw) });
     }
   }
   items.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
@@ -64,7 +68,7 @@ function aSugerencia(item) {
     barrio: barrio || null,
     ciudad: ciudad || null,
     zona: zona || null,
-    costo: costoDeZona(zona),
+    costo: costoDeZona(zona, resto.join(', ')),
     fuente: 'osm',
   };
 }
@@ -100,7 +104,13 @@ module.exports = async (req, res) => {
 
   if (req.query.catalogo) {
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.json({ costos: COSTOS_ENVIOSUY, localidades: catalogo() });
+    return res.json({
+      transportistaFlex: TRANSPORTISTA_FLEX,
+      costos: COSTOS_ENVIOSUY,
+      costosGestionPost: COSTOS_GESTIONPOST,
+      excepcionesGestionPost: EXCEPCIONES_GESTIONPOST,
+      localidades: catalogo(),
+    });
   }
 
   const q = (req.query.q || '').toString().trim();

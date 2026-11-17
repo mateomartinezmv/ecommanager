@@ -340,6 +340,40 @@ avisarle antes si llegan pocas unidades.
 
 ---
 
+## Envíos Flex: GestionPost por defecto y retiro automático
+
+Todo envío Flex nuevo (MELI, Shopify o cargado a mano) sale por **GestionPost** con el costo
+de su zona. Si va por otro transportista se cambia desde Envíos. La tarifa vive en
+`api/_flexZonas.js` (`COSTOS_GESTIONPOST`) y se sacó de los envíos reales de sep-nov 2026:
+
+| Zonas | Costo |
+|---|---|
+| 5, 6, 7 | $169 |
+| 1, 2, 3, 4, 10 | $200 |
+| 8, 9, 11 | $290 |
+| El Dorado (zona 10) | $290 |
+
+Las localidades que GestionPost cobra distinto que el resto de su zona van en
+`EXCEPCIONES_GESTIONPOST`, y se comparan con el barrio, nunca con la calle.
+
+**Retiro ($75).** GestionPost cobra el retiro en cada envío cuando en la jornada hay
+menos de 3. La jornada va de corte a corte, en hora de Montevideo:
+
+| Día | Corte | La jornada arranca |
+|---|---|---|
+| Lunes | 16:00 | domingo 14:00 |
+| Martes a viernes | 16:00 | día anterior 16:00 |
+| Sábado | 13:00 | viernes 16:00 |
+| Domingo | 14:00 | sábado 13:00 |
+
+Cada vez que se crea, se borra o se cambia de transportista un envío de GestionPost, se
+vuelven a contar los de su jornada (`api/_retiroFlex.js`): con 1 o 2 envíos el toggle
+"Se cobra retiro" queda prendido en todos, y con 3 o más, apagado en todos. Lo que cuenta es
+cuándo entró el envío (`created_at`). Si se prende o se apaga el toggle a mano, queda así
+hasta que la jornada vuelva a cambiar.
+
+---
+
 ## Control de despacho con lector de códigos (✅ Control de despacho)
 
 Para que lo que entra en cada paquete de MELI (Flex y Mercado Envíos) sea lo que se vendió,

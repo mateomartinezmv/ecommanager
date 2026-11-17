@@ -5,7 +5,11 @@
 // POST   /api/envios                        → alta
 // PUT    /api/envios?id=X                   → edición (incluye el resultado del control de despacho)
 // DELETE /api/envios?id=X
+//
+// Crear, borrar o cambiar de transportista un envío de GestionPost recalcula el retiro de
+// su jornada (_retiroFlex.js). Prender o apagar el retiro a mano no: queda como se dejó.
 const { getSupabase } = require('./_supabase');
+const { recalcularRetiroSeguro, TRANSPORTISTA_RETIRO } = require('./_retiroFlex');
 const { getMeliToken } = require('./_meliToken');
 const { MIGRACION, MIGRACION_ETIQUETA, faltaMigracionControl, buscarEnvioPorCodigo, fotosDePublicaciones, camposControl } = require('./_controlEnvios');
 
@@ -57,6 +61,11 @@ module.exports = async (req, res) => {
         colecta: e.colecta || false,
       }).select().single();
       if (error) throw error;
+      if (data.transportista === TRANSPORTISTA_RETIRO) {
+        const retiro = await recalcularRetiroSeguro(supabase, data.created_at);
+        if (retiro?.cambiados.includes(data.id)) data.colecta = retiro.retiro;
+        return res.json({ ...data, retiroJornada: retiro });
+      }
       return res.json(data);
     }
 
@@ -75,6 +84,13 @@ module.exports = async (req, res) => {
       if (fechaDespacho !== undefined) updateData.fecha_despacho = fechaDespacho || null;
       if (direccion !== undefined) updateData.direccion = direccion;
       Object.assign(updateData, camposControl(req.body));
+      // Si cambia el transportista hay que saber el anterior: entrar o salir de GestionPost
+      // cambia la cuenta de su jornada.
+      let previo = null;
+      if (transportista !== undefined) {
+        const r = await supabase.from('envios').select('transportista, created_at').eq('id', id).maybeSingle();
+        previo = r.data || null;
+      }
       const { data, error } = await supabase.from('envios')
         .update(updateData)
         .eq('id', id).select().single();
@@ -84,13 +100,22 @@ module.exports = async (req, res) => {
         return res.status(503).json({ error: `Falta correr la migración ${migracion} en Supabase.`, migracionPendiente: true });
       }
       if (error) throw error;
+      const cambioTransportista = previo && previo.transportista !== data.transportista
+        && (previo.transportista === TRANSPORTISTA_RETIRO || data.transportista === TRANSPORTISTA_RETIRO);
+      if (cambioTransportista) {
+        const retiro = await recalcularRetiroSeguro(supabase, data.created_at || previo.created_at);
+        if (retiro?.cambiados.includes(data.id)) data.colecta = retiro.retiro;
+      }
       return res.json(data);
     }
 
     if (req.method === 'DELETE') {
       const id = req.query.id;
+      const { data: previo } = await supabase.from('envios').select('transportista, created_at').eq('id', id).maybeSingle();
       const { error } = await supabase.from('envios').delete().eq('id', id);
       if (error) throw error;
+      // Un envío menos en la jornada: el retiro de los que quedan puede cambiar.
+      if (previo?.transportista === TRANSPORTISTA_RETIRO) await recalcularRetiroSeguro(supabase, previo.created_at);
       return res.json({ ok: true });
     }
 

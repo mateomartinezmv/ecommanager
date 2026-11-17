@@ -362,23 +362,20 @@ function itemsDe(grupo) {
   return out;
 }
 
-// Para aceptar o contraofertar en lote: una sola por publicación (MELI aplica una promo a la
-// vez). Gana la que deja el precio más bajo al comprador: todas ya están dentro de la regla.
-function mejorPorPublicacion(items) {
-  const mejor = new Map();
-  for (const it of items) {
-    const actual = mejor.get(it.meli_id);
-    if (!actual || precioDeEntrada(it.p) < precioDeEntrada(actual.p)) mejor.set(it.meli_id, it);
-  }
-  return [...mejor.values()];
+// Orden para aceptar en lote. Una publicación puede estar en varias campañas a la vez
+// (relámpago ahora, Black Friday, Navidad: fechas distintas) y MELI las acepta todas, así
+// que van todas. Primero las campañas, de la que deja el precio más bajo a la más alta, y al
+// final los descuentos propios (PRICE_DISCOUNT): si al entrar en una campaña MELI retira la
+// candidata de descuento propio, no hacía falta.
+function ordenParaAceptar(items) {
+  const peso = it => (it.p.tipo === 'PRICE_DISCOUNT' ? 1 : 0);
+  return items.slice().sort((a, b) => peso(a) - peso(b) || precioDeEntrada(a.p) - precioDeEntrada(b.p));
 }
 
 function seleccionarTodas(grupo, marcar) {
   sel[grupo].clear();
   if (marcar) {
-    const items = itemsDe(grupo);
-    const elegidas = grupo === 'aceptar' || grupo === 'contraoferta' ? mejorPorPublicacion(items) : items;
-    elegidas.forEach(it => sel[grupo].add(it.key));
+    itemsDe(grupo).forEach(it => sel[grupo].add(it.key));
   }
   render();
 }
@@ -417,11 +414,12 @@ async function ejecutarLote(grupo) {
     return;
   }
 
-  // Aceptar/contraofertar: si quedó más de una de la misma publicación, va la mejor.
-  const lote = grupo === 'sacar' ? elegidos : mejorPorPublicacion(elegidos);
-  const descartadas = elegidos.length - lote.length;
+  const lote = grupo === 'sacar' ? elegidos : ordenParaAceptar(elegidos);
   const verbo = { aceptar: 'Aceptar', contraoferta: 'Entrar con menos descuento en', sacar: 'Sacar de su promo a' }[grupo];
-  if (!confirm(`¿${verbo} ${lote.length} publicación(es)?${descartadas ? `\n\n${descartadas} se descartan: había más de una propuesta en la misma publicación y va la que deja mejor precio.` : ''}`)) return;
+  const pubs = new Set(lote.map(it => it.meli_id)).size;
+  if (!confirm(grupo === 'sacar'
+    ? `¿${verbo} ${lote.length} publicación(es)?`
+    : `¿${verbo} ${lote.length} propuesta(s) en ${pubs} publicación(es)?`)) return;
 
   document.querySelectorAll('.card-lote button').forEach(b => { b.disabled = true; });
   const ok = [];
@@ -437,7 +435,7 @@ async function ejecutarLote(grupo) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ meli_id: it.meli_id, accion: grupo === 'sacar' ? 'sacar' : 'aceptar', promo_id: it.promo_id || undefined }),
       }).then(x => x.json());
-      if (r.ok) (r.ya_estaba ? yaEstaban : ok).push(it);
+      if (r.ok) (r.ya_estaba || r.ya_no_aplica ? yaEstaban : ok).push(it);
       else if (r.no_creible) { apartadas.push(it); rechazadas.add(it.key); }
       else errores.push({ it, error: r.error || 'error desconocido' });
     } catch (e) {
@@ -452,7 +450,9 @@ async function ejecutarLote(grupo) {
   const box = $('resultado-lote');
   box.style.display = 'block';
   box.innerHTML = `<b>${verbo}: ${ok.length + yaEstaban.length} de ${lote.length} listas.</b>${yaEstaban.length
-    ? `<div style="margin-top:4px;color:var(--text-dim)">${yaEstaban.length} ya no estaban corriendo (las sacaste desde MELI o vencieron): no hacía falta nada.</div>` : ''}${apartadas.length
+    ? `<div style="margin-top:4px;color:var(--text-dim)">${yaEstaban.length} ya no hacían falta (${grupo === 'sacar'
+      ? 'no estaban corriendo: las sacaste desde MELI o vencieron'
+      : 'MELI las retiró al entrar la publicación en otra campaña'}).</div>` : ''}${apartadas.length
     ? `<div style="margin-top:4px;color:var(--text-dim)">${apartadas.length} se dejaron de lado porque MELI no las toma como descuento creíble: ${apartadas.map(a => esc(a.pub.titulo || a.meli_id)).join(', ')}. Pasaron a rechazadas.</div>` : ''}${errores.length
     ? `<div style="margin-top:6px;color:var(--red)">${errores.length} con error (MELI las rechazó):</div><ul>${errores.map(e =>
         `<li>${esc(e.it.pub.titulo || e.it.meli_id)} (${esc(e.it.meli_id)}): ${esc(e.error)}</li>`).join('')}</ul>`
@@ -479,16 +479,14 @@ function render() {
     const vivas = new Set(items.map(it => it.key));
     [...sel[grupo]].forEach(k => { if (!vivas.has(k)) sel[grupo].delete(k); });
     const n = sel[grupo].size;
-    const todasMarcadas = items.length > 0 && (grupo === 'aceptar' || grupo === 'contraoferta'
-      ? n === mejorPorPublicacion(items).length
-      : n === items.length);
+    const todasMarcadas = items.length > 0 && n === items.length;
     const extra = grupo === 'rechazar' && rechazadas.size
       ? `<button class="link" onclick="restablecerRechazadas()">Volver a mostrar ${rechazadas.size} rechazada(s)</button>` : '';
     return `<div class="card">
       <div class="card-num" style="color:${cfg.color}">${items.length}</div>
       <div class="card-label">${cfg.titulo}</div>
       ${(grupo === 'aceptar' || grupo === 'contraoferta') && items.length
-        ? `<div class="muted" style="margin-top:3px">en ${new Set(items.map(it => it.meli_id)).size} publicaciones · MELI aplica una por publicación</div>` : ''}
+        ? `<div class="muted" style="margin-top:3px">en ${new Set(items.map(it => it.meli_id)).size} publicaciones</div>` : ''}
       ${items.length || extra ? `<div class="card-lote">
         ${items.length ? `<label><input type="checkbox" data-grupo="${grupo}" ${todasMarcadas ? 'checked' : ''} onchange="seleccionarTodas('${grupo}', this.checked)"> Seleccionar todas</label>
         <button class="btn btn-sm ${cfg.cls}" ${n ? '' : 'disabled'} onclick="ejecutarLote('${grupo}')">${cfg.boton} (${n})</button>` : ''}

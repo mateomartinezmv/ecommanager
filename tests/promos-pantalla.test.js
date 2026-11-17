@@ -106,18 +106,21 @@ async function esperarPosts(antes, n = 1) {
   for (let i = 0; i < 50 && posts.length < antes + n; i++) await page.waitForTimeout(100);
 }
 
-test('aceptar en lote: "Seleccionar todas" marca una por publicación, la de mejor precio', async () => {
+test('aceptar en lote: "Seleccionar todas" marca todas, también varias de la misma publicación', async () => {
   await page.waitForSelector('#cards input[data-grupo="aceptar"]');
   await page.check('#cards input[data-grupo="aceptar"]');
-  // Dos propuestas aceptables en el soporte (28% y 10%): queda marcada sólo la de 28%.
-  const boton = page.locator('#cards button', { hasText: 'Aceptar (1)' });
+  // Dos propuestas aceptables en el soporte (28% y 10%, campañas distintas): van las dos.
+  const boton = page.locator('#cards button', { hasText: 'Aceptar (2)' });
   assert.strictEqual(await boton.count(), 1);
   const antes = posts.length;
   await boton.click();
-  await esperarPosts(antes);
+  await esperarPosts(antes, 2);
   await page.waitForFunction(() => document.getElementById('resultado-lote').style.display === 'block');
-  assert.deepStrictEqual(posts.slice(antes), [{ meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-28' }]);
-  assert.match(await page.textContent('#resultado-lote'), /1 de 1 listas/);
+  assert.deepStrictEqual(posts.slice(antes), [
+    { meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-28' },
+    { meli_id: 'MLU1503030820', accion: 'aceptar', promo_id: 'P-10S' },
+  ]);
+  assert.match(await page.textContent('#resultado-lote'), /2 de 2 listas/);
 });
 
 test('rechazar en lote: no llama a MELI, oculta y se puede deshacer', async () => {
@@ -153,7 +156,7 @@ test('envío gratis sí/no: el interruptor guarda el producto', async () => {
 
 test('la tarjeta de aceptar dice en cuántas publicaciones están las propuestas', async () => {
   await cargarDeNuevo();
-  assert.match(await page.textContent('#cards'), /en \d+ publicaciones · MELI aplica una por publicación/);
+  assert.match(await page.textContent('#cards'), /en \d+ publicaciones/);
 });
 
 async function cargarDeNuevo() {

@@ -530,7 +530,7 @@ function filaHtml({ prod, pub }) {
     <td><span class="badge ${SEG_BADGE[prod.segmento] || 'badge-gray'}">${esc(prod.segmento_txt)}</span><div class="muted" style="margin-top:4px">${dias}</div></td>
     <td>
       <div class="mono">${plata(pub.precio)}</div>
-      <div class="muted">Hoy te quedan <span class="mono" style="color:${(pub.neto_hoy_pct ?? 100) < 30 ? 'var(--red)' : 'var(--text-dim)'}">${plata(pub.neto_hoy)} (${pct(pub.neto_hoy_pct ?? 0)})</span></div>
+      <div class="muted">Hoy te quedan <span class="mono" style="color:${(pub.neto_hoy_pct ?? 100) < ((pub.ads_por_venta || 0) > 0 ? 25 : 30) ? 'var(--red)' : 'var(--text-dim)'}">${plata(pub.neto_hoy)} (${pct(pub.neto_hoy_pct ?? 0)})</span>${(pub.ads_por_venta || 0) > 0 ? ` <span title="Se anuncia en Mercado Ads: lo que cuesta la publicidad por cada venta (últimos 30 días, con IVA) ya está descontado, y el piso pasa a ser 25% después de publicidad.">después de publicidad (${plata(pub.ads_por_venta)} por venta)</span>` : ''}</div>
       <div class="muted">Máx. ${pct(pub.maximo_pct)}${pub.maximo_pct > 0 ? ` → no menos de <span class="mono">${plata(pub.precio_minimo)}</span>` : ' → no aguanta descuento'}</div>
     </td>
     <td>${vigenteHtml(pub)}</td>

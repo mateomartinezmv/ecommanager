@@ -258,18 +258,25 @@ function causasDeCuenta(data) {
 const ESCALONES_ENVIO = ['completo', 'sin_modo', 'ninguno'];
 
 // El cuerpo del POST /items de la publicación nueva.
-function construirPayload(item, { titulo, sku, stock, portada = 0, excluirAtributos = new Set(), modoTitulo = 'title', envio = 'completo' }) {
+//
+// `precio` y `fotos` son para cuando la nueva no es un ángulo de la misma oferta sino otra
+// oferta armada sobre esa base (un kit: otro precio y sus propias fotos). `fotos` acepta URLs
+// o fotos ya subidas a MELI ({ id }), en el orden en que van a quedar. Sin ellos se copia el
+// precio y las fotos de la original, como siempre.
+function construirPayload(item, { titulo, sku, stock, precio, fotos, portada = 0, excluirAtributos = new Set(), modoTitulo = 'title', envio = 'completo' }) {
   const payload = {
     // En User Products el título lo arma MELI: acá va el nombre genérico de la familia.
     ...(modoTitulo === 'family_name' ? { family_name: titulo } : { title: titulo }),
     category_id: item.category_id,
-    price: item.price,
+    price: Number(precio) > 0 ? Number(precio) : item.price,
     currency_id: item.currency_id,
     available_quantity: Math.max(0, Number(stock) || 0),
     buying_mode: item.buying_mode || 'buy_it_now',
     condition: item.condition || 'new',
     listing_type_id: item.listing_type_id,
-    pictures: ordenarFotos(item.pictures, portada).map(source => ({ source })),
+    pictures: Array.isArray(fotos) && fotos.length
+      ? fotos.map(f => (typeof f === 'string' ? { source: f } : f))
+      : ordenarFotos(item.pictures, portada).map(source => ({ source })),
     attributes: atributosCopiables(item.attributes, sku, excluirAtributos),
   };
 

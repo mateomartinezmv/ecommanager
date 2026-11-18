@@ -1,8 +1,12 @@
 # Régimen tributario uruguayo (Literal E → régimen general) y costos de Mercado Libre / Mercado Pago / Shopify en Uruguay: qué le pasa al margen de un vendedor chico cuando crece
 
-> **Nota metodológica (leer primero).** Esta sesión no pudo abrir directamente gub.uy (DGI), tributosimple.com ni academia.nubimetrics.com: los hosts no resuelven en la red de la sesión. Por eso **casi todos los datos vienen de extractos de resultados de búsqueda** (los marco **[extracto]**), no de páginas leídas completas. Cuando el extracto cita una página oficial de DGI, un decreto o una consulta de IMPO, lo indico. En cambio, las cifras de Mercado Libre, Mercado Pago y Shopify salen casi todas de blogs o calculadoras de terceros y hay que verificarlas en el panel de vendedor. Fecha de corte: 18/11/2026.
+> **Nota metodológica (leer primero).** Esta sesión no pudo abrir directamente gub.uy (DGI), impo.com.uy, tributosimple.com ni academia.nubimetrics.com: los hosts no resuelven en la red de la sesión. Por eso **casi todos los datos vienen de extractos de resultados de búsqueda** (los marco **[extracto]**), no de páginas leídas completas. Cuando el extracto cita una página oficial de DGI, un decreto o una consulta de IMPO, lo indico. En cambio, las cifras de Mercado Libre, Mercado Pago y Shopify salen casi todas de blogs o calculadoras de terceros y hay que verificarlas en el panel de vendedor. Fecha de corte: 18/11/2026.
 >
 > **Hallazgo central para el informe:** el tope de Literal E para 2026 es de **$ 1.959.229** al año, que equivale a unos $ 163.269 por mes en promedio. El vendedor factura unos **$ 200.000 por mes**, es decir unos $ 2,4 millones al año. **A ese ritmo supera el tope en el ~10.º mes del ejercicio.** No es un riesgo futuro: el cambio de régimen ya está en camino dentro del ejercicio actual (ver Inferencias de la sección 1).
+>
+> **Sobre el conflicto del tope:** el tope del Literal E es **305.000 UI** (Decreto 150/007 art. 122 y DGI). Las 4.000.000 UI que aparecen en algunas fuentes corresponden al IRAE ficto, a la contabilidad suficiente y a la reducción de IVA para No CEDE, no al Literal E (ver sección 1).
+>
+> **Sobre el costo importado:** del 2,25x del vendedor, ~12–16% es IVA de importación no recuperable en Literal E (ver sección 4).
 
 ---
 
@@ -24,7 +28,20 @@ En 2026, el Literal E permite ingresos anuales de hasta 305.000 UI, o sea **$ 1.
 - **Qué pasa al superar el tope (posición oficial de DGI):** el contribuyente "pasa al régimen general a partir de que superen dicho tope". Otra publicación de DGI precisa que el cambio alcanza **al mes en que se produce el exceso**, y que desde ese mes no se paga la cuota de IVA mínimo. Además, en ese mismo mes "comenzarán a tributar el anticipo mínimo del IRAE" **[extracto]** — [DGI – Contribuyente IVA mínimo que supera el tope de ingresos en el ejercicio](https://www.gub.uy/direccion-general-impositiva/comunicacion/publicaciones/contribuyente-iva-minimo-supera-tope-ingresos-ejercicio); [DGI – Pasaje a régimen general](https://www.gub.uy/direccion-general-impositiva/comunicacion/publicaciones/pasaje-regimen-general)
   - **Contradicción:** algunas fuentes comerciales dicen que el cambio rige recién desde el ejercicio siguiente. Contradicen a la DGI, así que **prevalece la posición oficial** — [yo-facturo](https://yo-facturo.com/blog/que-es-el-literal-e-en-uruguay/); [ahorrin – Literal E](https://www.ahorrin.app/blog/literal-e-uruguay-que-es-limites-conviene)
   - Una fuente comercial resume que quien supera el tope tributa "IRAE, IVA general (débitos-créditos) y Patrimonio desde el mes que superaste" **[extracto]** — [Calculame – Régimen general](https://calculame.uy/regimen-general)
-- **Dato erróneo frecuente:** algunos blogs citan "4.000.000 UI" como tope del Literal E. Esa cifra es el umbral de otros regímenes: el de IRAE ficto y contabilidad simplificada, y el de reducción de IVA para contribuyentes No CEDE. No es el tope del Literal E **[extracto]** — [DGI – Reducción del IVA](https://www.gub.uy/direccion-general-impositiva/comunicacion/publicaciones/reduccion-del-impuesto-valor-agregado-iva)
+- **CONFLICTO RESUELTO: el tope del Literal E es 305.000 UI, no 4.000.000 UI.**
+  - **Norma:** el Decreto 150/007, art. 122 ("Pequeñas empresas"), reglamenta la exoneración del literal E del art. 52 del Título 4 "mientras el monto de sus ingresos en el ejercicio no supere las U.I. 305.000" **[extracto del texto en IMPO]** — [IMPO – Decreto 150/007 art. 122](https://www.impo.com.uy/bases/decretos/150-2007/122)
+  - **Qué ingresos cuentan:** las ventas brutas menos devoluciones, bonificaciones y descuentos, convertidas con la UI del inicio del ejercicio **[extracto]** — mismo enlace.
+  - **Confirmación de DGI:** la DGI publica el mismo tope en pesos ($ 1.959.229 = 305.000 UI para 2026) — [DGI – Cotización del tope IVA mínimo](https://www.gub.uy/direccion-general-impositiva/comunicacion/publicaciones/cotizacion-del-tope-establecido-para-iva-minimo). El manual GPA dice "ingresos no superen el monto de 305.000 UI" — [GPA – Literal E) del artículo 52 (IVA Mínimo)](https://www.gpa.uy/manual/pdf/601)
+  - **Serie histórica:** desde el 1/1/2015 el tope en pesos era $ 903.837 (305.000 UI de ese momento) — [GPA – IRAE tope de ingresos literal E desde 01/01/2015](https://www.gpa.uy/posts/informes/1130-irae-tope-de-ingresos-literal-e-desde-01012015/)
+  - **Para qué sirve el 4.000.000 UI:** es el umbral de otros tres regímenes, no del Literal E.
+    - **IRAE ficto y contabilidad suficiente:** quien tuvo ingresos de hasta 4.000.000 UI en el ejercicio anterior puede liquidar IRAE ficto y no necesita contabilidad completa (Dec. 150/007) — [cuantomecuesta – IRAE 2026](https://cuantomecuesta.com/uy/irae-empresas/); [Galante & Martins – IRAE ficto](https://galantemartins.com/irae-ficto-opcion-simplificada-y-previsible/)
+    - **Reducción de IVA por pagos con débito para contribuyentes No CEDE:** aplica a quienes facturaron hasta 4.000.000 UI en el ejercicio anterior — [DGI – Reducción del IVA](https://www.gub.uy/direccion-general-impositiva/comunicacion/publicaciones/reduccion-del-impuesto-valor-agregado-iva)
+    - **Régimen ficto de esa reducción:** los Decretos 288/012 y 203/014 lo regulan para Literal E, Monotributo y No CEDE de hasta 4.000.000 UI — [IMPO – Decreto 288/012](https://www.impo.com.uy/bases/decretos/288-2012); [IMPO – Decreto 203/014](https://www.impo.com.uy/bases/decretos/203-2014)
+  - **Origen del error:** al menos un blog afirma que el Literal E "llega a 4.000.000 UI", pero su propia tabla se contradice — [yo-facturo](https://yo-facturo.com/blog/que-es-el-literal-e-en-uruguay/)
+- **Ejercicios de menos de 12 meses:** la DGI aplicó el tope **anualizando** los ingresos de un ejercicio anterior más corto — [IMPO – Consulta Tributaria 5496](https://www.impo.com.uy/bases/consultas-tributarias/5496-2011)
+- **Volver al Literal E (fuentes en conflicto):**
+  - Una fuente dice que quien sale debe esperar tres ejercicios y que, en el tercero o uno posterior, sus ingresos no superen las 305.000 UI **[extracto]** — [tributosimple – Pequeñas Empresas y Literal E](https://tributosimple.com/uruguay-pequenas-empresas-literal-e/)
+  - Otra dice que "NO hay permanencia mínima": se podría volver en el ejercicio siguiente si el ejercicio anterior no superó el tope **[extracto]** — [Calculame – Literal E](https://calculame.uy/literal-e-pequena-empresa)
 - **Importar no está prohibido en Literal E:** la DGI respondió una consulta vinculante de una "pequeña empresa con giro importador" y reguló cómo trata sus anticipos (ver sección 4) — [IMPO – Consulta Tributaria 6410](https://www.impo.com.uy/bases/consultas-tributarias/6410-2021)
 
 ### Inferences
@@ -34,8 +51,10 @@ En 2026, el Literal E permite ingresos anuales de hasta 305.000 UI, o sea **$ 1.
 - **Tope 2027:** será 305.000 UI a la UI del 31/12/2026. Va a subir en pesos aproximadamente lo que suba la inflación. Aun así, con $ 2,4 millones al año el vendedor seguiría por encima del tope.
 
 ### Gaps
-- No pude leer completas las páginas de DGI para confirmar la letra exacta sobre el mes del cambio, ni sobre si quien sale del régimen puede volver al Literal E y cuándo.
-- Tampoco confirmé el tope proporcional para el ejercicio de inicio, ni las exclusiones del régimen (cantidad de establecimientos, tipo de actividad) según el art. 52 lit. E Título 4 y el Decreto 220/998.
+- No pude leer completas las páginas de DGI para confirmar la letra exacta sobre el mes del cambio.
+- No pude resolver si quien sale del régimen puede volver al Literal E y cuándo: hay fuentes que dicen que debe esperar tres ejercicios y otras que no hay permanencia mínima.
+- Para el ejercicio de inicio solo encontré la Consulta 5496 (anualización); no tengo el texto completo. Tampoco confirmé las exclusiones del régimen (cantidad de establecimientos, tipo de actividad) según el art. 52 lit. E Título 4 y el Decreto 220/998.
+- Para el informe: el tope de **305.000 UI** sí queda firme. Lo respaldan el Decreto 150/007 art. 122, la DGI, el Decreto 310/025 y el manual GPA.
 - No encontré fuente oficial de DGI sobre la obligatoriedad de CFE para IVA mínimo desde el 1/1/2026; solo una fuente comercial.
 - No encontré ningún "régimen de transición" o gradualismo de IVA o IRAE para quienes salen del Literal E. Lo más parecido son el Decreto 203/014 y el Decreto 288/012, que regulan la reducción ficta de IVA por pagos con débito y no un gradualismo — [IMPO – Decreto 203/014](https://www.impo.com.uy/bases/decretos/203-2014); [IMPO – Decreto 288/012](https://www.impo.com.uy/bases/decretos/288-2012)
 
@@ -168,20 +187,71 @@ Cómo salen los números del régimen general:
 ## 4. Impuestos a la importación para un vendedor Literal E: qué se recupera y cómo pesa en el costo puesto en plaza
 
 ### Takeaway
-Según la DGI, un Literal E que importa **no puede descontar el IVA de importación** (código 550), que queda como costo de la mercadería. **Sí puede usar el anticipo de IVA de importación** (código 551) para descontarlo de las cuotas de IVA mínimo del ejercicio, o pedir su devolución en certificados de crédito. Su costo puesto en plaza lleva un 22% de IVA no recuperable que un importador del régimen general sí recupera.
+Según la DGI, un Literal E que importa **no puede descontar el IVA de importación** (código 550), que queda como costo de la mercadería. **Sí puede usar el anticipo de IVA de importación** (código 551) para descontarlo de las cuotas de IVA mínimo del ejercicio, o pedir su devolución en certificados de crédito. Además, un Literal E está **exonerado del anticipo de IRAE** en la importación si presenta una declaración jurada previa (Decreto 788/008).
+
+Con el dato del vendedor (100 en China → 225 puesto en Uruguay), el IVA de importación no recuperable es **~12–16% del costo puesto en plaza** (~27–35 de cada 225). Si se suma el IVA de los servicios locales (despachante, fletes), el total no recuperable llega a **~15–19%**.
+
+En el régimen general ese IVA pasa a ser crédito y el **2,25x baja a ~1,73–1,85x sin IVA**. Pero el precio de venta también pasa a valer 1/1,22 sin IVA. Lo que en realidad pierde el vendedor al pasar al régimen general no es el IVA de importación: es el **22% sobre su margen (valor agregado)**.
 
 ### Cited Findings
 - **Qué se paga y qué se descuenta:** en la importación, el contribuyente debe pagar "entre otros tributos, el IVA importación (código 550) y el anticipo de IVA importación (código 551)". Con base en el art. 117 del Decreto 220/998, el anticipo "puede ser utilizado para descontar de los pagos mensuales del IVA mínimo del ejercicio económico o puede solicitarse mediante certificados de crédito" — [IMPO – Consulta Tributaria N.º 6410 (2021)](https://www.impo.com.uy/bases/consultas-tributarias/6410-2021); ver también [IMPO – Consulta Tributaria N.º 6359](https://www.impo.com.uy/bases/consultas-tributarias/6359-2021)
 - **El IVA de importación es costo:** el IVA importación (código 550) "constituye un costo para el contribuyente del IVA mínimo y no puede deducirse del impuesto a pagar" **[extracto, fuente secundaria]** — [Calculame – Deducción de anticipos IVA importación en IVA mínimo](https://calculame.uy/blog/deduccion-de-anticipos-iva-importacion-en-regimen-de-iva-minimo)
 
+- **Anticipo de IRAE en aduana:**
+  - Una consulta de la DGI comparte con el consultante que una unipersonal Literal E "está exonerada de realizar el anticipo de IRAE en ocasión de la importación", por el art. 3 lit. a) del **Decreto 788/008**. Otra fuente indica que esa exoneración exige una **declaración jurada previa a la importación** **[extracto]** — [IMPO – Consulta Tributaria 6359](https://www.impo.com.uy/bases/consultas-tributarias/6359-2021); [DGI (PDF) – Exoneración del IRAE, pagos de anticipos mínimos](https://d2i2ns4m5kqy1i.cloudfront.net/media/files/external/Procedimiento-Exoneraci%C3%B3n_IRAE-Cede.pdf)
+  - Si se pagaron anticipos exonerados, se recuperan "exclusivamente por compensación, cambio de imputación y/o certificados de crédito" (instructivo de DGI para No CEDE, formulario 2178, línea 88) **[extracto]** — [DGI (PDF) – Procedimiento DJ No CEDE](https://d2i2ns4m5kqy1i.cloudfront.net/media/files/external/Procedimiento-DJ-NoCede.pdf); [Jornadas Rioplatenses de Tributación](http://www.tfaba.gov.ar/JornadasRioplatenses/3.-RelatoUruguayoTemaI-Cres.GonzalezyRocca.pdf)
+- **Base y tasas de los tributos de importación (fuentes secundarias, en conflicto):**
+  - **IVA de importación:** se calcula sobre el **valor CIF más el arancel y el IMESI si corresponde**. La tasa básica es 22% y la mínima 10% (los accesorios de moto, en principio, van a la básica) **[extracto]** — [yo-facturo – Cómo importar a Uruguay 2026](https://yo-facturo.com/blog/como-importar-a-uruguay/)
+  - **Anticipo de IVA:** se cita **10% sobre CIF**, en un ejemplo de carnes en la ficha de Cancillería argentina de 2023 — [Cancillería Argentina – Uruguay](https://www.cancilleria.gob.ar/es/uruguay-3)
+  - **TGA (arancel):** de **0% a 23%** según la posición arancelaria (Arancel Externo Común del MERCOSUR); un ejemplo cita 14,4% — [yo-facturo](https://yo-facturo.com/blog/como-importar-a-uruguay/); [descuento.uy – Importación desde el Mercosur](https://descuento.uy/que-impuestos-paga-una-importacion-desde-el-mercosur/)
+  - **Tasa consular:** 2% según el MRREE y la guía de 2026 (que la calcula sobre FOB); otras fuentes dicen 3% o 5% — [MRREE – Manual para el retorno](https://www.gub.uy/ministerio-relaciones-exteriores/comunicacion/publicaciones/manual-para-retorno/manual-para-retorno/es-gratuito); [yo-facturo](https://yo-facturo.com/blog/como-importar-a-uruguay/); [alflogistica – Importar desde China](https://alflogistica.com/como-importar-desde-china-a-uruguay/)
+  - **Anticipo de IRAE (para quien no está exonerado):** 4%, 7% o "entre 4% y 15% según el producto", según la fuente — [Ámbito – Importaciones online](https://www.ambito.com/uruguay/importaciones-online-sentimientos-encontrados-n6183085); [InfoNegocios – Crisis de contenedores](https://infonegocios.biz/enfoque/crisis-de-contenedores-asi-le-pega-a-uruguay)
+
 ### Inferences
-- **Impacto en el costo puesto en plaza:** en Literal E, cada $ 100 de valor en aduana más aranceles le cuestan ~$ 122 más el anticipo financiado. En el régimen general, el IVA de importación es crédito fiscal. Con el pasaje, el IVA de los costos deja de ser costo, pero aparece el IVA de 22% sobre sus ventas. Esa es la lógica del ejemplo de la sección 3.
-- **Anticipo inmovilizado:** la cuota de IVA mínimo es baja ($ 5.910 por mes). Si importa con frecuencia, el anticipo de IVA podría superar lo que puede descontar en el ejercicio y quedar como plata inmovilizada hasta que se emitan los certificados de crédito. Es un costo financiero y de trámite.
+**Cuánto del 2,25x es IVA no recuperable (modelo ilustrativo; los supuestos son míos y no están citados).**
+
+Supuestos de la descomposición, por cada 100 de FOB en China:
+- Flete y seguro internacional: 25, así que el CIF es 125.
+- TGA de 16% sobre CIF: 20.
+- Base del IVA (CIF + TGA): 145.
+- Tasa consular de 2% sobre CIF: 2,5, fuera de la base del IVA.
+- IVA de importación de 22% sobre la base: **31,9**.
+- Anticipo de IVA de 10% sobre la base: 14,5. Es recuperable.
+- Anticipo de IRAE: 0, por la exoneración de Literal E con declaración jurada.
+- El resto, hasta llegar a 225, son despachante, gastos de DNA y puerto, flete local y costos financieros. Se asume que todos llevan IVA 22% incluido.
+
+Dos variantes, según si el vendedor contó o no el anticipo de IVA dentro de su 225:
+
+| Por cada 225 de costo puesto en plaza | V1: el 225 incluye el anticipo | V2: el 225 no incluye el anticipo |
+|---|---|---|
+| CIF + TGA + tasa consular | 147,5 | 147,5 |
+| IVA de importación (no recuperable en Literal E) | 31,9 (14,2%) | 31,9 (14,2%) |
+| Anticipo de IVA (recuperable en Literal E) | 14,5 (6,4%) | — |
+| Despachante, puerto, flete local y otros | 31,1 | 45,6 |
+| IVA dentro de esos servicios (no recuperable en Literal E) | 5,6 | 8,2 |
+| **IVA no recuperable en Literal E** | **37,5 (16,7%)** | **40,1 (17,8%)** |
+| **Costo sin IVA en régimen general** | **173 → 1,73x** | **185 → 1,85x** |
+
+En el régimen general, el costo sin IVA de V1 descuenta el IVA de importación, el anticipo y el IVA de los servicios: 225 − 31,9 − 14,5 − 5,6. En V2 descuenta el IVA de importación y el de los servicios: 225 − 31,9 − 8,2.
+
+- **Sensibilidad:** si la base imponible (CIF + TGA) estuviera entre 120 y 160 de los 225, el IVA de importación sería de 26,4 a 35,2: **entre 11,7% y 15,6% del costo puesto en plaza**.
+- **Si contó el anticipo como costo (V1),** está sobrestimando su costo en ~6% o, peor, no lo está recuperando. El anticipo se puede descontar de la cuota de IVA mínimo o recuperar con certificados (Consulta 6410).
+- **Efecto sobre la cuota de IVA mínimo (ilustrativo):** con compras de ~$ 100.000 por mes de costo puesto en plaza, el anticipo de IVA sería de ~$ 6.400 por mes (14,5/225). Eso **es comparable a la cuota de $ 5.910**, así que bien gestionado podría cubrir casi toda la cuota en efectivo.
+- **Por qué el 2,25x más bajo del régimen general no es una ganancia neta:** el precio de venta también pasa a valer 1/1,22 sin IVA. Ejemplo por unidad con la variante V2 y un precio final de 450 (dos veces el costo puesto en plaza):
+  - En Literal E, el margen bruto es 450 − 225 = **225**.
+  - En el régimen general, el precio sin IVA es 450/1,22 = 368,9. Menos el costo de 184,9, el margen queda en **~184**.
+  - La diferencia (~41) es el IVA neto: 81,1 de IVA sobre la venta menos 40,1 de crédito. Equivale a ~18% de lo que el vendedor agrega sobre su costo.
+  - Para mantener el margen de 225 por unidad, el precio final tendría que subir a ~500: **+11%** a nivel de producto. En la sección 3 el aumento necesario era de +6,7% porque allí el valor agregado, después de comisiones de MELI, envíos y ads, es menor.
+  - **Conclusión:** cuanto más alto el markup sobre el costo importado, más vale el Literal E y más duele el pasaje al régimen general.
+- **Lo que cambia en la aduana con el régimen general:** el vendedor ya no estaría exonerado del anticipo de IRAE (4–15% según la fuente), aunque podría imputarlo al IRAE. También pagaría el anticipo de IVA, imputable al IVA del mes. Las dos cosas son un costo financiero, no un costo final.
+- **Anticipo inmovilizado en Literal E:** si importa con frecuencia, el anticipo de IVA podría superar las cuotas que puede descontar en el ejercicio y quedar inmovilizado hasta que se emitan los certificados de crédito. Es un costo financiero y de trámite.
 
 ### Gaps
-- No pude confirmar la tasa del anticipo de IVA de importación (se suele citar 10% sobre la base imponible, o 3% para bienes a tasa mínima). Tampoco confirmé si existe un anticipo de IRAE en aduana para un Literal E ni si es recuperable.
-- No encontré los aranceles (TGA, tasa consular, tasas de servicios aduaneros) para accesorios de moto, ni la diferencia entre origen extra-Mercosur y Mercosur.
-- No encontré si hay alguna restricción para importar en Literal E. La consulta 6410 confirma que puede hacerlo; no vi una prohibición.
+- No pude confirmar en norma vigente (Decreto 220/998, DGI o DNA) la tasa del anticipo de IVA de importación en 2026: se cita 10% sobre CIF, o la base, y se menciona 3% para bienes a tasa mínima. Tampoco confirmé si la base del IVA incluye la tasa consular.
+- No confirmé que la exoneración del anticipo de IRAE para Literal E (Decreto 788/008) siga vigente en 2026 ni cómo se tramita la declaración jurada previa.
+- No encontré la TGA específica de los accesorios de moto (cascos, guantes, camperas, repuestos) por NCM, ni si hay preferencias por origen.
+- No se sabe cómo se compone el 2,25x del vendedor: flete, despachante, si incluye el anticipo y si hay costos de courier o "puerta a puerta". La descomposición de arriba es ilustrativa.
+- No encontré ninguna restricción para importar en Literal E. La consulta 6410 confirma que puede hacerlo.
 
 ---
 

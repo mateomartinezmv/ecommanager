@@ -235,3 +235,20 @@ test('en la reposición, una venta de kit es demanda de cada pieza', () => {
     { sku: 'HSJ-20121', cantidad: 1, fecha: '2026-11-11', uds: null },
   ]);
 });
+
+test('la publicación de un kit sale con su precio y sus fotos, no con las de la base', () => {
+  const { construirPayload } = require('../api/_meliPublicaciones');
+  const base = { category_id: 'MLU46618', price: 1690, currency_id: 'UYU', listing_type_id: 'gold_special',
+    pictures: [{ secure_url: 'https://x/espejo-1.jpg' }, { secure_url: 'https://x/espejo-2.jpg' }], attributes: [] };
+
+  const kit = construirPayload(base, { titulo: 'Kit Espejos Aleron Y Protectores De Levas', sku: 'KIT-ALERON-LEVAS',
+    stock: 9, precio: 2320, fotos: [{ id: '123-MLU' }, 'https://x/portada-kit.jpg'] });
+  assert.strictEqual(kit.price, 2320);
+  assert.deepStrictEqual(kit.pictures, [{ id: '123-MLU' }, { source: 'https://x/portada-kit.jpg' }]);
+  assert.strictEqual(kit.seller_custom_field, 'KIT-ALERON-LEVAS');
+
+  // Un ángulo común sigue copiando precio y fotos de la original.
+  const angulo = construirPayload(base, { titulo: 'Espejos Aleron', sku: 'HSJ-20121', stock: 10 });
+  assert.strictEqual(angulo.price, 1690);
+  assert.deepStrictEqual(angulo.pictures, [{ source: 'https://x/espejo-1.jpg' }, { source: 'https://x/espejo-2.jpg' }]);
+});

@@ -316,7 +316,9 @@ function cuerpoParaAceptar(p, ev, stock) {
 
 async function aceptar(token, pub, promoClave, stock) {
   const p = pub.propuestas.find(x => x.clave === promoClave || (x.id && x.id === promoClave));
-  if (!p) return { ok: false, error: 'Esa propuesta ya no está: MELI la sacó o cambió. Actualizá la pantalla.' };
+  // Ya no está: al entrar en otra campaña MELI suele retirar candidatas de la misma
+  // publicación (sobre todo el descuento propio). No es un error: no hace falta.
+  if (!p) return { ok: true, ya_no_aplica: true };
   const ev = p.evaluacion;
   if (ev.veredicto === 'rechazar') return { ok: false, error: `No se aplica: ${ev.motivo}` };
 

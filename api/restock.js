@@ -32,6 +32,21 @@
 // que el front los muestre en "Todos" sin ensuciar "Hay que comprar".
 
 const { getSupabase } = require('./_supabase');
+const { todasLasPiezas } = require('./_kits');
+
+// Los kits no se compran: se arman con piezas. Una venta (o devolución) de un kit es demanda
+// de cada pieza, en unidades de depósito: kits × cantidad de esa pieza en el kit.
+// Devuelve [{ sku, uds, ...resto }] con las líneas de kit abiertas en sus piezas; las demás
+// pasan con uds = null (las convierte aUnidades como siempre).
+function abrirKits(lineas, piezasPorKit) {
+  const salida = [];
+  for (const l of lineas || []) {
+    const piezas = piezasPorKit[l.sku];
+    if (!piezas?.length) { salida.push({ ...l, uds: null }); continue; }
+    for (const p of piezas) salida.push({ ...l, sku: p.sku, uds: (Number(l.cantidad) || 0) * p.cantidad });
+  }
+  return salida;
+}
 
 const FALLBACK_LEAD_DAYS = 85;
 const MS_PER_DAY         = 86400 * 1000;
@@ -199,12 +214,16 @@ module.exports = async (req, res) => {
 
   try {
     // ── 1. All products ──────────────────────────────────────────────────────
-    const { data: productos, error: prodErr } = await supabase
+    const { data: productosTodos, error: prodErr } = await supabase
       .from('productos')
       .select('sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at')
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
+
+    // Los kits salen de la lista de compra; sus ventas se reparten en las piezas (abrirKits).
+    const piezasPorKit = await todasLasPiezas(supabase);
+    const productos = (productosTodos || []).filter(p => !piezasPorKit[p.sku]?.length);
 
     // Todo el módulo razona en UNIDADES DE DEPÓSITO: el stock, las llegadas de
     // importaciones y la cantidad sugerida a pedir están en cajas sueltas. Las
@@ -238,8 +257,8 @@ module.exports = async (req, res) => {
     const lastDateBySku  = {};
     const dailyQtyBySku  = {}; // sku -> { 'YYYY-MM-DD': qty }, historial completo
 
-    for (const v of ventas) {
-      const uds = aUnidades(v.sku, v.cantidad);
+    for (const v of abrirKits(ventas, piezasPorKit)) {
+      const uds = v.uds ?? aUnidades(v.sku, v.cantidad);
       if (!dailyQtyBySku[v.sku]) dailyQtyBySku[v.sku] = {};
       dailyQtyBySku[v.sku][v.fecha] = (dailyQtyBySku[v.sku][v.fecha] || 0) + uds;
 
@@ -262,13 +281,13 @@ module.exports = async (req, res) => {
 
     const returnedBySku = {};
     const returnsBySku  = {}; // sku -> [{ fecha, qty }], historial completo
-    for (const d of (devoluciones || [])) {
+    for (const d of abrirKits(devoluciones, piezasPorKit)) {
       // Producto equivocado: la venta de A es demanda real (se le reenvió el correcto) y B
       // bajó al registrar y volvió al recibir, así que no mueve ni la demanda ni el stock.
       if (d.sku_recibido) continue;
       const fecha = (d.recibida_at || '').slice(0, 10);
       if (!fecha || !d.cantidad) continue;
-      const uds = aUnidades(d.sku, d.cantidad);
+      const uds = d.uds ?? aUnidades(d.sku, d.cantidad);
       if (fecha >= sinceStr) returnedBySku[d.sku] = (returnedBySku[d.sku] || 0) + uds;
       if (!returnsBySku[d.sku]) returnsBySku[d.sku] = [];
       returnsBySku[d.sku].push({ fecha, qty: uds });
@@ -570,3 +589,6 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
+// Para los tests (tests/kits.test.js).
+module.exports.abrirKits = abrirKits;

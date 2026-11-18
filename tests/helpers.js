@@ -91,6 +91,8 @@ function mockearApi(page, estado, fallos = {}) {
       if (metodo === 'PUT') {
         const p = estado.productos.find(x => x.sku === url.searchParams.get('sku'));
         if (!p) return error(404, 'producto inexistente');
+        (estado.productosPut || (estado.productosPut = [])).push({ sku: p.sku, ...cuerpo });
+        if (cuerpo.componentes !== undefined) p.componentes = cuerpo.componentes;
         // Réplica de camposDiscontinuado (api/_discontinuado.js): lo que el request no manda
         // se conserva, y reactivar limpia el motivo entero.
         const disc = cuerpo.discontinuado !== undefined ? !!cuerpo.discontinuado : !!p.discontinuado;

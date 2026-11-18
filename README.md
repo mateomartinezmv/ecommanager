@@ -564,3 +564,30 @@ para que no quede en MELI con la mitad de las fotos. Requiere además la migraci
 El modelo es `marketing-studio/image/sunburst` (GPT Image de Higgsfield Marketing Studio): es
 el que copia bien el producto de una foto y escribe en español sin errores. Para cambiar el
 logo, reemplazá los dos PNG de `public/marca/`.
+
+## Kits (Stock → 🧩)
+
+Un kit es una publicación que vende varias piezas del depósito juntas: por ejemplo, *par de
+espejos alerón + protectores de levas*. Se carga como un producto más (su SKU, nombre, precio,
+costo y sus publicaciones de MELI) y, en **Piezas del kit**, las piezas que lleva, una por
+renglón: `HSJ-20121 x1`. La cantidad son unidades del depósito de esa pieza.
+
+**Antes de usarlo hay que crear la tabla una sola vez:**
+
+1. Entrá a Supabase → **SQL Editor** → **New query**
+2. Copiá todo el contenido de `supabase/migrations/20261117000000_add_kits.sql`
+3. **Run**
+
+**Cómo se comporta:**
+
+- **El stock del kit no se carga a mano**: es el de la pieza que menos alcanza. Con 10 espejos
+  y 9 levas, el kit tiene 9. Lo calcula la base sola cada vez que se mueve una pieza.
+- **Las piezas siguen vendiéndose sueltas** y comparten el depósito con el kit: el espejo que
+  se va en un kit ya no está para la publicación suelta, y al revés.
+- **Vender un kit descuenta cada pieza** y vuelve a publicar en MELI las piezas sueltas y los
+  otros kits que comparten alguna pieza. Vender una pieza suelta baja los kits que la usan.
+- **Devolver un kit** devuelve una unidad de cada pieza.
+- **En el control de despacho** se escanea cada pieza (el kit no tiene caja propia).
+- **En Reposición** el kit no aparece: sus ventas cuentan como demanda de cada pieza.
+- Los kits se venden sólo en MELI: no se buscan en Shopify.
+- No se puede meter un kit dentro de otro, ni borrar un producto que es pieza de un kit.

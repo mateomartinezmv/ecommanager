@@ -9,6 +9,14 @@ const { sincronizarStock, resumenSync } = require('./_stockSync');
 const { parseMeliIds } = require('./_meliIds');
 const { packsDisponibles, parseUnidadesPorVenta } = require('./_packs');
 const { camposDiscontinuado, escribirConMotivo, faltaMigracionMotivo } = require('./_discontinuado');
+const { todasLasPiezas, relacionesDeKit, guardarPiezas } = require('./_kits');
+
+// Las piezas del kit sólo se tocan si el request las manda (`componentes`): guardar un producto
+// común desde el formulario no tiene que borrar nada. Vacío = deja de ser kit.
+async function guardarPiezasSiVienen(supabase, sku, p) {
+  if (p.componentes === undefined) return undefined;
+  return guardarPiezas(supabase, sku, p.componentes);
+}
 
 // El número que Gesta le dio al producto (lo que pide el Excel de ventas). Vacío = no está en
 // Gesta. Sólo se escribe si el request lo manda, para no borrarlo desde otros guardados.
@@ -33,7 +41,10 @@ module.exports = async (req, res) => {
         .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return res.json(data);
+      // Los kits vienen con sus piezas; el resto, con la lista vacía. Sin la migración de
+      // kits todos vienen vacíos.
+      const piezas = await todasLasPiezas(supabase);
+      return res.json((data || []).map(p => ({ ...p, componentes: piezas[p.sku] || [] })));
     }
 
     if (req.method === 'POST') {
@@ -65,6 +76,15 @@ module.exports = async (req, res) => {
         camposDiscontinuado(p, null),
       );
       if (error) throw error;
+
+      // Un kit nuevo: al cargar las piezas la base le calcula el stock, y se publica con ese.
+      const componentes = await guardarPiezasSiVienen(supabase, data.sku, p);
+      if (componentes?.length) {
+        const { data: kit } = await supabase.from('productos').select('*').eq('sku', data.sku).single();
+        const sync = await sincronizarStock(supabase, kit || data, (kit || data).stock_dep);
+        console.log('🧩 Kit nuevo:', resumenSync(data.sku, sync));
+        return res.json({ ...(kit || data), componentes, sync, ...(migracionMotivoPendiente ? { migracionMotivoPendiente } : {}) });
+      }
       return res.json(migracionMotivoPendiente ? { ...data, migracionMotivoPendiente } : data);
     }
 
@@ -86,10 +106,15 @@ module.exports = async (req, res) => {
         ({ data: anterior } = await supabase.from('productos').select(COLS_BASE).eq('sku', sku).single());
       }
 
+      // Un kit no tiene depósito propio: su stock lo calcula la base con las piezas, así que
+      // lo que mande el formulario se ignora (la base lo pisaría igual). Si se lo tomara como
+      // un ajuste, cambiar el número del kit movería el stock de las piezas sin querer.
+      const esKit = (await relacionesDeKit(supabase, sku)).piezas.length > 0 || !!p.componentes?.length;
+
       // stock_dep es la fuente de verdad, en unidades sueltas del depósito.
       // Lo que se publica (y lo que espejan stock_meli/stock_shopify) son los
       // packs completos que salen de ese stock.
-      const stockCanon = p.stockDep;
+      const stockCanon = esKit ? (anterior?.stock_dep ?? 0) : p.stockDep;
       const unidadesPorVenta = parseUnidadesPorVenta(
         p.unidadesPorVenta !== undefined ? p.unidadesPorVenta : anterior?.unidades_por_venta
       );
@@ -122,6 +147,16 @@ module.exports = async (req, res) => {
         camposDiscontinuado(p, anterior),
       );
       if (error) throw error;
+
+      // Piezas del kit (si vinieron). Cambiarlas cambia el stock del kit: se relee y se publica.
+      const componentes = await guardarPiezasSiVienen(supabase, data.sku, p);
+      if (esKit || componentes?.length) {
+        const { data: kit } = await supabase.from('productos').select('*').eq('sku', data.sku).single();
+        const fila = kit || data;
+        const sync = await sincronizarStock(supabase, fila, fila.stock_dep);
+        console.log('🧩 Kit:', resumenSync(fila.sku, sync));
+        return res.json({ ...fila, componentes: componentes ?? undefined, sync, ...(migracionMotivoPendiente ? { migracionMotivoPendiente } : {}) });
+      }
 
       const forzarSync = p.forzarSync === true;
       // Cambiar las unidades por venta mueve lo publicado aunque el depósito

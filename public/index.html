@@ -1415,6 +1415,7 @@
       <div class="form-group"><label class="form-label">Subgrupo</label><input type="text" id="p-subgrupo" list="dl-subgrupos" placeholder="ej: Akrapovic"><datalist id="dl-subgrupos"></datalist></div>
       <div class="form-group form-full"><label class="form-label">Nombre del producto *</label><input type="text" id="p-nombre" placeholder="Nombre completo del producto"></div>
       <div class="form-group"><label class="form-label">Se vende de a</label><select id="p-upv" onchange="onUpvChange()"><option value="1">1 — unidad suelta</option><option value="2">2 — par (sliders, puños...)</option><option value="3">3 — trío</option><option value="4">4 — juego de 4</option></select><small style="font-size:11px;color:var(--text-muted)">El depósito se carga en unidades sueltas; MELI y Shopify publican los packs completos.</small></div>
+      <div class="form-group form-full"><label class="form-label">Piezas del kit</label><textarea id="p-kit" rows="2" placeholder="Vacío si no es kit. Uno por renglón: HSJ-20121 x1" oninput="onUpvChange()"></textarea><small style="font-size:11px;color:var(--text-muted)">Para un kit (ej: par de espejos + protectores de levas): las piezas y cuántas unidades del depósito lleva de cada una. El stock del kit es el de la pieza que menos tiene, y venderlo descuenta las piezas.</small></div>
       <div class="form-group"><label class="form-label">Stock depósito (unidades sueltas)</label><input type="number" id="p-stock-dep" placeholder="0" min="0" oninput="onUpvChange()"><small id="p-stock-hint" style="font-size:11px;color:var(--accent);display:none"></small></div>
       <div class="form-group"><label class="form-label">Stock publicado MELI</label><input type="number" id="p-stock-meli" placeholder="0" min="0"></div>
       <div class="form-group"><label class="form-label">Stock Shopify</label><input type="number" id="p-stock-shopify" placeholder="0" min="0"></div>
@@ -2331,8 +2332,38 @@ function etiquetaPack(p, stockDep) {
   return upv === 2 ? `${packs} ${packs === 1 ? 'par' : 'pares'}` : `${packs} × ${upv}`;
 }
 
+// ── Kits (ver api/_kits.js) ─────────────────────────────────────────────────
+// Un kit vende varias piezas del depósito juntas. No tiene cajas propias: su stock es el de
+// la pieza que menos alcanza, lo calcula la base, y vender un kit descuenta las piezas.
+const esKitProd = p => (p?.componentes || []).length > 0;
+function piezasDeKit(p) {
+  return (p?.componentes || []).map(c => ({ ...c, producto: db.productos.find(x => x.sku === c.sku) || null }));
+}
+function stockKitDe(p) {
+  const piezas = piezasDeKit(p);
+  if (!piezas.length) return 0;
+  return Math.max(0, Math.min(...piezas.map(c => Math.floor((Number(c.producto?.stockDep) || 0) / (c.cantidad || 1)))));
+}
+function textoPiezas(p) {
+  return (p?.componentes || []).map(c => `${c.sku} x${c.cantidad}`).join('\n');
+}
+// "HSJ-20121 x1" por renglón (o separadas con coma). Sin cantidad = 1.
+function leerPiezas(texto) {
+  const piezas = [], invalidas = [];
+  for (const linea of String(texto || '').split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)) {
+    const m = linea.match(/^(\S+)(?:\s+(?:x|×|\*)\s*(\d+))?$/i);
+    if (!m) { invalidas.push(linea); continue; }
+    piezas.push({ sku: m[1], cantidad: Math.max(1, parseInt(m[2] || '1', 10) || 1) });
+  }
+  return { piezas, invalidas };
+}
+function tituloKit(p) {
+  const detalle = piezasDeKit(p).map(c => `${c.sku} ×${c.cantidad} (${c.producto ? c.producto.stockDep : '?'} en depósito)`).join(', ');
+  return `Kit: se arma con ${detalle}. Su stock es el de la pieza que menos tiene; vender un kit descuenta las piezas.`;
+}
+
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, codigoGesta: p.codigo_gesta ?? null, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, codigoGesta: p.codigo_gesta ?? null, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, componentes: p.componentes || [], creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, facturaMeliAt: v.factura_meli_at || null, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -3581,7 +3612,7 @@ function populateProductoSelects() {
 // PRODUCTOS
 // =====================
 function clearProductoForm() {
-  ['p-sku','p-nombre','p-grupo','p-subgrupo','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-gesta','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
+  ['p-sku','p-nombre','p-grupo','p-subgrupo','p-kit','p-stock-dep','p-stock-meli','p-stock-shopify','p-costo','p-precio','p-alerta','p-meli-id','p-shopify-id','p-gesta','p-notas'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('p-tipo').value = 'nuevo';
   document.getElementById('p-upv').value = '1';
   onUpvChange();
@@ -3592,11 +3623,26 @@ function clearProductoForm() {
 // Los campos de MELI/Shopify pasan a ser de sólo lectura y muestran los packs.
 function onUpvChange() {
   const upv = parseInt(document.getElementById('p-upv').value) || 1;
-  const dep = parseInt(document.getElementById('p-stock-dep').value) || 0;
-  const packs = Math.max(0, Math.floor(dep / upv));
+  const depInput = document.getElementById('p-stock-dep');
   const hint = document.getElementById('p-stock-hint');
   const meli = document.getElementById('p-stock-meli');
   const shop = document.getElementById('p-stock-shopify');
+
+  // Un kit no se carga a mano: el stock sale de las piezas.
+  const { piezas } = leerPiezas(document.getElementById('p-kit').value);
+  if (piezas.length) {
+    const kit = stockKitDe({ componentes: piezas });
+    depInput.value = kit; meli.value = kit; shop.value = kit;
+    depInput.readOnly = meli.readOnly = shop.readOnly = true;
+    depInput.style.opacity = meli.style.opacity = shop.style.opacity = '0.6';
+    hint.style.display = 'block';
+    hint.textContent = `Kit: ${kit} completos con lo que hay de cada pieza`;
+    return;
+  }
+  depInput.readOnly = false; depInput.style.opacity = '';
+
+  const dep = parseInt(depInput.value) || 0;
+  const packs = Math.max(0, Math.floor(dep / upv));
   if (upv > 1) {
     hint.style.display = 'block';
     hint.textContent = `${dep} uds en depósito = ${packs} ${upv === 2 ? (packs === 1 ? 'par' : 'pares') : `packs de ${upv}`} para publicar`;
@@ -3643,6 +3689,16 @@ async function saveProducto() {
   const nombre = document.getElementById('p-nombre').value.trim();
   const precio = parseFloat(document.getElementById('p-precio').value) || 0;
   if (!sku || !nombre || !precio) { alert('SKU, nombre y precio son obligatorios.'); return; }
+  const kitTexto = leerPiezas(document.getElementById('p-kit').value);
+  const desconocidas = kitTexto.piezas.filter(c => !db.productos.some(x => x.sku === c.sku)).map(c => c.sku);
+  if (kitTexto.invalidas.length || desconocidas.length) {
+    alert(`Revisá las piezas del kit: ${[...kitTexto.invalidas, ...desconocidas.map(s => `${s} (no existe ese SKU)`)].join(', ')}`);
+    return;
+  }
+  if (kitTexto.piezas.some(c => c.sku === sku || esKitProd(db.productos.find(x => x.sku === c.sku)))) {
+    alert('Un kit no puede llevarse a sí mismo ni a otro kit como pieza.');
+    return;
+  }
   const prod = { sku, nombre, tipo: document.getElementById('p-tipo').value, unidadesPorVenta: parseInt(document.getElementById('p-upv').value) || 1, grupo: document.getElementById('p-grupo').value.trim(), subgrupo: document.getElementById('p-subgrupo').value.trim(), stockDep: parseInt(document.getElementById('p-stock-dep').value) || 0, stockMeli: parseInt(document.getElementById('p-stock-meli').value) || 0, stockShopify: parseInt(document.getElementById('p-stock-shopify').value) || 0, costo: parseFloat(document.getElementById('p-costo').value) || 0, precio, alertaMin: parseInt(document.getElementById('p-alerta').value) || 5, meliIds: document.getElementById('p-meli-id').value.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean), shopifyId: document.getElementById('p-shopify-id').value.trim(), codigoGesta: parseInt(document.getElementById('p-gesta').value, 10) || null, notas: document.getElementById('p-notas').value.trim() };
   // El formulario no pregunta por el descatalogado (eso se hace con el botón ⛔), así que al
   // editar se reenvía el estado actual: sin esto el PUT lo reactivaba en silencio y el
@@ -3656,6 +3712,10 @@ async function saveProducto() {
       prod.fechaDiscontinuado = actual.fechaDiscontinuado || null;
     }
   }
+  // Las piezas sólo viajan si hay, o si el producto era kit y se vaciaron (deja de serlo):
+  // guardar un producto común no toca la tabla de kits.
+  const eraKit = editingProductoSKU && esKitProd(db.productos.find(x => x.sku === editingProductoSKU));
+  if (kitTexto.piezas.length || eraKit) prod.componentes = kitTexto.piezas;
   try {
     if (editingProductoSKU) await api('PUT', `/productos?sku=${editingProductoSKU}`, prod);
     else await api('POST', '/productos', prod);
@@ -3684,6 +3744,7 @@ function editProducto(sku) {
   document.getElementById('p-gesta').value = p.codigoGesta || '';
   document.getElementById('p-stock-shopify').value = p.stockShopify || 0;
   document.getElementById('p-notas').value = p.notas || '';
+  document.getElementById('p-kit').value = textoPiezas(p);
   const upvSel = document.getElementById('p-upv');
   const upv = upvDe(p);
   if (!Array.from(upvSel.options).some(o => o.value === String(upv))) {
@@ -3704,6 +3765,10 @@ async function deleteProducto(sku) {
 function openAjuste(sku) {
   const p = db.productos.find(x => x.sku === sku);
   if (!p) return;
+  if (esKitProd(p)) {
+    alert(`${tituloKit(p)}\n\nPara cambiarlo, ajustá el stock de las piezas.`);
+    return;
+  }
   document.getElementById('ajuste-sku').value = p.sku;
   document.getElementById('ajuste-nombre').value = p.nombre;
   document.getElementById('ajuste-dep').value = p.stockDep;
@@ -6681,7 +6746,7 @@ function stockRowHtml(p, sangria = false) {
     <td>${p.nombre}${p.notas ? `<br><span style="font-size:11px;color:var(--text-muted)">${p.notas}</span>` : ''}${p.discontinuado && p.notaDiscontinuado ? `<br><span style="font-size:11px;color:var(--text-muted)">⛔ ${escHtml(p.notaDiscontinuado)}</span>` : ''}</td>
     <td>${etiquetas}</td>
     <td>${p.tipo === 'usado' ? '<span class="badge badge-purple">🔄 Usado</span>' : '<span class="badge badge-gray">🆕 Nuevo</span>'}</td>
-    <td class="${alerta}">${p.stockDep}${etiquetaPack(p) ? ` <span class="badge badge-blue" style="font-size:10px" title="Se vende de a ${upvDe(p)}: el depósito tiene ${p.stockDep} unidades sueltas">${etiquetaPack(p)}</span>` : ''}</td>
+    <td class="${alerta}">${p.stockDep}${esKitProd(p) ? ` <span class="badge badge-purple" style="font-size:10px" title="${escHtml(tituloKit(p))}">🧩 Kit</span>` : ''}${etiquetaPack(p) ? ` <span class="badge badge-blue" style="font-size:10px" title="Se vende de a ${upvDe(p)}: el depósito tiene ${p.stockDep} unidades sueltas">${etiquetaPack(p)}</span>` : ''}</td>
     <td>${(p.meliIds || []).length ? `${p.stockMeli}${p.meliIds.length > 1 ? ` <span class="badge badge-gray" style="font-size:10px" title="${p.meliIds.join(', ')}">×${p.meliIds.length}</span>` : ''}` : '—'}</td>
     <td>${p.shopifyId ? p.stockShopify : '—'}</td>
     <td>${fmt(p.precio)}</td>
@@ -8186,9 +8251,24 @@ function lineasDeEnvio(e) {
 
 // Unidades a escanear por SKU. Un producto que se vende de a par se despacha en dos cajas
 // con su etiqueta cada una, así que una venta de 1 par son 2 escaneos.
+//
+// Un kit no tiene caja propia: se arma con las cajas de sus piezas, así que se espera
+// escanear cada pieza (kits vendidos × unidades de depósito que lleva de cada una).
 function itemsEsperados(lineas) {
-  const porSku = {};
+  const abiertas = [];
   for (const v of lineas) {
+    const kit = db.productos.find(x => x.sku === v.sku);
+    if (!esKitProd(kit)) { abiertas.push(v); continue; }
+    for (const c of kit.componentes) {
+      const pieza = db.productos.find(x => x.sku === c.sku);
+      // Ya en unidades de depósito: se divide por el pack de la pieza para que la cuenta de
+      // abajo (cantidad × upv) dé exactamente kits × cantidad.
+      abiertas.push({ ...v, sku: c.sku, producto: pieza?.nombre || c.sku, meliItemId: null,
+        cantidad: (Number(v.cantidad) || 0) * c.cantidad / upvDe(pieza) });
+    }
+  }
+  const porSku = {};
+  for (const v of abiertas) {
     const p = db.productos.find(x => x.sku === v.sku);
     const upv = upvDe(p);
     const it = porSku[v.sku] || (porSku[v.sku] = {

@@ -30,6 +30,7 @@ const { getMeliToken } = require('./_meliToken');
 const { getShopifyToken } = require('./_shopifyToken');
 const { meliIdsDe } = require('./_meliIds');
 const { packsDisponibles } = require('./_packs');
+const { relacionesDeKit, kitsQueUsan, productosPorSku, stockKit } = require('./_kits');
 
 const SHOPIFY_SHOP = 'martinez-motos.myshopify.com';
 const SHOPIFY_API = `https://${SHOPIFY_SHOP}/admin/api/2024-01`;
@@ -179,8 +180,44 @@ async function syncShopifyStockProducto(supabase, token, producto, cantidad) {
 // una devolución. Lo que falló vuelve en el reporte para que el llamador lo
 // loguee o lo muestre.
 //
-// `producto` necesita: sku, unidades_por_venta, meli_id/meli_ids, shopify_id.
+// `producto` necesita: sku, stock_dep, unidades_por_venta, meli_id/meli_ids, shopify_id.
+//
+// Kits (ver _kits.js): un kit no tiene depósito propio, así que `nuevoStockDep` se lee como
+// "kits de más o de menos" respecto de producto.stock_dep (una devolución de 1 kit llega como
+// stock_dep + 1) y esa diferencia se aplica a cada pieza. Después se empujan las piezas, el kit
+// y los demás kits que comparten esas piezas. Si lo que se movió es una pieza suelta, se
+// empujan además los kits que la usan.
 async function sincronizarStock(supabase, producto, nuevoStockDep) {
+  const rel = await relacionesDeKit(supabase, producto.sku);
+
+  if (!rel.piezas.length) {
+    const reporte = await sincronizarProducto(supabase, producto, nuevoStockDep);
+    if (!reporte.error) reporte.kits = await publicarKits(supabase, rel.kits);
+    return reporte;
+  }
+
+  const delta = Math.round((Number(nuevoStockDep) || 0) - (Number(producto.stock_dep) || 0));
+  const piezas = await productosPorSku(supabase, rel.piezas.map(p => p.sku));
+  const reportePiezas = [];
+
+  if (delta) {
+    for (const { sku, cantidad } of rel.piezas) {
+      const pieza = piezas.get(sku);
+      if (!pieza) {
+        reportePiezas.push({ ...reporteVacio({ sku }, 0), sku, error: `Pieza ${sku} no encontrada` });
+        continue;
+      }
+      const r = await sincronizarProducto(supabase, pieza, (Number(pieza.stock_dep) || 0) + delta * cantidad);
+      reportePiezas.push({ ...r, sku });
+    }
+  }
+
+  return publicarKitMovido(supabase, producto, rel, reportePiezas);
+}
+
+// Lo de siempre para un producto común: deja el depósito en `nuevoStockDep` y publica el
+// espejo en MELI y en Shopify. No mira kits.
+async function sincronizarProducto(supabase, producto, nuevoStockDep) {
   const reporte = reporteVacio(producto, nuevoStockDep);
 
   const { error: updErr } = await supabase.from('productos').update({
@@ -208,7 +245,13 @@ async function sincronizarStock(supabase, producto, nuevoStockDep) {
 // sobre el valor que ya había bajado el anterior. Además de esto, quien llama
 // tiene que haber registrado la venta ANTES, y descontar sólo si fue él quien
 // la insertó (ver ventaNueva).
+//
+// Con un kit, la base descuenta las piezas (p_unidades kits × cantidad de cada una) y
+// devuelve los kits que quedan; acá se empujan las publicaciones sueltas de las piezas y los
+// demás kits que las usan, porque MELI sólo bajó la publicación que vendió.
 async function descontarStock(supabase, producto, unidades) {
+  const rel = await relacionesDeKit(supabase, producto.sku);
+
   const { data, error } = await supabase.rpc('descontar_stock', {
     p_sku: producto.sku,
     p_unidades: Math.max(0, Number(unidades) || 0),
@@ -218,7 +261,61 @@ async function descontarStock(supabase, producto, unidades) {
     reporte.error = error?.message || `SKU ${producto.sku} no encontrado al descontar`;
     return reporte;
   }
-  return publicarStock(supabase, producto, reporteVacio(producto, data));
+
+  if (!rel.piezas.length) {
+    const reporte = await publicarStock(supabase, producto, reporteVacio(producto, data));
+    reporte.kits = await publicarKits(supabase, rel.kits);
+    return reporte;
+  }
+
+  // Las piezas ya bajaron en la base: se releen y se publican tal cual quedaron.
+  const piezas = await productosPorSku(supabase, rel.piezas.map(p => p.sku));
+  const reportePiezas = [];
+  for (const { sku } of rel.piezas) {
+    const pieza = piezas.get(sku);
+    if (!pieza) continue;
+    reportePiezas.push({ ...(await publicarStock(supabase, pieza, reporteVacio(pieza, pieza.stock_dep))), sku });
+  }
+  return publicarKitMovido(supabase, { ...producto, stock_dep: data }, rel, reportePiezas);
+}
+
+// ─────────────────────────────────── Kits ───────────────────────────────────
+
+// Después de mover las piezas de un kit: publica el kit con lo que quedó y los demás kits que
+// comparten alguna de esas piezas. El número del kit lo deja la base (trigger); si no se puede
+// releer, se calcula con las piezas.
+async function publicarKitMovido(supabase, kit, rel, reportePiezas) {
+  const skusPiezas = rel.piezas.map(p => p.sku);
+  const [frescos, piezas, vecinos] = await Promise.all([
+    productosPorSku(supabase, [kit.sku]),
+    productosPorSku(supabase, skusPiezas),
+    kitsQueUsan(supabase, skusPiezas),
+  ]);
+
+  const kitFresco = frescos.get(kit.sku) || kit;
+  const calculado = stockKit(rel.piezas.map(p => ({ cantidad: p.cantidad, stock_dep: piezas.get(p.sku)?.stock_dep })));
+  const stockDep = frescos.has(kit.sku) ? kitFresco.stock_dep : calculado;
+
+  const reporte = await publicarStock(supabase, kitFresco, reporteVacio(kitFresco, stockDep), { esKit: true });
+  reporte.piezas = reportePiezas;
+  reporte.kits = await publicarKits(supabase, vecinos.filter(sku => sku !== kit.sku));
+  const fallida = reportePiezas.find(r => r.error);
+  if (fallida) reporte.error = `Pieza ${fallida.sku}: ${fallida.error}`;
+  return reporte;
+}
+
+// Empuja a MELI el stock de estos kits tal como lo dejó la base. No lanza.
+async function publicarKits(supabase, kitSkus) {
+  const lista = [...new Set((kitSkus || []).filter(Boolean))];
+  if (!lista.length) return [];
+  const kits = await productosPorSku(supabase, lista);
+  const reportes = [];
+  for (const sku of lista) {
+    const kit = kits.get(sku);
+    if (!kit) continue;
+    reportes.push({ ...(await publicarStock(supabase, kit, reporteVacio(kit, kit.stock_dep), { esKit: true })), sku });
+  }
+  return reportes;
 }
 
 // Inserta la venta y dice si este llamado fue el que la creó. Es lo que hace
@@ -244,7 +341,10 @@ function reporteVacio(producto, stockDep) {
 }
 
 // Empuja reporte.stockPublicado a MELI y a Shopify. No lanza.
-async function publicarStock(supabase, producto, reporte) {
+//
+// Los kits se venden sólo en MELI: si no tienen variante de Shopify enlazada no se la busca
+// por SKU (no existe, y cada movimiento dejaría un error en el log).
+async function publicarStock(supabase, producto, reporte, { esKit = false } = {}) {
   const stockPublicado = reporte.stockPublicado;
 
   if (meliIdsDe(producto).length) {
@@ -255,6 +355,8 @@ async function publicarStock(supabase, producto, reporte) {
       reporte.meli.errores.push({ meliId: null, error: err.message });
     }
   }
+
+  if (esKit && !producto.shopify_id) return reporte;
 
   try {
     const token = await getShopifyToken();
@@ -275,7 +377,15 @@ function resumenSync(sku, reporte) {
   if (reporte.shopify.sincronizada) partes.push(`Shopify ok${reporte.shopify.enlazado ? ' (enlazado por SKU)' : ''}`);
   else if (reporte.shopify.error) partes.push(`Shopify error: ${reporte.shopify.error}`);
   if (reporte.error) partes.push(`CRM error: ${reporte.error}`);
+  // Lo que se movió de rebote: las piezas de un kit vendido y los kits que usan la pieza.
+  for (const r of reporte.piezas || []) partes.push(`pieza ${resumenCorto(r)}`);
+  for (const r of reporte.kits || []) partes.push(`kit ${resumenCorto(r)}`);
   return partes.join(' · ');
+}
+
+function resumenCorto(r) {
+  const errores = [...(r.meli?.errores || []).map(e => `MELI ${e.meliId || ''} ${e.error}`.trim()), r.error].filter(Boolean);
+  return `${r.sku} → ${r.stockPublicado}${errores.length ? ` (error: ${errores.join('; ')})` : ''}`;
 }
 
 // ───────────────────────────── Importaciones ─────────────────────────────

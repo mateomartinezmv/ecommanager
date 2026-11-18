@@ -285,3 +285,51 @@ test('precio fijo por encima de la referencia → rechazar (MELI no la va a cree
   assert.strictEqual(ev.veredicto, 'rechazar');
   assert.match(ev.motivo, /no la va a tomar como descuento/);
 });
+
+// ── Productos que se anuncian: el piso se mide después de la publicidad ──────────────
+// Números redondeados de los últimos 30 días al 17/11/2026: comisión sin envío, envío por
+// unidad y lo que costó Mercado Ads por cada unidad vendida en MELI (con IVA).
+
+test('con publicidad: el piso pasa a ser 25% después de comisión, envío y ads', () => {
+  // Espejos de puño: $1.290, costo $416, comisión 15%, envío $100 y ~$300 de Ads por venta.
+  const ctx = { costo: 416, seg: 'algo', comision: 0.15, envio: 100 };
+  const sinAds = R.limites({ precioLista: 1290, ...ctx });
+  const conAds = R.limites({ precioLista: 1290, ...ctx, ads: 300 });
+  // Sin mirar Ads aguantaba el 20% del segmento; con Ads ni a precio lleno deja el 25%.
+  assert.ok(Math.abs(sinAds.maximo - 0.20) < 1e-9);
+  assert.strictEqual(conAds.maximo, 0);
+  assert.strictEqual(conAds.limita, 'neto');
+  assert.strictEqual(conAds.limita_ads, true);
+  assert.strictEqual(conAds.ads_por_venta, 300);
+  // Lo que queda hoy ya tiene la publicidad descontada.
+  assert.strictEqual(conAds.neto_hoy, Math.round(1290 * 0.85 - 416 - 100 - 300));
+  // El piso de precio: (costo + envío + ads) / (0,75 − comisión).
+  assert.strictEqual(conAds.piso_precio, Math.ceil((416 + 100 + 300) / 0.60));
+});
+
+test('con publicidad: una promo que respetaba el 30% pero no deja el 25% después de Ads se rechaza', () => {
+  // Porta matrícula: $1.290, costo $405, comisión 15%, envío $57 y $220 de Ads por venta.
+  const p = promo({ original_price: 1290, price: 1097 });            // ~15%
+  const sin = R.evaluarPromo(p, { costo: 405, seg: 'algo', comision: 0.15, envio: 57 });
+  const con = R.evaluarPromo(p, { costo: 405, seg: 'algo', comision: 0.15, envio: 57, ads: 220 });
+  assert.strictEqual(sin.veredicto, 'aceptar');
+  assert.strictEqual(con.veredicto, 'rechazar');
+  assert.match(con.motivo, /publicidad \(\$220 por venta\)/);
+  assert.match(con.motivo, /menos del 25%/);
+});
+
+test('con publicidad barata y buen margen, el máximo sigue siendo el del segmento', () => {
+  // Espejo alerón grande: margen alto y Ads barato ($155 por venta).
+  const ctx = { costo: 342, seg: 'algo', comision: 0.15, envio: 52 };
+  const sin = R.limites({ precioLista: 1690, ...ctx });
+  const con = R.limites({ precioLista: 1690, ...ctx, ads: 155 });
+  assert.ok(Math.abs(sin.maximo - 0.20) < 1e-9);
+  assert.ok(Math.abs(con.maximo - 0.20) < 1e-9);
+  assert.strictEqual(con.limita, 'segmento');
+});
+
+test('sin publicidad (ads = 0) todo queda igual que antes', () => {
+  const ctx = { costo: 88, seg: 'algo', comision: 0.16, envio: 120 };
+  assert.deepStrictEqual(R.limites({ precioLista: 490, ...ctx, ads: 0 }), R.limites({ precioLista: 490, ...ctx }));
+  assert.strictEqual(R.precioPisoNeto({ ...ctx }), R.precioPisoNeto({ ...ctx, ads: 0 }));
+});

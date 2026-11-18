@@ -591,3 +591,29 @@ renglón: `HSJ-20121 x1`. La cantidad son unidades del depósito de esa pieza.
 - **En Reposición** el kit no aparece: sus ventas cuentan como demanda de cada pieza.
 - Los kits se venden sólo en MELI: no se buscan en Shopify.
 - No se puede meter un kit dentro de otro, ni borrar un producto que es pieza de un kit.
+
+## Campañas por ROAS objetivo (Ads MELI → 🎯)
+
+No todos los productos aguantan el mismo ROAS objetivo. Los de mucho margen (espejos alerón,
+~54%) van en la campaña de siempre a 4x; los de margen justo (espejos de puño, ~38%) en 4x
+pierden plata en cada venta que trae el anuncio y tienen que ir a una campaña más exigente.
+
+La sección hace la cuenta por producto: con el margen real (precio − costo − comisión − envío),
+qué ROAS objetivo hace falta para que en cada venta que trae el anuncio quede al menos un %
+del precio después de pagar la publicidad con IVA (15% por defecto, se cambia arriba de la
+tabla). Se redondea a la campaña de **4x, 5x, 6x u 8x**; si hace falta más que 8x, ads no lo
+sostiene y hay que subirle el precio. Los que se venden solos y tienen stock para menos de 15
+días van a **pausar hasta reponer**.
+
+Por defecto muestra sólo lo que hay que mover. Se eligen los productos, se puede cambiar el
+destino a mano, y abajo queda el **plan para cargar en Mercado Ads**: qué campaña usar (o cuál
+crear, con su ACOS) y qué productos mover a cada una. Se puede copiar, y cada paso se tilda
+cuando se hace. MELI hoy no deja que el CRM mueva anuncios (responde que la app no tiene
+permiso de escritura en Publicidad), así que ese paso es a mano.
+
+La cuenta está en `api/meli/_adsRoasPlan.js` y los datos salen con "Qué anunciar y qué apagar".
+
+**Promos y publicidad:** en los productos que se anuncian, el piso de las promociones también
+mira la publicidad: después de comisión, envío **y** lo que cuesta Ads por venta (últimos 30
+días, con IVA) tiene que quedar al menos el 25%. El piso de siempre (30% después de comisión y
+envío) sigue valiendo para todos.

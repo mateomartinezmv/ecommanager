@@ -38,6 +38,7 @@ const { getAdsContext, adsGet, resolverRango, enLotes, API } = require('./_adsCl
 const { meliIdsDe } = require('../_meliIds');
 const { cargarEconomia, deSku, contribucionUnitaria } = require('./_economia');
 const { FACTOR_IVA_ADS, conIvaAds } = require('./_adsIva');
+const RoasPlan = require('./_adsRoasPlan');
 
 // El search de ad groups toma las métricas en MAYÚSCULAS (el de campañas, en minúsculas).
 const METRICS_AD_GROUP = ['CLICKS', 'PRINTS', 'COST', 'TOTAL_AMOUNT', 'UNITS_QUANTITY'].join(',');
@@ -231,7 +232,10 @@ module.exports = async (req, res) => {
     }
     const campanas = (camp.body.results || []).map(c => ({
       id: String(c.id), nombre: c.name || `Campaña ${c.id}`, status: c.status, metrics: c.metrics || {},
+      // MELI guarda el objetivo como ACOS; la pantalla habla en ROAS (4x = ACOS 25%).
+      roas_objetivo: RoasPlan.roasDeCampana(c.acos_target),
     }));
+    const roasDeCampanaPorNombre = new Map(campanas.map(c => [c.nombre, c.roas_objetivo]));
 
     const refCuenta = campanas.reduce((a, c) => {
       a.clics += ent(c.metrics.clicks);
@@ -415,6 +419,10 @@ module.exports = async (req, res) => {
     );
 
     const filas = [];
+    // Para la sección "Campañas por ROAS objetivo": todo lo que se anuncia o se anunció en el
+    // período, con su economía, sin el filtro de "tiene recomendación".
+    const colchon = num(req.query.colchon) || RoasPlan.COLCHON_DEFAULT;
+    const planRoas = [];
     for (const c of evaluables) {
       const p = c.producto;
       const anunciado = c.activos.length > 0;
@@ -523,6 +531,34 @@ module.exports = async (req, res) => {
       // clics como para que el silencio signifique algo.
       const juzgable = ahora.clics >= UMBRALES.clics_para_juzgar
         || (contribucion > 0 && ahora.inversion_iva >= contribucion);
+
+      if (anunciado || ahora.inversion > 0) {
+        const plan = RoasPlan.destinoRoas(
+          { margen: econ.margen_pct, stock: stockPub, stock_dep: stockDep, unidades_mes: unidadesMes },
+          { colchon },
+        );
+        planRoas.push({
+          sku: p.sku,
+          nombre: p.nombre || pub?.titulo || p.sku,
+          grupo: p.grupo || null,
+          meli_id: pub?.meli_id || c.ids[0] || null,
+          permalink: pub?.permalink || null,
+          precio: r2(precio),
+          margen: econ.margen_pct,
+          contribucion,
+          roas_breakeven: be,
+          roas_actual: ahora.roas,
+          inversion_iva: ahora.inversion_iva,
+          facturacion_ads: ahora.facturacion,
+          unidades_ads: ahora.unidades,
+          unidades_mes: unidadesMes,
+          stock: stockPub,
+          stock_dep: stockDep,
+          anunciado,
+          campanas: campanasActivas.map(nombre => ({ nombre, roas_objetivo: roasDeCampanaPorNombre.get(nombre) ?? null })),
+          ...plan,
+        });
+      }
 
       // ── Las reglas ──────────────────────────────────────────────────────────────
       // La primera que encaja manda; el resto quedan como motivos secundarios, porque un
@@ -793,6 +829,12 @@ module.exports = async (req, res) => {
         incompleto: incompleto.length ? incompleto : null,
       },
       recomendaciones: mostradas,
+      plan_roas: {
+        colchon,
+        escalones: RoasPlan.ESCALONES,
+        campanas: campanas.map(c => ({ id: c.id, nombre: c.nombre, status: c.status, roas_objetivo: c.roas_objetivo })),
+        productos: planRoas.sort((a, b) => (b.inversion_iva || 0) - (a.inversion_iva || 0)),
+      },
     });
 
   } catch (err) {

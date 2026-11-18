@@ -591,3 +591,77 @@ test('no hubo errores ni alertas en la pestaña de Ads', async () => {
     assert.deepStrictEqual(crm.alertas, []);
   } finally { await crm.cerrar(); }
 });
+
+// ── Campañas por ROAS objetivo ─────────────────────────────────────────────────────────
+// Los números son los del 18/10 al 17/11/2026: el espejo alerón aguanta 4x; los espejos de
+// puño (38% de margen) en 4x perdían plata en cada venta que traía el anuncio.
+function planRoasDemo() {
+  return {
+    colchon: 15,
+    escalones: [4, 5, 6, 8],
+    campanas: [
+      { id: '7979216', nombre: 'winners - bajo stock', status: 'active', roas_objetivo: 3.9 },
+      { id: '357253844', nombre: 'Campaña Mercado Libre', status: 'paused', roas_objetivo: 5 },
+    ],
+    productos: [
+      { sku: 'HSJ-20121', nombre: 'Espejos Aleron Grande', margen: 53.6, roas_breakeven: 2.28, roas_actual: 5.7,
+        inversion_iva: 4658, unidades_mes: 10, stock: 30, stock_dep: 30, anunciado: true, dias_stock: 90,
+        campanas: [{ nombre: 'winners - bajo stock', roas_objetivo: 3.9 }], destino: 4, roas_necesario: 3.13, motivo: '' },
+      { sku: 'HP-SH-5003-L', nombre: 'Espejos De Puño', margen: 38.1, roas_breakeven: 3.2, roas_actual: 2.4,
+        inversion_iva: 3599, unidades_mes: 12, stock: 60, stock_dep: 60, anunciado: true, dias_stock: 150,
+        campanas: [{ nombre: 'winners - bajo stock', roas_objetivo: 3.9 }], destino: 6, roas_necesario: 5.28, motivo: '' },
+      { sku: 'CPJ-62001', nombre: 'Porta Matricula Rebatible', margen: 41.1, roas_breakeven: 2.97, roas_actual: 6.9,
+        inversion_iva: 3077, unidades_mes: 19, stock: 40, stock_dep: 40, anunciado: true, dias_stock: 63,
+        campanas: [{ nombre: 'winners - bajo stock', roas_objetivo: 3.9 }], destino: 5, roas_necesario: 4.67, motivo: '' },
+      { sku: 'ALERONFINOSNK', nombre: 'Espejos Aleron Finos', margen: 51.8, roas_breakeven: 2.36, roas_actual: 5.1,
+        inversion_iva: 3000, unidades_mes: 23, stock: 8, stock_dep: 8, anunciado: true, dias_stock: 10,
+        campanas: [{ nombre: 'winners - bajo stock', roas_objetivo: 3.9 }], destino: 'pausar', roas_necesario: 3.3,
+        motivo: 'Se vende solo (23 por mes) y el stock alcanza para ~10 días.' },
+    ],
+  };
+}
+
+test('Campañas por ROAS objetivo: separa por margen y arma el plan para cargar en MELI', async () => {
+  const estado = estadoConAds();
+  estado.adsReco = { ...estado.adsReco, plan_roas: planRoasDemo() };
+  const crm = await irAAds(estado);
+  try {
+    await crm.page.waitForSelector('#ads-roas-table tbody tr', { timeout: 15000 });
+    const filas = await crm.page.$$eval('#ads-roas-table tbody tr', trs => trs.map(t => t.dataset.sku));
+    // El espejo alerón ya está en una campaña de ~4x: no hay que tocarlo y no aparece.
+    assert.deepStrictEqual(filas.sort(), ['ALERONFINOSNK', 'CPJ-62001', 'HP-SH-5003-L']);
+    const puno = await crm.page.textContent('#ads-roas-table tr[data-sku="HP-SH-5003-L"]');
+    assert.match(puno, /hoy pierde plata/);
+    assert.match(puno, /5\.28x/);
+    assert.strictEqual(await crm.page.$eval('#ads-roas-table tr[data-sku="HP-SH-5003-L"] select', s => s.value), '6');
+
+    // El plan: 5x usa la campaña que ya existe (pausada), 6x hay que crearla, y el que se
+    // agota se pausa.
+    const bloque = d => crm.page.textContent(`#ads-roas-plan .ads-roas-bloque[data-destino="${d}"]`);
+    assert.match(await bloque('5'), /Campaña Mercado Libre.*pausada/);
+    assert.match(await bloque('5'), /Porta Matricula Rebatible/);
+    assert.match(await bloque('6'), /creá una campaña con ROAS objetivo 6/);
+    assert.match(await bloque('6'), /ACOS 16\.67%/);
+    assert.match(await bloque('6'), /Espejos De Puño.*mover desde «winners - bajo stock»/);
+    assert.match(await bloque('pausar'), /Espejos Aleron Finos/);
+
+    // Con más colchón el porta matrícula ya no entra en 5x: pasa a 8x.
+    await crm.page.fill('#ads-roas-colchon', '25');
+    await crm.page.dispatchEvent('#ads-roas-colchon', 'change');
+    assert.strictEqual(await crm.page.$eval('#ads-roas-table tr[data-sku="CPJ-62001"] select', s => s.value), '8');
+    assert.strictEqual(await crm.page.$eval('#ads-roas-table tr[data-sku="HP-SH-5003-L"] select', s => s.value), 'no_anunciar');
+
+    // Cambiar el destino a mano y tildar lo hecho queda guardado.
+    await crm.page.selectOption('#ads-roas-table tr[data-sku="HP-SH-5003-L"] select', '6');
+    await crm.page.check('#ads-roas-plan input[data-roas-hecho="HP-SH-5003-L|6"]');
+    const guardado = await crm.page.evaluate(() => ({
+      destinos: JSON.parse(localStorage.getItem('ads-roas-destinos-v1')),
+      hechos: Object.keys(JSON.parse(localStorage.getItem('ads-roas-hechos-v1'))),
+    }));
+    assert.strictEqual(guardado.destinos['HP-SH-5003-L'], 6);
+    assert.deepStrictEqual(guardado.hechos, ['HP-SH-5003-L|6']);
+
+    assert.deepStrictEqual(erroresReales(crm.errores), []);
+    assert.deepStrictEqual(crm.alertas, []);
+  } finally { await crm.cerrar(); }
+});

@@ -1034,6 +1034,31 @@
         <div id="ads-reco-lista" style="padding:12px 16px 16px"></div>
       </div>
 
+      <!-- CAMPAÑAS POR ROAS OBJETIVO: no todos los productos aguantan el mismo ROAS. Los de
+           mucho margen van en la de siempre (4x); los de margen justo, en una más exigente.
+           El CRM arma el plan y vos lo cargás en Mercado Ads (MELI no deja que lo haga solo). -->
+      <div class="table-wrap" style="margin-top:20px" id="ads-roas-wrap">
+        <div class="table-header">
+          <span class="table-title">🎯 Campañas por ROAS objetivo</span>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text-dim)" title="Lo que tiene que quedar de cada venta que trae el anuncio, después de pagar la publicidad con IVA.">Que quede después de Ads ≥</span>
+            <input type="number" id="ads-roas-colchon" min="0" max="60" step="1" style="width:70px;padding:5px 8px;font-size:12px" onchange="onAdsRoasColchon()">
+            <span style="font-size:12px;color:var(--text-dim)">%</span>
+            <label style="font-size:12px;color:var(--text-dim);display:flex;gap:4px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="ads-roas-solo-mover" checked onchange="pintarPlanRoas()" style="width:auto"> Sólo lo que hay que mover
+            </label>
+          </span>
+        </div>
+        <div style="padding:10px 16px 0;font-size:11px;color:var(--text-muted)">
+          Para cada producto que se anuncia: con su margen real (precio − costo − comisión − envío), qué ROAS objetivo hace falta para que
+          en cada venta que trae el anuncio quede ese % después de pagar la publicidad (con IVA). Se redondea a la campaña de 4x, 5x, 6x u 8x.
+          Si hace falta más que 8x, ads no lo sostiene: hay que subirle el precio. Los que se venden solos y se están por agotar, a pausar hasta reponer.
+          Elegí los productos, ajustá el destino si querés, y abajo queda el plan para cargar en Mercado Ads.
+        </div>
+        <div id="ads-roas-tabla" style="padding:12px 16px 0"></div>
+        <div id="ads-roas-plan" style="padding:12px 16px 16px"></div>
+      </div>
+
       <!-- POR MARGEN: el catálogo partido por margen (precio − costo), para armar una
            campaña por segmento con su propio ROAS objetivo. No depende de MELI: sale de
            los precios y costos cargados en Stock. -->
@@ -12334,6 +12359,7 @@ async function renderAdsRecomendaciones(forzar = false) {
     adsState.reco = r;
     pintarReco();
     pintarAdsMargen();
+    pintarPlanRoas();
   } catch (e) {
     cont.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p>Error: ${escHtml(e.message)}</p></div>`;
   } finally {
@@ -13030,6 +13056,213 @@ const ADS_MARGEN_SEGMENTOS = {
 // catálogo, así que se parte en cuartos de lo que hay cargado. La clave del storage
 // cambió con el cuarto segmento: los cortes viejos (40/20) no aplican a esta escala.
 const ADS_MARGEN_CORTES_PCT = { muy_alto: 70, alto: 50, medio: 30 };
+// ── Campañas por ROAS objetivo ─────────────────────────────────────────────────────
+// Los datos vienen en adsState.reco.plan_roas (api/meli/ads-recomendaciones.js) y el
+// destino de cada producto lo calcula api/meli/_adsRoasPlan.js, donde está explicada la
+// cuenta. Acá se repite sólo la parte que depende del colchón, para poder moverlo sin volver
+// a pedirle todo a MELI: si se cambia allá, cambiarla acá.
+const ROAS_IVA = 1.22;
+const ROAS_ESCALONES = [4, 5, 6, 8];
+const ROAS_LS = { colchon: 'ads-roas-colchon', destinos: 'ads-roas-destinos-v1', hechos: 'ads-roas-hechos-v1', elegidos: 'ads-roas-elegidos-v1' };
+
+function roasLsLeer(k, def) {
+  try { const v = localStorage.getItem(k); return v === null ? def : JSON.parse(v); } catch { return def; }
+}
+function roasLsGuardar(k, v) {
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* sin almacenamiento: no se recuerda */ }
+}
+
+function roasColchon() {
+  const el = document.getElementById('ads-roas-colchon');
+  const v = parseFloat(el?.value);
+  if (Number.isFinite(v)) return v;
+  return roasLsLeer(ROAS_LS.colchon, null) ?? adsState.reco?.plan_roas?.colchon ?? 15;
+}
+
+/** Destino recomendado con el colchón de la pantalla. Pausar y sin stock no dependen de él. */
+function roasRecomendado(p, colchon) {
+  if (p.destino === 'pausar' || p.destino === 'sin_stock') return { destino: p.destino, necesario: p.roas_necesario, motivo: p.motivo };
+  const libre = ((Number(p.margen) || 0) - colchon) / 100;
+  const necesario = libre > 0 ? Math.round((ROAS_IVA / libre) * 100) / 100 : null;
+  if (necesario === null) {
+    return { destino: 'no_anunciar', necesario, motivo: `Con ${p.margen}% de margen no queda el ${colchon}% después de pagar Ads: subí el precio antes de anunciarlo.` };
+  }
+  const escalon = ROAS_ESCALONES.find(e => e >= necesario - 0.005);
+  if (!escalon) {
+    return { destino: 'no_anunciar', necesario, motivo: `Necesitaría ROAS ${necesario}x para dejar el ${colchon}%: más que la campaña más exigente (8x). Subí el precio o sacalo de Ads.` };
+  }
+  return { destino: escalon, necesario, motivo: `Con ${p.margen}% de margen, para que quede el ${colchon}% después de Ads hace falta ROAS ${necesario}x: va en la de ${escalon}x.` };
+}
+
+const roasEtiqueta = d => typeof d === 'number' ? `${d}x` : d === 'pausar' ? 'Pausar' : d === 'no_anunciar' ? 'Sacar de Ads' : 'Sin stock';
+
+/** La campaña donde está hoy (la primera, si está en varias) y su ROAS objetivo. */
+function roasActual(p) {
+  const c = (p.campanas || [])[0];
+  return c ? { nombre: c.nombre, roas: c.roas_objetivo } : null;
+}
+
+/** ¿El destino pide hacer algo? Ya estar en una campaña de ese ROAS (±0,25) es no tocar nada. */
+function roasHayQueMover(p, destino) {
+  const actual = roasActual(p);
+  if (destino === 'sin_stock') return false;
+  if (destino === 'pausar' || destino === 'no_anunciar') return !!p.anunciado;
+  if (!actual || actual.roas == null) return true;
+  return Math.abs(actual.roas - destino) > 0.25 || (p.campanas || []).length > 1;
+}
+
+function roasFilas() {
+  const plan = adsState.reco?.plan_roas;
+  if (!plan) return [];
+  const colchon = roasColchon();
+  const elegidos = roasLsLeer(ROAS_LS.elegidos, {});
+  const destinos = roasLsLeer(ROAS_LS.destinos, {});
+  return (plan.productos || []).map(p => {
+    const reco = roasRecomendado(p, colchon);
+    const destino = destinos[p.sku] !== undefined ? destinos[p.sku] : reco.destino;
+    const mover = roasHayQueMover(p, destino);
+    return { p, reco, destino, mover, elegido: elegidos[p.sku] !== undefined ? !!elegidos[p.sku] : mover,
+      pierde: p.roas_actual > 0 && p.roas_breakeven && p.roas_actual < p.roas_breakeven };
+  });
+}
+
+function onAdsRoasColchon() {
+  const v = parseFloat(document.getElementById('ads-roas-colchon').value);
+  if (Number.isFinite(v)) roasLsGuardar(ROAS_LS.colchon, v);
+  pintarPlanRoas();
+}
+function onAdsRoasElegir(sku, on) {
+  const m = roasLsLeer(ROAS_LS.elegidos, {}); m[sku] = !!on; roasLsGuardar(ROAS_LS.elegidos, m); pintarPlanRoas();
+}
+function onAdsRoasDestino(sku, valor) {
+  const m = roasLsLeer(ROAS_LS.destinos, {});
+  m[sku] = /^\d+$/.test(valor) ? Number(valor) : valor;
+  roasLsGuardar(ROAS_LS.destinos, m);
+  pintarPlanRoas();
+}
+function onAdsRoasHecho(clave, on) {
+  const m = roasLsLeer(ROAS_LS.hechos, {}); if (on) m[clave] = new Date().toISOString().slice(0, 10); else delete m[clave];
+  roasLsGuardar(ROAS_LS.hechos, m); pintarPlanRoas();
+}
+
+function pintarPlanRoas() {
+  const tabla = document.getElementById('ads-roas-tabla');
+  const planEl = document.getElementById('ads-roas-plan');
+  if (!tabla || !planEl) return;
+  const plan = adsState.reco?.plan_roas;
+  if (!plan) {
+    tabla.innerHTML = '<div class="empty-state"><p>Se calcula junto con "Qué anunciar y qué apagar".</p></div>';
+    planEl.innerHTML = '';
+    return;
+  }
+  const inp = document.getElementById('ads-roas-colchon');
+  if (inp && inp.value === '') inp.value = roasColchon();
+
+  const soloMover = document.getElementById('ads-roas-solo-mover')?.checked;
+  const filas = roasFilas();
+  const visibles = filas.filter(f => !soloMover || f.mover);
+  const opciones = [...ROAS_ESCALONES, 'pausar', 'no_anunciar'];
+  const plata = v => (v || v === 0) ? fmt(v) : '—';
+
+  tabla.innerHTML = !visibles.length
+    ? `<div class="empty-state"><p>${filas.length ? 'Todo está en la campaña que le corresponde.' : 'No hay productos anunciándose en el período.'}</p></div>`
+    : `<div style="overflow-x:auto"><table id="ads-roas-table"><thead><tr>
+        <th></th><th>Producto</th><th>Campaña hoy</th><th title="Unidades vendidas en MELI por mes · días de stock al ritmo actual">Vende/mes · stock</th>
+        <th>Margen</th><th title="Debajo de este ROAS el anuncio pierde plata (ya trae el IVA de Ads)">Equilibrio</th>
+        <th title="ROAS del período en la campaña, como lo mide MELI">ROAS real</th><th>Necesita</th><th>Destino</th></tr></thead><tbody>
+      ${visibles.map(f => {
+        const p = f.p, act = roasActual(p);
+        return `<tr data-sku="${escHtml(p.sku)}">
+          <td><input type="checkbox" ${f.elegido ? 'checked' : ''} onchange="onAdsRoasElegir('${escHtml(p.sku)}', this.checked)" style="width:auto"></td>
+          <td><b>${escHtml(p.nombre)}</b><div style="font-size:11px;color:var(--text-muted)">${escHtml(p.sku)}${f.pierde ? ' · <span style="color:var(--red)">🔴 hoy pierde plata</span>' : ''}</div></td>
+          <td>${act ? `${escHtml(act.nombre)}${act.roas ? ` <span class="badge badge-gray" style="font-size:10px">${act.roas}x</span>` : ''}${(p.campanas || []).length > 1 ? ' <span class="badge badge-red" style="font-size:10px">en varias</span>' : ''}` : '<span style="color:var(--text-muted)">—</span>'}</td>
+          <td>${Math.round(p.unidades_mes || 0)} · ${p.stock_dep ?? 0} u${f.reco && p.dias_stock != null ? ` <span style="font-size:11px;color:var(--text-muted)">(~${p.dias_stock} días)</span>` : ''}</td>
+          <td>${p.margen}%</td>
+          <td>${p.roas_breakeven ? `${p.roas_breakeven}x` : '—'}</td>
+          <td style="color:${f.pierde ? 'var(--red)' : 'inherit'}">${p.roas_actual ? `${p.roas_actual}x` : '—'}<div style="font-size:11px;color:var(--text-muted)">${plata(p.inversion_iva)} con IVA</div></td>
+          <td title="${escHtml(f.reco.motivo)}">${f.reco.necesario ? `${f.reco.necesario}x` : '—'}<div style="font-size:11px;color:var(--text-muted)">${roasEtiqueta(f.reco.destino)}</div></td>
+          <td><select onchange="onAdsRoasDestino('${escHtml(p.sku)}', this.value)" style="width:auto;padding:4px 8px;font-size:12px">
+            ${opciones.map(o => `<option value="${o}" ${String(o) === String(f.destino) ? 'selected' : ''}>${roasEtiqueta(o)}</option>`).join('')}
+          </select></td>
+        </tr>`;
+      }).join('')}
+      </tbody></table></div>`;
+
+  // ── El plan: lo elegido, agrupado por campaña de destino ──
+  const elegidos = filas.filter(f => f.elegido && f.destino !== 'sin_stock');
+  if (!elegidos.length) { planEl.innerHTML = ''; return; }
+  const hechos = roasLsLeer(ROAS_LS.hechos, {});
+  const grupos = new Map();
+  for (const f of elegidos) {
+    if (!grupos.has(f.destino)) grupos.set(f.destino, []);
+    grupos.get(f.destino).push(f);
+  }
+  const orden = [...ROAS_ESCALONES, 'pausar', 'no_anunciar'].filter(d => grupos.has(d));
+  const campanasCon = roas => (plan.campanas || []).filter(c => c.roas_objetivo && Math.abs(c.roas_objetivo - roas) <= 0.25);
+
+  const bloques = orden.map(d => {
+    let titulo, como;
+    if (typeof d === 'number') {
+      const existentes = campanasCon(d);
+      titulo = `Campaña ROAS ${d}x`;
+      como = existentes.length
+        ? `Usá ${existentes.map(c => `«${escHtml(c.nombre)}»${c.status === 'active' ? '' : ' (está pausada)'}`).join(' o ')}.`
+        : `No tenés una: creá una campaña con ROAS objetivo ${d} (en MELI figura como ACOS ${Math.round(10000 / d) / 100}%).`;
+    } else if (d === 'pausar') {
+      titulo = 'Pausar hasta reponer';
+      como = 'Se venden solos y se están por agotar: pausá el anuncio y volvé a prenderlo cuando entre stock.';
+    } else {
+      titulo = 'Sacar de Ads o subir el precio';
+      como = 'Con su margen ninguna campaña los sostiene: o les subís el precio, o los sacás de la publicidad.';
+    }
+    const items = grupos.get(d).map(f => {
+      const clave = `${f.p.sku}|${d}`;
+      const act = roasActual(f.p);
+      const accion = typeof d === 'number'
+        ? (act ? `mover desde «${escHtml(act.nombre)}»` : 'agregar a la campaña')
+        : d === 'pausar' ? `pausar${f.p.dias_stock != null ? ` (stock para ~${f.p.dias_stock} días)` : ''}` : 'sacar de Ads';
+      return `<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;cursor:pointer;${hechos[clave] ? 'opacity:.55;text-decoration:line-through' : ''}">
+        <input type="checkbox" data-roas-hecho="${escHtml(clave)}" ${hechos[clave] ? 'checked' : ''} onchange="onAdsRoasHecho('${escHtml(clave)}', this.checked)" style="width:auto;margin-top:2px">
+        <span><b>${escHtml(f.p.nombre)}</b> <span style="font-size:11px;color:var(--text-muted)">${escHtml(f.p.sku)}</span> — ${accion}</span></label>`;
+    }).join('');
+    return `<div class="ads-roas-bloque" data-destino="${d}" style="border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:10px;background:var(--surface2)">
+      <div style="font-weight:600;font-size:13px">${titulo} <span class="badge badge-gray" style="font-size:10px">${grupos.get(d).length}</span></div>
+      <div style="font-size:12px;color:var(--text-muted);margin:2px 0 6px">${como}</div>${items}</div>`;
+  });
+
+  planEl.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:600">📋 Plan para cargar en Mercado Ads</span>
+      <button class="btn btn-ghost btn-sm" onclick="copiarPlanRoas()">📋 Copiar plan</button>
+      <span style="font-size:11px;color:var(--text-muted)">Tildá cada uno cuando lo hagas en MELI. MELI hoy no deja que el CRM mueva anuncios (responde que la app no tiene permiso de escritura en Publicidad), así que este paso es a mano.</span>
+    </div>${bloques.join('')}`;
+}
+
+function textoPlanRoas() {
+  const plan = adsState.reco?.plan_roas;
+  const filas = roasFilas().filter(f => f.elegido && f.destino !== 'sin_stock');
+  const orden = [...ROAS_ESCALONES, 'pausar', 'no_anunciar'];
+  const lineas = [`Plan de campañas por ROAS objetivo (queda ≥ ${roasColchon()}% después de Ads)`];
+  for (const d of orden) {
+    const del = filas.filter(f => f.destino === d);
+    if (!del.length) continue;
+    const existentes = typeof d === 'number' ? (plan?.campanas || []).filter(c => c.roas_objetivo && Math.abs(c.roas_objetivo - d) <= 0.25) : [];
+    lineas.push('', typeof d === 'number'
+      ? `ROAS ${d}x${existentes.length ? ` — usar: ${existentes.map(c => c.nombre).join(' o ')}` : ` — crear campaña con ROAS objetivo ${d} (ACOS ${Math.round(10000 / d) / 100}%)`}`
+      : d === 'pausar' ? 'Pausar hasta reponer' : 'Sacar de Ads o subir el precio');
+    for (const f of del) {
+      const act = roasActual(f.p);
+      lineas.push(`- ${f.p.nombre} (${f.p.sku})${act ? ` — hoy en «${act.nombre}»` : ''}`);
+    }
+  }
+  return lineas.join('\n');
+}
+
+async function copiarPlanRoas() {
+  const texto = textoPlanRoas();
+  try { await navigator.clipboard.writeText(texto); alert('Plan copiado.'); }
+  catch { window.prompt('Copiá el plan:', texto); }
+}
+
 const ADS_MARGEN_LS = 'ads-margen-cortes-v2';
 
 /** Los productos que entran en la segmentación: activos y publicados en MELI. */

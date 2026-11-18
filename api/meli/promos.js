@@ -19,6 +19,7 @@ const { getSupabase } = require('../_supabase');
 const { meliIdsDe } = require('../_meliIds');
 const { meliGet, meliFetch, mensajeDeError } = require('../_meliPublicaciones');
 const R = require('./_promosReglas');
+const { FACTOR_IVA_ADS } = require('./_adsIva');
 
 const LOTE = 20;
 const CONCURRENCIA = 8;
@@ -46,6 +47,7 @@ const DIAS_ECONOMIA = 180;
 const MIN_VENTAS_COMISION = 3;
 const MIN_ENVIOS = 2;
 const DIAS_CREIBLE = 30;   // ventana con la que se mira el precio más bajo reciente
+const DIAS_ADS = 30;       // ventana con la que se mide cuánto cuesta la publicidad por venta
 
 function economia(ventas) {
   const desde60 = new Date(Date.now() - DIAS_VENTAS * 86400000).toISOString().slice(0, 10);
@@ -55,11 +57,12 @@ function economia(ventas) {
   for (const v of ventas || []) {
     if (!/meli/i.test(v.canal || '') || v.estado === 'cancelada' || !v.sku) continue;
     const k = normSku(v.sku);
-    if (!porSku.has(k)) porSku.set(k, { u60: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0, min30: 0 });
+    if (!porSku.has(k)) porSku.set(k, { u60: 0, u30: 0, n: 0, total: 0, fee: 0, envio: 0, envios: 0, min30: 0 });
     const a = porSku.get(k);
     const env = num(v.costo_envio_meli);
     const fee = num(v.comision) - env;
     if (String(v.fecha || '') >= desde60) a.u60 += Math.max(1, num(v.cantidad));
+    if (String(v.fecha || '') >= desde30) a.u30 += Math.max(1, num(v.cantidad));
     // El precio más bajo al que se vendió hace poco: debajo de eso MELI cree un descuento.
     const pu = num(v.precio_unit);
     if (pu > 0 && String(v.fecha || '') >= desde30 && (!a.min30 || pu < a.min30)) a.min30 = pu;
@@ -77,12 +80,34 @@ function economia(ventas) {
       const a = porSku.get(normSku(sku));
       return {
         vendidas60: a ? a.u60 : 0,
+        vendidas30: a ? a.u30 : 0,
         precio_reciente: a ? a.min30 : 0,
         comision: a && a.n >= MIN_VENTAS_COMISION && a.total > 0 ? Math.max(0.08, a.fee / a.total) : global.comision,
         envio: a && a.envios >= MIN_ENVIOS ? a.envio / a.envios : global.envio,
       };
     },
   };
+}
+
+// Lo gastado en Mercado Ads en los últimos 30 días por SKU, con IVA (MELI lo factura con
+// IVA). Sale del snapshot diario por anuncio (api/cron/ads-anuncios-diario.js). Sin la
+// tabla, o sin datos, todo queda en cero y las promos se juzgan como antes.
+async function gastoAdsPorSku(supabase) {
+  const mapa = new Map();
+  try {
+    const desde = new Date(Date.now() - DIAS_ADS * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supabase.from('meli_ads_anuncios')
+      .select('sku, spend').gte('fecha', desde).limit(50000);
+    if (error) return mapa;
+    for (const r of data || []) {
+      if (!r.sku) continue;
+      const k = normSku(r.sku);
+      mapa.set(k, (mapa.get(k) || 0) + num(r.spend) * FACTOR_IVA_ADS);
+    }
+  } catch {
+    // Sin snapshot no hay costo de publicidad que sumar.
+  }
+  return mapa;
 }
 
 async function cargarProductos(supabase) {
@@ -107,6 +132,7 @@ async function cargarProductos(supabase) {
   if (e2) throw e2;
 
   const eco = economia(ventas);
+  const gastoAds = await gastoAdsPorSku(supabase);
   return (productos || [])
     .filter(p => meliIdsDe(p).length)
     .map(p => {
@@ -116,6 +142,11 @@ async function cargarProductos(supabase) {
       const envioGratis = p.envio_gratis !== false;
       const vendidas60 = e.vendidas60;
       const seg = R.segmento({ stock: p.stock_meli, vendidas60, discontinuado: p.discontinuado, costo });
+      // Lo que cuesta la publicidad por cada unidad vendida en MELI (con IVA). Si gastó y
+      // no vendió nada, cuenta como si hubiera vendido una: tanto gasto sin ventas no puede
+      // quedar en cero y dejar pasar cualquier promo.
+      const gasto = gastoAds.get(normSku(p.sku)) || 0;
+      const ads = gasto > 0 ? gasto / Math.max(1, e.vendidas30) : 0;
       return {
         sku: p.sku,
         nombre: p.nombre,
@@ -123,6 +154,7 @@ async function cargarProductos(supabase) {
         comision: Math.round(e.comision * 1000) / 1000,
         envio_gratis: envioGratis,
         envio: envioGratis ? Math.round(e.envio) : 0,
+        ads: Math.round(ads),
         precio_reciente: Math.round(e.precio_reciente * 100) / 100,
         stock: num(p.stock_meli),
         vendidas60,
@@ -190,6 +222,7 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
   // una relámpago a $842).
   const referencias = [num(prod.precio_reciente), ...vigentes0.map(v => num(v.precio))].filter(x => x > 0);
   const ctx = { costo: prod.costo, seg: prod.segmento, comision: num(prod.comision), envio: num(prod.envio),
+    ads: num(prod.ads),
     precioReciente: referencias.length ? Math.min(...referencias) : 0 };
 
   const vigentes = promos.filter(p => p.estado === 'started' && p.precio && p.precio < p.lista);
@@ -236,6 +269,8 @@ function armarPublicacion(prod, item, promosCrudas, referencia) {
     piso_precio: lim.piso_precio,
     neto_hoy: lim.neto_hoy,
     neto_hoy_pct: lim.neto_hoy_pct,
+    // Publicidad por venta (con IVA) que ya está descontada de neto_hoy. 0 = no se anuncia.
+    ads_por_venta: lim.ads_por_venta,
     vigente: vigente ? { ...vigente, evaluacion: R.evaluarPromo(vigente, { ...ctx, corriendo: true }) } : null,
     propuestas,
     propio: vigente ? null : propio,   // con una promo corriendo MELI no deja sumar otra

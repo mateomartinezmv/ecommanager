@@ -596,7 +596,8 @@ module.exports = async (req, res) => {
       const clasif = C.clasificar({
         vendidas:           totalSold,
         dias_activos:       totalSold > 0 ? activeDays : 0,
-        dias_publicado:     publicacionDesde ? Math.max(0, Math.round((today - new Date(publicacionDesde)) / MS_PER_DAY)) : null,
+        // Días entre fechas (no desde la hora actual): si no, a la tarde un "68 días" pasaba a 69.
+        dias_publicado:     publicacionDesde ? Math.max(0, Math.round((new Date(todayStr) - new Date(publicacionDesde)) / MS_PER_DAY)) : null,
         ventana_dias:       DEMAND_WINDOW_DAYS,
         lead_dias:          LEAD_DAYS,
         stock,
@@ -610,7 +611,7 @@ module.exports = async (req, res) => {
         en_camino:          (transitBySku[p.sku] || []).reduce((a, t) => a + (t.qty || 0), 0),
         dias_desde_llegada: (() => {
           const ultima = (arrivalsBySku[p.sku] || []).map(a => a.fecha).filter(Boolean).sort().pop();
-          return ultima ? Math.max(0, Math.round((today - new Date(ultima)) / MS_PER_DAY)) : null;
+          return ultima ? Math.max(0, Math.round((new Date(todayStr) - new Date(ultima)) / MS_PER_DAY)) : null;
         })(),
       });
       const objetivoClase = C.objetivoUnidades(clasif.clase, {

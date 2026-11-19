@@ -409,7 +409,8 @@
     <section id="sec-compras" style="display:none">
       <p class="ayuda" style="margin-bottom:18px">
         Junta lo que hay que reponer de cada proveedor (según 📅 Reposición) y, si no llega a su mínimo de compra
-        —calculado sobre el costo en China, cantidad × costo unitario de la última importación—, lo completa con más
+        —calculado sobre el costo en China: el costo cargado en cada producto ÷ $40 por dólar ÷ 2,5 de importación
+        (÷ 3 en los baúles de 45L); si un producto no tiene costo cargado, el de su última importación—, lo completa con más
         unidades de los productos de ese proveedor que antes se van a quedar sin stock. Las cantidades se pueden
         cambiar antes de crear la importación.
       </p>
@@ -826,6 +827,32 @@ function ultimoCosto(sku, proveedorId) {
     }
   }
   return mejor;
+}
+
+// El costo por unidad que usa la compra por proveedor: el que tiene cargado el producto en
+// Stock, no el de la última importación (puede no haber ninguna, como los manillares de 22 mm,
+// o ser de otro momento). Ese costo es el puesto en Uruguay, en pesos; para el mínimo del
+// proveedor (en USD de China) se pasa a China con la misma cuenta que usa esta pantalla para
+// ir al revés: ÷ cotización (CI.COTIZACION_DEFAULT) ÷ factor de importación (×2.5, o ×3 en los
+// baúles de 45L). Sin costo cargado, el de la última importación.
+// Devuelve { costo (USD China/u), costoUy, origen: 'producto' | 'importacion' } o null.
+function costoReferencia(sku, proveedorId) {
+  const p = productos.find(x => x.sku === sku);
+  const costoUy = Number(p?.costo) || 0;
+  if (costoUy > 0) {
+    const factor = esBaul45({ sku, nombre: p.nombre }) ? FACTOR_URUGUAY_BAUL45 : FACTOR_URUGUAY;
+    return { costo: Math.round((costoUy / CI.COTIZACION_DEFAULT / factor) * 100) / 100, costoUy, origen: 'producto' };
+  }
+  const c = ultimoCosto(sku, proveedorId);
+  return c ? { costo: c.costo, costoUy: null, origen: 'importacion' } : null;
+}
+
+// Debajo del costo: de dónde sale.
+function origenCostoHtml(c) {
+  if (!c) return '';
+  return c.origen === 'producto'
+    ? `<div class="ayuda" style="font-size:10px">de $${Math.round(c.costoUy).toLocaleString('es-UY')} cargado</div>`
+    : '<div class="ayuda" style="font-size:10px">de la última importación</div>';
 }
 
 function costoChinaDeItems(items) {
@@ -1817,12 +1844,12 @@ function panelProveedor(prov) {
   const dato = (label, val) => `<div><div class="dato-label">${label}</div><div class="dato-val">${val || '<span style="color:var(--text-muted)">—</span>'}</div></div>`;
 
   const filasProd = prods.map(p => {
-    const c = ultimoCosto(p.sku, prov.id);
+    const c = costoReferencia(p.sku, prov.id);
     return `<tr>
       <td class="mono" style="font-size:11px">${escapeHtml(p.sku)}</td>
       <td>${escapeHtml(p.nombre)}${p.discontinuado ? ' <span class="badge badge-gray">descatalogado</span>' : ''}</td>
       <td class="mono">${p.stock_dep ?? 0}</td>
-      <td class="mono">${c ? usd(c.costo) : '<span style="color:var(--text-muted)">sin costo</span>'}</td>
+      <td class="mono">${c ? usd(c.costo) + origenCostoHtml(c) : '<span style="color:var(--text-muted)">sin costo</span>'}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="asignarProductos(['${escapeHtml(p.sku)}'], null)" title="Dejar sin proveedor">Quitar</button></td>
     </tr>`;
   }).join('');
@@ -1876,7 +1903,7 @@ function panelProveedor(prov) {
         </div>
       </div>
       ${prods.length
-        ? `<table id="prov-productos"><thead><tr><th>SKU</th><th>Producto</th><th>Stock</th><th>Último costo China</th><th></th></tr></thead><tbody>${filasProd}</tbody></table>`
+        ? `<table id="prov-productos"><thead><tr><th>SKU</th><th>Producto</th><th>Stock</th><th>Costo China/u</th><th></th></tr></thead><tbody>${filasProd}</tbody></table>`
         : `<div class="empty-state"><div class="empty-icon">📦</div><p>Todavía no tiene productos. Se asignan solos al cargarle una importación, o a mano con “+ Asignar productos”.</p></div>`}
     </div>
 
@@ -2019,7 +2046,7 @@ function sumarDias(fechaStr, dias) {
 function armarCompra(prov, filas, leadTime, hoy) {
   const lineas = filas.map(r => {
     const necesario = NO_ACCIONABLE.includes(r.restock_status) ? 0 : (r.cantidad_sugerida || 0);
-    const c = ultimoCosto(r.sku, prov.id);
+    const c = costoReferencia(r.sku, prov.id);
     // Hasta cuándo se puede esperar para pedir sin volver a quedarse sin stock: con
     // pedidos en camino, desde que se termina todo lo que viene; si no, desde que se
     // termina el stock actual.
@@ -2028,7 +2055,7 @@ function armarCompra(prov, filas, leadTime, hoy) {
       sku: r.sku, nombre: r.nombre, estado: r.restock_status, clase: r.clase || null,
       stock: r.stock || 0, transito: r.qty_en_transito || 0,
       vel: r.daily_velocity || 0, upv: r.unidades_por_venta || 1,
-      costo: c ? c.costo : null,
+      costo: c ? c.costo : null, costoRef: c,
       necesario, relleno: 0, cantidad: necesario,
       limite: agota ? sumarDias(agota, -leadTime) : null,
       restockDate: r.restock_date,
@@ -2152,7 +2179,7 @@ function tarjetaCompra(c) {
       <td class="mono">${l.vel ? l.vel.toFixed(2) : '—'}</td>
       <td class="mono">${l.necesario || '—'}${l.relleno ? `<div class="relleno">+${l.relleno} para el mínimo</div>` : ''}</td>
       <td><input type="number" min="0" step="${l.upv}" class="compra-qty" value="${l.cantidad}" oninput="cambiarCantidad('${id}', ${i}, this.value)"></td>
-      <td class="mono">${l.costo ? usd(l.costo) : '<span style="color:var(--yellow)">sin costo</span>'}</td>
+      <td class="mono">${l.costo ? usd(l.costo) + origenCostoHtml(l.costoRef) : '<span style="color:var(--yellow)">sin costo</span>'}</td>
       <td class="mono compra-sub">—</td>
       <td class="mono compra-cob" style="color:var(--text-muted)">—</td>
     </tr>`).join('');

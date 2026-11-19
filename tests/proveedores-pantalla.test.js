@@ -446,3 +446,110 @@ test('Reposición separa el hueco sin stock de lo que hay que volver a pedir', a
     await rep.cerrar();
   }
 });
+
+// ── Clase de compra (api/_clasesCompra.js) ──────────────────────────────────────
+function restockConClases() {
+  const base = { grupo: 'Espejos', unidades_por_venta: 1, alerta_min: 0, en_transito: [], today: HOY, periodos_sin_stock: [] };
+  return {
+    lead_time_promedio: 85,
+    clases_colchon_dias: { nunca: 55, siempre: 25, poco: 0 },
+    clases: {
+      nunca:        { productos: 1, contrib_pct: 54, compra_pct: 32, reparto_pct: 35, valor_stock: 3420 },
+      siempre:      { productos: 0, contrib_pct: 25, compra_pct: 32, reparto_pct: 45, valor_stock: 0 },
+      nuevo:        { productos: 1, contrib_pct: 13, compra_pct: 13, reparto_pct: 15, valor_stock: 1000 },
+      poco:         { productos: 1, contrib_pct: 8,  compra_pct: 21, reparto_pct: 5,  valor_stock: 668 },
+      descatalogar: { productos: 1, contrib_pct: 0,  compra_pct: 1,  reparto_pct: 0,  valor_stock: 2420 },
+    },
+    productos: [
+      { ...base, sku: 'ALERON', nombre: 'Espejo alerón grande', stock: 10, daily_velocity: 0.88, total_sold: 131, active_days: 149,
+        days_coverage: 11, restock_status: 'ordenar_ya', restock_date: '2026-01-01', stockout_date: '2026-01-01',
+        cantidad_sugerida: 114, punto_pedido_uds: 100, objetivo_uds: 124, already_ordered: false, qty_en_transito: 0,
+        clase: 'nunca', contrib_mes: 21816, retorno_100: 242, ads_pct: 10, ads_estimado: false,
+        clase_motivo: 'Deja ~$21.816 por mes después de Ads y $242 por cada $100 de costo: de los que más dejan.' },
+      { ...base, sku: 'CIRC', nombre: 'Espejos circulares', stock: 2, daily_velocity: 0.2, total_sold: 30, active_days: 150,
+        days_coverage: 10, restock_status: 'cubierto', cantidad_sugerida: 0, punto_pedido_uds: 20, objetivo_uds: 17,
+        already_ordered: false, qty_en_transito: 0, valor_stock: 668,
+        clase: 'poco', contrib_mes: 39, retorno_100: 2, ads_pct: 54, ads_estimado: false,
+        clase_motivo: 'Sin publicidad dejaría $155 por cada $100 de costo, pero los Ads (54% de lo que factura en MELI) le dejan $2.' },
+      { ...base, sku: 'MAN28', nombre: 'Manillar 28 mm', grupo: 'Manillares', stock: 5, daily_velocity: 0, total_sold: 0,
+        days_coverage: null, restock_status: 'no_comprar', cantidad_sugerida: 0, punto_pedido_uds: 0, objetivo_uds: 0,
+        already_ordered: false, qty_en_transito: 0, valor_stock: 2420, clase: 'descatalogar', contrib_mes: null, retorno_100: null,
+        clase_motivo: 'Sin ventas en 68 días con stock y tenés $2.420 parados en 5 unidades: liquidalo (kit, promo o mostrador) y no lo vuelvas a pedir.' },
+      { ...base, sku: 'NUEVO', nombre: 'Producto nuevo', stock: 10, daily_velocity: 0.2, total_sold: 2, active_days: 14,
+        days_coverage: 50, restock_status: 'cubierto', cantidad_sugerida: 0, punto_pedido_uds: 5, objetivo_uds: 5,
+        already_ordered: false, qty_en_transito: 0, clase: 'nuevo', contrib_mes: 900, retorno_100: 150,
+        clase_motivo: 'Poca historia (2 vendidas en 14 días con stock): comprá lotes de prueba hasta confirmar.' },
+    ],
+  };
+}
+
+test('Reposición muestra la clase de cada producto, el resumen y lo que conviene descatalogar', async () => {
+  const estado = estadoBase();
+  estado.restock = restockConClases();
+  const rep = await abrir('reposicion.html', estado);
+  try {
+    await rep.page.waitForSelector('#list-container table');
+    // Resumen: una tarjeta por clase, con la meta en meses con el plazo real (85 + 55 días).
+    const nunca = await rep.page.textContent('.clase-card[data-clase="nunca"]');
+    assert.match(nunca, /⭐ Nunca sin stock/);
+    assert.match(nunca, /Dejan el 54% de la contribución/);
+    assert.match(nunca, /Guía: ~35% de cada compra/);
+    assert.match(nunca, /Meta: ~4,7 meses de venta entre stock y en camino/);
+    assert.match(await rep.page.textContent('.clase-card[data-clase="descatalogar"]'), /\$2\.420 parados en stock/);
+    assert.match(await rep.page.textContent('.clase-card[data-clase="poco"]'), /Solo lo justo para el plazo \(~2,8 meses\), sin colchón/);
+
+    // "Hay que comprar": el descatalogado no aparece aunque tenga stock y piso.
+    const skus = async () => rep.page.$$eval('#list-container tbody tr', trs => trs.map(t => t.cells[0].textContent.trim()));
+    assert.deepStrictEqual(await skus(), ['ALERON']);
+    const fila = await rep.page.textContent('#list-container tbody tr');
+    assert.match(fila, /⭐ Nunca sin stock/);
+    assert.match(fila, /Deja ~\$21\.816 por mes después de Ads y \$242 por cada \$100 de costo: de los que más dejan/);
+    assert.match(fila, /Es de los que nunca pueden quedar sin stock: la meta es ~4,7 meses de venta entre stock y en camino, ~124 uds \(hay 10\)/);
+
+    // La solapa de revisar: descatalogar primero, después comprar poco, cada uno con su motivo.
+    await rep.page.click('#seg-revisar');
+    assert.deepStrictEqual(await skus(), ['MAN28', 'CIRC']);
+    assert.strictEqual((await rep.page.textContent('#seg-count-revisar')).trim(), '2');
+    const filas = await rep.page.$$eval('#list-container tbody tr', trs => trs.map(t => t.textContent));
+    assert.match(filas[0], /⛔ Descatalogar/);
+    assert.match(filas[0], /⛔ No volver a comprar/);
+    assert.match(filas[0], /\$2\.420 parados en 5 unidades/);
+    assert.match(filas[1], /🔻 Comprar poco/);
+    assert.match(filas[1], /los Ads \(54% de lo que factura en MELI\)/);
+    assert.match(filas[1], /deja \$39\/mes · \$2 por \$100 · Ads 54%/);
+
+    // Cada tarjeta filtra la lista por su clase (y vuelve a tocarla saca el filtro).
+    await rep.page.click('#seg-todos');
+    await rep.page.click('.clase-card[data-clase="nuevo"]');
+    assert.deepStrictEqual(await skus(), ['NUEVO']);
+    assert.strictEqual(await rep.page.inputValue('#filter-clase'), 'nuevo');
+    await rep.page.click('.clase-card[data-clase="nuevo"]');
+    assert.strictEqual((await skus()).length, 4);
+    assert.deepStrictEqual(erroresReales(rep.errores), []);
+  } finally {
+    await rep.cerrar();
+  }
+});
+
+test('la compra por proveedor rellena primero a los ⭐ y nunca a los de comprar poco', async () => {
+  const estado = estadoBase();
+  const clases = { 'GZ-N': 'nunca', 'GZ-R': 'siempre', BAUL: 'poco' };
+  estado.restock.productos.forEach(p => { p.clase = clases[p.sku] || null; });
+  const otro = await abrir('importaciones.html', estado);
+  try {
+    await otro.page.waitForSelector('#imports-table-container table');
+    await otro.page.click('#tab-compras');
+    await otro.page.waitForSelector('#compra-PROV-1');
+    const card = otro.page.locator('#compra-PROV-1');
+    const qty = async sku => Number(await card.locator(`tr[data-sku="${sku}"] .compra-qty`).inputValue());
+    // Necesario 14 + 6 gatos. El relleno va primero al gato negro (⭐) hasta 180 días de
+    // venta, después al rojo; el baúl de 28L (comprar poco) no recibe nada.
+    assert.strictEqual(await qty('GZ-N'), 19);
+    assert.strictEqual(await qty('GZ-R'), 13);
+    assert.strictEqual(await qty('BAUL'), 0);
+    assert.match(await card.locator('tr[data-sku="GZ-N"]').textContent(), /⭐/);
+    assert.deepStrictEqual(erroresReales(otro.errores), []);
+  } finally {
+    await otro.cerrar();
+  }
+});

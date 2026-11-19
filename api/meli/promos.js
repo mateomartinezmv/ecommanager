@@ -20,6 +20,7 @@ const { meliIdsDe } = require('../_meliIds');
 const { meliGet, meliFetch, mensajeDeError } = require('../_meliPublicaciones');
 const R = require('./_promosReglas');
 const { FACTOR_IVA_ADS } = require('./_adsIva');
+const { todasLasFilas } = require('../_paginar');
 
 const LOTE = 20;
 const CONCURRENCIA = 8;
@@ -96,8 +97,11 @@ async function gastoAdsPorSku(supabase) {
   const mapa = new Map();
   try {
     const desde = new Date(Date.now() - DIAS_ADS * 86400000).toISOString().slice(0, 10);
-    const { data, error } = await supabase.from('meli_ads_anuncios')
-      .select('sku, spend').gte('fecha', desde).limit(50000);
+    // Una fila por anuncio por día: ~1.100 por mes, más que las 1000 que devuelve Supabase
+    // por consulta (el .limit no lo destraba). Solo las que gastaron y tienen SKU, paginado.
+    const { data, error } = await todasLasFilas(() => supabase.from('meli_ads_anuncios')
+      .select('sku, spend').gte('fecha', desde).gt('spend', 0).not('sku', 'is', null)
+      .order('fecha', { ascending: true }).order('ad_group_id', { ascending: true }));
     if (error) return mapa;
     for (const r of data || []) {
       if (!r.sku) continue;

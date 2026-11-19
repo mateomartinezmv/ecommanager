@@ -649,3 +649,38 @@ La cuenta está en `api/meli/_adsRoasPlan.js` y los datos salen con "Qué anunci
 mira la publicidad: después de comisión, envío **y** lo que cuesta Ads por venta (últimos 30
 días, con IVA) tiene que quedar al menos el 25%. El piso de siempre (30% después de comisión y
 envío) sigue valiendo para todos.
+
+## Clases de compra: qué no puede faltar nunca y qué descatalogar (Reposición → ⭐ / ⛔)
+
+La plata para comprar es poca y tarda ~4 meses en volver (el plazo de importación más lo que
+tarda en venderse). Por eso no alcanza con mirar cuánto se vende: importa cuánto deja cada peso
+que se pone en stock. Reposición mide, por producto, **lo que deja por mes** y **lo que deja por
+cada $100 de costo**, los dos después de comisión, envío que cobra MELI y publicidad con IVA
+(la del producto según el snapshot de Mercado Ads; si no hay dato, el promedio de la cuenta), al
+ritmo al que vende cuando tiene stock. No incluye envíos propios.
+
+| Clase | Regla | Meta (stock + en camino) | Guía de cada compra |
+|---|---|---|---|
+| ⭐ Nunca sin stock | Deja ≥ $4.000/mes y ≥ $100 por cada $100, con ≥ 10 vendidas | plazo + 55 días (~5 meses con 95 de plazo) | ~35% |
+| ✅ Con stock siempre | Deja ≥ $1.000/mes y ≥ $50 por cada $100 | plazo + 25 días (~4 meses) | ~45% |
+| 🧪 Nuevo / en prueba | Menos de 30 días con stock, o pocas ventas y recién publicado | la del modelo de reposición | ~15% |
+| 🔻 Comprar poco | Deja poco por mes, poco por peso, o los Ads se llevan todo | solo el plazo, sin colchón | ~5% |
+| ⛔ Descatalogar | 60 días con stock y ni una venta, o < $30 por cada $100 aun sin publicidad | no se compra (`no_comprar`) | 0% |
+
+Cada producto trae el **motivo** en palabras (por ejemplo: "Sin publicidad dejaría $155 por cada
+$100, pero los Ads (54% de lo que factura en MELI) le dejan $2: sacalo de Ads…"). Arriba hay
+una tarjeta por clase con cuántos productos tiene, qué parte de la contribución dejan y la
+guía de reparto; cada tarjeta filtra la lista. La solapa **⛔ Descatalogar / comprar poco**
+junta los que hay que revisar, primero los descatalogados y con más plata parada.
+
+- La cantidad sugerida ya sale con la meta de su clase, así que **🛒 Compras por proveedor**
+  (Importaciones) la usa tal cual. Cuando completa hasta el mínimo del proveedor, el relleno va
+  primero a los ⭐ y nunca a los de comprar poco ni a los descatalogados.
+- Un descatalogado no se compra aunque tenga piso manual (alerta mínima).
+- La clase es una sugerencia: descatalogar de verdad sigue siendo desde Stock → ⛔.
+- Las reglas están en `api/_clasesCompra.js`.
+
+**Velocidad con stock residual:** un tramo largo sin ninguna venta en el que el stock
+reconstruido da 1 o 2 unidades cuenta como agotado si, al ritmo del producto, se esperaban al
+menos 5 ventas ahí (un desajuste de conteo). Antes esos días bajaban la velocidad: el alerón
+finos figuraba con ~7 por mes cuando vende ~20.

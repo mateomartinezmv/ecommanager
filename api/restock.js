@@ -257,11 +257,18 @@ module.exports = async (req, res) => {
 
   try {
     // ── 1. All products ──────────────────────────────────────────────────────
-    const { data: productosTodos, error: prodErr } = await supabase
+    // proveedor_id (para filtrar la pantalla por proveedor) existe desde la migración de
+    // proveedores; si todavía no corrió, se lee sin esa columna en vez de romper Reposición.
+    const COLS_PRODUCTO = 'sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at, costo';
+    const leerProductos = cols => supabase
       .from('productos')
-      .select('sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at, costo')
+      .select(cols)
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
+    let { data: productosTodos, error: prodErr } = await leerProductos(`${COLS_PRODUCTO}, proveedor_id`);
+    if (prodErr && /proveedor_id/.test(prodErr.message || '')) {
+      ({ data: productosTodos, error: prodErr } = await leerProductos(COLS_PRODUCTO));
+    }
     if (prodErr) throw prodErr;
 
     // Los kits salen de la lista de compra; sus ventas se reparten en las piezas (abrirKits).
@@ -696,6 +703,7 @@ module.exports = async (req, res) => {
         nombre:                     p.nombre,
         grupo:                      p.grupo || '',
         subgrupo:                   p.subgrupo || '',
+        proveedor_id:               p.proveedor_id || null,
         stock:                      stock,
         unidades_por_venta:         upvBySku[p.sku] || 1,
         alerta_min:                 alertaMin,

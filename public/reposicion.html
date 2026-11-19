@@ -166,6 +166,14 @@
   .clase-motivo { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
   .clase-econ { font-size: 10px; color: var(--text-muted); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
 
+  /* ── Compra por proveedor ── */
+  .compra-prov { background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 18px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .compra-prov .titulo { font-size: 15px; font-weight: 700; }
+  .compra-prov .cifras { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .compra-prov .cifras b { color: var(--text); font-family: 'JetBrains Mono', monospace; }
+  .compra-prov a { margin-left: auto; color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+  .compra-prov a:hover { text-decoration: underline; }
+
   /* ── Descatalogar desde Reposición ── */
   button.badge-accion { border: 1px solid transparent; cursor: pointer; font-family: inherit; }
   button.badge-accion:hover { border-color: currentColor; }
@@ -265,6 +273,9 @@
       <select id="filter-cat" onchange="applyFilters()">
         <option value="">Todos los grupos</option>
       </select>
+      <select id="filter-prov" onchange="elegirProveedor()" hidden>
+        <option value="">Todos los proveedores</option>
+      </select>
       <select id="filter-clase" onchange="applyFilters()">
         <option value="">Todas las clases</option>
         <option value="nunca">⭐ Nunca sin stock</option>
@@ -276,6 +287,9 @@
       <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
       <span id="search-hint" class="search-hint"></span>
     </div>
+
+    <!-- Con un proveedor elegido: qué pedirle -->
+    <div id="compra-prov"></div>
 
     <!-- Segmento tabs -->
     <div class="tabs" style="margin-bottom:16px">
@@ -359,6 +373,9 @@ let leadTimeStdev    = null;
 let leadTimeMin      = null;
 let leadTimeMax      = null;
 let clasesResumen    = null;   // totales por clase de compra (api/_clasesCompra.js)
+let proveedores      = [];     // de /api/proveedores, para filtrar por proveedor
+const SIN_PROV       = '__sin';
+const CLAVE_PROV     = 'reposicion-proveedor';
 let colchonClase     = { nunca: 55, siempre: 25, poco: 0 };
 
 // Clases de compra. El orden es el de la pantalla.
@@ -377,9 +394,15 @@ const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 // ─── Load data ────────────────────────────────────────────────────────────────
 async function load() {
   try {
-    const r = await fetch('/api/restock');
+    // Los proveedores son opcionales: sin la tabla (o si falla) la pantalla anda igual,
+    // sólo que sin el filtro.
+    const [r, provResp] = await Promise.all([
+      fetch('/api/restock'),
+      fetch('/api/proveedores').then(x => (x.ok ? x.json() : null)).catch(() => null),
+    ]);
     if (!r.ok) { const e = await r.json(); throw new Error(e.error || r.statusText); }
     const data = await r.json();
+    proveedores = (provResp && !provResp.migracionPendiente && provResp.proveedores) || [];
     allProducts     = data.productos || [];
     leadTimePromedio = data.lead_time_promedio ?? null;
     leadTimeMuestra   = data.lead_time_muestra || 0;
@@ -402,6 +425,7 @@ async function load() {
     }
     document.getElementById('lead-time-info').textContent = leadTimeTxt;
 
+    llenarProveedores();
     const cats = [...new Set(allProducts.map(p => p.grupo).filter(Boolean))].sort();
     const sel = document.getElementById('filter-cat');
     // Reset options except the first
@@ -563,6 +587,70 @@ function claseHtml(p) {
     <div class="clase-motivo">${escapeHtml(p.clase_motivo || '')}</div>`;
 }
 
+// ─── Filtro por proveedor ─────────────────────────────────────────────────────
+// Para armar la compra de un proveedor mirando sólo lo suyo. La elección se recuerda en este
+// navegador (es una comodidad: si el almacenamiento no está, arranca en "Todos").
+function llenarProveedores() {
+  const sel = document.getElementById('filter-prov');
+  const cuenta = id => allProducts.filter(p => (id === SIN_PROV ? !p.proveedor_id : p.proveedor_id === id)).length;
+  const opciones = [...proveedores]
+    .map(pv => ({ id: pv.id, nombre: pv.nombre, n: cuenta(pv.id) }))
+    .filter(o => o.n > 0)
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const sinProv = cuenta(SIN_PROV);
+  sel.hidden = !opciones.length;
+  const elegido = sel.value || leerProveedorGuardado();
+  sel.innerHTML = '<option value="">Todos los proveedores</option>'
+    + opciones.map(o => `<option value="${escapeHtml(o.id)}">🏭 ${escapeHtml(o.nombre)} (${o.n})</option>`).join('')
+    + (opciones.length && sinProv ? `<option value="${SIN_PROV}">Sin proveedor (${sinProv})</option>` : '');
+  sel.value = [...sel.options].some(o => o.value === elegido) ? elegido : '';
+}
+
+function leerProveedorGuardado() {
+  try { return localStorage.getItem(CLAVE_PROV) || ''; } catch (e) { return ''; }
+}
+
+function elegirProveedor() {
+  const v = document.getElementById('filter-prov').value;
+  try { v ? localStorage.setItem(CLAVE_PROV, v) : localStorage.removeItem(CLAVE_PROV); } catch (e) { /* sin almacenamiento */ }
+  applyFilters();
+}
+
+// Con un proveedor elegido, arriba de la lista: cuánto hay que pedirle (lo que sugiere
+// Reposición, a costo puesto) y el acceso a la compra armada con su mínimo en Importaciones.
+// Cuenta todo lo del proveedor, sin importar la búsqueda, el grupo o la clase que se esté
+// mirando: es la compra entera.
+function renderCompraProveedor() {
+  const el = document.getElementById('compra-prov');
+  const id = document.getElementById('filter-prov').value;
+  if (!id) { el.innerHTML = ''; return; }
+  const pedir = allProducts.filter(p => (id === SIN_PROV ? !p.proveedor_id : p.proveedor_id === id)
+    && !NO_ACCIONABLE.includes(p.restock_status) && p.cantidad_sugerida > 0);
+  const uds = pedir.reduce((a, p) => a + p.cantidad_sugerida, 0);
+  const plata = pedir.reduce((a, p) => a + p.cantidad_sugerida * (p.costo || 0), 0);
+  const estrellas = pedir.filter(p => p.clase === 'nunca').length;
+  const sinCosto = pedir.filter(p => !(p.costo > 0)).length;
+  if (id === SIN_PROV) {
+    el.innerHTML = `<div class="compra-prov"><div>
+      <div class="titulo">Productos sin proveedor</div>
+      <div class="cifras">${pedir.length ? `<b>${pedir.length}</b> para pedir. ` : ''}Asignales proveedor en Importaciones → 🏭 Proveedores para que entren en la compra armada.</div>
+    </div><a href="/importaciones.html#proveedores">Asignar proveedores →</a></div>`;
+    return;
+  }
+  const pv = proveedores.find(x => x.id === id);
+  const nombre = pv ? pv.nombre : id;
+  const cifras = pedir.length
+    ? `<b>${pedir.length}</b> producto${pedir.length === 1 ? '' : 's'} para pedir${estrellas ? ` (${estrellas} ⭐)` : ''} · <b>${uds}</b> unidades`
+      + ` · ~<b>${fmtPlata(plata)}</b> a costo puesto${sinCosto ? ` (${sinCosto} sin costo cargado)` : ''}`
+    : 'Nada para pedirle ahora: todo lo suyo está cubierto.';
+  const minimo = pv && Number(pv.minimo_usd) > 0 ? ` · su mínimo es USD ${Number(pv.minimo_usd)}` : '';
+  el.innerHTML = `<div class="compra-prov"><div>
+      <div class="titulo">🛒 Compra a ${escapeHtml(nombre)}</div>
+      <div class="cifras">${cifras}${escapeHtml(minimo)}</div>
+    </div>
+    <a href="/importaciones.html#compras=${encodeURIComponent(id)}">Armar la compra en Importaciones →</a></div>`;
+}
+
 // ─── Descatalogar desde acá ───────────────────────────────────────────────────
 // Espejo de api/_discontinuado.js (esta página no tiene bundler). Al agregar un motivo hay
 // que tocar los tres lugares: la API, public/index.html y acá.
@@ -613,7 +701,7 @@ function abrirDescatalogar(skus) {
   const opciones = MOTIVOS_DISCONTINUADO.map(m => `<option value="${m.id}">${m.emoji} ${m.nombre}</option>`).join('');
   document.getElementById('desc-lista').innerHTML = lista.map(p => `
     <div class="desc-fila" data-sku="${escapeHtml(p.sku)}">
-      <input type="checkbox" class="desc-check" checked ${lista.length === 1 ? 'hidden' : ''} onchange="contarDescatalogar()">
+      <input type="checkbox" class="desc-check" checked ${lista.length === 1 ? 'style="visibility:hidden"' : ''} onchange="contarDescatalogar()">
       <div>
         <div class="nombre">${escapeHtml(p.nombre)} <span class="badge badge-gray">${escapeHtml(p.sku)}</span></div>
         <div class="por-que">${escapeHtml(p.clase_motivo || '')}</div>
@@ -723,6 +811,8 @@ function applyFilters() {
   // Grupo, clase y búsqueda arman la base; la solapa recorta sobre eso.
   let base = cat ? allProducts.filter(p => p.grupo === cat) : allProducts;
   if (clase) base = base.filter(p => p.clase === clase);
+  const prov = document.getElementById('filter-prov').value;
+  if (prov) base = base.filter(p => (prov === SIN_PROV ? !p.proveedor_id : p.proveedor_id === prov));
   base = base.filter(p => matchesQuery(p, terms));
   document.querySelectorAll('.clase-card').forEach(b => b.classList.toggle('activa', b.dataset.clase === clase));
 
@@ -734,6 +824,7 @@ function applyFilters() {
   updateSegCounts(base);
   updateSearchHint(base, terms);
   actualizarBotonSugeridos();
+  renderCompraProveedor();
   if (currentView === 'lista') renderList();
   else renderCalendar();
 }

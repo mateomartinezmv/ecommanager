@@ -2777,10 +2777,12 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 // #tracking, #proveedores y #compras abren directo esa solapa (sirve para volver con el
-// botón atrás o para dejar un acceso directo).
+// botón atrás o para dejar un acceso directo). #compras=PROV-ID además baja a la compra de
+// ese proveedor: es el enlace que deja 📅 Reposición cuando se filtra por proveedor.
 load().then(() => {
-  const tab = location.hash.slice(1);
-  if (['tracking', 'proveedores', 'compras'].includes(tab)) switchTab(tab);
+  const [tab, prov] = location.hash.slice(1).split('=');
+  if (tab === 'compras' && prov) verComprasDe(decodeURIComponent(prov));
+  else if (['tracking', 'proveedores', 'compras'].includes(tab)) switchTab(tab);
 });
 </script>
 </body>

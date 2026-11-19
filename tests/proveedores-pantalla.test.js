@@ -471,17 +471,17 @@ function restockConClases() {
       descatalogar: { productos: 1, contrib_pct: 0,  compra_pct: 1,  reparto_pct: 0,  valor_stock: 2420 },
     },
     productos: [
-      { ...base, sku: 'ALERON', nombre: 'Espejo alerón grande', stock: 10, daily_velocity: 0.88, total_sold: 131, active_days: 149,
+      { ...base, sku: 'ALERON', nombre: 'Espejo alerón grande', proveedor_id: 'PROV-1', costo: 342, stock: 10, daily_velocity: 0.88, total_sold: 131, active_days: 149,
         days_coverage: 11, restock_status: 'ordenar_ya', restock_date: '2026-01-01', stockout_date: '2026-01-01',
         cantidad_sugerida: 114, punto_pedido_uds: 100, objetivo_uds: 124, already_ordered: false, qty_en_transito: 0,
         clase: 'nunca', contrib_mes: 21816, retorno_100: 242, ads_pct: 10, ads_estimado: false,
         clase_motivo: 'Deja ~$21.816 por mes después de Ads y $242 por cada $100 de costo: de los que más dejan.' },
-      { ...base, sku: 'CIRC', nombre: 'Espejos circulares', stock: 2, daily_velocity: 0.2, total_sold: 30, active_days: 150,
+      { ...base, sku: 'CIRC', nombre: 'Espejos circulares', proveedor_id: 'PROV-1', costo: 334, stock: 2, daily_velocity: 0.2, total_sold: 30, active_days: 150,
         days_coverage: 10, restock_status: 'cubierto', cantidad_sugerida: 0, punto_pedido_uds: 20, objetivo_uds: 17,
         already_ordered: false, qty_en_transito: 0, valor_stock: 668, motivo_sugerido: 'poco_margen',
         clase: 'poco', contrib_mes: 39, retorno_100: 2, ads_pct: 54, ads_estimado: false,
         clase_motivo: 'Sin publicidad dejaría $155 por cada $100 de costo, pero los Ads (54% de lo que factura en MELI) le dejan $2.' },
-      { ...base, sku: 'MAN28', nombre: 'Manillar 28 mm', grupo: 'Manillares', stock: 5, daily_velocity: 0, total_sold: 0,
+      { ...base, sku: 'MAN28', nombre: 'Manillar 28 mm', grupo: 'Manillares', proveedor_id: 'PROV-2', stock: 5, daily_velocity: 0, total_sold: 0,
         days_coverage: null, restock_status: 'no_comprar', cantidad_sugerida: 0, punto_pedido_uds: 0, objetivo_uds: 0,
         already_ordered: false, qty_en_transito: 0, valor_stock: 2420, clase: 'descatalogar', contrib_mes: null, retorno_100: null,
         motivo_sugerido: 'poca_venta',
@@ -608,5 +608,57 @@ test('desde Reposición se descataloga uno (clic en el badge) o todos los sugeri
     assert.deepStrictEqual(rep.alertas, []);
   } finally {
     await rep.cerrar();
+  }
+});
+
+test('Reposición filtra por proveedor y dice qué pedirle, con acceso a su compra armada', async () => {
+  const estado = estadoBase();
+  estado.restock = restockConClases();
+  const rep = await abrir('reposicion.html', estado);
+  try {
+    await rep.page.waitForSelector('#list-container table');
+    const skus = async () => rep.page.$$eval('#list-container tbody tr', trs => trs.map(t => t.cells[0].textContent.trim()));
+    // Solo los proveedores que tienen productos en Reposición, más "Sin proveedor".
+    const opciones = await rep.page.$$eval('#filter-prov option', os => os.map(o => o.textContent.trim()));
+    assert.deepStrictEqual(opciones, ['Todos los proveedores', '🏭 Guangzhou Moto (1)', '🏭 Yiwu Trading (2)', 'Sin proveedor (1)']);
+
+    await rep.page.selectOption('#filter-prov', 'PROV-1');
+    const panel = await rep.page.textContent('#compra-prov');
+    assert.match(panel, /Compra a Yiwu Trading/);
+    // ALERON: 114 a $342. CIRC está cubierto: no suma.
+    assert.match(panel, /1 producto para pedir \(1 ⭐\) · 114 unidades · ~\$38\.988 a costo puesto/);
+    assert.match(panel, /su mínimo es USD 300/);
+    assert.strictEqual(await rep.page.getAttribute('#compra-prov a', 'href'), '/importaciones.html#compras=PROV-1');
+    assert.deepStrictEqual(await skus(), ['ALERON']);
+    await rep.page.click('#seg-todos');
+    assert.deepStrictEqual(await skus(), ['ALERON', 'CIRC']);
+
+    // Sin proveedor: lo que falta asignar.
+    await rep.page.selectOption('#filter-prov', '__sin');
+    assert.deepStrictEqual(await skus(), ['NUEVO']);
+    assert.match(await rep.page.textContent('#compra-prov'), /Productos sin proveedor/);
+
+    // La elección queda guardada para la próxima vez.
+    await rep.page.selectOption('#filter-prov', 'PROV-2');
+    await rep.page.reload();
+    // A Guangzhou no hay nada que pedirle: la lista queda vacía y el panel lo dice.
+    await rep.page.waitForSelector('#compra-prov .compra-prov');
+    assert.strictEqual(await rep.page.inputValue('#filter-prov'), 'PROV-2');
+    assert.match(await rep.page.textContent('#list-container'), /No hay productos que necesiten compra urgente/);
+    assert.match(await rep.page.textContent('#compra-prov'), /Compra a Guangzhou Moto.*Nada para pedirle ahora/s);
+    assert.deepStrictEqual(erroresReales(rep.errores), []);
+  } finally {
+    await rep.cerrar();
+  }
+});
+
+test('Importaciones: #compras=PROV abre la compra de ese proveedor', async () => {
+  const imp = await abrir('importaciones.html#compras=PROV-1', estadoBase());
+  try {
+    await imp.page.waitForSelector('#compra-PROV-1');
+    assert.ok(await imp.page.isVisible('#sec-compras'));
+    assert.deepStrictEqual(erroresReales(imp.errores), []);
+  } finally {
+    await imp.cerrar();
   }
 });

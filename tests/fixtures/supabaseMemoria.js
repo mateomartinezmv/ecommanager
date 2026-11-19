@@ -1,7 +1,8 @@
-// Supabase falso en memoria para endpoints de solo lectura (GET). Entiende los filtros que
-// usan api/restock.js y sus vecinos: select, eq, neq, gt, gte, in, not (is / in), or (sólo
-// "col.is.null,col.eq.valor"), order y range. Imita la semántica de SQL que importa: un neq
-// o un gt no devuelven filas con NULL en esa columna.
+// Supabase falso en memoria para endpoints. Entiende lo que usan api/restock.js y sus
+// vecinos: select, eq, neq, gt, gte, in, not (is / in), or (sólo "col.is.null,col.eq.valor"),
+// order, range, update, single y maybeSingle. Imita la semántica de SQL que importa: un neq o
+// un gt no devuelven filas con NULL en esa columna, y un update con una columna que la tabla
+// no tiene falla como en PostgREST.
 //
 // Uso: supabaseMemoria({ productos: [...], ventas: [...], ... }). Una tabla que no está en el
 // objeto responde con el error de "tabla inexistente" de PostgREST, como en producción antes
@@ -12,8 +13,13 @@ function supabaseMemoria(tablas) {
     const filtros = [];
     const orden = [];
     let rango = null;
+    let cambios = null;      // update(fila): se aplica a las filas que pasan los filtros
+    let unico = null;        // 'single' | 'maybeSingle'
     const q = {
       select() { return q; },
+      update(fila) { cambios = fila; return q; },
+      single() { unico = 'single'; return q; },
+      maybeSingle() { unico = 'maybeSingle'; return q; },
       eq(c, v) { filtros.push(f => f[c] === v); return q; },
       neq(c, v) { filtros.push(f => f[c] !== null && f[c] !== undefined && f[c] !== v); return q; },
       gt(c, v) { filtros.push(f => f[c] !== null && f[c] !== undefined && f[c] > v); return q; },
@@ -42,6 +48,20 @@ function supabaseMemoria(tablas) {
           return Promise.resolve({ data: null, error: { code: '42P01', message: `relation "public.${nombre}" does not exist` } }).then(ok, mal);
         }
         let filas = tablas[nombre].filter(f => filtros.every(fn => fn(f)));
+        if (cambios) {
+          // Como Postgres: una columna que la tabla no tiene es un error, no se agrega.
+          const conocidas = new Set(tablas[nombre].flatMap(f => Object.keys(f)));
+          const desconocida = Object.keys(cambios).find(c => !conocidas.has(c));
+          if (desconocida) {
+            return Promise.resolve({ data: null, error: { code: 'PGRST204', message: `Could not find the '${desconocida}' column of '${nombre}'` } }).then(ok, mal);
+          }
+          filas.forEach(f => Object.assign(f, cambios));
+        }
+        if (unico) {
+          const fila = filas[0] ? { ...filas[0] } : null;
+          const error = !fila && unico === 'single' ? { code: 'PGRST116', message: 'no rows' } : null;
+          return Promise.resolve({ data: fila, error }).then(ok, mal);
+        }
         if (orden.length) {
           filas = [...filas].sort((x, y) => {
             for (const [c, asc] of orden) {

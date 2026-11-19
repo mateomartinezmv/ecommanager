@@ -677,7 +677,12 @@ junta los que hay que revisar, primero los descatalogados y con más plata parad
   (Importaciones) la usa tal cual. Cuando completa hasta el mínimo del proveedor, el relleno va
   primero a los ⭐ y nunca a los de comprar poco ni a los descatalogados.
 - Un descatalogado no se compra aunque tenga piso manual (alerta mínima).
-- La clase es una sugerencia: descatalogar de verdad sigue siendo desde Stock → ⛔.
+- **Descatalogar desde acá:** el badge de ⛔ Descatalogar o 🔻 Comprar poco es un botón que abre
+  el formulario con el motivo ya elegido (sin ventas → *poca venta*; deja poco por peso →
+  *poco margen*). En la solapa ⛔, **"Descatalogar los N sugeridos"** los hace todos juntos: se
+  destilda lo que no se quiera sacar. Como aclaración se guarda el porqué que dio Reposición,
+  salvo que se escriba otra. Usa `PATCH /api/productos?sku=…`, que solo toca las columnas del
+  descatalogado (el PUT reescribe el producto entero). Se vuelve atrás desde Stock → ♻️.
 - Las reglas están en `api/_clasesCompra.js`.
 
 **Velocidad con stock residual:** un tramo largo sin ninguna venta en el que el stock

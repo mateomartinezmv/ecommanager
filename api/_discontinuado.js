@@ -5,10 +5,10 @@
 // de stock bajo y de la sincronización masiva de stock, pero las unidades que queden se
 // siguen vendiendo normalmente (y cada venta le sigue bajando el stock a MELI y Shopify).
 //
-// El catálogo está acá y espejado en public/index.html — el SPA es un HTML plano sin
-// bundler, así que no hay forma de importar este archivo desde el front. Al agregar un
-// motivo hay que tocar los dos lugares; esta lista es la que manda, porque es la que valida
-// antes de escribir en la base.
+// El catálogo está acá y espejado en public/index.html y public/reposicion.html — son HTML
+// planos sin bundler, así que no hay forma de importar este archivo desde el front. Al
+// agregar un motivo hay que tocar los tres lugares; esta lista es la que manda, porque es la
+// que valida antes de escribir en la base.
 
 const MOTIVOS_DISCONTINUADO = [
   { id: 'poca_venta',    nombre: 'Poca venta',               color: '#f59e0b' },

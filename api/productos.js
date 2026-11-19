@@ -2,6 +2,7 @@
 // GET  /api/productos        → listar todos
 // POST /api/productos        → crear
 // PUT  /api/productos?sku=XX → actualizar (sincroniza stock con MELI y Shopify si aplica)
+// PATCH /api/productos?sku=XX → sólo descatalogar / reactivar (no toca nada más)
 // DELETE /api/productos?sku=XX → eliminar
 
 const { getSupabase } = require('./_supabase');
@@ -28,7 +29,7 @@ function campoCodigoGesta(p) {
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -180,6 +181,38 @@ module.exports = async (req, res) => {
         return res.json({ ...data, sync, ...(migracionMotivoPendiente ? { migracionMotivoPendiente } : {}) });
       }
 
+      return res.json(migracionMotivoPendiente ? { ...data, migracionMotivoPendiente } : data);
+    }
+
+    // Sólo el descatalogado: { discontinuado, motivoDiscontinuado, notaDiscontinuado,
+    // fechaDiscontinuado }. Lo usa 📅 Reposición para descatalogar sin tener el producto
+    // entero: el PUT reescribe la fila completa (un campo que no viene lo vacía), así que
+    // mandarle sólo el descatalogado le borraría las publicaciones y el grupo. Acá no se
+    // toca nada más y no se sincroniza stock: descatalogar no cambia lo que hay.
+    if (req.method === 'PATCH') {
+      const sku = req.query.sku;
+      const p = req.body || {};
+      if (!sku) return res.status(400).json({ error: 'Falta el sku' });
+      if (p.discontinuado === undefined) return res.status(400).json({ error: 'Falta discontinuado' });
+
+      const COLS = 'sku, discontinuado';
+      let { data: anterior, error: antErr } = await supabase
+        .from('productos')
+        .select(`${COLS}, motivo_discontinuado, nota_discontinuado, fecha_discontinuado`)
+        .eq('sku', sku)
+        .maybeSingle();
+      if (antErr && faltaMigracionMotivo(antErr)) {
+        ({ data: anterior, error: antErr } = await supabase.from('productos').select(COLS).eq('sku', sku).maybeSingle());
+      }
+      if (antErr) throw antErr;
+      if (!anterior) return res.status(404).json({ error: `No existe el producto ${sku}` });
+
+      const { data, error, migracionMotivoPendiente } = await escribirConMotivo(
+        fila => supabase.from('productos').update(fila).eq('sku', sku).select().single(),
+        {},
+        camposDiscontinuado(p, anterior),
+      );
+      if (error) throw error;
       return res.json(migracionMotivoPendiente ? { ...data, migracionMotivoPendiente } : data);
     }
 

@@ -66,7 +66,7 @@ test('la historia descarta el texto: Meta no lo acepta por API', () => {
 });
 
 // fetch de mentira: registra cada llamada y responde según la ruta.
-function fakeGraph({ estadoContenedor = 'FINISHED', facebookFalla = false } = {}) {
+function fakeGraph({ estadoContenedor = 'FINISHED', facebookFalla = false, publicarNoListo = 0 } = {}) {
   const llamadas = [];
   let n = 0;
   let fotos = 0;
@@ -75,6 +75,10 @@ function fakeGraph({ estadoContenedor = 'FINISHED', facebookFalla = false } = {}
     const params = Object.fromEntries(opts.body ? new URLSearchParams(opts.body) : u.searchParams);
     const ruta = u.pathname.replace(/^\/v[\d.]+\//, '');
     llamadas.push({ metodo: opts.method || 'GET', ruta, params });
+    if (ruta.endsWith('/media_publish') && publicarNoListo-- > 0) {
+      return { ok: false, status: 400, json: async () => ({ error: {
+        code: 9007, error_subcode: 2207027, message: 'El contenido multimedia no está listo para publicarse. Espera un momento.' } }) };
+    }
     if (facebookFalla && ruta.startsWith('PAGE1/')) {
       return { ok: false, status: 403, json: async () => ({ error: { message: 'Falta el permiso pages_manage_posts' } }) };
     }
@@ -282,4 +286,22 @@ test('si no queda tiempo, lo que salió queda guardado y la red que falta sale e
   assert.strictEqual(r2.ok, true);
   assert.strictEqual(fila.estado, 'publicado');
   assert.ok(g2.llamadas.every(l => !l.ruta.startsWith('IG1/')));
+});
+
+test('si Instagram dice que la historia todavía no está lista, espera y la publica igual', async () => {
+  const { fetchImpl, llamadas } = fakeGraph({ publicarNoListo: 2 });
+  const r = await publicar({ tipo: 'historia', imagenes: [URL1], caption: null }, CUENTA, { fetchImpl, espera: { ...espera, publicar: 4 } });
+  assert.strictEqual(r.mediaId, 'media99');
+  assert.strictEqual(llamadas.filter(l => l.ruta.endsWith('/media_publish')).length, 3);
+});
+
+test('si sigue sin estar lista, la fila vuelve a la cola sin tocar Facebook de nuevo', async () => {
+  const fila = { id: 1, tipo: 'historia', redes: ['instagram', 'facebook'], imagenes: [URL1], caption: null,
+    estado: 'programado', intentos: 0, fb_post_id: 'story_fb' };
+  const { fetchImpl, llamadas } = fakeGraph({ publicarNoListo: 99 });
+  const r = await publicarFila(fakeSupabase([fila]), 1, { fetchImpl, espera: { ...espera, publicar: 1 } });
+  assert.strictEqual(r.reintentar, true);
+  assert.strictEqual(fila.estado, 'programado');
+  assert.match(fila.error, /sigue procesando/);
+  assert.ok(!llamadas.some(l => l.ruta.startsWith('PAGE1/')));
 });

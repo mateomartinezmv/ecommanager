@@ -120,9 +120,20 @@ async function graph(fetchImpl, method, path, params, token) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.error) {
     const e = data.error || {};
-    throw new Error(e.error_user_msg || e.message || `Meta respondió ${res.status}`);
+    const err = new Error(e.error_user_msg || e.message || `Meta respondió ${res.status}`);
+    err.code = e.code;
+    err.subcode = e.error_subcode;
+    throw err;
   }
   return data;
+}
+
+// Errores pasajeros de Instagram justo después de crear un contenedor: "el contenido no está
+// listo para publicarse" (9007 / 2207027) o "no se encuentra el contenido con el identificador"
+// (2207006). Unos segundos después la misma llamada anda, así que se reintenta.
+function esPasajero(err) {
+  return err.code === 9007 || [2207027, 2207006].includes(err.subcode)
+    || /no est[aá] listo|not ready|no se encuentra el contenido|cannot be found|not available/i.test(err.message || '');
 }
 
 // Graph recibe los arrays de objetos como `clave[0]={...json...}`, `clave[1]=...`.
@@ -141,7 +152,13 @@ const pausa = ms => new Promise(r => setTimeout(r, ms));
 // Meta procesa el contenedor en segundo plano: hay que esperar a FINISHED antes de publicar.
 async function esperarContenedor(fetchImpl, id, token, { intentos = 10, cadaMs = 2000 } = {}) {
   for (let i = 0; i < intentos; i++) {
-    const { status_code: estado, status } = await graph(fetchImpl, 'GET', id, { fields: 'status_code,status' }, token);
+    let estado, status;
+    try {
+      ({ status_code: estado, status } = await graph(fetchImpl, 'GET', id, { fields: 'status_code,status' }, token));
+    } catch (err) {
+      // Recién creado, a veces Meta todavía no lo encuentra: se sigue esperando.
+      if (!esPasajero(err)) throw err;
+    }
     if (estado === 'FINISHED') return;
     if (estado === 'ERROR' || estado === 'EXPIRED') {
       throw new Error(`Instagram no pudo procesar la imagen (${status || estado}). Revisá que sea un JPEG público.`);
@@ -183,7 +200,24 @@ async function publicar(pub, cuenta, { fetchImpl = fetch, espera } = {}) {
   }
   await esperarContenedor(fetchImpl, contenedor, token, espera);
 
-  const { id: mediaId } = await graph(fetchImpl, 'POST', `${ig}/media_publish`, { creation_id: contenedor }, token);
+  // Aunque el contenedor diga FINISHED, a veces media_publish contesta que todavía no está listo
+  // (pasa sobre todo con las historias): se reintenta unas veces antes de darlo por fallido. Si no
+  // sale, el error dice "sigue procesando" y el cron lo vuelve a intentar en la próxima vuelta.
+  const reintentos = espera?.publicar ?? 4;
+  const pausaPublicar = espera?.cadaMs ?? 3000;
+  let mediaId;
+  for (let i = 0; ; i++) {
+    try {
+      ({ id: mediaId } = await graph(fetchImpl, 'POST', `${ig}/media_publish`, { creation_id: contenedor }, token));
+      break;
+    } catch (err) {
+      if (!esPasajero(err)) throw err;
+      if (i >= reintentos) {
+        throw new Error(`Instagram sigue procesando la publicación; se reintenta en la próxima vuelta (${err.message})`);
+      }
+      await pausa(pausaPublicar);
+    }
+  }
   // El permalink es un extra para mostrar en el CRM: si falla, la publicación ya salió igual.
   const permalink = await graph(fetchImpl, 'GET', mediaId, { fields: 'permalink' }, token)
     .then(d => d.permalink || null)

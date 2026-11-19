@@ -13,6 +13,7 @@ const { supabaseMemoria } = require('./fixtures/supabaseMemoria');
 let tablas;
 const fila = (o = {}) => ({
   sku: 'HP-CB0382', nombre: 'Manillar 28mm', grupo: 'Manillares', subgrupo: 'Universal 7/8', tipo: 'nuevo',
+  unidades_por_venta: 1, notas: null, proveedor_id: null,
   stock_dep: 5, stock_meli: 5, stock_shopify: 0, costo: 484, precio: 1490, alerta_min: 3,
   meli_id: 'MLU123', meli_ids: ['MLU123'], shopify_id: null, discontinuado: false,
   motivo_discontinuado: null, nota_discontinuado: null, fecha_discontinuado: null, ...o,
@@ -71,4 +72,31 @@ test('pide sku y discontinuado; un sku que no existe da 404', async () => {
   const r = await patch('NO-EXISTE', { discontinuado: true });
   assert.strictEqual(r.code, 404);
   assert.match(r.body.error, /No existe el producto NO-EXISTE/);
+});
+
+// El formulario de producto (PUT) guarda el proveedor si lo manda, y si no lo manda no lo
+// toca: un guardado sin el campo (porque no hay proveedores cargados) no borra el que le
+// puso Importaciones.
+async function put(sku, body) {
+  const res = { setHeader() {}, status(c) { this.code = c; return this; }, end() {}, json(b) { this.body = b; this.code = this.code || 200; return this; } };
+  await handler({ method: 'PUT', query: { sku }, body }, res);
+  return res;
+}
+const formulario = (o = {}) => ({
+  sku: 'HP-CB0382', nombre: 'Manillar 28mm', grupo: 'Manillares', subgrupo: 'Universal 7/8', tipo: 'nuevo',
+  unidadesPorVenta: 1, stockDep: 5, costo: 484, precio: 1490, alertaMin: 3, meliIds: ['MLU123'], shopifyId: '', notas: '', ...o,
+});
+
+test('el PUT guarda el proveedor si viene y no lo toca si no viene', async () => {
+  tablas.productos[0].proveedor_id = null;
+  let r = await put('HP-CB0382', formulario({ proveedorId: 'PROV-HONGPA' }));
+  assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+  assert.strictEqual(tablas.productos[0].proveedor_id, 'PROV-HONGPA');
+
+  r = await put('HP-CB0382', formulario());
+  assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+  assert.strictEqual(tablas.productos[0].proveedor_id, 'PROV-HONGPA', 'sin el campo, se conserva');
+
+  await put('HP-CB0382', formulario({ proveedorId: null }));
+  assert.strictEqual(tablas.productos[0].proveedor_id, null, '"Sin proveedor" lo saca');
 });

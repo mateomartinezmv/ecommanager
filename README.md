@@ -680,7 +680,8 @@ junta los que hay que revisar, primero los descatalogados y con más plata parad
   que no tienen). Con uno elegido, arriba de la lista aparece cuánto hay que pedirle (productos,
   unidades y plata a costo puesto, con cuántos son ⭐) y un enlace a su compra armada en
   Importaciones → 🛒 Compras (`importaciones.html#compras=ID`). La elección se recuerda en el
-  navegador.
+  navegador. El proveedor de cada producto se elige en **Stock → ✏️ Editar → Proveedor
+  (importador)** (también lo asignan 🏭 Proveedores y las importaciones nuevas).
 - Un descatalogado no se compra aunque tenga piso manual (alerta mínima).
 - **Descatalogar desde acá:** el badge de ⛔ Descatalogar o 🔻 Comprar poco es un botón que abre
   el formulario con el motivo ya elegido (sin ventas → *poca venta*; deja poco por peso →

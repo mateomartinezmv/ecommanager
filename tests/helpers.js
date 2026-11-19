@@ -106,6 +106,8 @@ function mockearApi(page, estado, fallos = {}) {
           alerta_min: cuerpo.alertaMin ?? p.alerta_min,
           notas: cuerpo.notas ?? p.notas,
           codigo_gesta: cuerpo.codigoGesta !== undefined ? (parseInt(cuerpo.codigoGesta, 10) || null) : p.codigo_gesta,
+          // Como campoProveedor (api/productos.js): sólo se pisa si el request lo manda.
+          proveedor_id: cuerpo.proveedorId !== undefined ? (cuerpo.proveedorId || null) : (p.proveedor_id ?? null),
           discontinuado: disc,
           motivo_discontinuado: !disc ? null
             : (cuerpo.motivoDiscontinuado !== undefined ? (cuerpo.motivoDiscontinuado || null) : (p.motivo_discontinuado ?? null)),
@@ -123,6 +125,11 @@ function mockearApi(page, estado, fallos = {}) {
         return ok(p);
       }
       return ok(estado.productos);
+    }
+    // Proveedores (🏭): sólo si el test los carga; si no, la API "no tiene la tabla".
+    if (ruta === '/proveedores') {
+      return ok(estado.proveedores ? { proveedores: estado.proveedores, migracionPendiente: false }
+        : { proveedores: [], migracionPendiente: true });
     }
     if (ruta === '/ventas') {
       // Lo que manda el front al registrar una venta, tal cual, para verificar el cuerpo.

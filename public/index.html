@@ -1438,6 +1438,7 @@
       <div class="form-group"><label class="form-label">SKU *</label><input type="text" id="p-sku" placeholder="ej: ZAP-001"></div>
       <div class="form-group"><label class="form-label">Grupo</label><input type="text" id="p-grupo" list="dl-grupos" placeholder="ej: Escapes" oninput="refreshSubgrupoList()"><datalist id="dl-grupos"></datalist></div>
       <div class="form-group"><label class="form-label">Subgrupo</label><input type="text" id="p-subgrupo" list="dl-subgrupos" placeholder="ej: Akrapovic"><datalist id="dl-subgrupos"></datalist></div>
+      <div class="form-group" id="p-proveedor-grupo" style="display:none"><label class="form-label">Proveedor (importador)</label><select id="p-proveedor"></select><small style="font-size:11px;color:var(--text-muted)">A quién se le compra. Lo usan 🛒 Compras por proveedor y el filtro de 📅 Reposición. Para dar de alta uno: <a href="/importaciones.html#proveedores" style="color:var(--accent)">🏭 Proveedores</a>.</small></div>
       <div class="form-group form-full"><label class="form-label">Nombre del producto *</label><input type="text" id="p-nombre" placeholder="Nombre completo del producto"></div>
       <div class="form-group"><label class="form-label">Se vende de a</label><select id="p-upv" onchange="onUpvChange()"><option value="1">1 — unidad suelta</option><option value="2">2 — par (sliders, puños...)</option><option value="3">3 — trío</option><option value="4">4 — juego de 4</option></select><small style="font-size:11px;color:var(--text-muted)">El depósito se carga en unidades sueltas; MELI y Shopify publican los packs completos.</small></div>
       <div class="form-group form-full"><label class="form-label">Piezas del kit</label><textarea id="p-kit" rows="2" placeholder="Vacío si no es kit. Uno por renglón: HSJ-20121 x1" oninput="onUpvChange()"></textarea><small style="font-size:11px;color:var(--text-muted)">Para un kit (ej: par de espejos + protectores de levas): las piezas y cuántas unidades del depósito lleva de cada una. El stock del kit es el de la pieza que menos tiene, y venderlo descuenta las piezas.</small></div>
@@ -2317,6 +2318,10 @@ async function loadAll() {
     db.clientes  = clientes.map(normCliente);
     const importaciones = await api('GET', '/importaciones').catch(() => []);
     db.importaciones = importaciones;
+    // Proveedores, para elegirlo en el formulario de producto. Sin la migración (o si falla)
+    // queda vacío y el campo no se muestra.
+    const prov = await api('GET', '/proveedores').catch(() => null);
+    db.proveedores = prov && !prov.migracionPendiente && Array.isArray(prov.proveedores) ? prov.proveedores : [];
     const devoluciones = await api('GET', '/devoluciones').catch(() => []);
     db.devoluciones = devoluciones.map(normDevolucion);
     // Si la migración de movimientos todavía no se corrió en Supabase, el resto del CRM
@@ -2388,7 +2393,7 @@ function tituloKit(p) {
 }
 
 function normProducto(p) {
-  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, codigoGesta: p.codigo_gesta ?? null, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, componentes: p.componentes || [], creado: p.created_at };
+  return { sku: p.sku, nombre: p.nombre, grupo: p.grupo || '', subgrupo: p.subgrupo || '', tipo: p.tipo || "nuevo", unidadesPorVenta: p.unidades_por_venta || 1, stockDep: p.stock_dep, stockMeli: p.stock_meli, stockShopify: p.stock_shopify || 0, costo: p.costo, precio: p.precio, alertaMin: p.alerta_min, meliId: p.meli_id, meliIds: p.meli_ids || (p.meli_id ? [p.meli_id] : []), shopifyId: p.shopify_id, codigoGesta: p.codigo_gesta ?? null, proveedorId: p.proveedor_id ?? null, notas: p.notas, discontinuado: p.discontinuado || false, motivoDiscontinuado: p.motivo_discontinuado || null, notaDiscontinuado: p.nota_discontinuado || null, fechaDiscontinuado: p.fecha_discontinuado || null, componentes: p.componentes || [], creado: p.created_at };
 }
 function normVenta(v) {
   return { id: v.id, canal: v.canal, fecha: v.fecha, ventaGrupo: v.venta_grupo || null, ordenMeli: v.orden_meli, packId: v.pack_id || null, meliItemId: v.meli_item_id || null, comprador: v.comprador, cliente: v.cliente, clienteId: v.cliente_id, sku: v.sku, producto: v.producto, cantidad: v.cantidad, precioUnit: v.precio_unit, comision: v.comision, costoEnvioMeli: v.costo_envio_meli || 0, descuentoPct: Number(v.descuento_pct) || 0, descuentoMonto: Number(v.descuento_monto) || 0, total: v.total, estado: v.estado, metodoPago: v.metodo_pago, facturada: v.facturada == null ? null : !!v.facturada, facturaMeliAt: v.factura_meli_at || null, generaEnvio: v.genera_envio, notas: v.notas, creado: v.created_at };
@@ -3615,6 +3620,9 @@ function openModal(id) {
     populateProductoSelects();
     document.getElementById('vm-fecha').value = hoyLocal();
   }
+  // Producto nuevo: la lista de proveedores puede haber llegado después de armar el
+  // formulario. Al editar, editProducto ya la llenó con el proveedor del producto.
+  if (id === 'modal-producto' && !editingProductoSKU) llenarProveedorSelect(null);
   document.getElementById(id).classList.add('open');
 }
 
@@ -3642,6 +3650,23 @@ function clearProductoForm() {
   document.getElementById('p-upv').value = '1';
   onUpvChange();
   refreshGrupoLists();
+  llenarProveedorSelect(null);
+}
+
+// Proveedor del producto: la lista sale de 🏭 Proveedores (Importaciones). Si no hay
+// proveedores cargados, el campo no se muestra y el guardado no lo manda (no lo pisa).
+function llenarProveedorSelect(valor) {
+  const grupo = document.getElementById('p-proveedor-grupo');
+  const sel = document.getElementById('p-proveedor');
+  const lista = [...(db.proveedores || [])].sort((a, b) => String(a.nombre).localeCompare(String(b.nombre)));
+  grupo.style.display = lista.length ? '' : 'none';
+  if (!lista.length) { sel.innerHTML = ''; return; }
+  const opciones = ['<option value="">— Sin proveedor —</option>']
+    .concat(lista.map(pv => `<option value="${escHtml(pv.id)}">🏭 ${escHtml(pv.nombre)}</option>`));
+  // Un proveedor que ya no está en la lista (se borró) se muestra igual, para no perderlo al guardar.
+  if (valor && !lista.some(pv => pv.id === valor)) opciones.push(`<option value="${escHtml(valor)}">${escHtml(valor)} (ya no está en la lista)</option>`);
+  sel.innerHTML = opciones.join('');
+  sel.value = valor || '';
 }
 
 // Con un producto de a par, lo publicado no se elige a mano: sale del depósito.
@@ -3737,6 +3762,10 @@ async function saveProducto() {
       prod.fechaDiscontinuado = actual.fechaDiscontinuado || null;
     }
   }
+  // El proveedor sólo viaja si el campo está a la vista (hay proveedores cargados).
+  if (document.getElementById('p-proveedor-grupo').style.display !== 'none') {
+    prod.proveedorId = document.getElementById('p-proveedor').value || null;
+  }
   // Las piezas sólo viajan si hay, o si el producto era kit y se vaciaron (deja de serlo):
   // guardar un producto común no toca la tabla de kits.
   const eraKit = editingProductoSKU && esKitProd(db.productos.find(x => x.sku === editingProductoSKU));
@@ -3758,6 +3787,7 @@ function editProducto(sku) {
   document.getElementById('p-grupo').value = p.grupo || '';
   document.getElementById('p-subgrupo').value = p.subgrupo || '';
   refreshSubgrupoList();
+  llenarProveedorSelect(p.proveedorId);
   document.getElementById('p-stock-dep').value = p.stockDep;
   document.getElementById('p-stock-meli').value = p.stockMeli;
   document.getElementById('p-costo').value = p.costo;

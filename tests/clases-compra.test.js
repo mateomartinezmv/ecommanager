@@ -24,6 +24,7 @@ test('los que más dejan, en total y por peso, nunca pueden quedar sin stock', (
   assert.strictEqual(r.retorno, 242);
   assert.ok(r.contrib_mes > 20000);
   assert.match(r.motivo, /de los que más dejan/);
+  assert.strictEqual(r.motivo_sugerido, null);
   assert.match(r.motivo, /Meta: ~4,6 meses de venta/); // plazo por defecto 82 + 55 días
   // Con el plazo real (95 días) la meta son ~5 meses.
   assert.match(C.clasificar(prod({ ventas_mes: 26.4, costo: 342, contrib_ud: 828, contrib_ud_sin_ads: 947, vendidas: 131, lead_dias: 95 })).motivo, /Meta: ~5 meses/);
@@ -61,12 +62,14 @@ test('deja poco por peso aun sin Ads: comprar poco por inmovilizar plata', () =>
   const r = C.clasificar(prod({ ventas_mes: 4.8, costo: 198, contrib_ud: 20, contrib_ud_sin_ads: 89 }));
   assert.strictEqual(r.clase, 'poco');
   assert.match(r.motivo, /inmoviliza mucha plata/);
+  assert.strictEqual(r.motivo_sugerido, 'poco_margen');
 });
 
 test('deja poco en total: comprar poco', () => {
   const r = C.clasificar(prod({ ventas_mes: 0.9, costo: 117, contrib_ud: 170, contrib_ud_sin_ads: 200 }));
   assert.strictEqual(r.clase, 'poco');
   assert.match(r.motivo, /Deja poco en total/);
+  assert.strictEqual(r.motivo_sugerido, 'poca_venta');
 });
 
 test('ni sin publicidad deja plata: descatalogar', () => {
@@ -74,6 +77,7 @@ test('ni sin publicidad deja plata: descatalogar', () => {
   const r = C.clasificar(prod({ ventas_mes: 3.3, costo: 236, contrib_ud: -20, contrib_ud_sin_ads: 45 }));
   assert.strictEqual(r.clase, 'descatalogar');
   assert.match(r.motivo, /Aun sin publicidad deja solo \$19 por cada \$100/);
+  assert.strictEqual(r.motivo_sugerido, 'poco_margen');
   const pierde = C.clasificar(prod({ costo: 236, contrib_ud: -90, contrib_ud_sin_ads: -10 }));
   assert.strictEqual(pierde.clase, 'descatalogar');
   assert.match(pierde.motivo, /pierde \$10 por unidad/);
@@ -84,6 +88,7 @@ test('meses con stock y ni una venta: descatalogar, con la plata parada', () => 
   const r = C.clasificar(prod({ vendidas: 0, dias_activos: 0, ventas_mes: 0, econ_uds: 0, stock: 5, costo: 484, dias_publicado: 247, dias_desde_llegada: 68 }));
   assert.strictEqual(r.clase, 'descatalogar');
   assert.match(r.motivo, /Sin ventas en 68 días con stock/);
+  assert.strictEqual(r.motivo_sugerido, 'poca_venta');
   assert.match(r.motivo, /\$2\.420 parados en 5 unidades/);
   // Una sola unidad: singular.
   assert.match(C.clasificar(prod({ vendidas: 0, econ_uds: 0, stock: 1, costo: 484, dias_publicado: 247, dias_desde_llegada: 68 })).motivo, /en 1 unidad:/);

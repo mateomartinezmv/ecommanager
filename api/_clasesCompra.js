@@ -78,7 +78,7 @@ const mesesMeta = (lead, clase) => unoDec((num(lead) + COLCHON_DIAS[clase]) / 30
  *   dias_desde_llegada  días desde la última importación recibida de este SKU; null si no hay
  *   lead_dias       plazo de importación (para decir la meta en meses); 82 si no viene
  * }
- * Sale: { clase, motivo, contrib_mes, retorno, retorno_sin_ads }.
+ * Sale: { clase, motivo, motivo_sugerido, contrib_mes, retorno, retorno_sin_ads }.
  */
 function clasificar(p) {
   const vendidas = num(p.vendidas);
@@ -98,8 +98,11 @@ function clasificar(p) {
     retorno_sin_ads: retornoSinAds === null ? null : entero(retornoSinAds),
   };
   const enCamino = num(p.en_camino);
-  const sale = (clase, motivo) => ({
+  // motivo_sugerido: el motivo de descatalogado (api/_discontinuado.js) que se propone si se
+  // decide sacarlo del catálogo. Sin ventas → poca venta; deja poco por peso → poco margen.
+  const sale = (clase, motivo, sugerido) => ({
     ...base, clase,
+    motivo_sugerido: clase === 'descatalogar' || clase === 'poco' ? (sugerido || 'poca_venta') : null,
     motivo: clase === 'descatalogar' && enCamino > 0
       ? `${motivo} Ojo: ya vienen ${entero(enCamino)} en camino; no pidas más.`
       : motivo,
@@ -155,13 +158,13 @@ function clasificar(p) {
     return sale('descatalogar', (pierde
       ? `Aun sin publicidad pierde ${plata(-num(p.contrib_ud_sin_ads))} por unidad`
       : `Aun sin publicidad deja solo $${base.retorno_sin_ads} por cada $100 de costo`)
-      + ': con un envío propio o un cambio, pierde plata. No lo vuelvas a pedir y liquidá lo que queda, o subile bastante el precio.');
+      + ': con un envío propio o un cambio, pierde plata. No lo vuelvas a pedir y liquidá lo que queda, o subile bastante el precio.', 'poco_margen');
   }
 
   // ── Los Ads se llevan todo ─────────────────────────────────────────────────
   if (contribMes <= 0) {
     return sale('poco', `Sin publicidad dejaría $${base.retorno_sin_ads} por cada $100 de costo, pero los Ads (${adsTxt}) se llevan todo y pierde ${plata(-num(p.contrib_ud))} por unidad.`
-      + ' Sacalo de Ads o subile el precio antes de volver a comprar.' + notaCobertura);
+      + ' Sacalo de Ads o subile el precio antes de volver a comprar.' + notaCobertura, 'poco_margen');
   }
 
   // ── Nunca sin stock ──────────────────────────────────────────────────────────
@@ -181,10 +184,10 @@ function clasificar(p) {
     // Si sin publicidad pasaría la vara, el problema son los Ads, no el producto.
     if (retornoSinAds >= UMBRAL.SIEMPRE_RETORNO) {
       return sale('poco', `Sin publicidad dejaría $${base.retorno_sin_ads} por cada $100 de costo, pero los Ads (${adsTxt}) le dejan $${base.retorno}.`
-        + ' Sacalo de Ads o pasalo a una campaña de ROAS alto; si comprás, solo lo justo para el plazo de importación.' + notaCobertura);
+        + ' Sacalo de Ads o pasalo a una campaña de ROAS alto; si comprás, solo lo justo para el plazo de importación.' + notaCobertura, 'poco_margen');
     }
     return sale('poco', `Deja $${base.retorno} por cada $100 de costo: inmoviliza mucha plata para lo que deja.`
-      + ' Comprá solo lo justo para el plazo de importación, o subile el precio.' + notaCobertura);
+      + ' Comprá solo lo justo para el plazo de importación, o subile el precio.' + notaCobertura, 'poco_margen');
   }
   return sale('poco', `Deja poco en total (~${plata(contribMes)} por mes, ${vendidasTxt(ventasMes)} por mes): alcanza con lo justo para el plazo de importación.` + notaCobertura);
 }

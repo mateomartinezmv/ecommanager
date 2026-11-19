@@ -73,6 +73,16 @@ function mockear(page, estado) {
     const ok = d => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(d) });
     estado.posts.push({ ruta: ruta + url.search, metodo, cuerpo });
 
+    // PATCH: descatalogar desde Reposición. Como la API, el producto sale de /restock.
+    if (ruta === '/productos' && metodo === 'PATCH') {
+      const sku = url.searchParams.get('sku');
+      const prod = estado.productos.find(p => p.sku === sku);
+      if (prod) prod.discontinuado = cuerpo.discontinuado;
+      if (cuerpo.discontinuado && estado.restock?.productos) {
+        estado.restock.productos = estado.restock.productos.filter(p => p.sku !== sku);
+      }
+      return ok({ sku, discontinuado: cuerpo.discontinuado });
+    }
     if (ruta === '/productos') return ok(estado.productos);
     if (ruta === '/restock') return ok(estado.restock);
     if (ruta === '/proveedores') {
@@ -468,12 +478,13 @@ function restockConClases() {
         clase_motivo: 'Deja ~$21.816 por mes después de Ads y $242 por cada $100 de costo: de los que más dejan.' },
       { ...base, sku: 'CIRC', nombre: 'Espejos circulares', stock: 2, daily_velocity: 0.2, total_sold: 30, active_days: 150,
         days_coverage: 10, restock_status: 'cubierto', cantidad_sugerida: 0, punto_pedido_uds: 20, objetivo_uds: 17,
-        already_ordered: false, qty_en_transito: 0, valor_stock: 668,
+        already_ordered: false, qty_en_transito: 0, valor_stock: 668, motivo_sugerido: 'poco_margen',
         clase: 'poco', contrib_mes: 39, retorno_100: 2, ads_pct: 54, ads_estimado: false,
         clase_motivo: 'Sin publicidad dejaría $155 por cada $100 de costo, pero los Ads (54% de lo que factura en MELI) le dejan $2.' },
       { ...base, sku: 'MAN28', nombre: 'Manillar 28 mm', grupo: 'Manillares', stock: 5, daily_velocity: 0, total_sold: 0,
         days_coverage: null, restock_status: 'no_comprar', cantidad_sugerida: 0, punto_pedido_uds: 0, objetivo_uds: 0,
         already_ordered: false, qty_en_transito: 0, valor_stock: 2420, clase: 'descatalogar', contrib_mes: null, retorno_100: null,
+        motivo_sugerido: 'poca_venta',
         clase_motivo: 'Sin ventas en 68 días con stock y tenés $2.420 parados en 5 unidades: liquidalo (kit, promo o mostrador) y no lo vuelvas a pedir.' },
       { ...base, sku: 'NUEVO', nombre: 'Producto nuevo', stock: 10, daily_velocity: 0.2, total_sold: 2, active_days: 14,
         days_coverage: 50, restock_status: 'cubierto', cantidad_sugerida: 0, punto_pedido_uds: 5, objetivo_uds: 5,
@@ -551,5 +562,51 @@ test('la compra por proveedor rellena primero a los ⭐ y nunca a los de comprar
     assert.deepStrictEqual(erroresReales(otro.errores), []);
   } finally {
     await otro.cerrar();
+  }
+});
+
+test('desde Reposición se descataloga uno (clic en el badge) o todos los sugeridos', async () => {
+  const estado = estadoBase();
+  estado.restock = restockConClases();
+  const rep = await abrir('reposicion.html', estado);
+  try {
+    await rep.page.waitForSelector('#list-container table');
+    const skus = async () => rep.page.$$eval('#list-container tbody tr', trs => trs.map(t => t.cells[0].textContent.trim()));
+    // En "Hay que comprar" no hay sugeridos para descatalogar: no aparece el botón.
+    assert.ok(await rep.page.isHidden('#btn-desc-sugeridos'));
+    await rep.page.click('#seg-revisar');
+    assert.strictEqual((await rep.page.textContent('#btn-desc-sugeridos')).trim(), '⛔ Descatalogar el sugerido');
+
+    // Clic en el badge de uno de "comprar poco": abre el formulario con su motivo sugerido.
+    await rep.page.click('tr:has-text("Espejos circulares") button.badge-accion');
+    await rep.page.waitForSelector('#modal-desc.abierto');
+    assert.strictEqual(await rep.page.textContent('#desc-titulo'), '⛔ Descatalogar producto');
+    assert.strictEqual(await rep.page.inputValue('#desc-lista .desc-fila[data-sku="CIRC"] .desc-motivo'), 'poco_margen');
+    await rep.page.keyboard.press('Escape');
+    assert.ok(await rep.page.isHidden('#modal-desc'));
+
+    // Todos los sugeridos de una vez: va el PATCH con el motivo y el porqué de Reposición.
+    await rep.page.click('#btn-desc-sugeridos');
+    await rep.page.waitForSelector('#modal-desc.abierto');
+    assert.deepStrictEqual(await rep.page.$$eval('#desc-lista .desc-fila', fs => fs.map(f => f.dataset.sku)), ['MAN28']);
+    assert.strictEqual(await rep.page.inputValue('.desc-fila[data-sku="MAN28"] .desc-motivo'), 'poca_venta');
+    assert.strictEqual(await rep.page.textContent('#desc-guardar'), '⛔ Descatalogar');
+    await rep.page.click('#desc-guardar');
+    await rep.page.waitForSelector('.aviso-ok');
+    const patch = estado.posts.find(p => p.metodo === 'PATCH');
+    assert.strictEqual(patch.ruta, '/productos?sku=MAN28');
+    assert.strictEqual(patch.cuerpo.discontinuado, true);
+    assert.strictEqual(patch.cuerpo.motivoDiscontinuado, 'poca_venta');
+    assert.match(patch.cuerpo.notaDiscontinuado, /^Sugerido por Reposición: Sin ventas en 68 días con stock/);
+    assert.match(patch.cuerpo.fechaDiscontinuado, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(await rep.page.textContent('#aviso-reposicion'), /MAN28 quedó descatalogado.*Stock → ♻️/);
+    // Sale de la lista y, sin sugeridos, se va el botón.
+    await rep.page.waitForFunction(() => ![...document.querySelectorAll('#list-container tbody tr')].some(t => t.textContent.includes('MAN28')));
+    assert.deepStrictEqual(await skus(), ['CIRC']);
+    assert.ok(await rep.page.isHidden('#btn-desc-sugeridos'));
+    assert.deepStrictEqual(erroresReales(rep.errores), []);
+    assert.deepStrictEqual(rep.alertas, []);
+  } finally {
+    await rep.cerrar();
   }
 });

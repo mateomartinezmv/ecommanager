@@ -166,6 +166,30 @@
   .clase-motivo { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
   .clase-econ { font-size: 10px; color: var(--text-muted); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
 
+  /* ── Descatalogar desde Reposición ── */
+  button.badge-accion { border: 1px solid transparent; cursor: pointer; font-family: inherit; }
+  button.badge-accion:hover { border-color: currentColor; }
+  .btn-desc { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.35); }
+  .btn-desc:hover { background: rgba(239,68,68,0.25); }
+  .aviso { border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  .aviso-ok { background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+  .aviso-error { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3); color: var(--red); }
+  .modal-fondo { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 200; padding: 16px; }
+  .modal-fondo.abierto { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; width: min(760px, 100%); max-height: 88vh; display: flex; flex-direction: column; }
+  .modal-cab { padding: 18px 22px 10px; font-size: 17px; font-weight: 700; }
+  .modal-cuerpo { padding: 0 22px; overflow-y: auto; }
+  .modal-pie { padding: 14px 22px 18px; display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid var(--border); margin-top: 12px; }
+  .modal-ayuda { font-size: 12px; color: var(--text-dim); line-height: 1.5; margin-bottom: 12px; }
+  .desc-fila { display: grid; grid-template-columns: 24px 1fr 210px; gap: 10px; align-items: start; padding: 10px 0; border-top: 1px solid var(--border); }
+  .desc-fila .nombre { font-size: 13px; font-weight: 600; }
+  .desc-fila .por-que { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+  .desc-fila select { width: 100%; padding: 6px 8px; font-size: 12px; }
+  .modal textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font-family: inherit; font-size: 13px; padding: 8px 10px; resize: vertical; min-height: 54px; }
+  .modal label.etq { display: block; font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; }
+  .btn-primario { background: var(--red); color: #fff; }
+  .btn-primario:disabled { opacity: .6; cursor: default; }
+
   .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
   .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
@@ -224,6 +248,8 @@
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> En tránsito (enviado)</div>
     </div>
 
+    <div id="aviso-reposicion"></div>
+
     <!-- Clases de compra: qué no puede faltar nunca, qué comprar poco, qué descatalogar -->
     <div class="clases-resumen" id="clases-resumen"></div>
     <div class="clases-nota" id="clases-nota"></div>
@@ -270,9 +296,30 @@
       <div class="table-wrap">
         <div class="table-header">
           <span class="table-title">Productos por urgencia</span>
+          <button class="btn btn-sm btn-desc" id="btn-desc-sugeridos" onclick="abrirDescatalogarSugeridos()" hidden></button>
         </div>
         <div id="list-container">
           <div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DESCATALOGAR: uno (clic en el badge) o todos los sugeridos -->
+    <div class="modal-fondo" id="modal-desc" onclick="if (event.target === this) cerrarDescatalogar()">
+      <div class="modal" role="dialog" aria-labelledby="desc-titulo">
+        <div class="modal-cab" id="desc-titulo">⛔ Descatalogar</div>
+        <div class="modal-cuerpo">
+          <div class="modal-ayuda">Sale de Reposición y de los avisos de stock bajo, y no se vuelve a pedir.
+            Lo que queda en depósito se sigue vendiendo y sincronizando hasta agotarse. No se borra nada:
+            se puede volver a catalogar desde Stock → ♻️.</div>
+          <div id="desc-lista"></div>
+          <label class="etq" for="desc-nota">Aclaración (opcional, para todos). Si la dejás vacía se guarda el motivo que dio Reposición.</label>
+          <textarea id="desc-nota" placeholder="Ej.: lo reemplaza el modelo nuevo"></textarea>
+        </div>
+        <div class="modal-pie">
+          <span id="desc-progreso" style="font-size:12px;color:var(--text-muted);margin-right:auto"></span>
+          <button class="btn btn-ghost" onclick="cerrarDescatalogar()">Cancelar</button>
+          <button class="btn btn-primario" id="desc-guardar" onclick="guardarDescatalogar()">⛔ Descatalogar</button>
         </div>
       </div>
     </div>
@@ -506,8 +553,148 @@ function claseHtml(p) {
   const econ = p.contrib_mes !== null && p.contrib_mes !== undefined && p.clase !== 'nunca' && p.clase !== 'siempre'
     ? `<div class="clase-econ">deja ${fmtPlata(p.contrib_mes)}/mes · ${fmtPlata(p.retorno_100)} por $100${p.ads_pct ? ` · Ads ${p.ads_pct}%${p.ads_estimado ? '*' : ''}` : ''}</div>`
     : '';
-  return `<span class="badge ${i.css}">${i.icono} ${i.nombre}</span>${econ}
+  // A descatalogar y a comprar poco se los puede sacar del catálogo desde acá: el badge abre
+  // el formulario con el motivo ya elegido.
+  const badge = (p.clase === 'descatalogar' || p.clase === 'poco')
+    ? `<button class="badge badge-accion ${i.css}" data-sku="${escapeHtml(p.sku)}" onclick="abrirDescatalogar([this.dataset.sku])"
+        title="Clic para descatalogar">${i.icono} ${i.nombre}${p.clase === 'descatalogar' ? ' ›' : ''}</button>`
+    : `<span class="badge ${i.css}">${i.icono} ${i.nombre}</span>`;
+  return `${badge}${econ}
     <div class="clase-motivo">${escapeHtml(p.clase_motivo || '')}</div>`;
+}
+
+// ─── Descatalogar desde acá ───────────────────────────────────────────────────
+// Espejo de api/_discontinuado.js (esta página no tiene bundler). Al agregar un motivo hay
+// que tocar los tres lugares: la API, public/index.html y acá.
+const MOTIVOS_DISCONTINUADO = [
+  { id: 'poca_venta',    nombre: 'Poca venta',               emoji: '🐌' },
+  { id: 'poco_margen',   nombre: 'Poco margen de ganancia',  emoji: '📉' },
+  { id: 'problematico',  nombre: 'Producto problemático',    emoji: '⚠️' },
+  { id: 'sin_proveedor', nombre: 'No se consigue más',       emoji: '🚫' },
+  { id: 'reemplazado',   nombre: 'Reemplazado por otro',     emoji: '🔁' },
+  { id: 'competencia',   nombre: 'No competitivo en precio', emoji: '🥊' },
+  { id: 'otro',          nombre: 'Otro motivo',              emoji: '✏️' },
+];
+let descSkus = [];
+
+// La fecha la pone el navegador: el servidor corre en UTC y a la noche fecharía mañana.
+function hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function avisar(html, tipo = 'ok') {
+  document.getElementById('aviso-reposicion').innerHTML = html ? `<div class="aviso aviso-${tipo}">${html}</div>` : '';
+}
+
+// Los que Reposición propone descatalogar, dentro de lo que se está mirando (grupo, clase,
+// búsqueda y solapa).
+function sugeridosVisibles() {
+  return filtered.filter(p => p.clase === 'descatalogar');
+}
+
+function actualizarBotonSugeridos() {
+  const btn = document.getElementById('btn-desc-sugeridos');
+  const n = sugeridosVisibles().length;
+  btn.hidden = !n;
+  btn.textContent = `⛔ Descatalogar ${n === 1 ? 'el sugerido' : `los ${n} sugeridos`}`;
+}
+
+function abrirDescatalogarSugeridos() {
+  abrirDescatalogar(sugeridosVisibles().map(p => p.sku));
+}
+
+function abrirDescatalogar(skus) {
+  const lista = skus.map(s => allProducts.find(p => p.sku === s)).filter(Boolean);
+  if (!lista.length) return;
+  descSkus = lista.map(p => p.sku);
+  document.getElementById('desc-titulo').textContent = lista.length === 1
+    ? '⛔ Descatalogar producto' : `⛔ Descatalogar ${lista.length} productos`;
+  const opciones = MOTIVOS_DISCONTINUADO.map(m => `<option value="${m.id}">${m.emoji} ${m.nombre}</option>`).join('');
+  document.getElementById('desc-lista').innerHTML = lista.map(p => `
+    <div class="desc-fila" data-sku="${escapeHtml(p.sku)}">
+      <input type="checkbox" class="desc-check" checked ${lista.length === 1 ? 'hidden' : ''} onchange="contarDescatalogar()">
+      <div>
+        <div class="nombre">${escapeHtml(p.nombre)} <span class="badge badge-gray">${escapeHtml(p.sku)}</span></div>
+        <div class="por-que">${escapeHtml(p.clase_motivo || '')}</div>
+        ${p.stock > 0 ? `<div class="por-que">Quedan ${p.stock} en depósito: se siguen vendiendo hasta agotarse.</div>` : ''}
+      </div>
+      <select class="desc-motivo" aria-label="Motivo">${opciones}</select>
+    </div>`).join('');
+  document.querySelectorAll('#desc-lista .desc-fila').forEach((fila, i) => {
+    fila.querySelector('.desc-motivo').value = lista[i].motivo_sugerido || 'poca_venta';
+  });
+  document.getElementById('desc-nota').value = '';
+  document.getElementById('desc-progreso').textContent = '';
+  contarDescatalogar();
+  document.getElementById('modal-desc').classList.add('abierto');
+}
+
+// El botón dice cuántos van a salir: los que siguen tildados.
+function contarDescatalogar() {
+  const filas = document.querySelectorAll('#desc-lista .desc-fila');
+  const n = [...filas].filter(f => f.querySelector('.desc-check').checked).length;
+  const btn = document.getElementById('desc-guardar');
+  btn.disabled = n === 0;
+  btn.textContent = filas.length === 1 ? '⛔ Descatalogar' : `⛔ Descatalogar ${n}`;
+}
+
+function cerrarDescatalogar() {
+  document.getElementById('modal-desc').classList.remove('abierto');
+}
+
+// Se manda de a uno (PATCH: solo las columnas del descatalogado, nada más del producto).
+// Si falla alguno, los demás igual se guardan y se avisa cuáles no.
+async function guardarDescatalogar() {
+  const filas = [...document.querySelectorAll('#desc-lista .desc-fila')]
+    .filter(f => f.querySelector('.desc-check').checked);
+  if (!filas.length) { alert('No elegiste ningún producto.'); return; }
+  const aclaracion = document.getElementById('desc-nota').value.trim();
+  const btn = document.getElementById('desc-guardar');
+  const progreso = document.getElementById('desc-progreso');
+  btn.disabled = true;
+
+  const ok = [];
+  const errores = [];
+  let sinMotivo = false;
+  for (const [i, fila] of filas.entries()) {
+    const sku = fila.dataset.sku;
+    const p = allProducts.find(x => x.sku === sku);
+    progreso.textContent = `Descatalogando ${i + 1} de ${filas.length}…`;
+    try {
+      const r = await fetch(`/api/productos?sku=${encodeURIComponent(sku)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          discontinuado: true,
+          motivoDiscontinuado: fila.querySelector('.desc-motivo').value,
+          notaDiscontinuado: aclaracion || (p?.clase_motivo ? `Sugerido por Reposición: ${p.clase_motivo}` : ''),
+          fechaDiscontinuado: hoyLocal(),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      if (data.migracionMotivoPendiente) sinMotivo = true;
+      ok.push(sku);
+    } catch (e) {
+      errores.push(`${sku}: ${e.message}`);
+    }
+  }
+
+  cerrarDescatalogar();
+  // Los descatalogados salen de Reposición: se sacan de la lista ya, y el recálculo completo
+  // (resumen por clase incluido) llega con la recarga.
+  allProducts = allProducts.filter(p => !ok.includes(p.sku));
+  applyFilters();
+  const partes = [];
+  if (ok.length) {
+    partes.push(`✓ ${ok.length === 1 ? `${escapeHtml(ok[0])} quedó descatalogado` : `${ok.length} productos descatalogados`}.`
+      + ' Si te arrepentís, se vuelven a catalogar desde Stock → ♻️.');
+  }
+  if (sinMotivo) partes.push('El motivo no se guardó: falta correr la migración 20261008010000_add_motivo_discontinuado.sql.');
+  if (errores.length) partes.push(`No se pudo descatalogar: ${errores.map(escapeHtml).join(' · ')}`);
+  avisar(partes.join('<br>'), errores.length ? 'error' : 'ok');
+  if (ok.length) load();
 }
 
 // ─── Filters + Segmento ───────────────────────────────────────────────────────
@@ -546,6 +733,7 @@ function applyFilters() {
     filtered.length ? `${filtered.length} producto${filtered.length !== 1 ? 's' : ''}` : '';
   updateSegCounts(base);
   updateSearchHint(base, terms);
+  actualizarBotonSugeridos();
   if (currentView === 'lista') renderList();
   else renderCalendar();
 }
@@ -896,6 +1084,7 @@ document.addEventListener('keydown', e => {
   const q = document.getElementById('filter-q');
   const escribiendo = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
   if (e.key === '/' && !escribiendo) { e.preventDefault(); q.focus(); q.select(); }
+  if (e.key === 'Escape' && document.getElementById('modal-desc').classList.contains('abierto')) { cerrarDescatalogar(); return; }
   if (e.key === 'Escape' && document.activeElement === q && q.value) { e.preventDefault(); clearSearch(); }
 });
 

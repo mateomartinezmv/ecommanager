@@ -715,6 +715,7 @@ module.exports = async (req, res) => {
         cantidad_sugerida:          cantidadSugerida,
         clase:                      clasif.clase,
         clase_motivo:               clasif.motivo,
+        motivo_sugerido:            clasif.motivo_sugerido,  // si se descataloga (api/_discontinuado.js)
         contrib_mes:                clasif.contrib_mes,      // lo que deja por mes después de Ads
         retorno_100:                clasif.retorno,          // lo que deja por cada $100 de costo
         retorno_100_sin_ads:        clasif.retorno_sin_ads,

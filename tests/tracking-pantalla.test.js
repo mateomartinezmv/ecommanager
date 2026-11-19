@@ -165,10 +165,10 @@ test('la tarjeta muestra buque, etapa, arribo, zarpe y lo que falta pagar para e
   assert.strictEqual(await ui.page.textContent('#trk-eta-TRK-1'), '26/12/2026');
   assert.match(await ui.page.textContent(`${card} .trk-kpi.eta .lbl`), /Arribo estimado a Montevideo/);
   assert.match(await ui.page.textContent(`${card} .trk-kpis .trk-kpi:nth-child(2)`), /Zarpe de Ningbo\s*21\/11\/2026/);
-  assert.strictEqual(await ui.page.textContent('#trk-pagar-TRK-1'), 'USD 557.70');
+  assert.strictEqual(await ui.page.textContent('#trk-pagar-TRK-1'), 'USD 1446.50');
   assert.match(await ui.page.textContent(`${card} .trk-kpi.pago .lbl`), /Falta abonar para el 26\/12/);
-  assert.match(await ui.page.textContent(`${card} .trk-kpi.pago .sub`), /PI 14175: USD 345\.50 · PI 14713: USD 212\.20/);
-  assert.match(await ui.page.textContent('#trk-stat-pagar'), /USD 557\.70/);
+  assert.match(await ui.page.textContent(`${card} .trk-kpi.pago .sub`), /PI 14175: USD 1001\.50 · PI 14713: USD 445\.00/);
+  assert.match(await ui.page.textContent('#trk-stat-pagar'), /USD 1446\.50/);
   assert.match(await ui.page.textContent(`${card} .trk-puertos`), /Ningbo\s*CNNGB · zarpe ~21\/11\s*Montevideo\s*UYMVD · arribo ~26\/12/);
 });
 
@@ -202,14 +202,14 @@ test('cada PI contra lo que se había calculado y su saldo', async () => {
     ['PI 14713', 'Guangzhou Muxuan Trading', '15/01/2027', '−20'],
   ]);
   assert.match(filas[0][5], /✓ Pagada/);
-  assert.match(filas[1][5], /USD 345\.50\s*2da mitad de la PI de USD 691\.00/);
+  assert.match(filas[1][5], /USD 1001\.50\s*2da mitad del total de USD 2003\.00/);
   assert.match(filas[2][2], /Señaleros y portamatrículas/);
 });
 
 test('marcar pagado el saldo de una PI baja lo que falta pagar', async () => {
   await ui.page.click('#trk-TRK-1 tr[data-imp="IMP-14175"] button:text("Marcar pagada")');
-  await ui.page.waitForFunction(() => document.getElementById('trk-pagar-TRK-1').textContent === 'USD 212.20');
-  assert.match(ui.alertas.pop(), /Marcar como pagada la 2da mitad de la PI 14175 \(USD 345\.50\)/);
+  await ui.page.waitForFunction(() => document.getElementById('trk-pagar-TRK-1').textContent === 'USD 445.00');
+  assert.match(ui.alertas.pop(), /Marcar como pagada la 2da mitad de la PI 14175 \(USD 1001\.50 de USD 2003\.00\)/);
   assert.deepStrictEqual(pedidos('/importaciones?id=IMP-14175', 'PUT').pop().cuerpo, { saldo_pendiente: false });
   assert.match(await ui.page.textContent('#trk-TRK-1 tr[data-imp="IMP-14175"]'), /✓ Pagada/);
 });

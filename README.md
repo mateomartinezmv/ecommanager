@@ -256,10 +256,10 @@ toma como la verdad:
 - **La tarjeta** muestra la ruta con el barco donde va, el arribo estimado y cuántos días
   faltan, el zarpe, cada movimiento de la naviera (hecho, estimado o pendiente) y las PIs: la
   llegada que se había calculado contra el arribo real (+14 días, −7 días…).
-- **Lo que falta pagar para el arribo**: de las PIs del esquema anterior, la segunda mitad de
-  la PI (productos + shipping de la PI) si tienen saldo pendiente; de las de GrupoRAS, los
-  pagos sin marcar (incluido el all in, que vence al llegar a puerto). Se marca pagado desde
-  la misma tarjeta.
+- **Lo que falta pagar para el arribo**: de las del esquema anterior (importador MadeInChina,
+  que cobra el total en dos mitades iguales), la segunda mitad del total si tienen saldo
+  pendiente; de las de GrupoRAS, los pagos sin marcar (incluido el all in, que vence al llegar
+  a puerto). Se marca pagado desde la misma tarjeta.
 - **Las importaciones siguen al contenedor**: su llegada estimada pasa a ser el arribo (así
   📅 Reposición y las respuestas de MELI de “vuelve pronto” usan la fecha real), pasan a
   “en tránsito” cuando zarpa y a “en aduana” cuando llega al puerto. Nunca se marcan como

@@ -233,6 +233,87 @@
   .relleno { color: var(--accent); font-size: 11px; }
   .badge-orange { background: rgba(249,115,22,0.15); color: #f97316; }
 
+  /* ── Tracking de contenedores ── */
+  .trk-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .trk-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 22px; overflow: hidden; }
+  .trk-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--border); flex-wrap: wrap; background: linear-gradient(180deg, rgba(79,142,247,0.07), transparent); }
+  .trk-num { font-family: 'JetBrains Mono', monospace; font-size: 21px; font-weight: 700; letter-spacing: 0.5px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .trk-naviera { font-family: 'Space Grotesk', sans-serif; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(124,58,237,0.18); color: #a78bfa; letter-spacing: 0.5px; }
+  .trk-buque { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+  .trk-buque a, .trk-foot a { color: var(--accent); text-decoration: none; }
+  .trk-acciones { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+  .btn:disabled { opacity: 0.6; cursor: wait; }
+  .trk-body { padding: 22px; display: flex; flex-direction: column; gap: 22px; }
+  .trk-body > * { min-width: 0; }   /* que los movimientos y la tabla scrolleen adentro en pantallas chicas */
+
+  /* La ruta: origen → transbordos → destino, con el barco donde va */
+  .trk-ruta { padding: 32px 12px 0; }
+  .trk-linea { position: relative; height: 4px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--border) 0 10px, transparent 10px 16px); }
+  .trk-linea-hecha { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: linear-gradient(90deg, var(--accent), #22d3ee); }
+  .trk-nodo { position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--surface); border: 3px solid var(--border); }
+  .trk-nodo.ok { border-color: var(--accent); background: var(--accent); }
+  .trk-nodo.fin.ok { border-color: var(--green); background: var(--green); }
+  .trk-barco { position: absolute; top: -32px; transform: translateX(-50%); font-size: 24px; line-height: 1; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6)); }
+  .trk-puertos { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
+  .trk-puerto { font-size: 13px; font-weight: 700; text-align: center; }
+  .trk-puerto:first-child { text-align: left; }
+  .trk-puerto:last-child { text-align: right; }
+  .trk-puerto small { display: block; font-weight: 400; font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px; }
+
+  .trk-kpis { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 12px; }
+  .trk-kpi { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .trk-kpi .lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .trk-kpi .val { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+  .trk-kpi .sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+  .trk-kpi.eta { border-color: rgba(79,142,247,0.45); background: rgba(79,142,247,0.08); }
+  .trk-kpi.eta .val { color: var(--accent); font-size: 26px; }
+  .trk-kpi.pago { border-color: rgba(245,158,11,0.45); background: rgba(245,158,11,0.08); }
+  .trk-kpi.pago .val { color: var(--yellow); }
+  .trk-kpi.pago.ok { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.07); }
+  .trk-kpi.pago.ok .val { color: var(--green); }
+
+  /* Movimientos de la naviera como hitos */
+  .trk-seccion { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .trk-hitos { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(130px, 1fr); overflow-x: auto; padding-bottom: 4px; }
+  .trk-hito { position: relative; padding-right: 12px; }
+  .trk-hito::before { content: ''; position: absolute; top: 7px; left: 16px; right: 0; height: 2px; background: var(--border); }
+  .trk-hito:last-child::before { display: none; }
+  .trk-hito.ok::before { background: var(--accent); }
+  .trk-hito-dot { position: relative; z-index: 1; width: 16px; height: 16px; border-radius: 50%; border: 2px dashed var(--text-muted); background: var(--surface); }
+  .trk-hito.ok .trk-hito-dot { border: 2px solid var(--accent); background: var(--accent); }
+  .trk-hito.est .trk-hito-dot { border-color: var(--accent); }
+  .trk-hito-txt { font-size: 12px; font-weight: 600; margin-top: 8px; line-height: 1.3; }
+  .trk-hito:not(.ok) .trk-hito-txt { color: var(--text-dim); }
+  .trk-hito-fecha { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--text-dim); margin-top: 3px; }
+  .trk-hito-lugar { font-size: 11px; color: var(--text-muted); }
+
+  .trk-nota { background: rgba(79,142,247,0.08); border: 1px solid rgba(79,142,247,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; line-height: 1.55; }
+  .trk-nota.error { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+  .trk-pis { border: 1px solid var(--border); border-radius: 10px; overflow-x: auto; }
+  .trk-pis td { vertical-align: top; }
+  .trk-desc { max-width: 260px; color: var(--text-dim); font-size: 12px; line-height: 1.4; }
+  .trk-dif { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .trk-dif.tarde { color: #f97316; }
+  .trk-dif.antes { color: var(--green); }
+  .trk-foot { display: flex; justify-content: space-between; gap: 10px; padding: 12px 22px; border-top: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text-muted); flex-wrap: wrap; }
+  .trk-chip { display: inline-block; margin-top: 4px; font-size: 11px; font-family: 'JetBrains Mono', monospace; color: var(--accent); background: rgba(79,142,247,0.1); border: 1px solid rgba(79,142,247,0.3); border-radius: 12px; padding: 1px 8px; text-decoration: none; white-space: nowrap; }
+
+  /* Modal: las PIs que van en el contenedor */
+  .trk-imps { display: flex; flex-direction: column; gap: 6px; }
+  .trk-imp-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 110px minmax(0, 1.1fr); gap: 10px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .trk-imp-row.sel { border-color: rgba(79,142,247,0.5); }
+  .trk-imp-row.bloqueada { opacity: 0.55; }
+  .trk-imp-row input[type=text] { padding: 6px 9px; font-size: 12px; }
+  details.trk-manual summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+  details.trk-manual[open] summary { margin-bottom: 10px; }
+
+  @media (max-width: 800px) {
+    .trk-kpis { grid-template-columns: 1fr; }
+    .trk-imp-row { grid-template-columns: 22px minmax(0, 1fr); }
+    .trk-imp-row input[type=text] { grid-column: 2; }
+  }
+
   @media (max-width: 900px) {
     #sidebar { width: 60px; }
     .nav-item span:not(.icon) { display: none; }
@@ -278,6 +359,7 @@
   <div class="content">
     <div class="main-tabs" role="tablist">
       <button class="main-tab active" id="tab-importaciones" onclick="switchTab('importaciones')">📥 Importaciones</button>
+      <button class="main-tab" id="tab-tracking" onclick="switchTab('tracking')">🚢 Tracking <span class="tab-count" id="count-tracking"></span></button>
       <button class="main-tab" id="tab-proveedores" onclick="switchTab('proveedores')">🏭 Proveedores <span class="tab-count" id="count-proveedores"></span></button>
       <button class="main-tab" id="tab-compras" onclick="switchTab('compras')">🛒 Compras por proveedor</button>
     </div>
@@ -302,6 +384,19 @@
           <div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div>
         </div>
       </div>
+    </section>
+
+    <!-- ── TRACKING DE CONTENEDORES ── -->
+    <section id="sec-tracking" style="display:none">
+      <div class="trk-toolbar">
+        <p class="ayuda" style="max-width:720px">
+          Dónde está cada contenedor y cuándo llega de verdad. Las PIs que viajan juntas toman el arribo del contenedor
+          como llegada estimada, y abajo de cada uno ves lo que falta pagar para esa fecha. Los de PIL se consultan
+          solos cada 4 horas (y al abrir esta solapa); si cambia el arribo, te avisa por Telegram.
+        </p>
+        <button class="btn btn-primary" onclick="openTracking()">+ Nuevo contenedor</button>
+      </div>
+      <div id="tracking-container"><div class="empty-state"><div class="empty-icon">⏳</div><p>Cargando...</p></div></div>
     </section>
 
     <!-- ── PROVEEDORES ── -->
@@ -539,9 +634,64 @@
   </div>
 </div>
 
+<!-- ── CONTENEDOR (alta y edición) ───────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-tracking">
+  <div class="modal">
+    <div class="modal-title" id="trk-modal-title">Nuevo contenedor</div>
+    <input type="hidden" id="trk-id">
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label" for="trk-naviera">Naviera</label>
+        <select id="trk-naviera" onchange="onNavieraChange()"></select>
+        <span class="ayuda" id="trk-naviera-ayuda"></span>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="trk-contenedor">Número de contenedor *</label>
+        <input type="text" id="trk-contenedor" class="mono" placeholder="PCIU 891912-8" oninput="validarContenedorForm()" autocomplete="off">
+        <span class="ayuda" id="trk-contenedor-ayuda">4 letras y 7 números, como figura en el aviso del importador.</span>
+      </div>
+      <div class="form-group form-full" id="trk-link-grupo">
+        <label class="form-label" for="trk-link">Link de seguimiento</label>
+        <input type="text" id="trk-link" placeholder="https://…">
+        <span class="ayuda">La página de la naviera donde ves el tracking de este contenedor.</span>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px">PIs que vienen en este contenedor</div>
+      <p class="ayuda" style="margin-bottom:10px">Su llegada estimada pasa a ser el arribo del contenedor; la que habías calculado queda guardada para comparar.</p>
+      <div class="trk-imps" id="trk-imps"></div>
+    </div>
+
+    <details class="trk-manual" id="trk-manual" style="margin-top:18px">
+      <summary>Datos del viaje</summary>
+      <p class="ayuda" id="trk-manual-ayuda" style="margin-bottom:10px"></p>
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label" for="trk-buque">Buque</label><input type="text" id="trk-buque" placeholder="ej: COSCO SHIPPING RHINE"></div>
+        <div class="form-group"><label class="form-label" for="trk-viaje">Viaje</label><input type="text" id="trk-viaje" class="mono"></div>
+        <div class="form-group"><label class="form-label" for="trk-origen">Puerto de origen</label><input type="text" id="trk-origen" placeholder="ej: Ningbo"></div>
+        <div class="form-group"><label class="form-label" for="trk-destino">Puerto de destino</label><input type="text" id="trk-destino" placeholder="Montevideo"></div>
+        <div class="form-group"><label class="form-label" for="trk-etd">Zarpe</label><input type="date" id="trk-etd"></div>
+        <div class="form-group"><label class="form-label" for="trk-eta">Arribo estimado</label><input type="date" id="trk-eta"></div>
+        <div class="form-group"><label class="form-label" for="trk-estado">Etapa</label><select id="trk-estado"></select></div>
+      </div>
+    </details>
+
+    <div class="form-group" style="margin-top:16px">
+      <label class="form-label" for="trk-notas">Notas</label>
+      <textarea id="trk-notas" placeholder="Quién lo consolidó, despachante, BL…"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('modal-tracking')">Cancelar</button>
+      <button class="btn btn-primary" id="trk-guardar" onclick="submitTracking()">Guardar contenedor</button>
+    </div>
+  </div>
+</div>
+
 <datalist id="dl-importadores"></datalist>
 
 <script src="costo-importacion.js"></script>
+<script src="tracking-contenedores.js"></script>
 <script>
 // ─── State ────────────────────────────────────────────────────────────────────
 let imports  = [];
@@ -554,6 +704,9 @@ let tabActual = 'importaciones';
 let provSel = null;               // id del proveedor elegido en la solapa Proveedores, o SIN_PROV
 let compras = {};                 // proveedor_id -> resultado de armarCompra (con las cantidades editables)
 const SIN_PROV = '__sin';
+let trackings = [];                // contenedores de /api/tracking
+let migracionTracking = false;     // la tabla trackings todavía no existe en Supabase
+let trackingError = null;
 
 // Compras por proveedor: hasta cuántos días de venta se completa un producto para llegar al
 // mínimo. Pasado eso es plata inmovilizada: mejor avisar que no llega que sobrestockear.
@@ -580,13 +733,17 @@ async function apiFetch(method, path, body) {
 // ─── Load ─────────────────────────────────────────────────────────────────────
 async function load() {
   try {
-    let provResp;
-    [imports, productos, provResp] = await Promise.all([
+    let provResp, trkResp;
+    [imports, productos, provResp, trkResp] = await Promise.all([
       apiFetch('GET', '/api/importaciones'),
       apiFetch('GET', '/api/productos').catch(() => []),
       apiFetch('GET', '/api/proveedores').catch(() => ({ proveedores: [], migracionPendiente: true })),
+      apiFetch('GET', '/api/tracking').catch(e => ({ trackings: [], error: e.message })),
     ]);
     proveedores = provResp.proveedores || [];
+    trackings = trkResp.trackings || [];
+    migracionTracking = !!trkResp.migracionPendiente;
+    trackingError = trkResp.error || null;
     migracionProveedores = !!provResp.migracionPendiente;
     document.getElementById('aviso-migracion').style.display = migracionProveedores ? 'block' : 'none';
     renderTodo();
@@ -602,6 +759,7 @@ function renderTodo() {
   actualizarContadores();
   if (tabActual === 'proveedores') renderProveedores();
   if (tabActual === 'compras') renderCompras();
+  if (tabActual === 'tracking') renderTracking();
 }
 
 async function refrescarProductos() {
@@ -611,12 +769,13 @@ async function refrescarProductos() {
 // ─── Solapas ──────────────────────────────────────────────────────────────────
 function switchTab(tab) {
   tabActual = tab;
-  ['importaciones', 'proveedores', 'compras'].forEach(t => {
+  ['importaciones', 'tracking', 'proveedores', 'compras'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
     document.getElementById('sec-' + t).style.display = t === tab ? 'block' : 'none';
   });
   try { history.replaceState(null, '', tab === 'importaciones' ? location.pathname : '#' + tab); } catch (e) {}
   if (tab === 'proveedores') renderProveedores();
+  if (tab === 'tracking') { renderTracking(); refrescarViejos(); }
   return tab === 'compras' ? cargarCompras() : Promise.resolve();
 }
 
@@ -626,6 +785,9 @@ function actualizarContadores() {
   el.textContent = proveedores.length;
   el.classList.toggle('warn', sin > 0 && !migracionProveedores);
   el.title = sin > 0 ? `${sin} productos sin proveedor asignado` : '';
+  const enCamino = trackings.filter(TC.activo).length;
+  document.getElementById('count-tracking').textContent = enCamino || '';
+  document.getElementById('count-tracking').style.display = enCamino ? '' : 'none';
 }
 
 // ─── Helpers de proveedores ───────────────────────────────────────────────────
@@ -742,7 +904,7 @@ function render() {
       <td>${fmtDate(fecha)}</td>
       <td class="celda-prov">${celdaProveedor(imp)}</td>
       <td>${imp.importador ? escapeHtml(imp.importador) : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td>${fmtDate(llegada)}</td>
+      <td>${fmtDate(llegada)}${chipContenedor(imp.id)}</td>
       <td>${statusBadge(estado)}</td>
       <td style="text-align:center">${items.length}</td>
       <td class="mono" style="font-size:12px;color:var(--accent)">${usd(t.costoChina)}</td>
@@ -811,6 +973,7 @@ async function togglePago(id, pagoId) {
     const idx = imports.findIndex(i => i.id === id);
     if (idx !== -1) imports[idx] = { ...imports[idx], ...updated };
     render();
+    if (tabActual === 'tracking') renderTracking();
   } catch (e) { alert('Error actualizando el pago: ' + e.message); }
 }
 
@@ -1410,6 +1573,7 @@ async function toggleSaldo(id, nuevoEstado) {
     const idx = imports.findIndex(i => i.id === id);
     if (idx !== -1) imports[idx] = { ...imports[idx], saldo_pendiente: updated.saldo_pendiente };
     render();
+    if (tabActual === 'tracking') renderTracking();
   } catch(e) { alert('Error actualizando saldo: ' + e.message); }
 }
 
@@ -2072,6 +2236,521 @@ function crearImportacionDesdeCompra(provId) {
   openNew({ proveedor_id: provId, items });
 }
 
+// ─── Solapa Tracking de contenedores ──────────────────────────────────────────
+// Las reglas (etapas, arribo, lo que falta pagar) están en tracking-contenedores.js,
+// compartidas con la API. La naviera se consulta del lado del servidor (/api/tracking).
+const TC = window.TrackingContenedores;
+const consultando = new Set();        // contenedores que se están consultando en la naviera
+const REFRESCO_AUTOMATICO_HORAS = 2;  // al abrir la solapa se reconsulta lo que tenga más que esto
+
+// Fecha de hoy en la hora de la compu (no en UTC: a las 22 de Montevideo ya es mañana en UTC).
+function hoyLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function haceCuanto(iso) {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return '—';
+  const min = Math.max(0, Math.round(ms / 60000));
+  if (min < 1) return 'recién';
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24);
+  return `hace ${d} día${d === 1 ? '' : 's'}`;
+}
+
+function enDias(n) {
+  if (n == null) return '';
+  if (n === 0) return 'hoy';
+  if (n === 1) return 'mañana';
+  if (n > 0) return `en ${n} días`;
+  return `hace ${-n} día${n === -1 ? '' : 's'}`;
+}
+
+function fmtFechaCorta(d) { return d ? fmtDate(d).slice(0, 5) : '—'; }
+
+// El contenedor en el que viaja una importación (el que sigue en camino, si hay varios).
+function trackingDeImportacion(impId) {
+  const en = trackings.filter(t => (t.importaciones || []).some(v => v.id === impId));
+  return en.find(TC.activo) || en[0] || null;
+}
+
+function chipContenedor(impId) {
+  const t = trackingDeImportacion(impId);
+  if (!t) return '';
+  return `<div><a class="trk-chip" href="#tracking" title="Viaja en el contenedor ${escapeHtml(TC.formatearContenedor(t.contenedor))}${t.eta ? ', arribo ' + fmtDate(t.eta) : ''}"
+    onclick="event.preventDefault();verTracking('${escapeHtml(t.id)}')">🚢 ${escapeHtml(TC.formatearContenedor(t.contenedor))}</a></div>`;
+}
+
+async function verTracking(id) {
+  await switchTab('tracking');
+  document.getElementById('trk-' + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function badgeEtapa(estado) {
+  const e = TC.estadoInfo(estado);
+  const cls = e.paso >= 5 ? 'badge-green' : e.paso === 4 ? 'badge-green' : e.paso === 3 ? 'badge-blue' : 'badge-yellow';
+  return `<span class="badge ${cls}" style="font-family:'Space Grotesk',sans-serif;letter-spacing:0">${e.icono} ${e.label}</span>`;
+}
+
+// Qué trae cada PI: lo que se escribió al cargar el contenedor o, si no, los productos.
+function descripcionPI(p) {
+  if (p.descripcion) return p.descripcion;
+  const items = p.imp?.items || [];
+  if (!items.length) return '—';
+  return items.map(it => `${it.qty}× ${it.nombre || it.sku}`).join(' · ');
+}
+
+function renderTracking() {
+  const el = document.getElementById('tracking-container');
+  if (!el) return;
+  actualizarContadores();
+  if (migracionTracking) {
+    el.innerHTML = `<div class="aviso" id="aviso-migracion-tracking">⚠️ Falta crear la tabla de contenedores en Supabase: corré
+      <code>supabase/migrations/20261118000000_add_trackings.sql</code> en el SQL Editor.</div>`;
+    return;
+  }
+  if (trackingError) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p>No se pudieron leer los contenedores: ${escapeHtml(trackingError)}</p></div>`;
+    return;
+  }
+
+  const hoy = hoyLocal();
+  const activos = trackings.filter(TC.activo).sort((a, b) => String(a.eta || '9').localeCompare(String(b.eta || '9')));
+  const llegados = trackings.filter(t => !TC.activo(t));
+
+  if (!trackings.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚢</div>
+      <p>Todavía no cargaste ningún contenedor.</p>
+      <p class="ayuda" style="margin-top:6px">Cuando el importador te pase el número (ej: PCIU 891912-8), cargalo con “+ Nuevo contenedor” y marcá las PIs que vienen adentro.</p></div>`;
+    return;
+  }
+
+  // Resumen de arriba: lo que viene, cuándo llega lo primero y cuánto hay que tener para pagar.
+  const resumenes = activos.map(t => TC.resumenContenedor(t, imports));
+  const nPis = resumenes.reduce((s, r) => s + r.pis.length, 0);
+  const aPagar = resumenes.reduce((s, r) => s + r.pendiente, 0);
+  const conSaldo = resumenes.reduce((s, r) => s + r.conSaldo, 0);
+  const proximo = activos.find(t => t.eta) || null;
+  const consultas = activos.map(t => t.consultado_at).filter(Boolean).sort();
+  const stats = activos.length ? `
+    <div class="stats-row" id="trk-stats">
+      <div class="stat-card"><div class="stat-label">En camino</div><div class="stat-value">${activos.length}</div>
+        <div class="ayuda">contenedor${activos.length === 1 ? '' : 'es'} · ${nPis} PI${nPis === 1 ? '' : 's'}</div></div>
+      <div class="stat-card"><div class="stat-label">Próximo arribo</div><div class="stat-value" style="font-size:18px;color:var(--accent)">${proximo ? fmtDate(proximo.eta) : '—'}</div>
+        <div class="ayuda">${proximo ? `${enDias(TC.diasEntre(hoy, proximo.eta))} · ${escapeHtml(TC.formatearContenedor(proximo.contenedor))}` : 'sin fecha todavía'}</div></div>
+      <div class="stat-card"><div class="stat-label">A pagar antes de los arribos</div><div class="stat-value" id="trk-stat-pagar" style="font-size:18px;color:${aPagar > 0 ? 'var(--yellow)' : 'var(--green)'}">${usd(aPagar)}</div>
+        <div class="ayuda">${conSaldo ? `${conSaldo} PI${conSaldo === 1 ? '' : 's'} con saldo` : 'todo pagado'}</div></div>
+      <div class="stat-card"><div class="stat-label">Última consulta</div><div class="stat-value" style="font-size:18px">${consultas.length ? haceCuanto(consultas[consultas.length - 1]) : '—'}</div>
+        <div class="ayuda">en la naviera</div></div>
+    </div>` : '';
+
+  const filasLlegados = llegados.map(t => {
+    const r = TC.resumenContenedor(t, imports);
+    return `<tr>
+      <td class="mono">${escapeHtml(TC.formatearContenedor(t.contenedor))}</td>
+      <td>${escapeHtml(TC.naviera(t.naviera).id)}</td>
+      <td>${fmtDate(t.eta)}</td>
+      <td>${r.pis.map(p => p.pi ? 'PI ' + escapeHtml(p.pi) : escapeHtml(nombreProveedor(p.imp?.proveedor_id) || '—')).join(', ') || '—'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="openTracking('${escapeHtml(t.id)}')">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarTracking('${escapeHtml(t.id)}')">🗑</button></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = stats +
+    (activos.length ? activos.map(t => tarjetaContenedor(t, hoy)).join('')
+      : `<div class="empty-state"><div class="empty-icon">✅</div><p>No hay contenedores en camino.</p></div>`) +
+    (llegados.length ? `
+      <div class="table-wrap" style="margin-top:8px">
+        <div class="table-header"><span class="table-title">Llegados y retirados</span><span class="ayuda">${llegados.length}</span></div>
+        <table><thead><tr><th>Contenedor</th><th>Naviera</th><th>Arribo</th><th>PIs</th><th></th></tr></thead><tbody>${filasLlegados}</tbody></table>
+      </div>` : '');
+}
+
+function tarjetaContenedor(t, hoy) {
+  const id = escapeHtml(t.id);
+  const nav = TC.naviera(t.naviera);
+  const etapa = TC.estadoInfo(t.estado);
+  const res = TC.resumenContenedor(t, imports);
+  const link = TC.linkSeguimiento(t);
+  const origen = TC.nombrePuerto(t.puerto_origen) || 'Origen';
+  const destino = TC.nombrePuerto(t.puerto_destino) || 'Destino';
+  const faltan = TC.diasEntre(hoy, t.eta);
+  const cargando = consultando.has(t.id);
+
+  // ── Ruta con el barco ──
+  const transbordos = (t.eventos || []).filter(e => TC.tipoEvento(e.evento) === 'descarga').slice(0, -1);
+  const codigos = {};
+  (t.tramos || []).forEach(l => { if (l.puerto) codigos[l.puerto] = l.codigo; });
+  const destinoCod = (t.tramos || []).slice(-1)[0]?.proximo || '';
+  const puertos = [
+    { nombre: origen, cod: codigos[t.puerto_origen] || '', fecha: t.etd, txt: 'zarpe', ok: etapa.paso >= 3 },
+    ...transbordos.map(e => ({ nombre: TC.nombrePuerto(e.lugar), cod: '', fecha: e.fecha, txt: 'transbordo', ok: !!(e.fecha && !e.estimado) })),
+    { nombre: destino, cod: destinoCod, fecha: t.eta, txt: 'arribo', ok: etapa.paso >= 4, fin: true },
+  ];
+  const prog = TC.progresoViaje(t, hoy);
+  const nodos = puertos.map((p, i) => `<span class="trk-nodo${p.ok ? ' ok' : ''}${p.fin ? ' fin' : ''}" style="left:${(i / (puertos.length - 1)) * 100}%"></span>`).join('');
+  const etiquetas = puertos.map(p => `<div class="trk-puerto">${escapeHtml(p.nombre)}<small>${p.cod ? escapeHtml(p.cod) + ' · ' : ''}${p.txt} ${p.fecha ? (p.ok ? '' : '~') + fmtFechaCorta(p.fecha) : '—'}</small></div>`).join('');
+  const ruta = `
+    <div class="trk-ruta" aria-label="Avance del viaje: ${Math.round(prog * 100)}%">
+      <div class="trk-linea">
+        <div class="trk-linea-hecha" style="width:${prog * 100}%"></div>
+        ${nodos}
+        <span class="trk-barco" style="left:${prog * 100}%" title="${escapeHtml(etapa.label)}">🚢</span>
+      </div>
+      <div class="trk-puertos">${etiquetas}</div>
+    </div>`;
+
+  // ── Arribo, zarpe y lo que falta pagar ──
+  const llego = etapa.paso >= 4;
+  const kpiEta = `<div class="trk-kpi eta">
+      <div class="lbl">${llego ? 'Llegó a' : 'Arribo estimado a'} ${escapeHtml(destino)}</div>
+      <div class="val" id="trk-eta-${id}">${t.eta ? fmtDate(t.eta) : '—'}</div>
+      <div class="sub">${t.eta ? (llego ? enDias(faltan) : faltan != null && faltan >= 0 ? `faltan <b>${faltan}</b> día${faltan === 1 ? '' : 's'}` : `debía llegar ${enDias(faltan)}`) : 'todavía sin fecha'}${nav.automatica && t.eta ? ` · según ${escapeHtml(nav.id)}` : ''}</div>
+    </div>`;
+  const kpiZarpe = `<div class="trk-kpi">
+      <div class="lbl">${etapa.paso >= 3 ? 'Zarpó de' : 'Zarpe de'} ${escapeHtml(origen)}</div>
+      <div class="val" style="font-size:20px">${t.etd ? fmtDate(t.etd) : '—'}</div>
+      <div class="sub">${etapa.paso >= 3 ? 'ya está navegando' : t.etd ? `estimado · ${enDias(TC.diasEntre(hoy, t.etd))}` : 'todavía sin fecha'}</div>
+    </div>`;
+  const kpiPago = `<div class="trk-kpi pago${res.pendiente > 0 ? '' : ' ok'}">
+      <div class="lbl">${res.pendiente > 0 ? `Falta abonar para el ${t.eta ? fmtFechaCorta(t.eta) : 'arribo'}` : 'Pagos'}</div>
+      <div class="val" id="trk-pagar-${id}">${res.pendiente > 0 ? usd(res.pendiente) : '✓ Al día'}</div>
+      <div class="sub">${res.pendiente > 0
+        ? res.pis.filter(p => p.pendiente.monto > 0).map(p => `${p.pi ? 'PI ' + escapeHtml(p.pi) : escapeHtml(nombreProveedor(p.imp?.proveedor_id) || 'PI')}: ${usd(p.pendiente.monto)}`).join(' · ')
+        : `${res.pis.length} PI${res.pis.length === 1 ? '' : 's'} sin saldo pendiente`}</div>
+    </div>`;
+
+  // ── Movimientos ──
+  const hitos = (t.eventos || []).length
+    ? t.eventos.map(e => ({ ok: !!(e.fecha && !e.estimado), est: !!(e.fecha && e.estimado), txt: TC.textoEvento(e), orig: e.evento, fecha: e.fecha, lugar: e.lugar }))
+    : [
+        { ok: true, txt: 'Reservado' },
+        { ok: etapa.paso >= 3, est: etapa.paso < 3 && !!t.etd, txt: `Zarpe de ${origen}`, fecha: t.etd },
+        { ok: etapa.paso >= 4, est: etapa.paso < 4 && !!t.eta, txt: `Arribo a ${destino}`, fecha: t.eta },
+        { ok: etapa.paso >= 5, txt: 'Retirado del puerto' },
+      ];
+  const hitosHtml = hitos.map(h => `
+      <div class="trk-hito${h.ok ? ' ok' : h.est ? ' est' : ''}"${h.orig ? ` title="${escapeHtml(h.orig)}"` : ''}>
+        <div class="trk-hito-dot"></div>
+        <div class="trk-hito-txt">${escapeHtml(h.txt)}</div>
+        <div class="trk-hito-fecha">${h.fecha ? (h.ok ? '' : '~ ') + fmtDate(h.fecha) : 'pendiente'}</div>
+        ${h.lugar ? `<div class="trk-hito-lugar">${escapeHtml(TC.nombrePuerto(h.lugar))}</div>` : ''}
+      </div>`).join('');
+
+  // ── Lo que se había calculado vs. el arribo real ──
+  let nota = '';
+  if (res.desfasadas && t.eta) {
+    const fechas = res.calculadas.map(fmtDate);
+    const lista = fechas.length > 1 ? fechas.slice(0, -1).join(', ') + ' y ' + fechas[fechas.length - 1] : fechas[0];
+    nota = `<div class="trk-nota" id="trk-nota-${id}">📌 ${res.pis.length > 1 && res.calculadas.length > 1
+        ? `Para estas ${res.pis.length} PIs habías calculado ${res.calculadas.length} llegadas distintas (${lista}), pero viajan juntas en este contenedor y llegan <b>todas el ${fmtDate(t.eta)}</b>.`
+        : `Habías calculado la llegada para el ${lista}; según el contenedor llega el <b>${fmtDate(t.eta)}</b>.`}
+      La llegada estimada de ${res.pis.length > 1 ? 'cada importación' : 'la importación'} ya quedó en esa fecha, así que 📅 Reposición y las respuestas de MELI usan el arribo real.</div>`;
+  }
+  const hist = (t.eta_historial || []).filter(h => h && h.eta);
+  const historial = hist.length > 1
+    ? `<div class="ayuda" id="trk-hist-${id}">📅 El arribo estimado cambió ${hist.length - 1} ${hist.length - 1 === 1 ? 'vez' : 'veces'}: ${hist.map(h => `<span class="mono">${fmtFechaCorta(h.eta)}</span>`).join(' → ')}
+        (${(() => { const d = TC.diasEntre(hist[0].eta, hist[hist.length - 1].eta); return d === 0 ? 'misma fecha que al principio' : `${Math.abs(d)} día${Math.abs(d) === 1 ? '' : 's'} ${d > 0 ? 'más tarde' : 'antes'} que la primera fecha`; })()}).</div>`
+    : '';
+
+  // ── PIs ──
+  const filasPis = res.pis.map(p => {
+    const imp = p.imp;
+    let dif = '<span style="color:var(--text-muted)">—</span>';
+    if (p.difDias != null) {
+      dif = p.difDias === 0 ? '<span class="trk-dif">= mismo día</span>'
+        : p.difDias > 0 ? `<span class="trk-dif tarde">+${p.difDias} días</span><div class="ayuda">llega más tarde</div>`
+        : `<span class="trk-dif antes">−${-p.difDias} días</span><div class="ayuda">llega antes</div>`;
+    }
+    let pago;
+    if (!imp) pago = '<span style="color:var(--text-muted)">La importación ya no existe</span>';
+    else if (p.llegada) pago = '<span style="color:var(--green)">✅ Ya llegó</span>';
+    else if (p.pendiente.monto > 0) {
+      const detalle = p.pendiente.lineas.map(l => escapeHtml(l.concepto) + (l.totalPI ? ` de ${usd(l.totalPI)}` : '')).join(' + ');
+      // Con puesta en puerto, los tres pagos de siempre; del esquema anterior, un botón para
+      // dar por pagado el saldo de la PI.
+      const accion = CI.esPuerto(imp) ? celdaPagos(imp)
+        : `<button class="btn btn-green btn-sm" onclick="pagarSaldoPI('${escapeHtml(imp.id)}')">✅ Marcar pagada</button>`;
+      pago = `<b class="mono" style="color:var(--yellow)">${usd(p.pendiente.monto)}</b><div class="ayuda" style="margin-bottom:6px">${detalle}</div>${accion}`;
+    } else {
+      pago = `<span style="color:var(--green)">✓ Pagada</span>${CI.esPuerto(imp) ? `<div style="margin-top:6px">${celdaPagos(imp)}</div>` : ''}`;
+    }
+    return `<tr data-imp="${escapeHtml(p.vinculo.id)}">
+      <td><b class="mono">${p.pi ? 'PI ' + escapeHtml(p.pi) : '—'}</b>${imp ? `<div class="ayuda">orden ${fmtDate(imp.fecha)}</div>` : ''}</td>
+      <td>${escapeHtml(nombreProveedor(imp?.proveedor_id) || '—')}</td>
+      <td class="trk-desc" title="${escapeHtml(descripcionPI(p))}">${escapeHtml(descripcionPI(p))}</td>
+      <td class="mono" style="white-space:nowrap">${fmtDate(p.llegadaCalculada)}</td>
+      <td>${dif}</td>
+      <td>${pago}</td>
+    </tr>`;
+  }).join('');
+  const tablaPis = res.pis.length
+    ? `<div class="trk-pis"><table>
+        <thead><tr><th>PI</th><th>Proveedor</th><th>Qué trae</th><th>Habías calculado</th><th>Vs. contenedor</th><th>Falta pagar</th></tr></thead>
+        <tbody>${filasPis}</tbody></table></div>`
+    : `<div class="ayuda">No marcaste qué PIs vienen en este contenedor. Agregalas con ✏️ Editar para ver su arribo y lo que falta pagar.</div>`;
+
+  const buque = t.buque
+    ? `Buque <b>${escapeHtml(t.buque)}</b>${t.viaje ? ` · viaje <span class="mono">${escapeHtml(t.viaje)}</span>` : ''}
+       · <a href="https://www.google.com/search?q=${encodeURIComponent(t.buque + ' vessel position')}" target="_blank" rel="noopener" title="Buscar la posición del buque">📍 dónde está el buque</a>`
+    : 'Todavía sin buque asignado';
+  const consulta = nav.automatica
+    ? (t.consulta_error
+        ? `<span style="color:var(--red)">⚠️ La última consulta a ${escapeHtml(nav.id)} falló (${haceCuanto(t.consultado_at)}): ${escapeHtml(t.consulta_error)}</span>`
+        : t.consultado_at ? `🔄 Consultado en ${escapeHtml(nav.id)} ${haceCuanto(t.consultado_at)} · se vuelve a consultar solo cada 4 horas` : `Todavía no se consultó en ${escapeHtml(nav.id)}`)
+    : `✏️ ${escapeHtml(nav.nombre)} no se consulta sola: actualizá el arribo y la etapa con Editar.`;
+
+  return `<div class="trk-card" id="trk-${id}" data-id="${id}" data-estado="${escapeHtml(t.estado || '')}">
+    <div class="trk-head">
+      <div>
+        <div class="trk-num">🚢 ${escapeHtml(TC.formatearContenedor(t.contenedor))} <span class="trk-naviera">${escapeHtml(nav.id)}</span> ${badgeEtapa(t.estado)}</div>
+        <div class="trk-buque">${buque}</div>
+      </div>
+      <div class="trk-acciones">
+        ${nav.automatica ? `<button class="btn btn-ghost btn-sm" onclick="consultarNaviera('${id}')" ${cargando ? 'disabled' : ''}>${cargando ? '⏳ Consultando…' : '🔄 Actualizar'}</button>` : ''}
+        ${link ? `<a class="btn btn-ghost btn-sm" href="${escapeHtml(link)}" target="_blank" rel="noopener">↗ Ver en ${nav.automatica ? escapeHtml(nav.id) : 'la naviera'}</a>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="openTracking('${id}')">✏️ Editar</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminarTracking('${id}')" title="Borrar el contenedor">🗑</button>
+      </div>
+    </div>
+    <div class="trk-body">
+      ${ruta}
+      <div class="trk-kpis">${kpiEta}${kpiZarpe}${kpiPago}</div>
+      ${nota}
+      <div>
+        <div class="trk-seccion">Movimientos</div>
+        <div class="trk-hitos">${hitosHtml}</div>
+      </div>
+      <div>
+        <div class="trk-seccion">PIs en este contenedor (${res.pis.length})</div>
+        ${tablaPis}
+      </div>
+      ${historial}
+      ${t.notas ? `<div class="ayuda">📝 ${escapeHtml(t.notas).replace(/\n/g, '<br>')}</div>` : ''}
+    </div>
+    <div class="trk-foot"><span>${consulta}</span>${t.updated_at ? `<span>Actualizado ${haceCuanto(t.updated_at)}</span>` : ''}</div>
+  </div>`;
+}
+
+// El saldo de una PI del esquema anterior (sin los tres pagos): el mismo "saldo pendiente" de
+// la tabla de Importaciones, con la cuenta a la vista antes de confirmar.
+function pagarSaldoPI(impId) {
+  const imp = imports.find(i => i.id === impId);
+  if (!imp) return;
+  const t = trackingDeImportacion(impId);
+  const pi = TC.piDe(imp, (t?.importaciones || []).find(v => v.id === impId));
+  const p = TC.pendienteDeImportacion(imp);
+  if (!confirm(`¿Marcar como pagada la 2da mitad de ${pi ? 'la PI ' + pi : 'esta PI'} (${usd(p.monto)})?`)) return;
+  return toggleSaldo(impId, false);
+}
+
+// Guarda en memoria lo que devolvió la API (sin los datos de la operación).
+function guardarTrackingLocal(r) {
+  const { consulta, importaciones_sync, ...t } = r;
+  const idx = trackings.findIndex(x => x.id === t.id);
+  if (idx === -1) trackings.unshift(t); else trackings[idx] = t;
+}
+
+// Si el contenedor movió la llegada o el estado de sus importaciones, se releen para que la
+// tabla de Importaciones y los pagos queden al día.
+async function releerImportacionesSiCambiaron(sync) {
+  if (!sync?.actualizadas?.length) return;
+  try { imports = await apiFetch('GET', '/api/importaciones'); } catch (e) { /* se queda con lo que tenía */ }
+  render();
+}
+
+async function consultarNaviera(id, { silencioso = false } = {}) {
+  if (consultando.has(id)) return;
+  consultando.add(id);
+  renderTracking();
+  try {
+    const r = await apiFetch('POST', `/api/tracking?accion=actualizar&id=${encodeURIComponent(id)}`);
+    guardarTrackingLocal(r);
+    await releerImportacionesSiCambiaron(r.importaciones_sync);
+    if (!silencioso && r.consulta?.error) alert('No se pudo consultar la naviera: ' + r.consulta.error + '\nQueda lo último que se sabía.');
+  } catch (e) {
+    if (!silencioso) alert('Error consultando la naviera: ' + e.message);
+  } finally {
+    consultando.delete(id);
+    renderTracking();
+  }
+}
+
+// Al abrir la solapa se reconsulta lo que hace rato no se mira (el cron lo hace cada 4 horas).
+function refrescarViejos() {
+  if (migracionTracking) return;
+  const limite = Date.now() - REFRESCO_AUTOMATICO_HORAS * 3600 * 1000;
+  trackings
+    .filter(t => TC.activo(t) && TC.navieraAutomatica(t.naviera) && !(Date.parse(t.consultado_at) > limite))
+    .forEach(t => consultarNaviera(t.id, { silencioso: true }));
+}
+
+// ── Modal de alta / edición ──
+function openTracking(id) {
+  if (migracionTracking) { alert('Falta correr la migración 20261118000000_add_trackings.sql en Supabase.'); return; }
+  const t = id ? trackings.find(x => x.id === id) : null;
+  document.getElementById('trk-modal-title').textContent = t ? `Editar ${TC.formatearContenedor(t.contenedor)}` : 'Nuevo contenedor';
+  document.getElementById('trk-id').value = t ? t.id : '';
+  document.getElementById('trk-naviera').innerHTML = TC.NAVIERAS.map(n =>
+    `<option value="${n.id}"${n.id === (t?.naviera || 'PIL') ? ' selected' : ''}>${escapeHtml(n.nombre)}${n.automatica ? ' · automática' : ''}</option>`).join('');
+  document.getElementById('trk-contenedor').value = t ? TC.formatearContenedor(t.contenedor) : '';
+  document.getElementById('trk-link').value = t?.link_seguimiento || '';
+  document.getElementById('trk-buque').value = t?.buque || '';
+  document.getElementById('trk-viaje').value = t?.viaje || '';
+  document.getElementById('trk-origen').value = t?.puerto_origen ? TC.nombrePuerto(t.puerto_origen) : '';
+  document.getElementById('trk-destino').value = t?.puerto_destino ? TC.nombrePuerto(t.puerto_destino) : '';
+  document.getElementById('trk-etd').value = t?.etd || '';
+  document.getElementById('trk-eta').value = t?.eta || '';
+  document.getElementById('trk-estado').innerHTML = TC.ESTADOS.map(e =>
+    `<option value="${e.id}"${e.id === (t?.estado || 'reservado') ? ' selected' : ''}>${e.icono} ${e.label}</option>`).join('');
+  document.getElementById('trk-notas').value = t?.notas || '';
+  renderImpsTracking(t);
+  onNavieraChange();
+  validarContenedorForm();
+  document.getElementById('modal-tracking').classList.add('open');
+  if (!t) document.getElementById('trk-contenedor').focus();
+}
+
+function onNavieraChange() {
+  const nav = TC.naviera(document.getElementById('trk-naviera').value);
+  document.getElementById('trk-link-grupo').style.display = nav.automatica ? 'none' : '';
+  document.getElementById('trk-naviera-ayuda').textContent = nav.automatica
+    ? 'El CRM la consulta solo: buque, movimientos y arribo se completan al guardar.'
+    : 'Esta naviera no se consulta sola: cargá el arribo y la etapa en “Datos del viaje”.';
+  document.getElementById('trk-manual-ayuda').textContent = nav.automatica
+    ? `Se completan solos con lo que informa ${nav.id}. Cargalos sólo si querés adelantarte: la próxima consulta los reemplaza.`
+    : 'El arribo estimado pasa a ser la llegada de las importaciones marcadas arriba.';
+  document.getElementById('trk-manual').open = !nav.automatica;
+}
+
+function validarContenedorForm() {
+  const v = document.getElementById('trk-contenedor').value;
+  const el = document.getElementById('trk-contenedor-ayuda');
+  const c = TC.normalizarContenedor(v);
+  if (!c) { el.textContent = '4 letras y 7 números, como figura en el aviso del importador.'; el.style.color = ''; return; }
+  if (!TC.formatoContenedorValido(c)) { el.textContent = 'Tienen que ser 4 letras y 7 números (ej: PCIU 891912-8).'; el.style.color = 'var(--yellow)'; return; }
+  if (!TC.digitoControlValido(c)) {
+    el.textContent = `⚠️ El último dígito no coincide con el de control (debería ser ${TC.digitoControl(c)}): revisá que esté bien copiado.`;
+    el.style.color = 'var(--yellow)';
+    return;
+  }
+  el.textContent = `✓ ${TC.formatearContenedor(c)} — número válido`;
+  el.style.color = 'var(--green)';
+}
+
+// Las importaciones que todavía no llegaron (y las que ya están en este contenedor). Las que
+// viajan en otro contenedor en camino no se pueden marcar: primero hay que sacarlas de ahí.
+function renderImpsTracking(t) {
+  const vinculos = {};
+  (t?.importaciones || []).forEach(v => { vinculos[v.id] = v; });
+  const lista = imports.filter(i => {
+    const estado = i.estado || i.status;
+    return vinculos[i.id] || (!TC.ESTADOS_LLEGADOS.includes(estado) && !TC.ESTADOS_CANCELADOS.includes(estado));
+  }).sort((a, b) => String(a.llegada || '9').localeCompare(String(b.llegada || '9')));
+
+  document.getElementById('trk-imps').innerHTML = lista.length ? lista.map(i => {
+    const v = vinculos[i.id];
+    const otro = !v ? trackings.find(x => x.id !== t?.id && TC.activo(x) && (x.importaciones || []).some(y => y.id === i.id)) : null;
+    const items = (i.items || []).map(it => it.nombre || it.sku).filter(Boolean);
+    return `<div class="trk-imp-row${v ? ' sel' : ''}${otro ? ' bloqueada' : ''}" data-id="${escapeHtml(i.id)}" data-calculada="${escapeHtml(v?.llegada_calculada || '')}">
+      <input type="checkbox" class="chk trk-imp-chk" ${v ? 'checked' : ''} ${otro ? 'disabled' : ''} aria-label="Viene en este contenedor"
+             onchange="this.closest('.trk-imp-row').classList.toggle('sel', this.checked)">
+      <div>
+        <b>${escapeHtml(nombreProveedor(i.proveedor_id) || 'Sin proveedor')}</b>
+        <span class="ayuda">· orden ${fmtDate(i.fecha)} · llegada ${fmtDate(v?.llegada_calculada || i.llegada)}</span>
+        <div class="ayuda" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px" title="${escapeHtml(items.join(', '))}">${otro ? `🚢 Ya viaja en ${escapeHtml(TC.formatearContenedor(otro.contenedor))}` : escapeHtml(items.join(', ') || 'sin artículos')}</div>
+      </div>
+      <input type="text" class="trk-imp-pi mono" placeholder="N° de PI" value="${escapeHtml(TC.piDe(i, v) || '')}" ${otro ? 'disabled' : ''} aria-label="Número de PI">
+      <input type="text" class="trk-imp-desc" placeholder="Qué trae (ej: valijas y escapes)" value="${escapeHtml(v?.descripcion || '')}" ${otro ? 'disabled' : ''} aria-label="Qué trae">
+    </div>`;
+  }).join('') : `<div class="ayuda">No hay importaciones en camino. Cargá primero la importación y después sumala al contenedor.</div>`;
+}
+
+async function submitTracking() {
+  const id = document.getElementById('trk-id').value;
+  const nav = TC.naviera(document.getElementById('trk-naviera').value);
+  const contenedor = TC.normalizarContenedor(document.getElementById('trk-contenedor').value);
+  if (!TC.formatoContenedorValido(contenedor)) { alert('El número de contenedor son 4 letras y 7 números (ej: PCIU 891912-8).'); return; }
+  if (!TC.digitoControlValido(contenedor) &&
+      !confirm(`El último dígito de ${TC.formatearContenedor(contenedor)} no coincide con el de control (debería ser ${TC.digitoControl(contenedor)}). ¿Guardarlo igual?`)) return;
+
+  const importacionesSel = [...document.querySelectorAll('#trk-imps .trk-imp-row')]
+    .filter(r => r.querySelector('.trk-imp-chk').checked)
+    .map(r => ({
+      id: r.dataset.id,
+      pi: r.querySelector('.trk-imp-pi').value.trim() || null,
+      descripcion: r.querySelector('.trk-imp-desc').value.trim() || null,
+      ...(r.dataset.calculada ? { llegada_calculada: r.dataset.calculada } : {}),
+    }));
+
+  const manual = {
+    buque: document.getElementById('trk-buque').value.trim(),
+    viaje: document.getElementById('trk-viaje').value.trim(),
+    puerto_origen: document.getElementById('trk-origen').value.trim(),
+    puerto_destino: document.getElementById('trk-destino').value.trim(),
+    etd: document.getElementById('trk-etd').value,
+    eta: document.getElementById('trk-eta').value,
+    estado: document.getElementById('trk-estado').value,
+  };
+  // Con la naviera automática sólo se manda lo que se completó (lo demás lo trae la consulta);
+  // con las manuales se manda todo, para poder borrar una fecha.
+  const datosViaje = {};
+  Object.entries(manual).forEach(([k, v]) => {
+    if (!nav.automatica || (v && !(k === 'estado' && v === 'reservado'))) datosViaje[k] = v || null;
+  });
+
+  const body = {
+    naviera: nav.id,
+    contenedor,
+    link_seguimiento: nav.automatica ? null : (document.getElementById('trk-link').value.trim() || null),
+    notas: document.getElementById('trk-notas').value.trim() || null,
+    importaciones: importacionesSel,
+    ...datosViaje,
+  };
+
+  const boton = document.getElementById('trk-guardar');
+  boton.disabled = true;
+  boton.textContent = nav.automatica ? `Guardando y consultando ${nav.id}…` : 'Guardando…';
+  try {
+    const r = id
+      ? await apiFetch('PUT', `/api/tracking?id=${encodeURIComponent(id)}`, body)
+      : await apiFetch('POST', '/api/tracking', body);
+    guardarTrackingLocal(r);
+    closeModal('modal-tracking');
+    await releerImportacionesSiCambiaron(r.importaciones_sync);
+    renderTracking();
+    if (r.consulta?.error) {
+      alert(`El contenedor se guardó, pero no se pudo consultar ${nav.id}: ${r.consulta.error}\nSe vuelve a intentar solo cada 4 horas, o con 🔄 Actualizar.`);
+    } else if (r.importaciones_sync?.errores?.length) {
+      alert('El contenedor se guardó, pero no se pudo actualizar la llegada de alguna importación: ' +
+        r.importaciones_sync.errores.map(e => e.error).join(' | '));
+    }
+    document.getElementById('trk-' + r.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    alert('Error guardando el contenedor: ' + e.message);
+  } finally {
+    boton.disabled = false;
+    boton.textContent = 'Guardar contenedor';
+  }
+}
+
+async function eliminarTracking(id) {
+  const t = trackings.find(x => x.id === id);
+  if (!t) return;
+  if (!confirm(`¿Borrar el contenedor ${TC.formatearContenedor(t.contenedor)}? Las importaciones no se borran y conservan la llegada que tienen ahora.`)) return;
+  try {
+    await apiFetch('DELETE', `/api/tracking?id=${encodeURIComponent(id)}`);
+    trackings = trackings.filter(x => x.id !== id);
+    render();
+    renderTracking();
+  } catch (e) {
+    alert('Error borrando el contenedor: ' + e.message);
+  }
+}
+
 // ─── Modal helpers ────────────────────────────────────────────────────────────
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
@@ -2086,11 +2765,11 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 }));
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-// #proveedores y #compras abren directo esa solapa (sirve para volver con el botón atrás o
-// para dejar un acceso directo).
+// #tracking, #proveedores y #compras abren directo esa solapa (sirve para volver con el
+// botón atrás o para dejar un acceso directo).
 load().then(() => {
   const tab = location.hash.slice(1);
-  if (['proveedores', 'compras'].includes(tab)) switchTab(tab);
+  if (['tracking', 'proveedores', 'compras'].includes(tab)) switchTab(tab);
 });
 </script>
 </body>

@@ -243,6 +243,38 @@ costos. Un renglón sin SKU no suma stock ni costo.
 
 ---
 
+## Tracking de contenedores (Importaciones → 🚢 Tracking)
+
+Cada PI se pide y se calcula por separado, pero el importador junta varias en un mismo
+contenedor y llegan todas el mismo día. Esta solapa sigue el contenedor en la naviera y lo
+toma como la verdad:
+
+- **Cargar un contenedor**: “+ Nuevo contenedor”, el número (ej: PCIU 891912-8, se valida con
+  el dígito de control) y las PIs que vienen adentro, con su número y qué traen. Con **PIL**
+  no hace falta nada más: buque, viaje, puertos, movimientos y arribo se leen solos de
+  pilship.com. De otras navieras se carga a mano el arribo, la etapa y el link de seguimiento.
+- **La tarjeta** muestra la ruta con el barco donde va, el arribo estimado y cuántos días
+  faltan, el zarpe, cada movimiento de la naviera (hecho, estimado o pendiente) y las PIs: la
+  llegada que se había calculado contra el arribo real (+14 días, −7 días…).
+- **Lo que falta pagar para el arribo**: de las PIs del esquema anterior, la segunda mitad de
+  la PI (productos + shipping de la PI) si tienen saldo pendiente; de las de GrupoRAS, los
+  pagos sin marcar (incluido el all in, que vence al llegar a puerto). Se marca pagado desde
+  la misma tarjeta.
+- **Las importaciones siguen al contenedor**: su llegada estimada pasa a ser el arribo (así
+  📅 Reposición y las respuestas de MELI de “vuelve pronto” usan la fecha real), pasan a
+  “en tránsito” cuando zarpa y a “en aduana” cuando llega al puerto. Nunca se marcan como
+  llegadas solas: ✅ Llegó suma stock y se sigue haciendo a mano al recibir la mercadería.
+  En la tabla de Importaciones, cada una muestra el chip 🚢 de su contenedor.
+- **Al día solo**: el cron `api/cron/tracking` consulta PIL cada 4 horas (y la pantalla, al
+  abrir la solapa, reconsulta lo que tenga más de 2 horas). Si cambia el arribo o el
+  contenedor zarpa, transborda, llega o sale de la terminal, avisa por Telegram con las PIs
+  y lo que falta pagar. Cada cambio del arribo queda en el historial de la tarjeta.
+
+**Antes de usarlo hay que crear la tabla una sola vez**: correr
+`supabase/migrations/20261118000000_add_trackings.sql` en el SQL Editor.
+
+---
+
 ## Descatalogar productos (Stock → ⛔)
 
 Para los productos que no se vuelven a comprar: el que ya está en cero y no se importa más,

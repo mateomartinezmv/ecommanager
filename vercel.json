@@ -6,7 +6,7 @@
     "api/ventas.js": { "maxDuration": 10 },
     "api/envios.js": { "maxDuration": 20 },
     "api/direcciones.js": { "maxDuration": 10 },
-    "api/transportistas.js": { "maxDuration": 10 },
+    "api/t*.js": { "maxDuration": 30 },
     "api/meli/auth.js": { "maxDuration": 10 },
     "api/meli/callback.js": { "maxDuration": 10 },
     "api/meli/notify.js": { "maxDuration": 30 },
@@ -103,6 +103,10 @@
     {
       "path": "/api/cron/telegram-cola",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/tracking",
+      "schedule": "10 */4 * * *"
     },
     {
       "path": "/api/cron/pubs-auditoria?parte=conversion",

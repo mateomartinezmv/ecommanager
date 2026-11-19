@@ -27,6 +27,16 @@ function campoCodigoGesta(p) {
   return { codigo_gesta: Number.isInteger(n) && n > 0 ? n : null };
 }
 
+// A quién se le compra el producto (tabla proveedores). Lo elige el formulario de producto;
+// también lo asignan Importaciones → 🏭 Proveedores y las importaciones nuevas. Sólo se
+// escribe si el request lo manda: el formulario no lo manda si la tabla de proveedores no
+// existe todavía, y así un guardado común no le borra el proveedor a nadie.
+function campoProveedor(p) {
+  if (p.proveedorId === undefined) return {};
+  const id = String(p.proveedorId ?? '').trim();
+  return { proveedor_id: id || null };
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
@@ -73,6 +83,7 @@ module.exports = async (req, res) => {
           shopify_id: p.shopifyId || null,
           notas: p.notas,
           ...campoCodigoGesta(p),
+          ...campoProveedor(p),
         },
         camposDiscontinuado(p, null),
       );
@@ -140,6 +151,7 @@ module.exports = async (req, res) => {
           shopify_id: p.shopifyId || null,
           notas: p.notas,
           ...campoCodigoGesta(p),
+          ...campoProveedor(p),
         },
         // Guardar un producto desde el formulario de edición no manda `discontinuado`, y
         // antes eso lo reactivaba en silencio: el formulario no pregunta por el campo, así

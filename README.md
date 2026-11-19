@@ -676,6 +676,11 @@ junta los que hay que revisar, primero los descatalogados y con más plata parad
 - La cantidad sugerida ya sale con la meta de su clase, así que **🛒 Compras por proveedor**
   (Importaciones) la usa tal cual. Cuando completa hasta el mínimo del proveedor, el relleno va
   primero a los ⭐ y nunca a los de comprar poco ni a los descatalogados.
+- **Filtro por proveedor:** el selector 🏭 deja ver solo los productos de un proveedor (o los
+  que no tienen). Con uno elegido, arriba de la lista aparece cuánto hay que pedirle (productos,
+  unidades y plata a costo puesto, con cuántos son ⭐) y un enlace a su compra armada en
+  Importaciones → 🛒 Compras (`importaciones.html#compras=ID`). La elección se recuerda en el
+  navegador.
 - Un descatalogado no se compra aunque tenga piso manual (alerta mínima).
 - **Descatalogar desde acá:** el badge de ⛔ Descatalogar o 🔻 Comprar poco es un botón que abre
   el formulario con el motivo ya elegido (sin ventas → *poca venta*; deja poco por peso →

@@ -40,7 +40,7 @@ const prod = (o) => ({ tipo: 'nuevo', discontinuado: false, unidades_por_venta: 
 
 const tablas = {
   productos: [
-    prod({ sku: 'ALERON', nombre: 'Espejo alerón', stock_dep: 4, costo: 342, fecha_publicacion: haceDias(101) }),
+    prod({ sku: 'ALERON', nombre: 'Espejo alerón', stock_dep: 4, costo: 342, fecha_publicacion: haceDias(101), proveedor_id: 'PROV-1' }),
     prod({ sku: 'CIRC', nombre: 'Espejos circulares', stock_dep: 2, costo: 334, fecha_publicacion: haceDias(150) }),
     prod({ sku: 'FINOS', nombre: 'Alerón finos', stock_dep: 0, costo: 333, fecha_publicacion: haceDias(200) }),
     prod({ sku: 'MAN28', nombre: 'Manillar 28mm', stock_dep: 5, costo: 484, alerta_min: 3, fecha_publicacion: haceDias(250) }),
@@ -97,6 +97,9 @@ test('el que más deja es ⭐ y se cubre con ~4,5 meses de venta', () => {
   assert.ok(Math.abs(p.cantidad_sugerida - (p.objetivo_uds - 4)) <= 1, `pedir ${p.cantidad_sugerida}`);
   assert.ok(p.objetivo_uds > p.punto_pedido_uds, 'más que el modelo base');
   assert.match(p.clase_motivo, /de los que más dejan/);
+  // Trae el proveedor, para filtrar la pantalla; sin proveedor, null.
+  assert.strictEqual(p.proveedor_id, 'PROV-1');
+  assert.strictEqual(de('CIRC').proveedor_id, null);
 });
 
 test('la publicidad de cada producto se mide en el tramo de su snapshot', () => {

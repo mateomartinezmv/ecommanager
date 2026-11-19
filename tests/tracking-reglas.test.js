@@ -130,13 +130,14 @@ const IMP_14175 = { id: 'IMP-14175', fecha: '2026-10-13', llegada: '2027-01-02',
 const IMP_14713 = { id: 'IMP-14713', fecha: '2026-10-30', llegada: '2027-01-15', estado: 'ordered', notas: null, proveedor_id: 'P-MUXUAN',
   traslado: 8, nacional: 466.5, total: 890, saldo_pendiente: true, items: [{ sku: 'PATENTE', qty: 15, costo: 25 }, { sku: 'SENAL', qty: 30, costo: 1.38 }] };
 
-test('del esquema anterior falta la segunda mitad de la PI (productos + shipping)', () => {
-  assert.strictEqual(CI.costoChina(IMP_14175.items), 668);
+test('del esquema anterior (MadeInChina) falta la segunda mitad del total, no de la PI', () => {
+  // Apollo Yi: total USD 2.003 en dos mitades iguales; la primera ya se pagó al pedir.
   assert.deepStrictEqual(TC.pendienteDeImportacion(IMP_14175), {
-    monto: 345.5, modelo: 'iva',
-    lineas: [{ id: 'saldo_pi', concepto: '2da mitad de la PI', a: 'proveedor', monto: 345.5, totalPI: 691 }],
+    monto: 1001.5, modelo: 'iva',
+    lineas: [{ id: 'saldo_total', concepto: '2da mitad del total', a: 'importador', monto: 1001.5, total: 2003 }],
   });
-  assert.strictEqual(TC.pendienteDeImportacion(IMP_14713).monto, 212.2);
+  assert.strictEqual(TC.pendienteDeImportacion(IMP_14713).monto, 445);
+  assert.strictEqual(TC.pendienteDeImportacion({ total: 1151.39, saldo_pendiente: true }).monto, 575.69, 'con centavos impares la segunda mitad lleva el resto');
   assert.strictEqual(TC.pendienteDeImportacion(IMP_13772).monto, 0, 'la PI ya pagada no debe nada');
   assert.strictEqual(TC.pendienteDeImportacion({ ...IMP_14175, estado: 'cancelled' }).monto, 0);
 });
@@ -154,17 +155,17 @@ test('con puesta en puerto falta lo que no está marcado como pagado, comisiones
   assert.deepStrictEqual(p.lineas.map(l => l.id), ['saldo_proveedor', 'puerto']);
 });
 
-test('el resumen del contenedor: las 3 PIs, sus llegadas calculadas y USD 557,70 a pagar', () => {
+test('el resumen del contenedor: las 3 PIs, sus llegadas calculadas y USD 1.446,50 a pagar', () => {
   const tracking = { eta: '2026-12-26', importaciones: [
     { id: 'IMP-13772', llegada_calculada: '2026-12-12', descripcion: 'Accesorios para moto' },
     { id: 'IMP-14175', llegada_calculada: '2027-01-02' },
     { id: 'IMP-14713', pi: '14713', llegada_calculada: '2027-01-15' },
   ] };
   const r = TC.resumenContenedor(tracking, [IMP_13772, IMP_14175, IMP_14713]);
-  assert.strictEqual(r.pendiente, 557.7);
+  assert.strictEqual(r.pendiente, 1446.5);
   assert.strictEqual(r.conSaldo, 2);
   assert.deepStrictEqual(r.pis.map(p => [p.pi, p.difDias, p.pendiente.monto]), [
-    ['13772', 14, 0], ['14175', -7, 345.5], ['14713', -20, 212.2],
+    ['13772', 14, 0], ['14175', -7, 1001.5], ['14713', -20, 445],
   ]);
   assert.deepStrictEqual(r.calculadas, ['2026-12-12', '2027-01-02', '2027-01-15']);
   assert.ok(r.desfasadas);
@@ -222,7 +223,7 @@ test('el aviso dice cuánto se corrió el arribo, qué PIs trae y cuánto falta 
   assert.match(txt, /Zarpó de Ningbo en el COSCO SHIPPING RHINE/);
   assert.match(txt, /pasó del 26\/12\/2026 al <b>30\/12\/2026<\/b> \(4 días después\)/);
   assert.match(txt, /PI 13772 \(Tom Banana\), PI 14175 \(Apollo Yi\), PI 14713\./);
-  assert.match(txt, /falta abonar <b>USD 557\.70<\/b>/);
+  assert.match(txt, /falta abonar <b>USD 1446\.50<\/b>/);
 });
 
 test('sin cambio de arribo ni de una etapa importante no se avisa', () => {
@@ -481,6 +482,6 @@ test('el cron consulta lo que está en camino y avisa por Telegram sólo si camb
   const txt = red.telegram[0].text;
   assert.match(txt, /pasó del 26\/12\/2026 al <b>02\/01\/2027<\/b> \(7 días después\)/);
   assert.match(txt, /PI 13772 \(Tom Banana\), PI 14175 \(Apollo Yi\), PI 14713 \(Guangzhou Muxuan Trading\)/);
-  assert.match(txt, /USD 557\.70/);
+  assert.match(txt, /USD 1446\.50/);
   assert.strictEqual(db.importaciones.find(i => i.id === 'IMP-14713').llegada, '2027-01-02');
 });

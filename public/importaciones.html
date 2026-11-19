@@ -2469,9 +2469,9 @@ function tarjetaContenedor(t, hoy) {
     if (!imp) pago = '<span style="color:var(--text-muted)">La importación ya no existe</span>';
     else if (p.llegada) pago = '<span style="color:var(--green)">✅ Ya llegó</span>';
     else if (p.pendiente.monto > 0) {
-      const detalle = p.pendiente.lineas.map(l => escapeHtml(l.concepto) + (l.totalPI ? ` de ${usd(l.totalPI)}` : '')).join(' + ');
+      const detalle = p.pendiente.lineas.map(l => escapeHtml(l.concepto) + (l.total ? ` de ${usd(l.total)}` : '')).join(' + ');
       // Con puesta en puerto, los tres pagos de siempre; del esquema anterior, un botón para
-      // dar por pagado el saldo de la PI.
+      // dar por pagada la segunda mitad del total.
       const accion = CI.esPuerto(imp) ? celdaPagos(imp)
         : `<button class="btn btn-green btn-sm" onclick="pagarSaldoPI('${escapeHtml(imp.id)}')">✅ Marcar pagada</button>`;
       pago = `<b class="mono" style="color:var(--yellow)">${usd(p.pendiente.monto)}</b><div class="ayuda" style="margin-bottom:6px">${detalle}</div>${accion}`;
@@ -2535,15 +2535,15 @@ function tarjetaContenedor(t, hoy) {
   </div>`;
 }
 
-// El saldo de una PI del esquema anterior (sin los tres pagos): el mismo "saldo pendiente" de
-// la tabla de Importaciones, con la cuenta a la vista antes de confirmar.
+// El saldo de una importación del esquema anterior (MadeInChina, dos mitades iguales del total):
+// el mismo "saldo pendiente" de la tabla de Importaciones, con la cuenta a la vista.
 function pagarSaldoPI(impId) {
   const imp = imports.find(i => i.id === impId);
   if (!imp) return;
   const t = trackingDeImportacion(impId);
   const pi = TC.piDe(imp, (t?.importaciones || []).find(v => v.id === impId));
   const p = TC.pendienteDeImportacion(imp);
-  if (!confirm(`¿Marcar como pagada la 2da mitad de ${pi ? 'la PI ' + pi : 'esta PI'} (${usd(p.monto)})?`)) return;
+  if (!confirm(`¿Marcar como pagada la 2da mitad de ${pi ? 'la PI ' + pi : 'esta importación'} (${usd(p.monto)} de ${usd(imp.total)})?`)) return;
   return toggleSaldo(impId, false);
 }
 

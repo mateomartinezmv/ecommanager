@@ -213,8 +213,10 @@
 
   // Lo que todavía no se pagó de una importación, renglón por renglón.
   //   · Con puesta en puerto: los pagos sin marcar (incluido el all in, que vence al arribo).
-  //   · Del esquema anterior: si tiene saldo pendiente, la segunda mitad de la PI
-  //     (productos + puesta FOB / shipping de la PI).
+  //   · Del esquema anterior (importador MadeInChina, total con IVA): se paga el total en dos
+  //     mitades iguales, una para arrancar la compra y la otra antes del arribo. Si tiene saldo
+  //     pendiente, falta la segunda mitad del total (no de la PI: el total ya trae flete,
+  //     nacionalización e IVA).
   function pendienteDeImportacion(imp) {
     if (!imp || ESTADOS_CANCELADOS.includes(imp.estado || imp.status)) return { monto: 0, lineas: [], modelo: null };
     if (CI && CI.esPuerto(imp)) {
@@ -225,11 +227,11 @@
       return { monto: r2(lineas.reduce((s, l) => s + l.monto, 0)), lineas, modelo: 'puerto' };
     }
     if (!imp.saldo_pendiente) return { monto: 0, lineas: [], modelo: 'iva' };
-    const totalPI = r2((CI ? CI.costoChina(imp.items) : 0) + num(imp.traslado));
-    const segunda = r2(totalPI - r2(totalPI / 2));
+    const total = r2(num(imp.total));
+    const segunda = r2(total - r2(total / 2));
     return {
       monto: segunda, modelo: 'iva',
-      lineas: [{ id: 'saldo_pi', concepto: '2da mitad de la PI', a: 'proveedor', monto: segunda, totalPI }],
+      lineas: [{ id: 'saldo_total', concepto: '2da mitad del total', a: 'importador', monto: segunda, total }],
     };
   }
 

@@ -662,3 +662,28 @@ test('Importaciones: #compras=PROV abre la compra de ese proveedor', async () =>
     await imp.cerrar();
   }
 });
+
+test('la compra por proveedor usa el costo cargado en el producto, aunque no haya importación', async () => {
+  const estado = estadoBase();
+  // Manillar 22 mm: nunca vino en una importación, pero tiene costo cargado ($484 puesto).
+  estado.productos.push({ sku: 'MAN22', nombre: 'Manillar 22mm Rojo', tipo: 'nuevo', stock_dep: 0, proveedor_id: 'PROV-1', costo: 484 });
+  estado.restock.productos.push({ sku: 'MAN22', nombre: 'Manillar 22mm Rojo', stock: 0, qty_en_transito: 0, daily_velocity: 0.21,
+    unidades_por_venta: 1, cantidad_sugerida: 27, restock_status: 'ordenar_ya', clase: 'nuevo' });
+  // Gato negro: el costo cargado ($1.000) le gana al de la última importación (USD 8).
+  estado.productos.find(p => p.sku === 'GZ-N').costo = 1000;
+  const imp = await abrir('importaciones.html#compras=PROV-1', estado);
+  try {
+    await imp.page.waitForSelector('#compra-PROV-1');
+    const card = imp.page.locator('#compra-PROV-1');
+    const costo = async sku => (await card.locator(`tr[data-sku="${sku}"] td`).nth(7).textContent()).trim();
+    // $484 ÷ 40 ÷ 2,5 = USD 4.84; $1.000 ÷ 40 ÷ 2,5 = USD 10.00.
+    assert.match(await costo('MAN22'), /USD 4\.84\s*de \$484 cargado/);
+    assert.match(await costo('GZ-N'), /USD 10\.00\s*de \$1\.000 cargado/);
+    // Sin costo cargado, sigue el de la última importación.
+    assert.match(await costo('GZ-R'), /USD 8\.00\s*de la última importación/);
+    assert.match(await card.locator('tr[data-sku="MAN22"] .compra-sub').textContent(), /USD 130\.68/); // 27 × 4,84
+    assert.deepStrictEqual(erroresReales(imp.errores), []);
+  } finally {
+    await imp.cerrar();
+  }
+});

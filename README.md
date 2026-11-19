@@ -673,6 +673,11 @@ una tarjeta por clase con cuántos productos tiene, qué parte de la contribuci�
 guía de reparto; cada tarjeta filtra la lista. La solapa **⛔ Descatalogar / comprar poco**
 junta los que hay que revisar, primero los descatalogados y con más plata parada.
 
+- **🛒 Compras por proveedor** toma el costo de cada producto del que tiene cargado en Stock
+  (costo puesto en pesos), no de la última importación: así sirve aunque nunca haya venido en
+  una. Para el mínimo del proveedor (USD de China) se convierte ÷ $40 por dólar ÷ 2,5 de
+  importación (÷ 3 en los baúles de 45L). Si el producto no tiene costo cargado, usa el de su
+  última importación; debajo de cada costo dice de dónde sale.
 - La cantidad sugerida ya sale con la meta de su clase, así que **🛒 Compras por proveedor**
   (Importaciones) la usa tal cual. Cuando completa hasta el mínimo del proveedor, el relleno va
   primero a los ⭐ y nunca a los de comprar poco ni a los descatalogados.

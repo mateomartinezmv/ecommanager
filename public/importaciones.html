@@ -717,7 +717,11 @@ const TOPE_COBERTURA_DIAS = 180;
 const FACTOR_URUGUAY = 2.5;
 const FACTOR_URUGUAY_BAUL45 = 3;
 // Estados de 📅 Reposición que no son una compra pendiente (igual que en reposicion.html).
-const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
+// 'no_comprar' = clase "descatalogar": lo que queda se liquida.
+const NO_ACCIONABLE = ['cubierto', 'sin_ventas', 'no_comprar'];
+// Clase de compra (api/_clasesCompra.js). El relleno para llegar al mínimo del proveedor va
+// primero a los ⭐ "nunca sin stock" y nunca a los de "comprar poco" ni a los descatalogados.
+const CLASE_RELLENO = { nunca: 0, siempre: 1, nuevo: 2, sin_datos: 2 };
 const URGENTE = ['quiebre_confirmado', 'ordenar_ya', 'insuficiente'];
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -2008,7 +2012,9 @@ function sumarDias(fechaStr, dias) {
 //      a un pack al producto que antes se queda sin stock —el de menos días de cobertura
 //      contando lo pedido—, hasta llegar al mínimo o hasta que todos tengan
 //      TOPE_COBERTURA_DIAS de venta cubiertos. Así el relleno va primero a lo que más rota y
-//      lo que se agrega igual se va a vender pronto.
+//      lo que se agrega igual se va a vender pronto. Entre clases, primero los ⭐ "nunca sin
+//      stock", después los "con stock siempre"; los de "comprar poco" y los descatalogados no
+//      reciben relleno (CLASE_RELLENO).
 // Los productos sin costo conocido entran en lo necesario pero no suman al mínimo.
 function armarCompra(prov, filas, leadTime, hoy) {
   const lineas = filas.map(r => {
@@ -2019,7 +2025,7 @@ function armarCompra(prov, filas, leadTime, hoy) {
     // termina el stock actual.
     const agota = r.agota_con_transito || r.stockout_date;
     return {
-      sku: r.sku, nombre: r.nombre, estado: r.restock_status,
+      sku: r.sku, nombre: r.nombre, estado: r.restock_status, clase: r.clase || null,
       stock: r.stock || 0, transito: r.qty_en_transito || 0,
       vel: r.daily_velocity || 0, upv: r.unidades_por_venta || 1,
       costo: c ? c.costo : null,
@@ -2037,9 +2043,13 @@ function armarCompra(prov, filas, leadTime, hoy) {
   let alcanzaTope = false;
   if (hayNecesario && total() < minimo) {
     for (let guard = 0; guard < 20000 && total() < minimo; guard++) {
-      const candidatas = lineas.filter(l => l.vel > 0 && l.costo > 0 && cobertura(l) < TOPE_COBERTURA_DIAS);
+      // Sin clase (respuesta vieja de la API) cuenta como "siempre", igual que antes.
+      const rangoClase = l => (l.clase ? CLASE_RELLENO[l.clase] : 1);
+      const candidatas = lineas.filter(l => l.vel > 0 && l.costo > 0 && cobertura(l) < TOPE_COBERTURA_DIAS
+        && rangoClase(l) !== undefined);
       if (!candidatas.length) { alcanzaTope = true; break; }
-      const l = candidatas.reduce((a, b) => cobertura(b) < cobertura(a) ? b : a);
+      const l = candidatas.reduce((a, b) =>
+        rangoClase(b) < rangoClase(a) || (rangoClase(b) === rangoClase(a) && cobertura(b) < cobertura(a)) ? b : a);
       l.relleno += l.upv;
       l.cantidad += l.upv;
     }
@@ -2129,14 +2139,14 @@ function tarjetaCompra(c) {
   }
 
   // Primero lo necesario (más urgente arriba), después lo que entra sólo como relleno.
-  const RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5 };
+  const RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5, no_comprar: 6 };
   const lineas = c.lineas
     .map((l, i) => ({ l, i }))
     .sort((a, b) => (b.l.necesario > 0) - (a.l.necesario > 0) || RANK[a.l.estado] - RANK[b.l.estado] || (a.l.vel > 0 ? (a.l.stock + a.l.transito) / a.l.vel : 1e9) - (b.l.vel > 0 ? (b.l.stock + b.l.transito) / b.l.vel : 1e9));
 
   const filas = lineas.map(({ l, i }) => `<tr data-sku="${escapeHtml(l.sku)}">
       <td class="mono" style="font-size:11px">${escapeHtml(l.sku)}</td>
-      <td>${escapeHtml(l.nombre)}</td>
+      <td>${l.clase === 'nunca' ? '<span title="Nunca sin stock: de los que más dejan">⭐ </span>' : ''}${escapeHtml(l.nombre)}</td>
       <td>${badgeReposicion(l.estado)}</td>
       <td class="mono">${l.stock}${l.transito ? ` <span style="color:var(--text-muted)">+${l.transito}</span>` : ''}</td>
       <td class="mono">${l.vel ? l.vel.toFixed(2) : '—'}</td>
@@ -2186,6 +2196,7 @@ function badgeReposicion(estado) {
     proximo:            ['badge-blue', '🔵 Próximo'],
     cubierto:           ['badge-gray', '✓ Cubierto'],
     sin_ventas:         ['badge-gray', '— Sin ventas'],
+    no_comprar:         ['badge-gray', '⛔ No volver a comprar'],
   };
   const [cls, label] = map[estado] || ['badge-gray', estado];
   return `<span class="badge ${cls}">${label}</span>`;

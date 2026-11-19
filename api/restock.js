@@ -31,8 +31,20 @@
 // UI. Los que no tienen señal de venta salen con restock_status 'sin_ventas' para
 // que el front los muestre en "Todos" sin ensuciar "Hay que comprar".
 
+//
+// Clase de compra (api/_clasesCompra.js): cada producto sale además con `clase`
+// ('nunca' | 'siempre' | 'nuevo' | 'poco' | 'descatalogar' | 'sin_datos'), el motivo y lo que
+// deja (contrib_mes, retorno_100). La clase cambia la meta de reposición: los ⭐ "nunca sin
+// stock" se cubren con plazo + 55 días de venta (~5 meses con 95 de plazo), los "siempre" con
+// plazo + 25, los de "comprar poco" solo con el plazo y los "descatalogar" no se compran
+// (restock_status 'no_comprar'). cantidad_sugerida ya sale con esa meta, así que la compra por proveedor de
+// Importaciones la usa sin cambios.
+
 const { getSupabase } = require('./_supabase');
 const { todasLasPiezas } = require('./_kits');
+const { todasLasFilas } = require('./_paginar');
+const { FACTOR_IVA_ADS } = require('./meli/_adsIva');
+const C = require('./_clasesCompra');
 
 // Los kits no se compran: se arman con piezas. Una venta (o devolución) de un kit es demanda
 // de cada pieza, en unidades de depósito: kits × cantidad de esa pieza en el kit.
@@ -61,6 +73,17 @@ const MS_PER_DAY         = 86400 * 1000;
 // El denominador ya descuenta los tramos confirmados sin stock (findStockoutPeriods),
 // así que estirar la ventana suma ventas reales sin diluir la tasa.
 const DEMAND_WINDOW_DAYS = 180;
+
+// Economía de cada producto (para la clase de compra): lo que deja cada unidad se mide con las
+// ventas de los últimos ECON_WINDOW_DAYS, que tienen la comisión y el envío de MELI reales y
+// los precios de ahora. Si no vendió en ese tramo, se usa toda la ventana de demanda.
+const ECON_WINDOW_DAYS = 120;
+// Publicidad: % de lo que factura en MELI que se gasta en Ads (con IVA), por producto, del
+// snapshot diario meli_ads_anuncios. Sin dato del producto, el promedio de la cuenta
+// (meli_ads_diario); sin eso tampoco, ADS_PCT_DEFAULT (el de octubre de 2026).
+const ADS_WINDOW_DAYS = 60;
+const ADS_PCT_DEFAULT = 0.22;
+const normSku = s => String(s || '').trim().toUpperCase();
 
 // ── Modelo de stock de seguridad (fórmula de King: demanda y lead time inciertos) ──
 // safety_stock = Z · √( LEAD_DAYS · σ_demanda² + demanda_diaria² · σ_leadtime² )
@@ -160,7 +183,18 @@ function computeStockoutGap(stock, dailyVelocity, transito, leadTimePromedio, to
 // importación vieja que no tenemos registrada — así se comporta YTLY-30, con
 // varios tramos entre -2 y -5) y ese tramo se deja como estaba antes en vez de
 // arriesgar un resultado incorrecto.
-function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windowStart, windowEnd) {
+//
+// Stock residual: un tramo largo sin una sola venta con 1 o 2 unidades reconstruidas tampoco
+// es demanda baja, si al ritmo del producto se esperaban varias ventas en ese tramo. Es un
+// desajuste de conteo (una unidad fallada, una venta que no se registró) y el producto en
+// la práctica estaba agotado. ALERONFINOSNK: vendió 11 en mayo, la reconstrucción le deja 1
+// unidad hasta que llegan 15 el 12/09, y vende 36 de septiembre a noviembre; contar esos 115
+// días como "con stock y sin ventas" le bajaba la velocidad de ~0,7 a 0,22 por día. Solo se
+// aplica con `velocidad` (la de la primera pasada, sin este ajuste) y si en el tramo se
+// esperaban al menos VENTAS_ESPERADAS_HUECO ventas.
+const STOCK_RESIDUAL_MAX    = 2;
+const VENTAS_ESPERADAS_HUECO = 5;
+function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windowStart, windowEnd, velocidad = 0) {
   const events = [];
   for (const [fecha, qty] of Object.entries(dailyQtyMap)) {
     if (qty) events.push({ fecha, delta: -qty });
@@ -187,7 +221,14 @@ function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windo
   const winEnd   = new Date(windowEnd);
   const periods = [];
   for (let i = 0; i < events.length - 1; i++) {
-    if (levelAfter[i] <= 0 && levelAfter[i] >= -STOCKOUT_TOLERANCE) {
+    const nivel = levelAfter[i];
+    const exacto = nivel <= 0 && nivel >= -STOCKOUT_TOLERANCE;
+    let residual = false;
+    if (!exacto && velocidad > 0 && nivel > 0 && nivel <= STOCK_RESIDUAL_MAX) {
+      const diasHueco = Math.round((new Date(events[i + 1].fecha) - new Date(events[i].fecha)) / MS_PER_DAY) - 1;
+      residual = diasHueco * velocidad >= VENTAS_ESPERADAS_HUECO;
+    }
+    if (exacto || residual) {
       let d1 = new Date(events[i].fecha);
       d1.setDate(d1.getDate() + 1);
       let d2 = new Date(events[i + 1].fecha);
@@ -196,7 +237,9 @@ function findStockoutPeriods(dailyQtyMap, arrivals, returns, currentStock, windo
       if (d2 > winEnd) d2 = winEnd;
       if (d1 <= d2) {
         const dias = Math.round((d2 - d1) / MS_PER_DAY) + 1;
-        periods.push({ desde: d1.toISOString().slice(0, 10), hasta: d2.toISOString().slice(0, 10), dias });
+        const per = { desde: d1.toISOString().slice(0, 10), hasta: d2.toISOString().slice(0, 10), dias };
+        if (residual) per.quedaban = nivel; // unidades reconstruidas que no se vendieron
+        periods.push(per);
       }
     }
   }
@@ -216,7 +259,7 @@ module.exports = async (req, res) => {
     // ── 1. All products ──────────────────────────────────────────────────────
     const { data: productosTodos, error: prodErr } = await supabase
       .from('productos')
-      .select('sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at')
+      .select('sku, nombre, grupo, subgrupo, stock_dep, unidades_por_venta, tipo, fecha_publicacion, alerta_min, created_at, costo')
       .neq('tipo', 'usado')
       .or('discontinuado.is.null,discontinuado.eq.false');
     if (prodErr) throw prodErr;
@@ -240,10 +283,14 @@ module.exports = async (req, res) => {
     since.setDate(since.getDate() - DEMAND_WINDOW_DAYS);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    const { data: ventas, error: ventasErr } = await supabase
+    // Paginado: pasando las 1000 ventas, Supabase cortaba en silencio y la velocidad salía de
+    // una parte del historial.
+    const { data: ventas, error: ventasErr } = await todasLasFilas(() => supabase
       .from('ventas')
-      .select('sku, cantidad, fecha')
-      .neq('estado', 'cancelada');
+      .select('id, sku, cantidad, fecha, total, comision, canal')
+      .neq('estado', 'cancelada')
+      .order('fecha', { ascending: true })
+      .order('id', { ascending: true }));
     if (ventasErr) throw ventasErr;
 
     // Aggregate units sold, track first/last sale date, and keep a per-day
@@ -363,6 +410,66 @@ module.exports = async (req, res) => {
     const leadTimeStdevRaw = leadTimes.length >= 2 ? stdev(leadTimes) : null;
     const sigmaLT = leadTimeStdevRaw !== null ? leadTimeStdevRaw : leadTimePromedio * DEFAULT_LT_CV;
 
+    // ── 4b. Economía: lo que deja cada producto (para la clase de compra) ──────
+    // Solo ventas propias del SKU (un kit tiene su propio precio, no cuenta para la pieza).
+    const econSince = new Date(today);
+    econSince.setDate(econSince.getDate() - ECON_WINDOW_DAYS);
+    const econSinceStr = econSince.toISOString().slice(0, 10);
+    const adsSince = new Date(today);
+    adsSince.setDate(adsSince.getDate() - ADS_WINDOW_DAYS);
+    const adsSinceStr = adsSince.toISOString().slice(0, 10);
+
+    // Publicidad. Las dos tablas pueden no existir (sin Mercado Ads conectado): sin dato, el
+    // porcentaje por defecto.
+    const [anunciosResp, diarioResp] = await Promise.all([
+      todasLasFilas(() => supabase.from('meli_ads_anuncios')
+        .select('sku, fecha, spend')
+        .gte('fecha', adsSinceStr)
+        .gt('spend', 0)
+        .not('sku', 'is', null)
+        .order('fecha', { ascending: true })
+        .order('ad_group_id', { ascending: true })),
+      supabase.from('meli_ads_diario').select('fecha, spend').gte('fecha', adsSinceStr),
+    ]);
+    const anuncios = anunciosResp.error ? [] : (anunciosResp.data || []);
+    const diario = diarioResp.error ? [] : (diarioResp.data || []);
+    // Cada snapshot puede arrancar después del corte (meli_ads_anuncios se empezó a guardar
+    // el 8/10/2026; meli_ads_diario mucho antes): la facturación con la que se compara cada
+    // gasto tiene que ser la del mismo tramo que ESE gasto.
+    const primeraFecha = filas => filas.map(r => r.fecha).filter(Boolean).sort()[0] || adsSinceStr;
+    const adsDesdeSku    = primeraFecha(anuncios);
+    const adsDesdeCuenta = primeraFecha(diario);
+
+    const adsIvaBySku = {};
+    for (const r of anuncios) {
+      const k = normSku(r.sku);
+      if (!k) continue;
+      adsIvaBySku[k] = (adsIvaBySku[k] || 0) + (Number(r.spend) || 0) * FACTOR_IVA_ADS;
+    }
+    const factMeliAdsBySku = {};
+    let factMeliAds = 0;
+    const econBySku = {};    // sku -> { uds, fact, factMeli, neto } de los últimos ECON_WINDOW_DAYS
+    const econVentana = {};  // ídem, toda la ventana de demanda (respaldo)
+    for (const v of ventas || []) {
+      const k = normSku(v.sku);
+      const total = Number(v.total) || 0;
+      const esMeli = v.canal === 'meli';
+      if (esMeli && v.fecha >= adsDesdeSku) factMeliAdsBySku[k] = (factMeliAdsBySku[k] || 0) + total;
+      if (esMeli && v.fecha >= adsDesdeCuenta) factMeliAds += total;
+      if (v.fecha < sinceStr) continue;
+      const sumar = (mapa) => {
+        const e = mapa[k] || (mapa[k] = { uds: 0, fact: 0, factMeli: 0, neto: 0 });
+        e.uds += Number(v.cantidad) || 0;
+        e.fact += total;
+        if (esMeli) e.factMeli += total;
+        e.neto += total - (Number(v.comision) || 0);
+      };
+      sumar(econVentana);
+      if (v.fecha >= econSinceStr) sumar(econBySku);
+    }
+    const adsIvaTotal = diario.reduce((s, r) => s + (Number(r.spend) || 0) * FACTOR_IVA_ADS, 0);
+    const adsPctCuenta = adsIvaTotal > 0 && factMeliAds > 0 ? Math.min(1, adsIvaTotal / factMeliAds) : ADS_PCT_DEFAULT;
+
     // ── 5. Calculate restock metrics per product ──────────────────────────────
     const todayStr  = today.toISOString().slice(0, 10);
     const LEAD_DAYS = leadTimePromedio;
@@ -401,11 +508,18 @@ module.exports = async (req, res) => {
           (new Date(windowEnd) - new Date(windowStart)) / MS_PER_DAY
         ) + 1);
 
-        stockoutPeriods = findStockoutPeriods(
+        const tramos = vel => findStockoutPeriods(
           dailyQtyBySku[p.sku] || {}, arrivalsBySku[p.sku] || [], returnsBySku[p.sku] || [],
-          stock, windowStart, windowEnd
+          stock, windowStart, windowEnd, vel
         );
-        diasSinStock = stockoutPeriods.reduce((a, per) => a + per.dias, 0);
+        const sumaDias = pers => pers.reduce((a, per) => a + per.dias, 0);
+        // Primera pasada: solo los tramos con stock 0 exacto. Con esa velocidad, segunda pasada
+        // que también saca los tramos largos con 1–2 unidades residuales (ver arriba).
+        stockoutPeriods = tramos(0);
+        const velPrimera = totalSold / Math.max(MIN_DAYS_LOW_SAMPLE, rawSpanDays - sumaDias(stockoutPeriods));
+        const conResiduales = tramos(velPrimera);
+        if (sumaDias(conResiduales) > sumaDias(stockoutPeriods)) stockoutPeriods = conResiduales;
+        diasSinStock = sumaDias(stockoutPeriods);
 
         spanDays   = Math.max(1, rawSpanDays - diasSinStock);
         activeDays = spanDays;
@@ -454,9 +568,52 @@ module.exports = async (req, res) => {
         ? SERVICE_Z * Math.sqrt(LEAD_DAYS * sigmaDemand ** 2 + dailyVelocity ** 2 * sigmaLT ** 2)
         : 0;
       const reorderPointUnits = dailyVelocity * LEAD_DAYS + safetyStockUnits;
+
+      // Clase de compra: cuánto deja este producto, en total y por cada peso de stock.
+      const upvP   = upvBySku[p.sku] || 1;
+      const costo  = Number(p.costo) || 0;
+      const kSku   = normSku(p.sku);
+      const econ   = econBySku[kSku] || econVentana[kSku] || null;
+      const econUdsDep = econ ? econ.uds * upvP : 0;
+      const adsPropio  = factMeliAdsBySku[kSku] > 0 && adsIvaBySku[kSku] !== undefined
+        ? Math.min(1, adsIvaBySku[kSku] / factMeliAdsBySku[kSku])
+        : null;
+      // Sin gasto propio registrado: si el snapshot existe y el producto vendió en MELI en ese
+      // tramo sin aparecer, puede no estar anunciado o no estar vinculado a su SKU; se toma el
+      // promedio de la cuenta (conservador) y se avisa que es estimado.
+      const adsPct = adsPropio !== null ? adsPropio : (econ && econ.factMeli > 0 ? adsPctCuenta : 0);
+      const adsEstimado = adsPropio === null && !!econ && econ.factMeli > 0;
+      const contribSinAds = econ ? econ.neto - costo * econUdsDep : 0;
+      const contribConAds = econ ? contribSinAds - adsPct * econ.factMeli : 0;
+      const publicacionDesde = p.fecha_publicacion || (p.created_at ? p.created_at.slice(0, 10) : null);
+      const clasif = C.clasificar({
+        vendidas:           totalSold,
+        dias_activos:       totalSold > 0 ? activeDays : 0,
+        dias_publicado:     publicacionDesde ? Math.max(0, Math.round((today - new Date(publicacionDesde)) / MS_PER_DAY)) : null,
+        ventana_dias:       DEMAND_WINDOW_DAYS,
+        lead_dias:          LEAD_DAYS,
+        stock,
+        costo,
+        ventas_mes:         dailyVelocity * 30,
+        econ_uds:           econUdsDep,
+        contrib_ud:         econUdsDep > 0 ? contribConAds / econUdsDep : 0,
+        contrib_ud_sin_ads: econUdsDep > 0 ? contribSinAds / econUdsDep : 0,
+        ads_pct:            adsPct,
+        ads_estimado:       adsEstimado,
+        en_camino:          (transitBySku[p.sku] || []).reduce((a, t) => a + (t.qty || 0), 0),
+        dias_desde_llegada: (() => {
+          const ultima = (arrivalsBySku[p.sku] || []).map(a => a.fecha).filter(Boolean).sort().pop();
+          return ultima ? Math.max(0, Math.round((today - new Date(ultima)) / MS_PER_DAY)) : null;
+        })(),
+      });
+      const objetivoClase = C.objetivoUnidades(clasif.clase, {
+        velocidad: dailyVelocity, leadDias: LEAD_DAYS, puntoPedido: reorderPointUnits,
+      });
+      const noComprar = clasif.clase === 'descatalogar';
+
       // Expresado en días de cobertura equivalente, para mantener las columnas
       // existentes de "ventana" con el mismo significado que antes.
-      const coberturaObjetivoDias = dailyVelocity > 0 ? reorderPointUnits / dailyVelocity : LEAD_DAYS;
+      const coberturaObjetivoDias = dailyVelocity > 0 ? objetivoClase / dailyVelocity : LEAD_DAYS;
 
       let daysCoverage  = null;
       let restockDate   = null;
@@ -490,8 +647,9 @@ module.exports = async (req, res) => {
         stock, dailyVelocity, transito, LEAD_DAYS, today
       );
 
-      const targetUnits   = Math.max(reorderPointUnits, alertaMin);
-      const crudaSugerida = dailyVelocity > 0
+      // Un "descatalogar" no se compra aunque tenga piso manual: el piso es de cuando se vendía.
+      const targetUnits   = noComprar ? 0 : Math.max(objetivoClase, alertaMin);
+      const crudaSugerida = noComprar ? 0 : dailyVelocity > 0
         ? Math.max(0, Math.ceil(targetUnits - stock - qty_en_transito))
         : Math.max(0, Math.ceil(alertaMin - stock - qty_en_transito));
       // Los productos de a par se piden de a par: media unidad sobrante no se
@@ -526,10 +684,12 @@ module.exports = async (req, res) => {
       // demanda no tiene (p. ej. "de esto siempre quiero tener al menos 5").
       // Si el stock físico ya está por debajo, se escala el status — pero nunca
       // se baja la urgencia de un status ya crítico.
-      if (alertaMin > 0 && stock < alertaMin &&
+      if (alertaMin > 0 && stock < alertaMin && !noComprar &&
           (restockStatus === 'cubierto' || restockStatus === 'proximo' || restockStatus === 'sin_ventas')) {
         restockStatus = already_ordered ? 'insuficiente' : 'ordenar_ya';
       }
+      // Descatalogar le gana a todo: lo que hay se liquida y no se vuelve a pedir.
+      if (noComprar) restockStatus = 'no_comprar';
 
       results.push({
         sku:                        p.sku,
@@ -551,7 +711,18 @@ module.exports = async (req, res) => {
         cobertura_objetivo_dias:    Math.round(coberturaObjetivoDias),
         safety_stock_uds:           Math.round(safetyStockUnits),
         punto_pedido_uds:           Math.round(reorderPointUnits),
+        objetivo_uds:               Math.round(targetUnits), // meta de la clase: stock + en camino
         cantidad_sugerida:          cantidadSugerida,
+        clase:                      clasif.clase,
+        clase_motivo:               clasif.motivo,
+        contrib_mes:                clasif.contrib_mes,      // lo que deja por mes después de Ads
+        retorno_100:                clasif.retorno,          // lo que deja por cada $100 de costo
+        retorno_100_sin_ads:        clasif.retorno_sin_ads,
+        ads_pct:                    Math.round(adsPct * 100),
+        ads_estimado:               adsEstimado,
+        costo,
+        valor_stock:                Math.round(costo * stock),
+        compra_mes:                 Math.round(costo * dailyVelocity * 30), // lo que hay que reponer por mes
         restock_status:             restockStatus,
         gap_cierra_fecha:           restockStatus === 'quiebre_confirmado' ? gapCierraFecha : null,
         agota_con_transito:         agotaFecha,     // fin del stock actual + todo lo que viene en camino
@@ -566,10 +737,15 @@ module.exports = async (req, res) => {
     // Sort: most urgent first
     // 'sin_ventas' va último: son los que no tienen señal de demanda, así que no
     // compiten por atención con los que sí hay que reponer.
-    const STATUS_RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5 };
+    // Dentro del mismo estado, los ⭐ "nunca sin stock" van primero: son la primera plata de
+    // cada compra.
+    const STATUS_RANK = { quiebre_confirmado: 0, ordenar_ya: 1, insuficiente: 2, proximo: 3, cubierto: 4, sin_ventas: 5, no_comprar: 6 };
+    const CLASE_RANK  = { nunca: 0, siempre: 1, nuevo: 2, sin_datos: 2, poco: 3, descatalogar: 4 };
     results.sort((a, b) => {
       const rankDiff = STATUS_RANK[a.restock_status] - STATUS_RANK[b.restock_status];
       if (rankDiff !== 0) return rankDiff;
+      const claseDiff = (CLASE_RANK[a.clase] ?? 9) - (CLASE_RANK[b.clase] ?? 9);
+      if (claseDiff !== 0) return claseDiff;
       if (!a.restock_date) return 1;
       if (!b.restock_date) return -1;
       return a.restock_date < b.restock_date ? -1 : 1;
@@ -582,6 +758,9 @@ module.exports = async (req, res) => {
       lead_time_min:      leadTimes.length ? Math.min(...leadTimes) : null,
       lead_time_max:      leadTimes.length ? Math.max(...leadTimes) : null,
       lead_time_metodo:   leadTimes.length >= 3 ? 'mediana' : 'valor por defecto',
+      clases:             C.resumenClases(results),
+      clases_colchon_dias: C.COLCHON_DIAS,
+      ads_pct_cuenta:     Math.round(adsPctCuenta * 100),
       productos:          results,
     });
   } catch (err) {

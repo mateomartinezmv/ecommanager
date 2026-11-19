@@ -147,6 +147,25 @@
   .cal-event-stockout { background: rgba(239,68,68,0.2);  color: var(--red);    border-left: 2px solid var(--red); }
   .cal-event-ordered  { background: rgba(34,197,94,0.15); color: var(--green);  border-left: 2px solid var(--green); }
 
+  /* ── Clases de compra ── */
+  .clases-resumen { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 8px; }
+  .clase-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; cursor: pointer; text-align: left; font-family: inherit; color: inherit; transition: border-color .15s; }
+  .clase-card:hover { border-color: var(--accent); }
+  .clase-card.activa { border-color: var(--accent); background: var(--surface2); }
+  .clase-card .titulo { font-size: 13px; font-weight: 700; }
+  .clase-card .cifra { font-size: 20px; font-weight: 700; margin: 4px 0 2px; font-family: 'JetBrains Mono', monospace; }
+  .clase-card .detalle { font-size: 11px; color: var(--text-dim); line-height: 1.45; }
+  .clases-nota { font-size: 11px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+  /* La tabla scrollea dentro de su caja; sin min-width:0 el #main (hijo flex) crece con la
+     tabla y empuja toda la página de costado. */
+  #main { min-width: 0; }
+  #list-container { overflow-x: auto; }
+  #list-container td:last-child { min-width: 220px; }
+  .col-clase { min-width: 240px; max-width: 320px; }
+  .col-clase .badge { white-space: nowrap; margin-top: 6px; }
+  .clase-motivo { font-size: 11px; color: var(--text-dim); margin-top: 4px; line-height: 1.45; }
+  .clase-econ { font-size: 10px; color: var(--text-muted); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
   .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
   .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
   .empty-state p { font-size: 14px; }
@@ -205,6 +224,10 @@
       <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> En tránsito (enviado)</div>
     </div>
 
+    <!-- Clases de compra: qué no puede faltar nunca, qué comprar poco, qué descatalogar -->
+    <div class="clases-resumen" id="clases-resumen"></div>
+    <div class="clases-nota" id="clases-nota"></div>
+
     <!-- Filters -->
     <div class="filter-bar">
       <div class="search-box">
@@ -216,6 +239,14 @@
       <select id="filter-cat" onchange="applyFilters()">
         <option value="">Todos los grupos</option>
       </select>
+      <select id="filter-clase" onchange="applyFilters()">
+        <option value="">Todas las clases</option>
+        <option value="nunca">⭐ Nunca sin stock</option>
+        <option value="siempre">✅ Con stock siempre</option>
+        <option value="nuevo">🧪 Nuevos / en prueba</option>
+        <option value="poco">🔻 Comprar poco</option>
+        <option value="descatalogar">⛔ Descatalogar</option>
+      </select>
       <span id="filtered-count" style="font-size:13px;color:var(--text-muted)"></span>
       <span id="search-hint" class="search-hint"></span>
     </div>
@@ -224,6 +255,7 @@
     <div class="tabs" style="margin-bottom:16px">
       <button class="tab active" id="seg-comprar"   onclick="switchSegmento('comprar')">🛒 Hay que comprar <span class="seg-count" id="seg-count-comprar"></span></button>
       <button class="tab"        id="seg-transito"  onclick="switchSegmento('transito')">🚢 En tránsito / Pedido <span class="seg-count" id="seg-count-transito"></span></button>
+      <button class="tab"        id="seg-revisar"   onclick="switchSegmento('revisar')">⛔ Descatalogar / comprar poco <span class="seg-count" id="seg-count-revisar"></span></button>
       <button class="tab"        id="seg-todos"     onclick="switchSegmento('todos')">📋 Todos <span class="seg-count" id="seg-count-todos"></span></button>
     </div>
 
@@ -279,6 +311,19 @@ let leadTimeMuestra  = 0;
 let leadTimeStdev    = null;
 let leadTimeMin      = null;
 let leadTimeMax      = null;
+let clasesResumen    = null;   // totales por clase de compra (api/_clasesCompra.js)
+let colchonClase     = { nunca: 55, siempre: 25, poco: 0 };
+
+// Clases de compra. El orden es el de la pantalla.
+const CLASES = ['nunca', 'siempre', 'nuevo', 'poco', 'descatalogar'];
+const CLASE_INFO = {
+  nunca:        { icono: '⭐', nombre: 'Nunca sin stock',   css: 'badge-yellow' },
+  siempre:      { icono: '✅', nombre: 'Con stock siempre', css: 'badge-green' },
+  nuevo:        { icono: '🧪', nombre: 'Nuevo / en prueba', css: 'badge-blue' },
+  poco:         { icono: '🔻', nombre: 'Comprar poco',      css: 'badge-orange' },
+  descatalogar: { icono: '⛔', nombre: 'Descatalogar',      css: 'badge-red' },
+  sin_datos:    { icono: '❔', nombre: 'Sin datos',         css: 'badge-gray' },
+};
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -294,6 +339,9 @@ async function load() {
     leadTimeStdev     = data.lead_time_stdev ?? null;
     leadTimeMin       = data.lead_time_min ?? null;
     leadTimeMax       = data.lead_time_max ?? null;
+    clasesResumen     = data.clases || null;
+    if (data.clases_colchon_dias) colchonClase = data.clases_colchon_dias;
+    renderClases();
 
     let leadTimeTxt;
     if (leadTimePromedio === null) {
@@ -404,9 +452,69 @@ function clearSearch() {
   applyFilters();
 }
 
+// ─── Clases de compra ─────────────────────────────────────────────────────────
+const fmtPlata = n => '$' + Math.round(Number(n) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+const meses = dias => (Math.round((dias / 30) * 10) / 10).toString().replace('.', ',');
+
+// La meta de cada clase en meses de venta, con el plazo de importación de verdad.
+function metaClaseTxt(clase) {
+  const lead = leadTimePromedio ?? 85;
+  if (clase === 'nunca' || clase === 'siempre') return `Meta: ~${meses(lead + (colchonClase[clase] || 0))} meses de venta entre stock y en camino`;
+  if (clase === 'poco') return `Solo lo justo para el plazo (~${meses(lead)} meses), sin colchón`;
+  if (clase === 'nuevo') return 'Lotes de prueba de 10 a 20 unidades';
+  if (clase === 'descatalogar') return 'No volver a comprar: liquidar lo que queda';
+  return '';
+}
+
+function renderClases() {
+  const el = document.getElementById('clases-resumen');
+  const nota = document.getElementById('clases-nota');
+  if (!clasesResumen) { el.innerHTML = ''; nota.textContent = ''; return; }
+  const sel = document.getElementById('filter-clase').value;
+  el.innerHTML = CLASES.map(c => {
+    const r = clasesResumen[c] || {};
+    const i = CLASE_INFO[c];
+    const lineas = [];
+    if (c === 'descatalogar') {
+      lineas.push(`${fmtPlata(r.valor_stock)} parados en stock`);
+    } else {
+      lineas.push(`Dejan el ${r.contrib_pct || 0}% de la contribución`);
+      if (r.reparto_pct) lineas.push(`Guía: ~${r.reparto_pct}% de cada compra`);
+    }
+    lineas.push(metaClaseTxt(c));
+    return `<button class="clase-card${sel === c ? ' activa' : ''}" data-clase="${c}" onclick="filtrarClase('${c}')">
+      <div class="titulo">${i.icono} ${i.nombre}</div>
+      <div class="cifra">${r.productos || 0}</div>
+      <div class="detalle">${lineas.map(escapeHtml).join('<br>')}</div>
+    </button>`;
+  }).join('');
+  nota.textContent = 'Cuánto deja cada producto: lo que factura menos costo, comisión, envío que cobra MELI y publicidad con IVA'
+    + ' (la del producto; si no hay dato, el promedio de la cuenta), al ritmo al que vende cuando tiene stock.'
+    + ' No incluye envíos propios. Cada tarjeta filtra la lista.';
+}
+
+function filtrarClase(c) {
+  const sel = document.getElementById('filter-clase');
+  sel.value = sel.value === c ? '' : c;
+  applyFilters();
+}
+
+function claseHtml(p) {
+  const i = CLASE_INFO[p.clase];
+  if (!i) return '—';
+  // En ⭐ y ✅ el motivo ya dice cuánto deja; en el resto, los números van aparte.
+  const econ = p.contrib_mes !== null && p.contrib_mes !== undefined && p.clase !== 'nunca' && p.clase !== 'siempre'
+    ? `<div class="clase-econ">deja ${fmtPlata(p.contrib_mes)}/mes · ${fmtPlata(p.retorno_100)} por $100${p.ads_pct ? ` · Ads ${p.ads_pct}%${p.ads_estimado ? '*' : ''}` : ''}</div>`
+    : '';
+  return `<span class="badge ${i.css}">${i.icono} ${i.nombre}</span>${econ}
+    <div class="clase-motivo">${escapeHtml(p.clase_motivo || '')}</div>`;
+}
+
 // ─── Filters + Segmento ───────────────────────────────────────────────────────
-// Estados que no representan una compra pendiente.
-const NO_ACCIONABLE = ['cubierto', 'sin_ventas'];
+// Estados que no representan una compra pendiente. 'no_comprar' es la clase
+// "descatalogar": lo que queda se liquida, no se repone.
+const NO_ACCIONABLE = ['cubierto', 'sin_ventas', 'no_comprar'];
+const CLASE_REVISAR_RANK = { descatalogar: 0, poco: 1 };
 
 function segmentFilter(list, seg) {
   // 'sin_ventas' queda fuera de "Hay que comprar" igual que 'cubierto': sin
@@ -414,16 +522,22 @@ function segmentFilter(list, seg) {
   // el listado completo tiene que ser completo de verdad.
   if (seg === 'comprar')  return list.filter(p => !NO_ACCIONABLE.includes(p.restock_status));
   if (seg === 'transito') return list.filter(p => p.already_ordered);
+  // Descatalogar primero; dentro de cada clase, lo que más plata tiene parada arriba.
+  if (seg === 'revisar')  return list.filter(p => p.clase in CLASE_REVISAR_RANK)
+    .sort((a, b) => CLASE_REVISAR_RANK[a.clase] - CLASE_REVISAR_RANK[b.clase] || (b.valor_stock || 0) - (a.valor_stock || 0));
   return list;
 }
 
 function applyFilters() {
   const cat   = document.getElementById('filter-cat').value;
+  const clase = document.getElementById('filter-clase').value;
   const terms = queryTerms();
 
-  // Grupo y búsqueda arman la base; la solapa recorta sobre eso.
+  // Grupo, clase y búsqueda arman la base; la solapa recorta sobre eso.
   let base = cat ? allProducts.filter(p => p.grupo === cat) : allProducts;
+  if (clase) base = base.filter(p => p.clase === clase);
   base = base.filter(p => matchesQuery(p, terms));
+  document.querySelectorAll('.clase-card').forEach(b => b.classList.toggle('activa', b.dataset.clase === clase));
 
   filtered = segmentFilter(base, currentSeg);
 
@@ -439,7 +553,7 @@ function applyFilters() {
 // Los contadores cuentan sobre la base ya filtrada por grupo y búsqueda, así
 // que al buscar se ve de una en qué solapa cayó cada coincidencia.
 function updateSegCounts(base) {
-  ['comprar', 'transito', 'todos'].forEach(seg => {
+  ['comprar', 'transito', 'revisar', 'todos'].forEach(seg => {
     const el = document.getElementById('seg-count-' + seg);
     if (el) el.textContent = segmentFilter(base, seg).length;
   });
@@ -459,7 +573,7 @@ function updateSearchHint(base, terms) {
 
 function switchSegmento(seg) {
   currentSeg = seg;
-  ['comprar','transito','todos'].forEach(s =>
+  ['comprar','transito','revisar','todos'].forEach(s =>
     document.getElementById('seg-' + s).classList.toggle('active', s === seg)
   );
   applyFilters();
@@ -467,6 +581,7 @@ function switchSegmento(seg) {
 
 // ─── Urgency helpers ──────────────────────────────────────────────────────────
 function urgencyClass(p, todayStr) {
+  if (p.restock_status === 'no_comprar') return 'no-comprar';
   if (p.restock_status === 'quiebre_confirmado') return 'quiebre-confirmado';
   if (p.restock_status === 'insuficiente') return 'insuficiente';
   if (p.restock_status === 'sin_ventas') return 'no-velocity';
@@ -502,6 +617,7 @@ function urgencyBadge(p, cls) {
     ok:           ['badge-gray',   '✓ OK'],
     'no-velocity':['badge-gray',   '— Sin ventas en la ventana'],
     insuficiente: ['badge-orange', '🟠 Insuficiente'],
+    'no-comprar': ['badge-gray',   '⛔ No volver a comprar'],
   };
   let [css, label] = map[cls] || ['badge-gray', cls];
 
@@ -525,6 +641,9 @@ function urgencyBadge(p, cls) {
     label += ` — pedí ${p.cantidad_sugerida} más`;
   }
   let html = `<span class="badge ${css}">${label}</span>`;
+  // Con la clase de compra, la cantidad sale de una meta distinta para cada clase: se explica
+  // siempre que se sugiere comprar (en 'insuficiente' va abajo, con lo que viene en camino).
+  if (SUGGESTABLE.includes(cls) && cls !== 'insuficiente' && p.clase) html += porQuePedirHtml(p);
   if (cls === 'insuficiente') {
     const llegaTxt = p.proxima_llegada ? fmtDate(p.proxima_llegada) : '—';
     html += `<div class="badge-nota">
@@ -546,16 +665,24 @@ function sumarDias(fechaStr, dias) {
 // antes de que pueda llegar la próxima compra. Y si todavía queda margen, se dice hasta
 // cuándo se puede esperar para juntar el pedido con otros del mismo proveedor.
 function porQuePedirHtml(p) {
-  if (!(p.cantidad_sugerida > 0) || !p.punto_pedido_uds) return '';
+  const objetivo = p.objetivo_uds ?? Math.max(p.punto_pedido_uds || 0, p.alerta_min || 0);
+  if (!(p.cantidad_sugerida > 0) || !objetivo) return '';
   const lead     = leadTimePromedio ?? 85;
   const hoy      = p.today || new Date().toISOString().slice(0, 10);
   const tiene    = (p.stock || 0) + (p.qty_en_transito || 0);
-  const objetivo = Math.max(p.punto_pedido_uds, p.alerta_min || 0);
   const partes = [];
   if (p.agota_con_transito && p.qty_en_transito) {
     partes.push(`Los ${p.qty_en_transito} en camino duran hasta ~${fmtDate(p.agota_con_transito)}.`);
   }
-  partes.push(`Para cubrir los ${lead} días que tarda la próxima compra + colchón hacen falta ~${objetivo} uds (hay ${tiene}).`);
+  // La meta depende de la clase de compra (api/_clasesCompra.js).
+  if (p.clase === 'nunca' || p.clase === 'siempre') {
+    const dias = lead + (colchonClase[p.clase] || 0);
+    partes.push(`${p.clase === 'nunca' ? 'Es de los que nunca pueden quedar sin stock: la' : 'La'} meta es ~${meses(dias)} meses de venta entre stock y en camino, ~${objetivo} uds (hay ${tiene}).`);
+  } else if (p.clase === 'poco') {
+    partes.push(`Deja poco: solo lo justo para los ${lead} días que tarda la próxima compra, ~${objetivo} uds (hay ${tiene}).`);
+  } else {
+    partes.push(`Para cubrir los ${lead} días que tarda la próxima compra + colchón hacen falta ~${objetivo} uds (hay ${tiene}).`);
+  }
   if (p.agota_con_transito) {
     const limite = sumarDias(p.agota_con_transito, -lead);
     partes.push(limite > hoy
@@ -569,7 +696,9 @@ function porQuePedirHtml(p) {
 // del cálculo de velocidad (ver periodos_sin_stock en la API).
 function stockoutPeriodsHtml(p) {
   if (!p.periodos_sin_stock || !p.periodos_sin_stock.length) return '';
-  const tramos = p.periodos_sin_stock.map(per => `${fmtDate(per.desde)}→${fmtDate(per.hasta)} (${per.dias}d)`).join(', ');
+  // `quedaban`: el stock reconstruido daba 1–2 unidades, pero al ritmo del producto se
+  // esperaban varias ventas y no hubo ninguna: en la práctica estaba agotado.
+  const tramos = p.periodos_sin_stock.map(per => `${fmtDate(per.desde)}→${fmtDate(per.hasta)} (${per.dias}d${per.quedaban ? `, quedaban ${per.quedaban} sin vender` : ''})`).join(', ');
   return `<div style="font-size:10px;color:var(--yellow);margin-top:2px" title="Excluido del cálculo de velocidad: el stock reconstruido dio 0 en este tramo">
     🚫 sin stock ${tramos}
   </div>`;
@@ -604,7 +733,9 @@ function renderList() {
         ? '🎉 No hay productos que necesiten compra urgente.'
         : currentSeg === 'transito'
           ? '📭 No hay pedidos ni productos en tránsito.'
-          : 'No hay productos activos para este grupo.';
+          : currentSeg === 'revisar'
+            ? '👌 No hay productos para descatalogar ni para comprar poco.'
+            : 'No hay productos activos para este grupo.';
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>${msg}</p></div>`;
     return;
   }
@@ -632,7 +763,7 @@ function renderList() {
     return `
       <tr>
         <td><span style="font-family:'JetBrains Mono',monospace;font-size:11px">${highlight(p.sku, terms)}</span></td>
-        <td>${highlight(p.nombre, terms)}</td>
+        <td class="col-clase"><div>${highlight(p.nombre, terms)}</div>${claseHtml(p)}</td>
         <td style="color:var(--text-muted);font-size:12px">${p.grupo || '—'}${p.subgrupo ? `<br><span style="font-size:10px">${p.subgrupo}</span>` : ''}</td>
         <td style="font-family:'JetBrains Mono',monospace">${p.stock}${(p.unidades_por_venta || 1) > 1 ? `<div style="font-size:10px;color:var(--text-muted)">de a ${p.unidades_por_venta} · ${Math.floor(p.stock / p.unidades_por_venta)} vendibles</div>` : ''}</td>
         <td style="font-family:'JetBrains Mono',monospace">
@@ -652,7 +783,7 @@ function renderList() {
       <thead>
         <tr>
           <th>SKU</th>
-          <th>Producto</th>
+          <th>Producto y clase</th>
           <th>Grupo</th>
           <th>Stock actual</th>
           <th>Velocidad</th>
@@ -690,7 +821,8 @@ function renderCalendar() {
     });
     // Show restock/stockout warnings unless coverage is actually enough
     // (e.g. 'insuficiente': hay tránsito pero igual te quedás sin stock después)
-    if (p.restock_status !== 'cubierto') {
+    // Ni los descatalogados: no se vuelven a pedir, así que no tienen fecha de compra.
+    if (p.restock_status !== 'cubierto' && p.restock_status !== 'no_comprar') {
       if (p.restock_date)  addEvent(p.restock_date,  { type: 'restock',  label: p.sku + ' ' + p.nombre });
       if (p.stockout_date) addEvent(p.stockout_date, { type: 'stockout', label: p.sku + ' ' + p.nombre });
     }
